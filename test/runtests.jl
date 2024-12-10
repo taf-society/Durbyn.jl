@@ -1,0 +1,11 @@
+using Test
+include("test_box_cox.jl")
+include("test_calculate_opt_sse.jl")
+include("test_decompose.jl")
+include("test_Durbyn.jl")
+include("test_fourier.jl")
+include("test_holt_winters_conventional.jl")
+include("test_initparam.jl")
+include("test_na_action.jl")
+include("test_simple_holt_winters.jl")
+include("test_utils.jl")

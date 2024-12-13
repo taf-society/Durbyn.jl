@@ -1,5 +1,5 @@
 export plot
-function plot(forecast::Forecast; show_fitted=true, show_residuals=false, title="Forecast with Fan Plot")
+function plot(forecast::Forecast; show_fitted=true, show_residuals=false, title="Forecast Plot")
     n_history = length(forecast.x)
     time_history = 1:n_history
     time_forecast = (n_history + 1):(n_history + length(forecast.mean))

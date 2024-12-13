@@ -10,13 +10,12 @@ end
 
 function process_parameters(y, model, damped, alpha, beta, gamma, phi, additive_only,
     lambda, lower, upper, opt_crit, nmse, bounds, ic, na_action_type)
-    # Match the input arguments to allowed values
+    
     opt_crit = match_arg(opt_crit, ["lik", "amse", "mse", "sigma", "mae"])
     bounds = match_arg(bounds, ["both", "usual", "admissible"])
     ic = match_arg(ic, ["aicc", "aic", "bic"])
     na_action_type = match_arg(na_action_type, ["na_contiguous", "na_interp", "na_fail"])
 
-    # Remove missing values near the ends
     ny = length(y)
     y = na_action(y, na_action_type)
 
@@ -27,33 +26,27 @@ function process_parameters(y, model, damped, alpha, beta, gamma, phi, additive_
 
     orig_y = y
 
-    # Check if model is of type ETS and lambda is not set
     if typeof(model) == ETS && isnothing(lambda)
         lambda = model.lambda
     end
 
-    # Apply Box-Cox transformation if lambda is provided
     if !isnothing(lambda)
-        y, lambda = box_cox(y, length(y), lambda=lambda)  # Assuming m is length of y
+        y, lambda = box_cox(y, length(y), lambda=lambda)
         additive_only = true
     end
 
-    # Check nmse range
     if nmse < 1 || nmse > 30
         throw(ArgumentError("nmse out of range"))
     end
 
-    # Check if the bounds are valid
     if any(x -> x < 0, upper .- lower)
         throw(ArgumentError("Lower limits must be less than upper limits"))
     end
 
-    # Return the necessary parameters
     return orig_y, y, lambda, damped, alpha, beta, gamma, phi, additive_only, opt_crit, bounds, ic, na_action_type, ny
 end
 
 function ets_refit(y::AbstractArray, m::Int, model::ETS; biasadj::Bool=false, use_initial_values::Bool=false, kwargs...)
-    # Extract model parameters
     alpha = max(model.par["alpha"], 1e-10)
     beta = model.par["beta"]
     gamma = model.par["gamma"]
@@ -127,12 +120,10 @@ end
 
 function validate_and_set_model_params(model, y, m, damped, restrict, additive_only)
 
-    # Extract model components
     errortype = string(model[1])
     trendtype = string(model[2])
     seasontype = string(model[3])
 
-    # Validate error, trend, and season types
     if !(errortype in ["M", "A", "Z"])
         throw(ArgumentError("Invalid error type"))
     end
@@ -143,7 +134,6 @@ function validate_and_set_model_params(model, y, m, damped, restrict, additive_o
         throw(ArgumentError("Invalid season type"))
     end
 
-    # Adjust seasonality type based on the frequency `m` and length of `y`
     if m < 1 || length(y) <= m
         seasontype = "N"
     end
@@ -163,7 +153,6 @@ function validate_and_set_model_params(model, y, m, damped, restrict, additive_o
         end
     end
 
-    # Check for forbidden model combinations based on the restrict flag
     if restrict
         if (errortype == "A" && (trendtype == "M" || seasontype == "M")) ||
            (errortype == "M" && trendtype == "M" && seasontype == "A") ||
@@ -172,28 +161,25 @@ function validate_and_set_model_params(model, y, m, damped, restrict, additive_o
         end
     end
 
-    # Check for non-positive data when error type is multiplicative
     data_positive = minimum(y) > 0
     if !data_positive && errortype == "M"
         throw(ArgumentError("Inappropriate model for data with negative or zero values"))
     end
 
-    # Check if damped is provided and validate the model combination
     if !isnothing(damped)
         if damped && trendtype == "N"
             throw(ArgumentError("Forbidden model combination: Damped trend with no trend component"))
         end
     end
 
-    # Calculate number of parameters (npars) based on model components
     n = length(y)
-    npars = 2 # alpha + l0
+    npars = 2
 
     if trendtype in ["A", "M"]
-        npars += 2 # beta + b0
+        npars += 2 
     end
     if seasontype in ["A", "M"]
-        npars += m # gamma + s
+        npars += m
     end
     if !isnothing(damped)
         npars += damped ? 1 : 0
@@ -204,7 +190,6 @@ end
 
 function fit_small_dataset(y, m, alpha, beta, gamma, phi, trendtype, seasontype, lambda, biasadj)
 
-    # Seasonal models handling
     if seasontype in ["A", "M"]
         try
             fit = holt_winters_conventional(y, m, alpha=alpha, beta=beta, gamma=gamma,
@@ -216,7 +201,6 @@ function fit_small_dataset(y, m, alpha, beta, gamma, phi, trendtype, seasontype,
         end
     end
 
-    # Trend models handling
     if trendtype in ["A", "M"]
         try
             fit = holt_winters_conventional(y, m, alpha=alpha, beta=beta, gamma=false,
@@ -229,7 +213,6 @@ function fit_small_dataset(y, m, alpha, beta, gamma, phi, trendtype, seasontype,
         end
     end
 
-    # Non-trend and non-seasonal models
     if trendtype == "N" && seasontype == "N"
         try
             fit = holt_winters_conventional(y, m, alpha=alpha, beta=false, gamma=false,
@@ -242,7 +225,6 @@ function fit_small_dataset(y, m, alpha, beta, gamma, phi, trendtype, seasontype,
         end
     end
 
-    # If none of the above fit, try Holt and SES models and select the best one
     fit1 = try
         holt_winters_conventional(y, m, alpha=alpha, beta=beta, gamma=false, seasonal="additive",
             exponential=(trendtype == 'M'), phi=phi, lambda=lambda, biasadj=biasadj, warnings=false)
@@ -257,7 +239,6 @@ function fit_small_dataset(y, m, alpha, beta, gamma, phi, trendtype, seasontype,
         nothing
     end
 
-    # Compare fits and return the best one
     fit = isnothing(fit1) ? fit2 : (isnothing(fit2) ? fit1 : (fit1.sigma2 < fit2.sigma2 ? fit1 : fit2))
 
     if isnothing(fit)
@@ -337,26 +318,18 @@ function fit_ets_models(grid, y, m, alpha, beta, gamma, phi, lower, upper, opt_c
 
     for combo in grid
         et, t, s, d = combo 
-        the_fit_model = etsmodel(y, m, et, t, s, d, alpha, beta, gamma, phi, lower, upper, opt_crit, nmse, bounds, opt_method, iterations; kwargs...)
-        if fit_ic < best_ic
-            best_ic = fit_ic
-            best_model = the_fit_model
-            best_params = combo
+        try
+            the_fit_model = etsmodel(y, m, et, t, s, d, alpha, beta, gamma, phi, lower, upper, opt_crit, nmse, bounds, opt_method, iterations; kwargs...)
+            fit_ic = get_ic(the_fit_model, ic)
+            if fit_ic < best_ic
+                best_ic = fit_ic
+                best_model = the_fit_model
+                best_params = combo
+            end
+        catch e
+            @warn "Error fitting model with combination: $combo"
+            continue
         end
-        # try
-        #     the_fit_model = etsmodel(y, m, et, t, s, d, alpha, beta, gamma, phi, lower, upper, opt_crit, nmse, bounds, opt_method, iterations; kwargs...)
-            
-        #     fit_ic = get_ic(the_fit_model, ic)
-
-        #     if fit_ic < best_ic
-        #         best_ic = fit_ic
-        #         best_model = the_fit_model
-        #         best_params = combo
-        #     end
-        # catch e
-        #     @warn "Error fitting model with combination: $combo"
-        #     continue
-        # end
     end
     return Dict("best_model" => best_model, "best_params" => best_params, "best_ic" => best_ic)
 end
@@ -375,7 +348,7 @@ function fit_best_ets_model(y, m, errortype, trendtype, seasontype, damped, alph
     best_params = result["best_params"]
     best_ic = result["best_ic"]
     result = nothing
-    println("best_params: ", best_params)
+    
     best_e, best_t, best_s, best_d = best_params
     
     if best_ic == Inf
@@ -432,7 +405,6 @@ function ets_base_model(y::AbstractArray, m::Int, model; damped::Union{Bool,Noth
 
     errortype, trendtype, seasontype, npars, data_positive = validate_and_set_model_params(model, y, m, damped, restrict, additive_only)
 
-    # Produce something non-optimized for tiny data sets
     if ny <= npars + 4
 
         if !isnothing(damped) && damped
@@ -468,7 +440,7 @@ function ets_base_model(y::AbstractArray, m::Int, model; damped::Union{Bool,Noth
         model["loglik"],
         initstates,
         transpose(model["states"]),
-         ["cff"], # model["state_names"],
+         ["cff"], # model["state_names"]
         SSE,
         sigma2,
         m,

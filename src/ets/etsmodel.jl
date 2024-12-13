@@ -111,14 +111,18 @@ function etsmodel(y::Vector{Float64}, m::Int, errortype::String, trendtype::Stri
     println("bounds = ", bounds)
     println("m = ", m)
     println("initial_params = ", initial_params)
-    println("fun = ", fun)
-    println("iterations = ", iterations)
+    println("fun = ", optim_method)
+    println("iterations = ", maxit)
     println("kwargs = ", kwargs)
 
     optimized_fit = optim_ets_base(par, y, nstate, errortype, trendtype, seasontype, damped, lower,
         upper, opt_crit, nmse, bounds, m, initial_params, fun=optim_method, iterations=maxit, kwargs...)
 
+    println("optimized fit", optimized_fit)
+
     fit_par = optimized_fit["optimized_params"]
+
+    println("optimized params", fit_par)
 
     states = fit_par["initstate"]
 

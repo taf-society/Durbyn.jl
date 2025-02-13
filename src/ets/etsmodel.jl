@@ -54,7 +54,6 @@ function etsmodel(y::Vector{Float64}, m::Int, errortype::String, trendtype::Stri
 
     par = initparam(alpha, beta, gamma, phi, trendtype, seasontype, damped, lower, upper, m, bounds, nothing_as_nan=true)
 
-    # Update alpha, beta, gamma, and phi based on the 'par' values
     if !isnan(par["alpha"])
         alpha = par["alpha"]
     end
@@ -71,14 +70,13 @@ function etsmodel(y::Vector{Float64}, m::Int, errortype::String, trendtype::Stri
         phi = par["phi"]
     end
 
-    # Check if parameters are valid
     if !check_param(alpha, beta, gamma, phi, lower, upper, bounds, m)
-        damped_str = damped ? "d" : ""  # Assign the result of ternary to a variable
-        println("Model: ETS($(errortype), $(trendtype)$(damped_str), $(seasontype))")
-        throw(ArgumentError("Parameters out of range"))
+        damped_str = damped ? "d" : ""  
+        throw(ArgumentError("For model `ETS($(errortype),\
+         $(trendtype)$(damped_str), $(seasontype))` \
+         parameters are out of range!"))
     end
-
-
+    
     init_state = initialize_states(y, m, trendtype, seasontype)
     nstate = length(init_state)
     initial_params = par
@@ -91,38 +89,15 @@ function etsmodel(y::Vector{Float64}, m::Int, errortype::String, trendtype::Stri
 
     np = length(par)
     if np >= length(y) - 1
-        # Not enough data to continue
         return Dict(:aic => Inf, :bic => Inf, :aicc => Inf, :mse => Inf, :amse => Inf, :fit => nothing, :par => par, :states => init_state)
     end
 
     init_state = nothing
 
-    println("par = ", par)
-    println("y = ", y)
-    println("nstate = ", nstate)
-    println("errortype = ", errortype)
-    println("trendtype = ", trendtype)
-    println("seasontype = ", seasontype)
-    println("damped = ", damped)
-    println("lower = ", lower)
-    println("upper = ", upper)
-    println("opt_crit = ", opt_crit)
-    println("nmse = ", nmse)
-    println("bounds = ", bounds)
-    println("m = ", m)
-    println("initial_params = ", initial_params)
-    println("fun = ", optim_method)
-    println("iterations = ", maxit)
-    println("kwargs = ", kwargs)
-
     optimized_fit = optim_ets_base(par, y, nstate, errortype, trendtype, seasontype, damped, lower,
         upper, opt_crit, nmse, bounds, m, initial_params, fun=optim_method, iterations=maxit, kwargs...)
 
-    println("optimized fit", optimized_fit)
-
     fit_par = optimized_fit["optimized_params"]
-
-    println("optimized params", fit_par)
 
     states = fit_par["initstate"]
 

@@ -439,8 +439,8 @@ function ets_base_model(y::AbstractArray, m::Int, model; damped::Union{Bool,Noth
         model["par"],
         model["loglik"],
         initstates,
-        transpose(model["states"]),
-         ["cff"], # model["state_names"]
+        model["states"],
+         ["cff"],
         SSE,
         sigma2,
         m,

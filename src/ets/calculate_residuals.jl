@@ -45,11 +45,7 @@ function calculate_residuals(y::AbstractArray, m::Int, init_state::AbstractArray
 
     likelihood = ets_base(y, n, x, m, errortype, trendtype, seasontype, alpha, beta, gamma, phi, e, amse, nmse)
 
-    x = reshape(x, n + 1, p)
-
-    if seasontype != "N"
-        x = x'
-    end
+    x = reshape_matrix_by_row(x, nrow = n + 1, ncol = p)
 
     if !isnan(likelihood)
         if abs(likelihood + 99999.0) < 1e-7
@@ -63,4 +59,8 @@ function calculate_residuals(y::AbstractArray, m::Int, init_state::AbstractArray
         "errors" => e,
         "state" => x
     )
+end
+
+function reshape_matrix_by_row(x::AbstractArray; nrow::Int, ncol::Int)
+    return reshape(x, ncol, nrow)'
 end

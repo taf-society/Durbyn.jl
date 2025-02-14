@@ -78,7 +78,7 @@ end
 function compute_forecast_data(object, h, simulate, npaths, level, bootstrap, damped, n)
     if simulate
         println("I am here 1")
-        return pegelsfcast_C(object, h, npath=npaths, level=level, bootstrap=bootstrap)
+        return bootstrap_ets_forecast(object, h, npath=npaths, level=level, bootstrap=bootstrap)
     elseif object.components[1] == "A" && object.components[2] in ["A", "N"] && object.components[3] in ["N", "A"]
         println("I am here 2")
         return compute_forecast_case1(object, h, n)
@@ -90,7 +90,7 @@ function compute_forecast_data(object, h, simulate, npaths, level, bootstrap, da
         return compute_forecast_case3(object, h, n)
     else
         println("I am here 5")
-        return pegelsfcast_C(object, h, npaths=npaths, level=level, bootstrap=bootstrap)
+        return bootstrap_ets_forecast(object, h, npaths=npaths, level=level, bootstrap=bootstrap)
     end
 end
 
@@ -234,6 +234,8 @@ function compute_combined_forecast(h, last_state, trend_type, season_type, dampe
     H2 = zeros(1, m)
     H2[m] = 1
 
+    println(params)
+
     if trend_type == "N"
         F1 = 1
         G1 = params["alpha"]
@@ -265,4 +267,37 @@ function compute_combined_forecast(h, last_state, trend_type, season_type, dampe
     end
 
     return (mu = mu, var = var)
+end
+
+function bootstrap_ets_forecast(obj, h; npaths, level, bootstrap)
+    
+    y_paths = fill(NaN, npaths, h)
+
+    for i in 1:npaths
+        y_paths[i, :] = simulate_ets(obj, h, future=true, bootstrap=bootstrap)
+    end
+    
+    state = obj.states[size(obj.x, 1) + 1, :]
+    m = obj.m
+    component2 = switch(obj.components[2])
+    component3 = switch(obj.components[3])
+    phi = obj.components[4] == false ? 1.0 : obj.par["phi"]
+    
+    y_f = zeros(h)
+    state = vec(as_matrix(state))
+    etsforecast(state, m, component2, component3, phi, h, y_f)
+    
+    if abs(y_f[1] + 99999) < 1e-7
+        error("Problem with multiplicative damped trend")
+    end
+
+    # Calculate lower and upper bounds, Check this part again
+    if !all(isnan.(level))
+        lower = [quantile_type8(y_paths[:, i], 0.5 - lvl / 200) for i in 1:size(y_paths, 2), lvl in level]
+        upper = [quantile_type8(y_paths[:, i], 0.5 + lvl / 200) for i in 1:size(y_paths, 2), lvl in level]
+    else
+        lower, upper = nothing, nothing
+    end
+    
+    return (mu = y_f, lower = lower, upper = upper)
 end

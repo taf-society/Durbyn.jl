@@ -10,6 +10,8 @@ using CategoricalArrays
 using LinearAlgebra
 using Polynomials
 using Plots
+#using Random
+#using Distributions
 
 include("model_fit_error.jl")
 include("box_cox.jl")
@@ -32,9 +34,11 @@ include("ets/initparam.jl")
 include("ets/ets_opt.jl")
 include("ets/simple_holt_winters.jl")
 include("ets/ses.jl")
+include("ets/simulate_ets.jl")
 include("ets/holt.jl")
 include("ets/forecast_ets_base.jl")
 include("ets/normalize_parameter.jl")
+include("ets/ets_model_type_code.jl")
 include("base/meanf.jl")
 include("forecast.jl")
 include("plot.jl")

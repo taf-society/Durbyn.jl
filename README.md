@@ -14,7 +14,8 @@ This package is currently under development and will be part of the **TAFS Forec
 
 ## About TAFS
 
-**TAFS (Time Series Analysis and Forecasting Society)** is a non-profit association registered as a **"Verein"** in Vienna, Austria. The organization connects a global audience of academics, experts, practitioners, and students to engage, share, learn, and innovate in the fields of data science and artificial intelligence, with a particular focus on time-series analysis, forecasting, and decision science. citeturn0search0
+**TAFS (Time Series Analysis and Forecasting Society)** is a non-profit association registered as a **"Verein"** in Vienna, Austria. The organization connects a global audience of academics, experts, practitioners, and students to engage, share, learn, and innovate in the fields of data science and artificial intelligence, with a particular focus on time-series analysis, forecasting, and decision science. [TAFS](https://taf-society.org/)
+
 
 TAFS's mission includes:
 
@@ -23,7 +24,7 @@ TAFS's mission includes:
 - **Sharing**: Inviting experts, academics, practitioners, and others to present and discuss problems, research, and solutions.
 - **Innovating**: Supporting the transfer of research into solutions and helping to drive innovations.
 
-As a registered non-profit association under Austrian law, TAFS ensures that all contributions remain fully open source and cannot be privatized or commercialized. citeturn0search7
+As a registered non-profit association under Austrian law, TAFS ensures that all contributions remain fully open source and cannot be privatized or commercialized. [TAFS](https://taf-society.org/)
 
 ## License
 

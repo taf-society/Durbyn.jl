@@ -1,5 +1,35 @@
-using Random
-using Distributions
+function etssimulate(x, m, error, trend, season, alpha, beta, gamma, phi, h, y, e)
+    m = max(1, m)
+    if m > 24 && season > NONE
+        return
+    end
+    
+    olds = zeros(24)
+    s = zeros(24)
+    f = zeros(10)
+    
+    l, b, s = initialize_state(x, trend, season, m)
+    
+    for i in 1:h
+        oldl, oldb, olds = l, b, copy(s)
+        
+        ets_base_forecast(oldl, oldb, olds, m, trend, season, phi, f, 1)
+        
+        if abs(f[1] - NA) < TOL
+            y[1] = NA
+            return
+        end
+        
+        y[i] = compute_simulated_y(f[1], e[i], error)
+        
+        l, b, s = update_state(oldl, l, oldb, b, olds, s, m, trend, season, alpha, beta, gamma, phi, y[i])
+    end
+end
+
+function compute_simulated_y(f, e, error)
+    return error == ADD ? f + e : f * (1.0 + e)
+end
+
 
 function simulate_ets(object::ETS, 
     nsim::Union{Int,Nothing}=nothing;
@@ -8,7 +38,6 @@ function simulate_ets(object::ETS,
     bootstrap::Bool=false,
     innov::Union{Vector{Float64},Nothing}=nothing)
 
-    # Access parameters and fields from the ETS object
     x = object.x
     m = object.m
     states = object.states
@@ -19,10 +48,8 @@ function simulate_ets(object::ETS,
     lambda = object.lambda
     biasadj = object.biasadj
 
-    # Determine the number of simulations
     nsim = isnothing(nsim) ? length(x) : nsim
 
-    # Set random seed if innov is not provided and seed is given
     if isnothing(innov)
         if !isnothing(seed)
             Random.seed!(seed)
@@ -31,7 +58,6 @@ function simulate_ets(object::ETS,
         nsim = length(innov)
     end
 
-    # Handle missing `x` or `m`
     if !all(ismissing.(x))
         if isnothing(m)
             m = 1
@@ -44,10 +70,8 @@ function simulate_ets(object::ETS,
         future = false
     end
 
-    # Select the initial state
     initstate = future ? states[end, :] : states[rand(1:size(states, 1)), :]
 
-    # Generate errors based on bootstrap or normal distribution
     if bootstrap
         res = filter(!ismissing, residuals) .- mean(filter(!ismissing, residuals))
         e = sample(res, nsim, replace=true)
@@ -59,30 +83,25 @@ function simulate_ets(object::ETS,
         error("Length of innov must be equal to nsim")
     end
 
-    # Ensure errors are bounded for multiplicative models
     if components[1] == "M"
         e = max.(-1, e)
     end
 
-    # Prepare parameters for the ETS simulation
     y = zeros(nsim)
-    errors = switch(components[1])
-    trend = switch(components[2])
-    season = switch(components[3])
+    errors = ets_model_type_code(components[1])
+    trend = ets_model_type_code(components[2])
+    season = ets_model_type_code(components[3])
     alpha = par["alpha"]
     beta = ifelse(trend == "N", 0.0, par["beta"])
     gamma = ifelse(season == "N", 0.0, par["gamma"])
     phi = ifelse(!components[4], 1.0, par["phi"])
 
-    # Simulate the time series
     etssimulate(initstate, m, errors, trend, season, alpha, beta, gamma, phi, nsim, y, e)
 
-    # Check for any issues with the simulation output
     if isnan(y[1])
         error("Problem with multiplicative damped trend")
     end
 
-    # Apply inverse Box-Cox transformation if lambda is provided
     if !isnothing(lambda)
         y = InvBoxCox(y, lambda=lambda)
     end

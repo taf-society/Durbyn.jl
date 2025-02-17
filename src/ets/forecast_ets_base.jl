@@ -234,18 +234,21 @@ function compute_combined_forecast(h, last_state, trend_type, season_type, dampe
     H2 = zeros(1, m)
     H2[m] = 1
 
-    println(params)
-
+    alpha = get(params, "alpha", missing)
+    beta = get(params, "beta", missing)
+    gamma = get(params, "gamma", missing)
+    phi = get(params, "phi", missing)
+    
     if trend_type == "N"
         F1 = 1
-        G1 = params["alpha"]
+        G1 = alpha
     else
-        F1 = [1 1; 0 ifelse(damped, params["phi"], 1)]
-        G1 = [params["alpha"] params["alpha"]; params["beta"] params["beta"]]
+        F1 = [1 1; 0 ifelse(damped, phi, 1)]
+        G1 = [alpha alpha; beta beta]
     end
     F2 = vcat(hcat(zeros(m - 1)', 1), hcat(I(m - 1), zeros(m - 1)))
     G2 = zeros(m, m)
-    G2[1, m] = params["gamma"]
+    G2[1, m] = gamma
 
     Mh = reshape(last_state[1:(p - m)], (p - m, 1)) * reshape(last_state[(p - m + 1):p], 1, m)
     Vh = zeros(length(Mh), length(Mh))

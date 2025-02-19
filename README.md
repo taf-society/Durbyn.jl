@@ -1,9 +1,9 @@
 # Durbyn
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://akai01.github.io/Durbyn.jl/stable/)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://akai01.github.io/Durbyn.jl/dev/)
-[![Build Status](https://github.com/akai01/Durbyn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/akai01/Durbyn.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/akai01/Durbyn.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/akai01/Durbyn.jl)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://taf-society.github.io/Durbyn.jl/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://taf-society.github.io/Durbyn.jl/dev/)
+[![Build Status](https://github.com/taf-society/Durbyn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/taf-society/Durbyn.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/taf-society/Durbyn.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/taf-society/Durbyn.jl)
 
 
 ## About
@@ -34,15 +34,11 @@ The Durbyn package is licensed under the **MIT License**, allowing for open-sour
 
 Durbyn is still in development. Once it is officially released, you will be able to install it using Julia’s package manager:
 
-```julia
-using Pkg
-Pkg.add("Durbyn")
-```
 
 For the latest development version, you can install directly from GitHub:
 
 ```julia
-Pkg.add(url="https://github.com/akai01/Durbyn.jl")
+Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 ```
 
 ## Usage
@@ -56,10 +52,11 @@ using Durbyn
 ap = air_passengers()
 
 # Fit an ETS model
-fit = ets(ap, 12, "MAM", damped = false)
+fit = ets(ap, 12, "ZZZ")
 
 # Generate a forecast
 fc = forecast_ets_base(fit, h = 12)
+# Generic function forecast() will be soon available 
 
 # Plot the forecast
 plot(fc)

@@ -60,6 +60,22 @@ fc = forecast_ets_base(fit, h = 12)
 
 # Plot the forecast
 plot(fc)
+
+# Forecasting Intermittent Demand
+data = [6, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0,
+0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 
+0, 0, 0, 0, 0];
+
+m = 1
+
+fit=croston(data, m)
+
+fc = forecast(fit, 12)
+
+plot(fc)
+
 ```
 
 ## Future Plans

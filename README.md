@@ -55,8 +55,8 @@ ap = air_passengers()
 fit = ets(ap, 12, "ZZZ")
 
 # Generate a forecast
-fc = forecast_ets_base(fit, h = 12)
-# Generic function forecast() will be soon available 
+fc = forecast(fit, h = 12)
+
 
 # Plot the forecast
 plot(fc)
@@ -69,9 +69,9 @@ data = [6, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 0, 0, 0, 0, 0];
 
 m = 1
-
+# Fit a Croston's Method
 fit=croston(data, m)
-
+# Generate a forecast
 fc = forecast(fit, 12)
 
 plot(fc)

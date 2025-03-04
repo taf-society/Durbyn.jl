@@ -1,4 +1,32 @@
-export holt_winters_conventional
+export forecast
+
+function forecast(
+    object::HoltWintersConventional;
+    h = nothing,
+    level = [80, 95],
+    fan = false,
+    simulate = false,
+    bootstrap = false,
+    npaths = 5000,
+    PI = true,
+    lambda = nothing,
+    biasadj = nothing,
+    kwargs...,
+)
+    return forecast_ets_base(
+        object,
+        h = h,
+        level = level,
+        fan = fan,
+        simulate = simulate,
+        bootstrap = bootstrap,
+        npaths = npaths,
+        PI = PI,
+        lambda = lambda,
+        biasadj = biasadj,
+        kwargs...,
+    )
+end
 
 function construct_states(level::AbstractArray,
     trend::AbstractArray, season::AbstractArray,

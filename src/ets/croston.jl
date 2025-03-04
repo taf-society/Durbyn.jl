@@ -76,8 +76,8 @@ function forecast(object::CrostonFit, h::Int)
     end
 
     if type == CrostonFour
-        y_f_struct = forecast_ets_base(object.modely, h = h)
-        p_f_struct = forecast_ets_base(object.modelp, h = h)
+        y_f_struct = forecast(object.modely, h = h)
+        p_f_struct = forecast(object.modelp, h = h)
         y_f = y_f_struct.mean
         p_f = p_f_struct.mean
         mean = y_f ./ p_f

@@ -49,6 +49,14 @@ function optim_ets_base(opt_params, y, nstate, errortype, trendtype, seasontype,
     optimized_value = Optim.minimum(result)
     number_of_iterations = Optim.iterations(result)
 
+    # result = optim_nm(par -> objective_fun(par, y, nstate, errortype, trendtype, seasontype, damped, lower,
+    #         upper, opt_crit, nmse, bounds, m, init_alpha, init_beta, init_gamma,
+    #         init_phi, opt_alpha, opt_beta, opt_gamma, opt_phi), opt_params, iter_max = iterations, kwargs...)
+
+    # optimized_params = result[:par]
+    # optimized_value = result[:value]
+    # number_of_iterations = iterations
+
     optimized_params = create_params(optimized_params, opt_alpha, opt_beta, opt_gamma, opt_phi)
 
     return Dict("optimized_params" => optimized_params, "optimized_value" => optimized_value, 

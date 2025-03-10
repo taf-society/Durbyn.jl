@@ -43,5 +43,6 @@ include("ets/croston.jl")
 include("base/meanf.jl")
 include("forecast.jl")
 include("plot.jl")
+include("optim/optim_nm.jl")
 
 end

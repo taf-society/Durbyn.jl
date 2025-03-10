@@ -4,7 +4,7 @@ function handle_seasonality(y, m, seasontype, n)
     end
 
     if n < 3 * m
-        fouriery = fourier(x=y, period=m, K=1)
+        fouriery = fourier(y; m = m, K=1)
         fit = tslm_ets(y, fouriery)
         trend = 1:n
         seasonal = if seasontype == "A"

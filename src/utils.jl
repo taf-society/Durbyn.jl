@@ -132,3 +132,13 @@ function air_passengers()
     391.0, 419.0, 461.0, 472.0, 535.0, 622.0, 606.0,
     508.0, 461.0, 390.0, 432.0]
 end 
+
+function check_component(container, key)
+    if isa(container, Dict) && haskey(container, key)
+        return container[key]
+    elseif isa(container, AbstractVector) && key in container
+        return key
+    else
+        return nothing
+    end
+end

@@ -8,12 +8,12 @@ function etssimulate(x, m, error, trend, season, alpha, beta, gamma, phi, h, y, 
     s = zeros(24)
     f = zeros(10)
     
-    l, b, s = initialize_state(x, trend, season, m)
+    l, b, s = initialize_states(x, m, trend, season)
     
     for i in 1:h
         oldl, oldb, olds = l, b, copy(s)
         
-        ets_base_forecast(oldl, oldb, olds, m, trend, season, phi, f, 1)
+        forecast_ets_base(oldl, oldb, olds, m, trend, season, phi, f, 1)
         
         if abs(f[1] - NA) < TOL
             y[1] = NA
@@ -91,10 +91,10 @@ function simulate_ets(object::ETS,
     errors = ets_model_type_code(components[1])
     trend = ets_model_type_code(components[2])
     season = ets_model_type_code(components[3])
-    alpha = par["alpha"]
-    beta = ifelse(trend == "N", 0.0, par["beta"])
-    gamma = ifelse(season == "N", 0.0, par["gamma"])
-    phi = ifelse(!components[4], 1.0, par["phi"])
+    alpha = check_component(par, "alpha")
+    beta = ifelse(trend == "N", 0.0, check_component(par, "beta"))
+    gamma = ifelse(season == "N", 0.0, check_component(par, "gamma"))
+    phi = ifelse(!components[4], 1.0, check_component(par, "phi"))
 
     etssimulate(initstate, m, errors, trend, season, alpha, beta, gamma, phi, nsim, y, e)
 

@@ -132,7 +132,7 @@ function compute_forecast_data(object, h, simulate, npaths, level, bootstrap, da
         return bootstrap_ets_forecast(
             object,
             h,
-            npath = npaths,
+            npaths = npaths,
             level = level,
             bootstrap = bootstrap,
         )

@@ -398,21 +398,21 @@ function bootstrap_ets_forecast(obj, h; npaths, level, bootstrap)
         y_paths[i, :] = simulate_ets(obj, h, future = true, bootstrap = bootstrap)
     end
 
-    state = obj.states[size(obj.x, 1)+1, :]
+    state = vec(obj.states[size(obj.x, 1)+1, :])
     m = obj.m
-    component2 = switch(obj.components[2])
-    component3 = switch(obj.components[3])
+    switch_dict = Dict("N" => 0, "A" => 1, "M" => 2)
+    component2 = switch_dict[obj.components[2]]
+    component3 = switch_dict[obj.components[3]]
     phi = obj.components[4] == false ? 1.0 : obj.par["phi"]
 
     y_f = zeros(h)
-    state = vec(as_matrix(state))
-    etsforecast(state, m, component2, component3, phi, h, y_f)
+    #state = vec(as_matrix(state))
+    forecast(state, m, component2, component3, phi, h, y_f)
 
     if abs(y_f[1] + 99999) < 1e-7
         error("Problem with multiplicative damped trend")
     end
 
-    # Calculate lower and upper bounds, Check this part again
     if !all(isnan.(level))
         lower = [
             quantile_type8(y_paths[:, i], 0.5 - lvl / 200) for i = 1:size(y_paths, 2),
@@ -427,4 +427,18 @@ function bootstrap_ets_forecast(obj, h; npaths, level, bootstrap)
     end
 
     return (mu = y_f, lower = lower, upper = upper)
+end
+
+function quantile_type8(arr, q)
+    sorted_arr = sort(arr)
+    n = length(arr)
+    pos = (n - 1) * q + 1
+    pos_floor = floor(Int, pos)
+    pos_ceil = ceil(Int, pos)
+    if pos_floor == pos_ceil
+        return sorted_arr[pos_floor]
+    else
+        weight = pos - pos_floor
+        return (1 - weight) * sorted_arr[pos_floor] + weight * sorted_arr[pos_ceil]
+    end
 end

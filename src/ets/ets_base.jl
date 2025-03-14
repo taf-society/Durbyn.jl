@@ -140,23 +140,18 @@ function forecast_ets_base(l, b, s, m, trend, season, phi, f, h)
             f[i] = l * (b^phistar)
         end
 
-        j = m - 1 - (i - 1)
-        while j < 0
-            j += m
-        end
+        j = (m - 1 - (i - 1)) % m
 
         if season == ADD
-            f[i] = f[i] + s[j+1]
+            #f[i] = f[i] + s[j+1]
+            f[i] += s[j + 1]
         elseif season == MULT
-            f[i] = f[i] * s[j+1]
+            #f[i] = f[i] * s[j+1]
+            f[i] *= s[j + 1]
         end
 
         if i < h
-            if abs(phi - 1.0) < TOL
-                phistar += 1.0
-            else
-                phistar += phi^(i + 1)
-            end
+            phistar += phi == 1.0 ? 1.0 : phi^(i + 1)
         end
     end
 end
@@ -224,4 +219,80 @@ function update_ets_base(oldl, l, oldb, b, olds, s, m, trend, season, alpha, bet
     end
 
     return l, b, s
+end
+
+function simulate_ets_base(x, m, error, trend, season, alpha, beta, gamma, phi, h, y, e)
+    oldb = 0.0
+    olds = zeros(24)
+    s = zeros(24)
+    f = zeros(10)
+    
+    if m > 24 && season > NONE
+        println("I am here 1")
+        return
+    elseif m < 1
+        m = 1
+    end
+    
+    l = x[1]
+    if trend > NONE
+        b = x[2]
+    end
+    
+    if season > NONE
+        for j in 1:m
+            s[j] = x[(trend > NONE) + j + 1]
+        end
+    end
+    
+    for i in 1:h
+        oldl = l
+        if trend > NONE
+            oldb = b
+        end
+        if season > NONE
+            for j in 1:m
+                olds[j] = s[j]
+            end
+        end
+        
+        forecast_ets_base(oldl, oldb, olds, m, trend, season, phi, f, 1)
+        
+        if abs(f[1] - NA) < TOL
+            y[1] = NA
+            println("I am here 2")
+            return
+        end
+        
+        if error == ADD
+            y[i] = f[1] + e[i]
+        else
+            y[i] = f[1] * (1.0 + e[i])
+        end
+        
+        # Update state
+        l, b, s = update_ets_base(oldl, l, oldb, b, olds, s, m, trend, season, alpha, beta, gamma, phi, y[i])
+    end
+end
+
+function forecast(x::AbstractArray, m::Int, trend::Int, season::Int, phi::Float64, h::Int, f::Vector{Float64})
+
+    if (m > 24) && (season > NONE)
+        return
+    elseif m < 1
+        m = 1
+    end
+
+    l = x[1]
+    b = ifelse(trend > NONE, x[2], 0.0)
+    s = zeros(Float64, 24)
+
+    if season > NONE
+        offset = ifelse(trend > NONE, 2, 1)
+        for j in 1:m
+            s[j] = x[offset + j]
+        end
+    end
+
+    forecast_ets_base(l, b, s, m, trend, season, phi, f, h)
 end

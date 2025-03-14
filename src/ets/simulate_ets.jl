@@ -1,36 +1,3 @@
-function etssimulate(x, m, error, trend, season, alpha, beta, gamma, phi, h, y, e)
-    m = max(1, m)
-    if m > 24 && season > NONE
-        return
-    end
-    
-    olds = zeros(24)
-    s = zeros(24)
-    f = zeros(10)
-    
-    l, b, s = initialize_states(x, m, trend, season)
-    
-    for i in 1:h
-        oldl, oldb, olds = l, b, copy(s)
-        
-        forecast_ets_base(oldl, oldb, olds, m, trend, season, phi, f, 1)
-        
-        if abs(f[1] - NA) < TOL
-            y[1] = NA
-            return
-        end
-        
-        y[i] = compute_simulated_y(f[1], e[i], error)
-        
-        l, b, s = update_state(oldl, l, oldb, b, olds, s, m, trend, season, alpha, beta, gamma, phi, y[i])
-    end
-end
-
-function compute_simulated_y(f, e, error)
-    return error == ADD ? f + e : f * (1.0 + e)
-end
-
-
 function simulate_ets(object::ETS, 
     nsim::Union{Int,Nothing}=nothing;
     seed::Union{Int,Nothing}=nothing,
@@ -96,7 +63,7 @@ function simulate_ets(object::ETS,
     gamma = ifelse(season == "N", 0.0, check_component(par, "gamma"))
     phi = ifelse(!components[4], 1.0, check_component(par, "phi"))
 
-    etssimulate(initstate, m, errors, trend, season, alpha, beta, gamma, phi, nsim, y, e)
+    simulate_ets_base(initstate, m, errors, trend, season, alpha, beta, gamma, phi, nsim, y, e)
 
     if isnan(y[1])
         error("Problem with multiplicative damped trend")

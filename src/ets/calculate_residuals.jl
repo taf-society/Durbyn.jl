@@ -5,52 +5,26 @@ function calculate_residuals(y::AbstractArray, m::Int, init_state::AbstractArray
 
     n = length(y)
     p = length(init_state)
-    x = fill(0.0, p * (n + 1))
+    x = zeros(p * (n + 1))
     x[1:p] .= init_state
-    e = fill(0.0, n)
-
-    if !damped
-        phi = 1.0
-    end
-    if trendtype == "N"
-        beta = 0.0
-    end
-    if seasontype == "N"
-        gamma = 0.0
-    end
-
-    amse = fill(0.0, nmse)
+    e = zeros(n)
+    amse = zeros(nmse)
 
     switch_dict = Dict("N" => 0, "A" => 1, "M" => 2)
+    errortype, trendtype, seasontype = switch_dict[errortype], switch_dict[trendtype], switch_dict[seasontype]
 
-    errortype = switch_dict[errortype]
-    trendtype = switch_dict[trendtype]
-    seasontype = switch_dict[seasontype]
+    phi = ifelse(damped, phi, 1.0)
+    beta = ifelse(trendtype == 0, 0.0, beta)
+    gamma = ifelse(seasontype == 0, 0.0, gamma)
 
-    if alpha isa Bool
-        alpha = alpha ? 1.0 : 0.0
-    end
-
-    if beta isa Bool
-        beta = beta ? 1.0 : 0.0
-    end
-
-    if gamma isa Bool
-        gamma = gamma ? 1.0 : 0.0
-    end
-
-    if phi isa Bool
-        phi = phi ? 1.0 : 0.0
-    end
+    alpha, beta, gamma, phi = Float64(alpha), Float64(beta), Float64(gamma), Float64(phi)
 
     likelihood = ets_base(y, n, x, m, errortype, trendtype, seasontype, alpha, beta, gamma, phi, e, amse, nmse)
 
-    x = reshape_matrix_by_row(x, nrow = n + 1, ncol = p)
+    x = reshape(x, p, n + 1)'
 
-    if !isnan(likelihood)
-        if abs(likelihood + 99999.0) < 1e-7
-            likelihood = NaN
-        end
+    if abs(likelihood + 99999.0) < 1e-7
+        likelihood = NaN
     end
 
     return Dict(
@@ -59,8 +33,4 @@ function calculate_residuals(y::AbstractArray, m::Int, init_state::AbstractArray
         "errors" => e,
         "state" => x
     )
-end
-
-function reshape_matrix_by_row(x::AbstractArray; nrow::Int, ncol::Int)
-    return reshape(x, ncol, nrow)'
 end

@@ -63,115 +63,68 @@ function optim_ets_base(opt_params, y, nstate, errortype, trendtype, seasontype,
     "number_of_iterations" => number_of_iterations)
 end
 
-function objective_fun(par, y, nstate, errortype, trendtype, seasontype, damped, lower, upper, opt_crit,
-    nmse, bounds, m, init_alpha, init_beta, init_gamma, init_phi, opt_alpha, opt_beta, opt_gamma, opt_phi)
 
-    j = 1
-    # Extract or set alpha
-    if opt_alpha
-        alpha = par[j]
-        j = j + 1
-    else
-        alpha = init_alpha
-    end
+function objective_fun(par, y, nstate, errortype, trendtype, seasontype, damped, lower, upper, opt_crit, 
+    nmse, bounds, m, init_alpha, init_beta, init_gamma, init_phi, opt_alpha, opt_beta, 
+    opt_gamma, opt_phi)
 
-    if isnan(alpha)
-        throw(ArgumentError("alpha problem. alpha must be a floating number!"))
-    end
+j = 1
 
-    # Extract or set beta
-    if trendtype != "N"
-        if opt_beta
-            beta = par[j]
-            j = j + 1
-        else
-            beta = init_beta
-        end
+alpha = opt_alpha ? par[j] : init_alpha
+j += opt_alpha
 
-        if isnan(beta)
-            throw(ArgumentError("beta problem. beta must be a floating number!"))
-        end
-    else
-        beta = NaN
-    end
-    # Extract or set gamma
-    if seasontype != "N"
-        if opt_gamma
-            gamma = par[j]
-            j = j + 1
-        else
-            gamma = init_gamma
-        end
+beta = nothing
+if trendtype != "N"
+beta = opt_beta ? par[j] : init_beta
+j += opt_beta
+end
 
-        if isnan(gamma)
-            throw(ArgumentError("gamma problem. gamma must be a floating number!"))
-        end
-    else
-        m = 1
-        gamma = NaN
-    end
+gamma = nothing
+if seasontype != "N"
+gamma = opt_gamma ? par[j] : init_gamma
+j += opt_gamma
+end
 
+phi = nothing
+if damped
+phi = opt_phi ? par[j] : init_phi
+j += opt_phi
+end
 
-    # Extract or set phi
-    if damped
-        if opt_phi
-            phi = par[j]
-            j = j + 1
-        else
-            phi = init_phi
-        end
+if isnan(alpha)
+throw(ArgumentError("alpha must be numeric"))
+elseif beta !== nothing && isnan(beta)
+throw(ArgumentError("beta must be numeric"))
+elseif gamma !== nothing && isnan(gamma)
+throw(ArgumentError("gamma must be numeric"))
+elseif phi !== nothing && isnan(phi)
+throw(ArgumentError("phi must be numeric"))
+end
 
-        if isnan(phi)
-            throw(ArgumentError("phi problem. phi must be a floating number!"))
-        end
-    else
-        phi = NaN
-    end
+if !check_param(alpha, beta, gamma, phi, lower, upper, bounds, m)
+return Inf
+end
 
-    if !check_param(alpha, beta, gamma, phi, lower, upper, bounds, m)
-        return 1e11
-    end
+p = nstate + (seasontype != "N" ? 1 : 0)
+states = zeros(p * (length(y) + 1))
+states[1:nstate] = par[end-nstate+1:end]
 
-    # Calculate the size of the state
-    p = nstate + ifelse(seasontype != 0, 1, 0)
-    n = length(y)
+out = calculate_residuals(y, m, states, errortype, trendtype, seasontype, damped, alpha, beta, gamma, phi, nmse)
+lik, amse, e = out["likelihood"], out["amse"], out["errors"]
 
-    # Initialize the state array
-    states = zeros(p * (n + 1))
-    states[1:nstate] = par[end-nstate+1:end]
+lik = ifelse((isnan(lik) || lik < -1e10 || abs(lik + 99999) < 1e-7), Inf, lik)
 
-    out = calculate_residuals(y, m, states, errortype, trendtype, seasontype, damped, alpha, beta, gamma, phi, nmse)
-
-    lik = out["likelihood"]
-    amse = out["amse"]
-    e = out["errors"]
-    state = out["state"]
-
-    # Prevent perfect fit issues
-    if lik < -1e10
-        lik = -1e10
-    end
-    if isnan(lik)
-        lik = Inf
-    end
-    if abs(lik + 99999) < 1e-7
-        lik = Inf
-    end
-
-    # Calculate the objective value based on the optimization criterion
-    if opt_crit == "lik"
-        objval = lik
-    elseif opt_crit == "mse"
-        objval = amse[1]
-    elseif opt_crit == "amse"
-        objval = mean(amse[1:nmse])
-    elseif opt_crit == "sigma"
-        objval = mean(e .^ 2)
-    elseif opt_crit == "mae"
-        objval = mean(abs.(e))
-    else
-        error("Unknown optimization criterion")
-    end
-
-    return objval
+if opt_crit == "lik"
+return lik
+elseif opt_crit == "mse"
+return amse[1]
+elseif opt_crit == "amse"
+return mean(amse[1:nmse])
+elseif opt_crit == "sigma"
+return mean(e .^ 2)
+elseif opt_crit == "mae"
+return mean(abs.(e))
+else
+error("Unknown optimization criterion")
+end
 end

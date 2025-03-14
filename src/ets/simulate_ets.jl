@@ -1,6 +1,6 @@
 function simulate_ets(object::ETS, 
     nsim::Union{Int,Nothing}=nothing;
-    seed::Union{Int,Nothing}=nothing,
+    seed::Union{Int,Nothing}=42,
     future::Bool=true,
     bootstrap::Bool=false,
     innov::Union{Vector{Float64},Nothing}=nothing)
@@ -19,7 +19,7 @@ function simulate_ets(object::ETS,
 
     if isnothing(innov)
         if !isnothing(seed)
-            Random.seed!(seed)
+            seed!(seed)
         end
     else
         nsim = length(innov)

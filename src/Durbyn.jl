@@ -1,6 +1,8 @@
 module Durbyn
 
 import Distributions: TDist
+import Random: seed!, rand
+import StatsBase: sample
 using Statistics
 using DataStructures
 using Optim
@@ -10,7 +12,6 @@ using CategoricalArrays
 using LinearAlgebra
 using Polynomials
 using Plots
-#using Random
 #using Distributions
 
 include("model_fit_error.jl")

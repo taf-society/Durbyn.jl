@@ -3,6 +3,7 @@ module Durbyn
 import Distributions: TDist
 import Random: seed!, rand
 import StatsBase: sample
+import LinearAlgebra: I, diag
 using Statistics
 using DataStructures
 using Optim

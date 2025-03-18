@@ -75,7 +75,7 @@ function arima_undo_params(x::AbstractArray, arma::AbstractArray)
 end
 
 function arima_transpar(
-    params_in::Vector{Float64},
+    params_in::AbstractArray,
     arma::Vector{Int},
     trans::Bool;
     partrans = arima_param_transform!,

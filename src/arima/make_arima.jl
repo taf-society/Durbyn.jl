@@ -1,3 +1,4 @@
+#TODO Not equivelent of R need to be fixed
 function make_arima(
     phi::Vector{Float64},
     theta::Vector{Float64},

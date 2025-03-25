@@ -1,15 +1,3 @@
-# Global variables
-const NONE = 0
-const ADD = 1
-const MULT = 2
-const DAMPED = 1
-const TOL = 1.0e-10
-const HUGEN = 1.0e10
-const NA = -99999.0
-const smalno = eps(Float64)
-const _PHI_LOWER = 0.8
-const _PHI_UPPER = 0.98
-
 function ets_base(y, n, x, m,
     error, trend, season,
     alpha, beta,
@@ -29,19 +17,19 @@ function ets_base(y, n, x, m,
         nmse = 30
     end
 
-    nstates = m * (season > NONE) + 1 + (trend > NONE)
+    nstates = m * (season > 0 ) + 1 + (trend > 0 )
 
     # Copy initial state components
     l = x[1]
-    if trend > NONE
+    if trend > 0 
         b = x[2]
     else
         b = 0.0
     end
 
-    if season > NONE
+    if season > 0 
         for j in 1:m
-            s[j] = x[(trend>NONE)+j+1]
+            s[j] = x[(trend>0 )+j+1]
         end
     end
 
@@ -55,10 +43,10 @@ function ets_base(y, n, x, m,
     for i in 1:n
         # Copy previous state
         oldl = l
-        if trend > NONE
+        if trend > 0 
             oldb = b
         end
-        if season > NONE
+        if season > 0 
             for j in 1:m
                 olds[j] = s[j]
             end
@@ -67,16 +55,16 @@ function ets_base(y, n, x, m,
         # One step forecast
         forecast_ets_base(oldl, oldb, olds, m, trend, season, phi, f, nmse)
 
-        if abs(f[1] - NA) < TOL
-            lik = NA
+        if abs(f[1] - -99999.0) < 1.0e-10
+            lik = -99999.0
             return lik
         end
 
-        if error == ADD
+        if error == 1
             e[i] = y[i] - f[1]
         else
-            if abs(f[1]) < TOL
-                f_0 = f[1] + TOL
+            if abs(f[1]) < 1.0e-10
+                f_0 = f[1] + 1.0e-10
             else
                 f_0 = f[1]
             end
@@ -96,12 +84,12 @@ function ets_base(y, n, x, m,
 
         # Store new state
         x[nstates*i+1] = l
-        if trend > NONE
+        if trend > 0 
             x[nstates*i+2] = b
         end
-        if season > NONE
+        if season > 0 
             for j in 1:m
-                x[nstates*i+(trend>NONE)+j+1] = s[j]
+                x[nstates*i+(trend>0 )+j+1] = s[j]
             end
         end
 
@@ -120,7 +108,7 @@ function ets_base(y, n, x, m,
         lik = n * log(lik + 1e-8)
     end
 
-    if error == MULT
+    if error == 2
         lik += 2 * lik2
     end
 
@@ -130,22 +118,22 @@ end
 function forecast_ets_base(l, b, s, m, trend, season, phi, f, h)
     phistar = phi
     for i in 1:h
-        if trend == NONE
+        if trend == 0 
             f[i] = l
-        elseif trend == ADD
+        elseif trend == 1
             f[i] = l + phistar * b
         elseif b < 0
-            f[i] = NA
+            f[i] = -99999.0
         else
             f[i] = l * (b^phistar)
         end
 
         j = (m - 1 - (i - 1)) % m
 
-        if season == ADD
+        if season == 1
             #f[i] = f[i] + s[j+1]
             f[i] += s[j + 1]
-        elseif season == MULT
+        elseif season == 2
             #f[i] = f[i] * s[j+1]
             f[i] *= s[j + 1]
         end
@@ -158,13 +146,13 @@ end
 
 function update_ets_base(oldl, l, oldb, b, olds, s, m, trend, season, alpha, beta, gamma, phi, y)
     # New Level
-    if trend == NONE
+    if trend == 0 
         q = oldl
         phib = 0
-    elseif trend == ADD
+    elseif trend == 1
         phib = phi * oldb
         q = oldl + phib
-    elseif abs(phi - 1.0) < TOL
+    elseif abs(phi - 1.0) < 1.0e-10
         phib = oldb
         q = oldl * oldb
     else
@@ -173,13 +161,13 @@ function update_ets_base(oldl, l, oldb, b, olds, s, m, trend, season, alpha, bet
     end
 
     # Season
-    if season == NONE
+    if season == 0 
         p = y
-    elseif season == ADD
+    elseif season == 1
         p = y - olds[m]
     else
-        if abs(olds[m]) < TOL
-            p = HUGEN
+        if abs(olds[m]) < 1.0e-10
+            p = 1.0e10
         else
             p = y / olds[m]
         end
@@ -188,12 +176,12 @@ function update_ets_base(oldl, l, oldb, b, olds, s, m, trend, season, alpha, bet
     l = q + alpha * (p - q)
 
     # New Growth
-    if trend > NONE
-        if trend == ADD
+    if trend > 0 
+        if trend == 1
             r = l - oldl
         else
-            if abs(oldl) < TOL
-                r = HUGEN
+            if abs(oldl) < 1.0e-10
+                r = 1.0e10
             else
                 r = l / oldl
             end
@@ -202,12 +190,12 @@ function update_ets_base(oldl, l, oldb, b, olds, s, m, trend, season, alpha, bet
     end
 
     # New Seasonal
-    if season > NONE
-        if season == ADD
+    if season > 0 
+        if season == 1
             t = y - q
-        else # if season == MULT
-            if abs(q) < TOL
-                t = HUGEN
+        else # if season == 2
+            if abs(q) < 1.0e-10
+                t = 1.0e10
             else
                 t = y / q
             end
@@ -227,7 +215,7 @@ function simulate_ets_base(x, m, error, trend, season, alpha, beta, gamma, phi, 
     s = zeros(24)
     f = zeros(10)
     
-    if m > 24 && season > NONE
+    if m > 24 && season > 0 
         println("I am here 1")
         return
     elseif m < 1
@@ -235,22 +223,22 @@ function simulate_ets_base(x, m, error, trend, season, alpha, beta, gamma, phi, 
     end
     
     l = x[1]
-    if trend > NONE
+    if trend > 0 
         b = x[2]
     end
     
-    if season > NONE
+    if season > 0 
         for j in 1:m
-            s[j] = x[(trend > NONE) + j + 1]
+            s[j] = x[(trend > 0 ) + j + 1]
         end
     end
     
     for i in 1:h
         oldl = l
-        if trend > NONE
+        if trend > 0 
             oldb = b
         end
-        if season > NONE
+        if season > 0 
             for j in 1:m
                 olds[j] = s[j]
             end
@@ -258,13 +246,13 @@ function simulate_ets_base(x, m, error, trend, season, alpha, beta, gamma, phi, 
         
         forecast_ets_base(oldl, oldb, olds, m, trend, season, phi, f, 1)
         
-        if abs(f[1] - NA) < TOL
-            y[1] = NA
+        if abs(f[1] - -99999.0) < 1.0e-10
+            y[1] = -99999.0
             println("I am here 2")
             return
         end
         
-        if error == ADD
+        if error == 1
             y[i] = f[1] + e[i]
         else
             y[i] = f[1] * (1.0 + e[i])
@@ -277,18 +265,18 @@ end
 
 function forecast(x::AbstractArray, m::Int, trend::Int, season::Int, phi::Float64, h::Int, f::Vector{Float64})
 
-    if (m > 24) && (season > NONE)
+    if (m > 24) && (season > 0 )
         return
     elseif m < 1
         m = 1
     end
 
     l = x[1]
-    b = ifelse(trend > NONE, x[2], 0.0)
+    b = ifelse(trend > 0 , x[2], 0.0)
     s = zeros(Float64, 24)
 
-    if season > NONE
-        offset = ifelse(trend > NONE, 2, 1)
+    if season > 0 
+        offset = ifelse(trend > 0 , 2, 1)
         for j in 1:m
             s[j] = x[offset + j]
         end

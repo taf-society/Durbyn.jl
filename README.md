@@ -51,6 +51,18 @@ using Durbyn
 # Load example dataset
 ap = air_passengers()
 
+# Fit an arima model
+fit = arima(ap, 12, order = PDQ(2,1,1), seasonal=PDQ(0,1,0))
+
+## Generate a forecast
+fc = forecast(fit, h = 12)
+
+# Fit an auto arima model
+fit = auto_arima(ap, 12)
+
+## Generate a forecast
+fc = forecast(fit, h = 12)
+
 # Fit an ETS model
 fit = ets(ap, 12, "ZZZ")
 
@@ -75,6 +87,11 @@ fit=croston(data, m)
 fc = forecast(fit, 12)
 
 plot(fc)
+
+
+# Planned (conformalize the forecast)
+
+fc_conformal = conformalize(fc)
 
 ```
 

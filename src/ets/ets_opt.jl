@@ -42,7 +42,7 @@ function optim_ets_base(opt_params, y, nstate, errortype, trendtype, seasontype,
     
     result = optimize(par -> objective_fun(par, y, nstate, errortype, trendtype, seasontype, damped, lower,
             upper, opt_crit, nmse, bounds, m, init_alpha, init_beta, init_gamma,
-            init_phi, opt_alpha, opt_beta, opt_gamma, opt_phi), opt_params,
+            init_phi, opt_alpha, opt_beta, opt_gamma, opt_phi), 0,
         fun, Optim.Options(iterations=iterations, kwargs...))
 
     optimized_params = Optim.minimizer(result)

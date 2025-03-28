@@ -4,10 +4,10 @@ function time_series_convolution(a::AbstractArray, b::AbstractArray)
     nb = length(b)
     nab = na + nb - 1
     ab = zeros(Float64, nab)
-    
-    for i in 1:na
-        for j in 1:nb
-            ab[i + j - 1] += a[i] * b[j]
+
+    for i = 1:na
+        for j = 1:nb
+            ab[i+j-1] += a[i] * b[j]
         end
     end
     return ab
@@ -31,7 +31,7 @@ function apply_inclusion_transform!(
     ithisr = 1
     for i = 1:n_parameters
         if xrow[i] != 0.0
-            xi = xrow[i] 
+            xi = xrow[i]
             di = d[i]
             dpi = di + xi * xi
             d[i] = dpi
@@ -57,7 +57,7 @@ function apply_inclusion_transform!(
             end
 
             if abs(ynext) < 1e-5
-                ynext = 0.0  
+                ynext = 0.0
             end
 
             if di == 0.0
@@ -78,8 +78,8 @@ function compute_v(phi::AbstractArray, theta::AbstractArray, r::Int)
     num_params = r * (r + 1) ÷ 2
     V = zeros(Float64, num_params)
 
-    ind = 0 
-    for j in 0:(r-1)
+    ind = 0
+    for j = 0:(r-1)
         vj = 0.0
         if j == 0
             vj = 1.0
@@ -87,7 +87,7 @@ function compute_v(phi::AbstractArray, theta::AbstractArray, r::Int)
             vj = theta[j-1+1]
         end
 
-        for i in j:(r-1)
+        for i = j:(r-1)
             vi = 0.0
             if i == 0
                 vi = 1.0
@@ -106,10 +106,10 @@ end
 function handle_r_equals_1(p::Int, phi::AbstractArray)
     res = zeros(Float64, 1, 1)
     if p == 0
-        
+
         res[1, 1] = 1.0
     else
-        
+
         res[1, 1] = 1.0 / (1.0 - phi[1]^2)
     end
     return res
@@ -122,11 +122,11 @@ function handle_p_equals_0(V::AbstractArray, r::Int)
 
     ind = num_params
     indn = num_params
-    
-    for i in 0:(r-1)
-        for j in 0:i
+
+    for i = 0:(r-1)
+        for j = 0:i
             ind -= 1
-            
+
             res[ind] = V[ind]
 
             if j != 0
@@ -140,15 +140,17 @@ function handle_p_equals_0(V::AbstractArray, r::Int)
 end
 
 # Helper for compute_q0
-function handle_p_greater_than_0(V::AbstractArray,
+function handle_p_greater_than_0(
+    V::AbstractArray,
     phi::AbstractArray,
     p::Int,
     r::Int,
     num_params::Int,
-    nrbar::Int)
-    
+    nrbar::Int,
+)
+
     res = zeros(Float64, r * r)
-    
+
     rbar = zeros(Float64, nrbar)
     thetab = zeros(Float64, num_params)
     xnext = zeros(Float64, num_params)
@@ -160,19 +162,19 @@ function handle_p_greater_than_0(V::AbstractArray,
     npr1 = npr + 1
     indj = npr
     ind2 = npr - 1
-    
-    for j in 0:(r-1)
-        
+
+    for j = 0:(r-1)
+
         phij = (j < p) ? phi[j+1] : 0.0
-        
+
         xnext[indj+1] = 0.0
         indj += 1
 
         indi = npr1 + j
-        for i in j:(r-1)
+        for i = j:(r-1)
             ynext = V[ind+1]
             ind += 1
-            
+
             phii = (i < p) ? phi[i+1] : 0.0
 
             if j != (r - 1)
@@ -190,7 +192,7 @@ function handle_p_greater_than_0(V::AbstractArray,
                 ind2 = 0
             end
             xnext[ind2+1] += 1.0
-            
+
             apply_inclusion_transform!(num_params, xnext, xrow, ynext, res, rbar, thetab)
 
             xnext[ind2+1] = 0.0
@@ -205,13 +207,13 @@ function handle_p_greater_than_0(V::AbstractArray,
     ithisr = nrbar - 1
     im = num_params - 1
 
-    for i in 0:(num_params-1)
+    for i = 0:(num_params-1)
         bi = thetab[im+1]
         jm = num_params - 1
-        for j in 0:(i-1)
-            
+        for j = 0:(i-1)
+
             bi -= rbar[ithisr+1] * res[jm+1]
-            
+
             ithisr -= 1
             jm -= 1
         end
@@ -221,20 +223,20 @@ function handle_p_greater_than_0(V::AbstractArray,
 
     xcopy = zeros(Float64, r)
     ind = npr
-    for i in 0:(r-1)
+    for i = 0:(r-1)
         xcopy[i+1] = res[ind+1]
         ind += 1
     end
 
     ind = num_params - 1
     ind1 = npr - 1
-    for i in 1:(npr)
+    for i = 1:(npr)
         res[ind+1] = res[ind1+1]
         ind -= 1
         ind1 -= 1
     end
 
-    for i in 0:(r-1)
+    for i = 0:(r-1)
         res[i+1] = xcopy[i+1]
     end
 
@@ -244,19 +246,19 @@ end
 # Helper for compute_q0
 function unpack_full_matrix(res_flat::AbstractArray, r::Int)
     num_params = r * (r + 1) ÷ 2
-    
-    for i in (r-1):-1:1
-        for j in (r-1):-1:i
-            
-            idx = i * r + j 
+
+    for i = (r-1):-1:1
+        for j = (r-1):-1:i
+
+            idx = i * r + j
             res_flat[idx+1] = res_flat[num_params]
             num_params -= 1
         end
     end
 
-    for i in 0:(r-1)
-        for j in (i+1):(r-1)
-            
+    for i = 0:(r-1)
+        for j = (i+1):(r-1)
+
             res_flat[j*r+i+1] = res_flat[i*r+j+1]
         end
     end
@@ -272,7 +274,7 @@ function compute_q0(phi::AbstractArray, theta::AbstractArray)
     r = max(p, q + 1)
     num_params = r * (r + 1) ÷ 2
     nrbar = num_params * (num_params - 1) ÷ 2
-    
+
     V = compute_v(phi, theta, r)
 
     if r == 1
@@ -280,10 +282,10 @@ function compute_q0(phi::AbstractArray, theta::AbstractArray)
     end
 
     if p > 0
-        
+
         res_flat = handle_p_greater_than_0(V, phi, p, r, num_params, nrbar)
     else
-        
+
         res_flat = handle_p_equals_0(V, r)
     end
 
@@ -298,8 +300,8 @@ function compute_q0_bis(phi::AbstractArray, theta::AbstractArray, tol::Float64 =
 
     ttheta = zeros(Float64, q + 1)
     ttheta[1] = 1.0
-    for i in 2:(q+1)
-        ttheta[i] = theta[i - 1]
+    for i = 2:(q+1)
+        ttheta[i] = theta[i-1]
     end
 
     P = zeros(Float64, r, r)
@@ -307,26 +309,26 @@ function compute_q0_bis(phi::AbstractArray, theta::AbstractArray, tol::Float64 =
     if p > 0
         tphi = zeros(Float64, p + 1)
         tphi[1] = 1.0
-        for i in 2:(p+1)
-            tphi[i] = -phi[i - 1]
+        for i = 2:(p+1)
+            tphi[i] = -phi[i-1]
         end
 
-        r2 = max(p+q, p+1)
+        r2 = max(p + q, p + 1)
 
         Gam = zeros(Float64, r2, r2)
 
-        for jC in 0:(r2-1)
-            for iC in jC:(r2-1)
-                if (iC - jC) < (p+1)
-                    Gam[jC+1, iC+1] += tphi[(iC - jC) + 1]
+        for jC = 0:(r2-1)
+            for iC = jC:(r2-1)
+                if (iC - jC) < (p + 1)
+                    Gam[jC+1, iC+1] += tphi[(iC-jC)+1]
                 end
             end
         end
 
-        for iC in 0:(r2-1)
-            for jC in 1:(r2-1)
-                if (iC + jC) < (p+1)
-                    Gam[jC+1, iC+1] += tphi[(iC + jC) + 1]
+        for iC = 0:(r2-1)
+            for jC = 1:(r2-1)
+                if (iC + jC) < (p + 1)
+                    Gam[jC+1, iC+1] += tphi[(iC+jC)+1]
                 end
             end
         end
@@ -334,33 +336,36 @@ function compute_q0_bis(phi::AbstractArray, theta::AbstractArray, tol::Float64 =
         g = zeros(Float64, r2)
         g[1] = 1.0
 
-        u = pinv(Gam; rtol=tol) * g
+        u = pinv(Gam; rtol = tol) * g
 
-        for iC in 0:(r-1)
-            for jC in iC:(r-1)
-                for k in 0:(p-1)
+        for iC = 0:(r-1)
+            for jC = iC:(r-1)
+                for k = 0:(p-1)
                     if (iC + k) < p
-                        for L in k:(k + q)
+                        for L = k:(k+q)
                             if (L - k) <= q
-                                for m in 0:(p-1)
+                                for m = 0:(p-1)
                                     if (jC + m) < p
-                                        for n in m:(m + q)
+                                        for n = m:(m+q)
                                             if (n - m) <= q
-                                                
-                                                idxPhi1    = (iC + k) + 1
-                                                idxPhi2    = (jC + m) + 1
+
+                                                idxPhi1 = (iC + k) + 1
+                                                idxPhi2 = (jC + m) + 1
                                                 idxTtheta1 = (L - k) + 1
                                                 idxTtheta2 = (n - m) + 1
-                                                idxU       = abs(L - n) + 1
+                                                idxU = abs(L - n) + 1
                                                 # Check bounds
-                                                if 1 <= idxPhi1    <= p    &&
-                                                   1 <= idxPhi2    <= p    &&
-                                                   1 <= idxTtheta1 <= (q+1) &&
-                                                   1 <= idxTtheta2 <= (q+1) &&
-                                                   1 <= idxU       <= r2
-                                                    P[iC+1, jC+1] += phi[idxPhi1] * phi[idxPhi2] *
-                                                                     ttheta[idxTtheta1] * ttheta[idxTtheta2] *
-                                                                     u[idxU]
+                                                if 1 <= idxPhi1 <= p &&
+                                                   1 <= idxPhi2 <= p &&
+                                                   1 <= idxTtheta1 <= (q + 1) &&
+                                                   1 <= idxTtheta2 <= (q + 1) &&
+                                                   1 <= idxU <= r2
+                                                    P[iC+1, jC+1] +=
+                                                        phi[idxPhi1] *
+                                                        phi[idxPhi2] *
+                                                        ttheta[idxTtheta1] *
+                                                        ttheta[idxTtheta2] *
+                                                        u[idxU]
                                                 end
                                             end
                                         end
@@ -375,65 +380,67 @@ function compute_q0_bis(phi::AbstractArray, theta::AbstractArray, tol::Float64 =
 
         rrz = zeros(Float64, q)
         if q > 0
-            for iC in 0:(q-1)
+            for iC = 0:(q-1)
                 rrz[iC+1] = ttheta[iC+1]
-                for jC in max(0, iC - p):(iC-1)
-                    rrz[iC+1] -= rrz[jC+1] * tphi[(iC - jC) + 1]
+                for jC = max(0, iC - p):(iC-1)
+                    rrz[iC+1] -= rrz[jC+1] * tphi[(iC-jC)+1]
                 end
             end
         end
 
-        for iC in 0:(r-1)
-            for jC in iC:(r-1)
-                for k in 0:(p-1)
+        for iC = 0:(r-1)
+            for jC = iC:(r-1)
+                for k = 0:(p-1)
                     if (iC + k) < p
-                        for L in (k+1):q
-                            if (jC + L) < (q+1)
+                        for L = (k+1):q
+                            if (jC + L) < (q + 1)
                                 idxPhi = (iC + k) + 1
                                 idxTth = (jC + L) + 1
                                 idxRrz = (L - k - 1) + 1
                                 if 1 <= idxPhi <= p &&
-                                   1 <= idxTth <= (q+1) &&
+                                   1 <= idxTth <= (q + 1) &&
                                    1 <= idxRrz <= q
-                                    P[iC+1, jC+1] += phi[idxPhi] * ttheta[idxTth] * rrz[idxRrz]
+                                    P[iC+1, jC+1] +=
+                                        phi[idxPhi] * ttheta[idxTth] * rrz[idxRrz]
                                 end
                             end
                         end
                     end
                 end
 
-                for k in 0:(p-1)
+                for k = 0:(p-1)
                     if (jC + k) < p
-                        for L in (k+1):q
-                            if (iC + L) < (q+1)
+                        for L = (k+1):q
+                            if (iC + L) < (q + 1)
                                 idxPhi = (jC + k) + 1
                                 idxTth = (iC + L) + 1
                                 idxRrz = (L - k - 1) + 1
                                 if 1 <= idxPhi <= p &&
-                                   1 <= idxTth <= (q+1) &&
+                                   1 <= idxTth <= (q + 1) &&
                                    1 <= idxRrz <= q
-                                    P[iC+1, jC+1] += phi[idxPhi] * ttheta[idxTth] * rrz[idxRrz]
+                                    P[iC+1, jC+1] +=
+                                        phi[idxPhi] * ttheta[idxTth] * rrz[idxRrz]
                                 end
                             end
                         end
                     end
-                end
-            end
-        end
-    end 
-
-    for iC in 0:(r-1)
-        for jC in iC:(r-1)
-            for k in 0:q
-                if (iC + k) < (q+1) && (jC + k) < (q+1)
-                    P[iC+1, jC+1] += ttheta[(iC + k) + 1] * ttheta[(jC + k) + 1]
                 end
             end
         end
     end
 
-    for iC in 0:(r-1)
-        for jC in (iC+1):(r-1)
+    for iC = 0:(r-1)
+        for jC = iC:(r-1)
+            for k = 0:q
+                if (iC + k) < (q + 1) && (jC + k) < (q + 1)
+                    P[iC+1, jC+1] += ttheta[(iC+k)+1] * ttheta[(jC+k)+1]
+                end
+            end
+        end
+    end
+
+    for iC = 0:(r-1)
+        for jC = (iC+1):(r-1)
             P[jC+1, iC+1] = P[iC+1, jC+1]
         end
     end
@@ -454,7 +461,7 @@ function arima_like(y, phi, theta, delta, a, P, Pn, up::Int, use_resid::Bool)
     ssq = 0.0
     nu = 0
 
-    P = copy(reshape(P, 1, :))[:] 
+    P = copy(reshape(P, 1, :))[:]
     Pnew = copy(reshape(Pn, 1, :))[:]
 
     anew = similar(a)
@@ -463,8 +470,8 @@ function arima_like(y, phi, theta, delta, a, P, Pn, up::Int, use_resid::Bool)
     mm = d > 0 ? zeros(rd, rd) : nothing
     rsResid = use_resid ? fill(NaN, n) : nothing
 
-    for l in 1:n
-        for i in 1:r
+    for l = 1:n
+        for i = 1:r
             tmp = (i < r) ? a[i+1] : 0.0
             tmp += (i <= p) ? phi[i] * a[1] : 0.0
             anew[i] = tmp
@@ -473,75 +480,75 @@ function arima_like(y, phi, theta, delta, a, P, Pn, up::Int, use_resid::Bool)
         if d > 0
             anew[(r+2):rd] .= a[(r+1):(rd-1)]
             tmp = a[1]
-            for i in 1:d
-                tmp += delta[i] * a[r + i]
+            for i = 1:d
+                tmp += delta[i] * a[r+i]
             end
             anew[r+1] = tmp
         end
 
         if l > up + 1
             if d == 0
-                for i in 1:r
-                    vi = (i == 1) ? 1.0 : (i-1 <= q ? theta[i-1] : 0.0)
-                    for j in 1:r
+                for i = 1:r
+                    vi = (i == 1) ? 1.0 : (i - 1 <= q ? theta[i-1] : 0.0)
+                    for j = 1:r
                         tmp = 0.0
-                        tmp += (j == 1) ? vi : (j-1 <= q ? vi * theta[j-1] : 0.0)
+                        tmp += (j == 1) ? vi : (j - 1 <= q ? vi * theta[j-1] : 0.0)
                         tmp += (i <= p && j <= p) ? phi[i] * phi[j] * P[1] : 0.0
-                        tmp += (i < r && j < r) ? P[i+1 + r*(j-1)] : 0.0
+                        tmp += (i < r && j < r) ? P[i+1+r*(j-1)] : 0.0
                         tmp += (i <= p && j < r) ? phi[i] * P[j+1] : 0.0
                         tmp += (j <= p && i < r) ? phi[j] * P[i+1] : 0.0
-                        Pnew[i + r*(j-1)] = tmp
+                        Pnew[i+r*(j-1)] = tmp
                     end
                 end
             else
-                for i in 1:r
-                    for j in 1:rd
+                for i = 1:r
+                    for j = 1:rd
                         tmp = 0.0
-                        tmp += (i <= p) ? phi[i] * P[1 + (j-1)*rd] : 0.0
-                        tmp += (i < r) ? P[i+1 + (j-1)*rd] : 0.0
-                        mm[i,j] = tmp
+                        tmp += (i <= p) ? phi[i] * P[1+(j-1)*rd] : 0.0
+                        tmp += (i < r) ? P[i+1+(j-1)*rd] : 0.0
+                        mm[i, j] = tmp
                     end
                 end
 
-                for j in 1:rd
-                    tmp = P[1 + (j-1)*rd]
-                    for k in 1:d
-                        tmp += delta[k] * P[r + k + (j-1)*rd]
+                for j = 1:rd
+                    tmp = P[1+(j-1)*rd]
+                    for k = 1:d
+                        tmp += delta[k] * P[r+k+(j-1)*rd]
                     end
-                    mm[r+1,j] = tmp
+                    mm[r+1, j] = tmp
                 end
 
-                for i in 2:d
+                for i = 2:d
                     mm[r+i, :] .= mm[r+i-1, :]
                 end
 
-                for i in 1:rd
-                    for j in 1:r
+                for i = 1:rd
+                    for j = 1:r
                         tmp = 0.0
-                        tmp += (j <= p) ? phi[j] * mm[i,1] : 0.0
-                        tmp += (j < r) ? mm[i,j+1] : 0.0
-                        Pnew[i + (j-1)*rd] = tmp
+                        tmp += (j <= p) ? phi[j] * mm[i, 1] : 0.0
+                        tmp += (j < r) ? mm[i, j+1] : 0.0
+                        Pnew[i+(j-1)*rd] = tmp
                     end
                 end
 
-                for i in 1:rd
-                    tmp = mm[i,1]
-                    for k in 1:d
+                for i = 1:rd
+                    tmp = mm[i, 1]
+                    for k = 1:d
                         tmp += delta[k] * mm[i, r+k]
                     end
-                    Pnew[i + r*rd] = tmp
+                    Pnew[i+r*rd] = tmp
                 end
 
-                for i in 2:d
-                    for j in 1:rd
-                        Pnew[j + (r+i-1)*rd] = mm[j, r+i-1]
+                for i = 2:d
+                    for j = 1:rd
+                        Pnew[j+(r+i-1)*rd] = mm[j, r+i-1]
                     end
                 end
 
-                for i in 1:(q+1)
+                for i = 1:(q+1)
                     vi = (i == 1) ? 1.0 : theta[i-1]
-                    for j in 1:(q+1)
-                        Pnew[i + (j-1)*rd] += vi * ((j == 1) ? 1.0 : theta[j-1])
+                    for j = 1:(q+1)
+                        Pnew[i+(j-1)*rd] += vi * ((j == 1) ? 1.0 : theta[j-1])
                     end
                 end
             end
@@ -549,20 +556,20 @@ function arima_like(y, phi, theta, delta, a, P, Pn, up::Int, use_resid::Bool)
 
         if !isnan(y[l])
             resid = y[l] - anew[1]
-            for i in 1:d
+            for i = 1:d
                 resid -= delta[i] * anew[r+i]
             end
 
-            for i in 1:rd
+            for i = 1:rd
                 tmp = Pnew[i]
-                for j in 1:d
-                    tmp += Pnew[i + (r+j-1)*rd] * delta[j]
+                for j = 1:d
+                    tmp += Pnew[i+(r+j-1)*rd] * delta[j]
                 end
                 M[i] = tmp
             end
 
             gain = M[1]
-            for j in 1:d
+            for j = 1:d
                 gain += delta[j] * M[r+j]
             end
 
@@ -570,18 +577,18 @@ function arima_like(y, phi, theta, delta, a, P, Pn, up::Int, use_resid::Bool)
                 nu += 1
                 ssq += gain != 0.0 ? resid^2 / gain : Inf
                 sumlog += log(gain)
-            end            
+            end
 
             if use_resid
                 rsResid[l] = gain != 0.0 ? resid / sqrt(gain) : Inf
             end
 
-            for i in 1:rd
+            for i = 1:rd
                 a[i] = anew[i] + (gain != 0.0 ? M[i] * resid / gain : Inf)
             end
 
-            for i in 1:rd, j in 1:rd
-                P[i + (j-1)*rd] = Pnew[i + (j-1)*rd] - (gain != 0.0 ? M[i]*M[j]/gain : Inf)
+            for i = 1:rd, j = 1:rd
+                P[i+(j-1)*rd] = Pnew[i+(j-1)*rd] - (gain != 0.0 ? M[i] * M[j] / gain : Inf)
             end
         else
             a .= anew
@@ -595,41 +602,43 @@ function arima_like(y, phi, theta, delta, a, P, Pn, up::Int, use_resid::Bool)
     return ssq, sumlog, nu, rsResid
 end
 
-function arima_css(y::AbstractArray,
+function arima_css(
+    y::AbstractArray,
     arma::Vector{Int},
     phi::AbstractArray,
     theta::AbstractArray,
-    ncond::Int)
+    ncond::Int,
+)
     n = length(y)
     p = length(phi)
     q = length(theta)
 
     w = copy(y)
 
-    for _ in 1:arma[6]
-        for l in n:-1:2
+    for _ = 1:arma[6]
+        for l = n:-1:2
             w[l] -= w[l-1]
         end
     end
 
     ns = arma[5]
-    for _ in 1:arma[7]
-        for l in n:-1:(ns+1)
+    for _ = 1:arma[7]
+        for l = n:-1:(ns+1)
             w[l] -= w[l-ns]
         end
     end
 
     resid = Vector{Float64}(undef, n)
-    for i in 1:ncond
+    for i = 1:ncond
         resid[i] = 0.0
     end
 
     ssq = 0.0
     nu = 0
 
-    for l in (ncond+1):n
+    for l = (ncond+1):n
         tmp = w[l]
-        for j in 1:p
+        for j = 1:p
             if (l - j) < 1
                 continue
             end
@@ -637,7 +646,7 @@ function arima_css(y::AbstractArray,
         end
 
         jmax = min(l - ncond, q)
-        for j in 1:jmax
+        for j = 1:jmax
             if (l - j) < 1
                 continue
             end
@@ -816,13 +825,13 @@ function arima_inverse_transform(x::AbstractArray, arma::Vector{Int})
     return y
 end
 
-function build_delta(order::Int, seasonal::Int, seasonal_period::Int)
+function build_delta(order::Int, seasonal::Int, m::Int)
     delta = [1.0]
-    for _ in 1:order
+    for _ = 1:order
         delta = time_series_convolution(delta, [1.0, -1.0])
     end
-    for _ in 1:seasonal
-        seasonal_filter = [1.0; zeros(seasonal_period - 1); -1.0]
+    for _ = 1:seasonal
+        seasonal_filter = [1.0; zeros(m - 1); -1.0]
         delta = time_series_convolution(delta, seasonal_filter)
     end
     return -delta[2:end]
@@ -874,10 +883,10 @@ function is_stationary(ar::Vector{Float64})
 end
 
 function update_arima_model!(
-    mod::Dict, 
-    phi::Vector{Float64}, 
-    theta::Vector{Float64}, 
-    SSinit::Bool = true
+    mod::Dict,
+    phi::Vector{Float64},
+    theta::Vector{Float64},
+    SSinit::Bool = true,
 )
     p = length(phi)
     q = length(theta)
@@ -935,17 +944,16 @@ function arma_loglik(
     return 0.5 * (log(s2) + sumlog / nu)
 end
 
-
 function arma_css(
-    p::Vector{Float64},
-    fixed::Vector{Float64},
-    mask::Vector{Bool},
-    x::Vector{Float64},
-    xreg::Matrix{Float64},
-    arma::Tuple{Int, Int},
+    p::AbstractArray,
+    fixed::AbstractArray,
+    mask::AbstractArray,
+    x::AbstractArray,
+    xreg::Matrix,
+    arma::AbstractArray,
     narma::Int,
     ncxreg::Int,
-    ncond::Int
+    ncond::Int,
 )
     par = copy(fixed)
     par[mask] .= p
@@ -953,39 +961,54 @@ function arma_css(
     phi, theta = arima_transpar(par, arma, false)
 
     if ncxreg > 0
-        β = par[narma+1 : narma+ncxreg]
+        β = par[narma+1:narma+ncxreg]
         x = x .- xreg * β
     end
 
-    res = arima_css(x, arma, phi, theta, ncond, false)
-
+    res, _ = arima_css(x, arma, phi, theta, ncond)
+    
     return 0.5 * log(res)
 end
 
 function fit_state_space(
-    x::Vector{Float64},
-    xreg::Matrix{Float64},
-    coef::Vector{Float64},
+    x::AbstractArray,
+    xreg::Matrix,
+    coef::AbstractArray,
     narma::Int,
     ncxreg::Int,
-    mod::Dict{Symbol, Any}
-)
+    mod::Dict,)
     if ncxreg > 0
-        β = coef[narma+1 : narma+ncxreg]
+        β = coef[narma+1:narma+ncxreg]
         x = x .- xreg * β
     end
-
-    return arima_like(x, mod, 0, true)
+    out = arima_like(x, mod[:phi], mod[:theta], mod[:Delta], mod[:a], mod[:P], mod[:Pn], 0, true)
+    return out
 end
 
 
-function pdq(p::Int = 0, d::Int = 0, q::Int = 0)
-    return (p, d, q)
+
+"""
+    struct PDQ
+
+A struct representing the parameters of an ARIMA model: autoregressive (`p`), differencing (`d`), and moving average (`q`) terms.
+
+### Fields
+- `p::Int`: Number of autoregressive (AR) terms.
+- `d::Int`: Degree of differencing.
+- `q::Int`: Number of moving average (MA) terms.
+
+#### Example
+```julia
+pdq_instance = PDQ(1, 0, 1)
+println(pdq_instance)  # Output: PDQ(1, 0, 1)
+```
+"""
+struct PDQ
+    p::Int
+    d::Int
+    q::Int
 end
 
-function seasonal_pdq(p::Int = 0, d::Int = 0, q::Int = 0, period::Union{Int, Nothing} = nothing)
-    return Dict(:order => (p, d, q), :period => period)
-end
 
 struct ArimaFit
     coef::Vector{Float64}
@@ -993,19 +1016,21 @@ struct ArimaFit
     var_coef::Matrix{Float64}
     mask::Vector{Bool}
     loglik::Float64
-    aic::Union{Float64, Nothing}
+    aic::Union{Float64,Nothing}
     residuals::Vector{Float64}
     arma::Vector{Int}
     convergence_code::Int
     n_cond::Int
     nobs::Int
-    model::Dict{Symbol, Any}
+    model::Dict{Symbol,Any}
 end
 
+
 function arima(
-    x::Vector{Float64};
-    order = (0, 0, 0),
-    seasonal = Dict(:order => (0, 0, 0), :period => 1),
+    x::Vector{Float64},
+    m;
+    order::PDQ = PDQ(0,0,0),
+    seasonal::PDQ = PDQ(0,0,0),
     xreg = Matrix{Float64}(undef, length(x), 0),
     include_mean = true,
     transform_pars = true,
@@ -1019,22 +1044,22 @@ function arima(
     kappa = 1e6,
 )
 
+    SSinit = match_arg(SSinit, ["Gardner1980", "Rossignol2011"])
+    method = match_arg(method, ["CSS-ML", "ML", "CSS"])
     n = length(x)
-    seasonal_period = seasonal[:period] == 0 ? 1 : seasonal[:period]
-
     arma = [
-        order[1],
-        order[3],
-        seasonal[:order][1],
-        seasonal[:order][3],
-        seasonal_period,
-        order[2],
-        seasonal[:order][2],
+        order.p,
+        order.q,
+        seasonal.p,
+        seasonal.q,
+        m,
+        order.d,
+        seasonal.d,
     ]
 
     narma = sum(arma[1:4])
-    Delta = build_delta(order[2], seasonal[:order][2], seasonal_period)
-    nd = order[2] + seasonal[:order][2]
+    Delta = build_delta(order.d, seasonal.d, m)
+    nd = order.d + seasonal.d
 
     if include_mean && nd == 0
         xreg = hcat(ones(n), xreg)
@@ -1073,7 +1098,7 @@ function arima(
             error("non-stationary seasonal AR part")
         end
         if transform_pars
-            init = arima_inverse_transform(init, arma) 
+            init = arima_inverse_transform(init, arma)
         end
     end
 
@@ -1085,10 +1110,7 @@ function arima(
 
     if method == "CSS" || method == "CSS-ML"
         if n_cond === nothing
-            n_cond =
-                order[2] +
-                seasonal[:order][2] * seasonal_period +
-                max(order[1], seasonal[:order][1] * seasonal_period)
+            n_cond = order.d + seasonal.d * m + max(order.p, seasonal.p * m)
         end
         res = if no_optim
             (
@@ -1107,15 +1129,15 @@ function arima(
                 ),
             )
         else
+            
             optimize(
                 p -> arma_css(p, fixed, mask, x, xreg, arma, narma, ncxreg, n_cond),
                 init[mask],
-                Optim.BFGS();
-                store_trace = false,
-                iterations = 1000,
+                Optim.BFGS()
             )
         end
         coef[mask] .= Optim.minimizer(res)
+        
         trarma = arima_transpar(coef, arma, false)
         mod = make_arima(trarma[1], trarma[2], Delta, kappa, SSinit == "Gardner1980")
         val = arima_css(x, arma, trarma[1], trarma[2], n_cond, true)
@@ -1190,6 +1212,7 @@ function arima(
         trarma = arima_transpar(coef, arma, false)
         mod = make_arima(trarma[1], trarma[2], Delta, kappa, SSinit == "Gardner1980")
         val = fit_state_space(x, xreg, coef, narma, ncxreg, mod)
+        
         sigma2 = val[1][1] / (length(x) - length(Delta))
         hess_inv = Optim.hessian(res)
         var_coef = no_optim ? zeros(0, 0) : inv(hess_inv * (length(x) - length(Delta)))

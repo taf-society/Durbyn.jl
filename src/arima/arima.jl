@@ -985,7 +985,82 @@ function fit_state_space(
     return out
 end
 
-
+#TODO Not equivelent of R need to be fixed
+function make_arima(
+    phi::Vector{Float64},
+    theta::Vector{Float64},
+    Delta::Vector{Float64};
+    kappa::Float64 = 1e6,
+    SSinit::String = "Gardner1980",
+    tol::Float64 = eps(Float64),
+)
+    p = length(phi)
+    q = length(theta)
+    r = max(p, q + 1)
+    d = length(Delta)
+    rd = r + d
+    Z = vcat([1.0], zeros(r - 1), Delta)
+    T = zeros(Float64, rd, rd)
+    if p > 0
+        for i = 1:p
+            T[i, 1] = phi[i]
+        end
+    end
+    if r > 1
+        for i = 2:r
+            T[i-1, i] = 1.0
+        end
+    end
+    if d > 0
+        T[r+1, :] = Z'
+        if d > 1
+            for i = 2:d
+                T[r+i, r+i-1] = 1.0
+            end
+        end
+    end
+    if q < r - 1
+        theta = vcat(theta, zeros(r - 1 - q))
+    end
+    R = vcat([1.0], theta, zeros(d))
+    V = R * R'
+    h = 0.0
+    a = zeros(Float64, rd)
+    P = zeros(Float64, rd, rd)
+    Pn = zeros(Float64, rd, rd)
+    if r > 1
+        if SSinit == "Gardner1980"
+            Pn[1:r, 1:r] = compute_q0(phi, theta)
+        elseif SSinit == "Rossignol2011"
+            Pn[1:r, 1:r] = compute_q0_bis(phi, theta, tol)
+        else
+            throw(ArgumentError("Invalid value for SSinit: $SSinit"))
+        end
+    else
+        if p > 0
+            Pn[1, 1] = 1.0 / (1.0 - phi[1]^2)
+        else
+            Pn[1, 1] = 1.0
+        end
+    end
+    if d > 0
+        for i = r+1:r+d
+            Pn[i, i] = kappa
+        end
+    end
+    return (
+        phi = phi,
+        theta = theta,
+        Delta = Delta,
+        Z = Z,
+        a = a,
+        P = P,
+        T = T,
+        V = V,
+        h = h,
+        Pn = Pn,
+    )
+end
 
 """
     struct PDQ
@@ -1139,10 +1214,14 @@ function arima(
         coef[mask] .= Optim.minimizer(res)
         
         trarma = arima_transpar(coef, arma, false)
-        mod = make_arima(trarma[1], trarma[2], Delta, kappa, SSinit == "Gardner1980")
-        val = arima_css(x, arma, trarma[1], trarma[2], n_cond, true)
+        mod = make_arima(trarma[1], trarma[2], Delta, kappa=kappa, SSinit = "Gardner1980")
+        val = arima_css(x, arma, trarma[1], trarma[2], n_cond)
         sigma2 = val[1]
-        hess_inv = Optim.hessian(res)
+        #hess_inv = Optim.hessian(res)
+        state = Optim.multivariate_state(res)
+        hess_inv = state.invH
+
+        println("Inverse Hessian Approximation: ", hess_inv)
         var_coef = no_optim ? zeros(0, 0) : inv(hess_inv * n)
     else
         if method == "CSS-ML"
@@ -1165,7 +1244,7 @@ function arima(
             end
         end
         trarma = arima_transpar(init, arma, transform_pars)
-        mod = make_arima(trarma[1], trarma[2], Delta, kappa, SSinit == "Gardner1980")
+        mod = make_arima(trarma[1], trarma[2], Delta, kappa=kappa, SSinit = "Gardner1980")
 
         res = if no_optim
             (
@@ -1210,7 +1289,7 @@ function arima(
             coef = arima_undo_params(coef, arma)
         end
         trarma = arima_transpar(coef, arma, false)
-        mod = make_arima(trarma[1], trarma[2], Delta, kappa, SSinit == "Gardner1980")
+        mod = make_arima(trarma[1], trarma[2], Delta, kappa=kappa, SSinit = "Gardner1980")
         val = fit_state_space(x, xreg, coef, narma, ncxreg, mod)
         
         sigma2 = val[1][1] / (length(x) - length(Delta))
@@ -1238,3 +1317,15 @@ function arima(
         mod,
     )
 end
+
+function match_arg(arg, choices)
+    return findfirst(x -> x == arg, choices) !== nothing ? arg : error("Invalid argument")
+end
+
+
+using Optim
+using Durbyn
+
+ap = air_passengers()
+
+arima(ap, 12,  order = PDQ(2,1,1), seasonal = PDQ(0,1,0))

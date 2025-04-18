@@ -1,4 +1,5 @@
-# C_TSconv
+export arima, ArimaFit, PDQ
+
 function time_series_convolution(a::AbstractArray, b::AbstractArray)
     na = length(a)
     nb = length(b)
@@ -13,7 +14,7 @@ function time_series_convolution(a::AbstractArray, b::AbstractArray)
     return ab
 end
 
-# Helper for compute_q0
+# Helper for compute_q0 inclu2
 function apply_inclusion_transform!(
     n_parameters::Int,
     xnext::AbstractArray,
@@ -266,7 +267,7 @@ function unpack_full_matrix(res_flat::AbstractArray, r::Int)
     return reshape(res_flat, r, r)
 end
 
-# Helper for compute_q0
+# compute_q0
 function compute_q0(phi::AbstractArray, theta::AbstractArray)
     p = length(phi)
     q = length(theta)
@@ -448,7 +449,7 @@ function compute_q0_bis(phi::AbstractArray, theta::AbstractArray, tol::Float64 =
     return P
 end
 
-# R C lib equivelent 
+
 function arima_like(y, phi, theta, delta, a, P, Pn, up::Int, use_resid::Bool)
     n = length(y)
     rd = length(a)
@@ -602,13 +603,7 @@ function arima_like(y, phi, theta, delta, a, P, Pn, up::Int, use_resid::Bool)
     return ssq, sumlog, nu, rsResid
 end
 
-function arima_css(
-    y::AbstractArray,
-    arma::Vector{Int},
-    phi::AbstractArray,
-    theta::AbstractArray,
-    ncond::Int,
-)
+function arima_css(y::AbstractArray, arma::Vector{Int}, phi::AbstractArray, theta::AbstractArray,ncond::Int)
     n = length(y)
     p = length(phi)
     q = length(theta)
@@ -727,7 +722,6 @@ function arima_gradient_transform(x::AbstractArray, arma::AbstractArray)
     return y
 end
 
-#_ARIMA_undoPars
 function arima_undo_params(x::AbstractArray, arma::AbstractArray)
     mp, mq, msp = arma[1:3]
     res = copy(x)
@@ -741,13 +735,7 @@ function arima_undo_params(x::AbstractArray, arma::AbstractArray)
     return res
 end
 
-# ARIMA_transPars
-function arima_transpar(
-    params_in::AbstractArray,
-    arma::Vector{Int},
-    trans::Bool;
-    partrans = arima_param_transform!,
-)
+function arima_transpar(params_in::AbstractArray,arma::Vector{Int},trans::Bool;partrans = arima_param_transform!)
     mp, mq, msp, msq, ns = arma
     p = mp + ns * msp
     q = mq + ns * msq
@@ -837,8 +825,6 @@ function build_delta(order::Int, seasonal::Int, m::Int)
     return -delta[2:end]
 end
 
-using Polynomials
-
 function invert_ma(ma::Vector{Float64})
     q = length(ma)
     coeffs = [1.0; ma]
@@ -868,7 +854,6 @@ function invert_ma(ma::Vector{Float64})
     return vcat(real.(x[2:end]), zeros(q - q0))
 end
 
-
 function is_stationary(ar::Vector{Float64})
     p = findlast(!=(0.0), -ar) - 1
 
@@ -882,12 +867,7 @@ function is_stationary(ar::Vector{Float64})
     return all(abs.(rts) .> 1.0)
 end
 
-function update_arima_model!(
-    mod::Dict,
-    phi::Vector{Float64},
-    theta::Vector{Float64},
-    SSinit::Bool = true,
-)
+function update_arima_model!(mod::Dict, phi::Vector{Float64}, theta::Vector{Float64}, SSinit::Bool = true)
     p = length(phi)
     q = length(theta)
     mod[:phi] = phi
@@ -909,18 +889,7 @@ function update_arima_model!(
 end
 
 
-function arma_loglik(
-    p::Vector{Float64},
-    coef::Vector{Float64},
-    mask::Vector{Bool},
-    x::Vector{Float64},
-    xreg::Matrix{Float64},
-    mod::Dict{Symbol,Any},
-    arma::Tuple{Int,Int},
-    narma::Int,
-    ncxreg::Int,
-    trans::Bool,
-)
+function arma_loglik(p::Vector{Float64}, coef::Vector{Float64}, mask::Vector{Bool}, x::Vector{Float64}, xreg::Matrix{Float64}, mod::Dict{Symbol,Any}, arma::Tuple{Int,Int}, narma::Int, ncxreg::Int, trans::Bool,)
 
     par = copy(coef)
     par[mask] .= p
@@ -969,6 +938,7 @@ function arma_css(
     
     return 0.5 * log(res)
 end
+
 
 function fit_state_space(
     x::AbstractArray,
@@ -1084,7 +1054,55 @@ struct PDQ
     q::Int
 end
 
+"""
+    ArimaFit
 
+Structure representing the results of fitting an ARIMA model.
+
+# Fields
+
+- `coef::Vector{Float64}`  
+  Vector of estimated AR, MA, and regression coefficients. These are the primary parameters of the ARIMA model.
+
+- `sigma2::Float64`  
+  Maximum likelihood estimate of the variance of the innovations (white noise residuals).
+
+- `var_coef::Matrix{Float64}`  
+  Variance-covariance matrix of the coefficient estimates (`coef`). Useful for inference and diagnostics.
+
+- `loglik::Float64`  
+  Log-likelihood value maximized during the fitting process. May be exact or an approximation depending on the fitting method.
+
+- `arma::Vector{Int}`  
+  Model specification summary:  
+  `[p, q, P, Q, s, d, D]`  
+  where `p` = non-seasonal AR order,  
+        `q` = non-seasonal MA order,  
+        `P` = seasonal AR order,  
+        `Q` = seasonal MA order,  
+        `s` = seasonal period,  
+        `d` = non-seasonal differencing,  
+        `D` = seasonal differencing.
+
+- `aic::Union{Float64, Nothing}`  
+  Akaike Information Criterion. Available only if model is fitted using maximum likelihood (ML). `nothing` if not applicable.
+
+- `residuals::Vector{Float64}`  
+  Fitted innovations (residuals) from the model.
+
+- `convergence_code::Int`  
+  Code returned by the optimizer indicating convergence status. Typically, 0 means successful convergence.
+
+- `n_cond::Int`  
+  Number of initial observations excluded during model fitting due to conditioning.
+
+- `nobs::Int`  
+  Number of observations used in fitting after differencing and excluding initial values. Also relevant for model comparison criteria.
+
+- `model::NamedTuple`  
+  Internal representation of the state-space model, e.g., for use with Kalman filtering.
+
+"""
 struct ArimaFit
     coef::Vector{Float64}
     sigma2::Float64
@@ -1097,10 +1115,87 @@ struct ArimaFit
     convergence_code::Int
     n_cond::Int
     nobs::Int
-    model::Dict{Symbol,Any}
+    model::NamedTuple
 end
 
+"""
+    arima(x::Vector{Float64}, m; order, seasonal, xreg, include_mean, transform_pars, fixed, init,
+          method, n_cond, SSinit, optim_method, optim_control, kappa)
 
+Fits an ARIMA model to a univariate time series using specified model orders and options.
+
+# Arguments
+
+- `x::Vector{Float64}`  
+  The univariate time series to be modeled.
+
+- `m::Int`  
+  The frequency (seasonal period) of the time series, e.g., 12 for monthly data, 4 for quarterly data.
+
+# Keyword Arguments
+
+- `order::PDQ = PDQ(0,0,0)`  
+  Specifies the non-seasonal part of the ARIMA model:  
+  `PDQ(p, d, q)` corresponds to:
+  - `p`: AR order
+  - `d`: degree of differencing
+  - `q`: MA order
+
+- `seasonal::PDQ = PDQ(0,0,0)`  
+  Specifies the seasonal part of the ARIMA model:  
+  `PDQ(P, D, Q)` corresponds to:
+  - `P`: seasonal AR order
+  - `D`: seasonal differencing
+  - `Q`: seasonal MA order  
+  The seasonal period is given by `m`.
+
+- `xreg::Matrix{Float64}`  
+  Optional matrix of external regressors with the same number of rows as `x`. Defaults to an empty matrix.
+
+- `include_mean::Bool = true`  
+  Indicates whether to include a mean/intercept term in the ARMA component. Ignored if `d > 0`.
+
+- `transform_pars::Bool = true`  
+  If `true`, AR parameters are transformed to ensure stationarity (not used when `method == "CSS"`). Automatically set to `false` if any AR coefficients are fixed.
+
+- `fixed::Union{Vector{Union{Float64, Missing}}, Nothing} = nothing`  
+  Optional vector specifying fixed values for model parameters:
+  `(ϕ₁, ..., ϕₚ, θ₁, ..., θ_q, Φ₁, ..., Φ_P, Θ₁, ..., Θ_Q, μ)`  
+  - Use `missing` for parameters to be estimated.  
+  - The intercept `μ` must only be included if `include_mean == true`.  
+  - If any AR parameters are fixed, `transform_pars` will be set to `false`.
+
+- `init::Union{Vector{Float64}, Nothing} = nothing`  
+  Optional initial values for parameters. Missing entries are initialized to zero, except for regression coefficients. Values already fixed are ignored.
+
+- `method::String = "CSS-ML"`  
+  Fitting method: `"CSS"` (conditional sum-of-squares), `"ML"` (maximum likelihood), or `"CSS-ML"` (hybrid). Abbreviations allowed.
+
+- `n_cond::Union{Int, Nothing} = nothing`  
+  Number of initial observations to exclude during conditional fitting. Ignored if less than the maximum AR lag.
+
+- `SSinit::String = "Gardner1980"`  
+  Method used for state-space likelihood initialization. See `KalmanLike` for options. Can be abbreviated.
+
+- `optim_method::Symbol = :BFGS`  
+  Optimization algorithm used for likelihood maximization. Passed to `Optim.jl`.
+
+- `optim_control::Dict = Dict()`  
+  Control parameters passed to the optimizer.
+
+- `kappa::Float64 = 1e6`  
+  Prior variance multiplier for past observations in differenced models. Do not reduce this value.
+
+# Returns
+
+- An `ArimaFit` struct containing model fit results, including coefficients, residuals, log-likelihood, AIC, and internal Kalman model representation.
+
+# Notes
+
+- If `d > 0` or `D > 0`, the mean term is excluded regardless of `include_mean`.
+- Fixing AR or MA coefficients may require careful handling of `transform_pars` to ensure numerical stability.
+
+"""
 function arima(
     x::Vector{Float64},
     m;
@@ -1136,6 +1231,7 @@ function arima(
     Delta = build_delta(order.d, seasonal.d, m)
     nd = order.d + seasonal.d
 
+    # Handle xreg (external regressors) and intercepts
     if include_mean && nd == 0
         xreg = hcat(ones(n), xreg)
     end
@@ -1165,6 +1261,7 @@ function arima(
     init = copy(init)
     isnan.(init) .&& (init .= init0)
 
+    # Stationarity check for AR and seasonal AR parts
     if method == "ML"
         if arma[1] > 0 && !is_stationary(init[1:arma[1]])
             error("non-stationary AR part")
@@ -1182,7 +1279,9 @@ function arima(
     if !haskey(optim_control, :parscale)
         optim_control[:parscale] = parscale[mask]
     end
+    arma_css_ob(p) = arma_css(p, fixed, mask, x, xreg, arma, narma, ncxreg, n_cond)
 
+    # CSS or CSS-ML Optimization
     if method == "CSS" || method == "CSS-ML"
         if n_cond === nothing
             n_cond = order.d + seasonal.d * m + max(order.p, seasonal.p * m)
@@ -1191,11 +1290,10 @@ function arima(
             (
                 converged = true,
                 minimizer = Float64[],
-                minimum = arma_(
-                    Float64[],
+                minimum = arma_css(
+                    x,
                     fixed,
                     mask,
-                    x,
                     xreg,
                     arma,
                     narma,
@@ -1204,29 +1302,30 @@ function arima(
                 ),
             )
         else
-            
+            println(init)
             optimize(
-                p -> arma_css(p, fixed, mask, x, xreg, arma, narma, ncxreg, n_cond),
+                p -> arma_css_ob(p),
                 init[mask],
                 Optim.BFGS()
             )
         end
-        coef[mask] .= Optim.minimizer(res)
-        
-        trarma = arima_transpar(coef, arma, false)
-        mod = make_arima(trarma[1], trarma[2], Delta, kappa=kappa, SSinit = "Gardner1980")
-        val = arima_css(x, arma, trarma[1], trarma[2], n_cond)
-        sigma2 = val[1]
-        #hess_inv = Optim.hessian(res)
-        state = Optim.multivariate_state(res)
-        hess_inv = state.invH
+        ppp = Optim.minimizer(res)
+        coef[mask] .= ppp
+        println("coef:", coef)
 
-        println("Inverse Hessian Approximation: ", hess_inv)
-        var_coef = no_optim ? zeros(0, 0) : inv(hess_inv * n)
+        trarma = arima_transpar(coef, arma, false)
+
+        mod = make_arima(trarma[1], trarma[2], Delta, 
+        kappa = kappa, SSinit = SSinit)
+        val = arima_css(x, arma, trarma[1], trarma[2], n_cond)  # Pass 'x' here again for evaluation
+        sigma2 = val[1]
+        hess_inv = optim_hessian(ppp, arma_css_ob)
+        println("hess_inv: ", hess_inv)
+        var_coef = no_optim ? zeros(0, 0) : inv(hess_inv * (length(x) - length(Delta)))
     else
         if method == "CSS-ML"
             css_res = optimize(
-                p -> arma_css(p, fixed, mask, x, xreg, arma, narma, ncxreg, n_cond),
+                p -> arima_css(p, fixed, mask, x, xreg, arma, narma, ncxreg, n_cond),
                 init[mask],
                 Optim.BFGS();
                 iterations = 1000,
@@ -1244,13 +1343,13 @@ function arima(
             end
         end
         trarma = arima_transpar(init, arma, transform_pars)
-        mod = make_arima(trarma[1], trarma[2], Delta, kappa=kappa, SSinit = "Gardner1980")
+        mod = make_arima(trarma[1], trarma[2], Delta, kappa, SSinit == "Gardner1980")
 
         res = if no_optim
             (
                 converged = true,
                 minimizer = Float64[],
-                minimum = arma_loglik(
+                minimum = arima_loglik(
                     Float64[],
                     coef,
                     mask,
@@ -1265,7 +1364,7 @@ function arima(
             )
         else
             optimize(
-                p -> arma_loglik(
+                p -> arima_loglik(
                     p,
                     coef,
                     mask,
@@ -1289,9 +1388,8 @@ function arima(
             coef = arima_undo_params(coef, arma)
         end
         trarma = arima_transpar(coef, arma, false)
-        mod = make_arima(trarma[1], trarma[2], Delta, kappa=kappa, SSinit = "Gardner1980")
+        mod = make_arima(trarma[1], trarma[2], Delta, kappa, SSinit == "Gardner1980")
         val = fit_state_space(x, xreg, coef, narma, ncxreg, mod)
-        
         sigma2 = val[1][1] / (length(x) - length(Delta))
         hess_inv = Optim.hessian(res)
         var_coef = no_optim ? zeros(0, 0) : inv(hess_inv * (length(x) - length(Delta)))
@@ -1317,15 +1415,3 @@ function arima(
         mod,
     )
 end
-
-function match_arg(arg, choices)
-    return findfirst(x -> x == arg, choices) !== nothing ? arg : error("Invalid argument")
-end
-
-
-using Optim
-using Durbyn
-
-ap = air_passengers()
-
-arima(ap, 12,  order = PDQ(2,1,1), seasonal = PDQ(0,1,0))

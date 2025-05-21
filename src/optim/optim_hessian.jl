@@ -160,6 +160,7 @@ println(hessian_himmelblau)
 
 """
 function optim_hessian(par, fn, gr = nothing; fnscale = 1.0, parscale = nothing, ndeps = nothing, kwargs...)
+    
     npar = length(par)
     fn1(par) = fn(par; kwargs...)
 

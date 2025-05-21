@@ -1,3 +1,43 @@
+"""
+    nmmin(f::Function, x0::Vector{Float64}; 
+          abstol=1e-8, intol=1e-8, 
+          alpha=1.0, beta=0.5, gamma=2.0, 
+          trace=false, maxit=1000)
+
+Minimizes a real-valued multivariate function using the Nelder-Mead simplex algorithm.
+
+# Arguments
+- `f::Function`: The objective function to minimize. Must accept a vector of `Float64` and return a scalar.
+- `x0::Vector{Float64}`: Initial guess for the parameter vector.
+
+# Keyword Arguments
+- `abstol::Float64=1e-8`: Absolute tolerance for convergence based on the best function value.
+- `intol::Float64=1e-8`: Relative tolerance for convergence based on the difference between best and worst values.
+- `alpha::Float64=1.0`: Reflection coefficient.
+- `beta::Float64=0.5`: Contraction coefficient.
+- `gamma::Float64=2.0`: Expansion coefficient.
+- `trace::Bool=false`: If `true`, prints progress at each iteration.
+- `maxit::Int=1000`: Maximum number of iterations.
+
+# Returns
+A named tuple with the following fields:
+- `x_opt`: The estimated minimizer of the function.
+- `f_opt`: The function value at `x_opt`.
+- `n_iter`: The maximum number of iterations attempted.
+- `fail`: A flag that is `0` if the method converged, or `10` if shrinking failed to reduce the simplex size.
+- `evals`: The number of function evaluations performed.
+
+# Example
+```julia
+f(x) = sum((x .- 3.0).^2)
+x0 = [0.0, 0.0]
+result = nmmin(f, x0, trace=true)
+println(result.x_opt)  # Should be close to [3.0, 3.0]
+```
+
+# Notes
+This implementation follows the R-style Nelder-Mead algorithm, useful for optimizing noisy or non-differentiable functions.
+"""
 function nmmin(f::Function, x0::Vector{Float64};
                abstol=1e-8, intol=1e-8,
                alpha=1.0, beta=0.5, gamma=2.0,

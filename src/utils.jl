@@ -1,3 +1,4 @@
+using DataFrames
 export air_passengers
 
 function as_integer(x::AbstractVector{T}) where {T<:AbstractFloat}
@@ -20,7 +21,7 @@ function is_constant(data::AbstractArray)
     return all(x -> x == data[1], data)
 end
 
-function na_omit(x::Vector)
+function na_omit(x::AbstractArray)
     filter(y -> !ismissing(y) && !isnan(y), skipmissing(x))
 end
 

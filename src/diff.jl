@@ -1,5 +1,5 @@
 
-export diff_ts
+export diff
 
 function lag_series(x::AbstractVector, k::Int)
     n = length(x)
@@ -21,7 +21,7 @@ function lag_series(x::AbstractVector, k::Int)
 end
 
 """
-    diff_ts(x::AbstractVector; lag::Int=1, differences::Int=1)
+    diff(x::AbstractVector; lag::Int=1, differences::Int=1)
 
 Compute the lagged differences of a vector `x`.
 
@@ -42,11 +42,11 @@ insufficient data is available to compute the difference.
 # Example
 ```julia
 x = [1, 2, 4, 7, 11, 16]
-diff_ts(x; lag=1, differences=1)
+diff(x; lag=1, differences=1)
 # Returns: [missing, 1, 2, 3, 4, 5]
 ```
 """
-function diff_ts(x::AbstractVector; lag::Int=1, differences::Int=1)
+function diff(x::AbstractVector; lag::Int=1, differences::Int=1)
     if lag < 1 || differences < 1
         throw(ArgumentError("Bad value for 'lag' or 'differences'"))
     end
@@ -64,7 +64,7 @@ end
 
 
 """
-    diff_ts(x::AbstractMatrix; lag::Int=1, differences::Int=1)
+    diff(x::AbstractMatrix; lag::Int=1, differences::Int=1)
 
 Compute lagged differences column-wise for a matrix `x`.
 
@@ -91,7 +91,7 @@ x = [
     11.0 50.0;
     16.0 60.0
 ]
-diff_ts(x; lag=1, differences=1)
+diff(x; lag=1, differences=1)
 # Returns:
 # [missing missing;
 #  1.0     10.0;
@@ -101,16 +101,15 @@ diff_ts(x; lag=1, differences=1)
 #  5.0     10.0]
 ```
 """
-function diff_ts(x::AbstractMatrix; lag::Int=1, differences::Int=1)
+function diff(x::AbstractMatrix; lag::Int=1, differences::Int=1)
     nrow, ncol = size(x)
     if lag < 1 || differences < 1
         throw(ArgumentError("Bad value for 'lag' or 'differences'"))
     end
     if lag * differences >= nrow
-        return x[1:0, :]  # empty rows, same number of columns
+        return x[1:0, :]
     end
 
-    # Result matrix with `missing` support
     r = Matrix{Union{Missing, eltype(x)}}(x)
 
     for _ in 1:differences

@@ -1,11 +1,19 @@
-using LinearAlgebra
-export arima, ArimaFit, PDQ, ArimaCoef
-import Base: show
+"""
+    ArimaCoef
 
-include("src/diff.jl")
-include("src/utils.jl")
-include("src/optim/nmmin.jl")
-include("src/optim/optim_hessian.jl")
+Struct to hold ARIMA model coefficients.
+
+Parameters:
+- `ar::Vector{Float64}`: Autoregressive (AR) coefficients.
+- `ma::Vector{Float64}`: Moving average (MA) coefficients.
+- `sar::Vector{Float64}`: Seasonal autoregressive (SAR) coefficients.
+- `sma::Vector{Float64}`: Seasonal moving average (SMA) coefficients.
+- `intercept::Vector{Float64}`: Model intercept(s) (constant term).
+
+This struct is used to store the estimated parameters of an ARIMA(p, d, q)(P, D, Q)s model,
+where `ar`, `ma`, `sar`, and `sma` correspond to the non-seasonal and seasonal components.
+All fields are vectors of `Float64` to allow for multiple coefficients in extended models.
+"""
 
 struct ArimaCoef
     ar::Vector{Float64}
@@ -1508,7 +1516,29 @@ function arima(x::AbstractArray,
     return result
 
 end
+"""
+kalman_forecast(n, Z, a, P, T, V, h)
 
+Perform Kalman filter-based forecasting for an ARIMA model.
+
+Arguments:
+- `n::Int`: Number of forecast steps to generate.
+- `Z::Vector{Float64}`: Observation matrix (state vector mapping).
+- `a::Vector{Float64}`: Current state vector (mean of the state distribution).
+- `P::Matrix{Float64}`: Current state covariance matrix.
+- `T::Matrix{Float64}`: Transition matrix (state evolution).
+- `V::Matrix{Float64}`: Observation noise covariance matrix.
+- `h::Float64`: Observation noise variance (scalar).
+
+Returns:
+- `forecasts::Vector{Float64}`: Vector of length `n` containing forecasted values.
+- `se::Vector{Float64}`: Vector of length `n` containing standard errors of forecasts.
+
+Description:
+This function implements the Kalman filter recursion to generate forecasts and their standard errors for an ARIMA model. It uses the provided state vector `a`, covariance matrix `P`, and model matrices to iteratively compute forecasts over `n` time steps. The function makes internal copies of `a` and `P` to avoid modifying the original inputs.
+
+Note: This implementation assumes the model is already in state-space form and that the matrices are appropriately dimensioned for the ARIMA process.
+"""
 function kalman_forecast(
     n::Int,
     Z::Vector{Float64},

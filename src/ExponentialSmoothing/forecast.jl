@@ -442,3 +442,31 @@ function quantile_type8(arr, q)
         return (1 - weight) * sorted_arr[pos_floor] + weight * sorted_arr[pos_ceil]
     end
 end
+
+function forecast(
+    object::HoltWintersConventional;
+    h = nothing,
+    level = [80, 95],
+    fan = false,
+    simulate = false,
+    bootstrap = false,
+    npaths = 5000,
+    PI = true,
+    lambda = nothing,
+    biasadj = nothing,
+    kwargs...,
+)
+    return forecast_ets_base(
+        object,
+        h = h,
+        level = level,
+        fan = fan,
+        simulate = simulate,
+        bootstrap = bootstrap,
+        npaths = npaths,
+        PI = PI,
+        lambda = lambda,
+        biasadj = biasadj,
+        kwargs...,
+    )
+end

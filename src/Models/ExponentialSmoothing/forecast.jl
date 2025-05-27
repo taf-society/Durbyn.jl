@@ -1,78 +1,3 @@
-export forecast
-
-function forecast(
-    object::EtsModel;
-    h = nothing,
-    level = [80, 95],
-    fan = false,
-    simulate = false,
-    bootstrap = false,
-    npaths = 5000,
-    PI = true,
-    lambda = nothing,
-    biasadj = nothing,
-    kwargs...,
-)
-    return forecast_ets_base(
-        object,
-        h = h,
-        level = level,
-        fan = fan,
-        simulate = simulate,
-        bootstrap = bootstrap,
-        npaths = npaths,
-        PI = PI,
-        lambda = lambda,
-        biasadj = biasadj,
-        kwargs...,
-    )
-end
-
-
-function forecast_ets_base(
-    object;
-    h = nothing,
-    level = [80, 95],
-    fan = false,
-    simulate = false,
-    bootstrap = false,
-    npaths = 5000,
-    PI = true,
-    lambda = nothing,
-    biasadj = nothing,
-    kwargs...,
-)
-    m = object.m
-    h = initialize_horizon(h, m)
-    validate_horizon(h)
-    biasadj = initialize_biasadj(biasadj, lambda, get_biasadj(object))
-    simulate, bootstrap, fan, npaths, level =
-        adjust_for_pi_and_biasadj(PI, biasadj, simulate, bootstrap, fan, npaths, level)
-    level = process_level(level, fan)
-    damped = Bool(object.components[4])
-    n = length(object.x)
-    simulate, bootstrap = adjust_simulation_flags(simulate, bootstrap)
-    f = compute_forecast_data(object, h, simulate, npaths, level, bootstrap, damped, n)
-    lower, upper = calculate_prediction_intervals(PI, biasadj, f, h, level)
-    mean, lower, upper =
-        apply_boxcox_transformation(f.mu, lower, upper, lambda, biasadj, PI)
-
-    if !PI
-        level = nothing
-    end
-
-    return Forecast(
-        object,
-        mean,
-        level,
-        object.x,
-        upper,
-        lower,
-        object.fitted,
-        object.residuals,
-    )
-end
-
 function get_biasadj(object, default = false)
     return hasfield(typeof(object), :biasadj) ? getfield(object, :biasadj) : default
 end
@@ -445,6 +370,78 @@ end
 
 function forecast(
     object::HoltWintersConventional;
+    h = nothing,
+    level = [80, 95],
+    fan = false,
+    simulate = false,
+    bootstrap = false,
+    npaths = 5000,
+    PI = true,
+    lambda = nothing,
+    biasadj = nothing,
+    kwargs...,
+)
+    return forecast_ets_base(
+        object,
+        h = h,
+        level = level,
+        fan = fan,
+        simulate = simulate,
+        bootstrap = bootstrap,
+        npaths = npaths,
+        PI = PI,
+        lambda = lambda,
+        biasadj = biasadj,
+        kwargs...,
+    )
+end
+
+function forecast_ets_base(
+    object;
+    h = nothing,
+    level = [80, 95],
+    fan = false,
+    simulate = false,
+    bootstrap = false,
+    npaths = 5000,
+    PI = true,
+    lambda = nothing,
+    biasadj = nothing,
+    kwargs...,
+)
+    m = object.m
+    h = initialize_horizon(h, m)
+    validate_horizon(h)
+    biasadj = initialize_biasadj(biasadj, lambda, get_biasadj(object))
+    simulate, bootstrap, fan, npaths, level =
+        adjust_for_pi_and_biasadj(PI, biasadj, simulate, bootstrap, fan, npaths, level)
+    level = process_level(level, fan)
+    damped = Bool(object.components[4])
+    n = length(object.x)
+    simulate, bootstrap = adjust_simulation_flags(simulate, bootstrap)
+    f = compute_forecast_data(object, h, simulate, npaths, level, bootstrap, damped, n)
+    lower, upper = calculate_prediction_intervals(PI, biasadj, f, h, level)
+    mean, lower, upper =
+        apply_boxcox_transformation(f.mu, lower, upper, lambda, biasadj, PI)
+
+    if !PI
+        level = nothing
+    end
+
+    return Forecast(
+        object,
+        mean,
+        level,
+        object.x,
+        upper,
+        lower,
+        object.fitted,
+        object.residuals,
+    )
+end
+
+function forecast(
+    object::EtsModel;
     h = nothing,
     level = [80, 95],
     fan = false,

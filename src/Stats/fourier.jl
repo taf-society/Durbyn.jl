@@ -1,5 +1,3 @@
-export fourier
-
 sinpi(x) = sin(pi * x)
 cospi(x) = cos(pi * x)
 

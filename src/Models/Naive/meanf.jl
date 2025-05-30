@@ -1,4 +1,3 @@
-export MeanFit, meanf, forecast
 struct MeanFit
     mu::Number
     sd::Number

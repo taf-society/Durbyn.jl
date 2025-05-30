@@ -1,6 +1,3 @@
-
-export diff
-
 function lag_series(x::AbstractVector, k::Int)
     n = length(x)
     result = Vector{Union{Missing, eltype(x)}}(missing, n)

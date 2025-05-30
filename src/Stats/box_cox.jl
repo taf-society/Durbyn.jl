@@ -1,5 +1,3 @@
-export box_cox_lambda, box_cox, inv_box_cox
-
 function guer_cv(lam::Float64, x::Array{Float64,1}, m::Int; nonseasonal_length::Int=2)
     period = max(nonseasonal_length, m)
     nobsf = length(x)
@@ -29,45 +27,52 @@ function qr_residuals(X, y)
     return y .- c
 end
 
-function bcloglik(x::Vector{Float64}, m::Int; lower::Float64=-1.0, upper::Float64=2.0, is_ts=true)
+function bcloglik(x::AbstractArray, m::Int; lower::Float64 = -1.0, upper::Float64 = 2.0, is_ts::Bool = true)
+    x = filter(!ismissing, x)
     n = length(x)
+    
     if any(x .<= 0)
         error("x must be positive")
     end
-
-    x = filter(!ismissing, x)
+    
     logx = log.(x)
     xdot = exp(mean(logx))
 
     if !is_ts
-        fit = lm(@formula(x ~ 1), DataFrame(x=x))
+        
+        X = ones(n, 1)
     else
+        t = collect(1:n)
         if m > 1
-            trend = 1:length(x)
-            season = mod1.(1:length(x), m)
-            df = DataFrame(x=x, trend=trend, season=CategoricalArray(season))
-            fit = lm(@formula(x ~ trend + season), df)
+            s = mod1.(t, m)
+            D = zeros(n, m-1)
+            for j in 2:m
+                D[:, j-1] .= (s .== j)
+            end
+            X = hcat(ones(n), t, D)
         else
-            trend = 1:length(x)
-            fit = lm(@formula(x ~ trend), DataFrame(x=x, trend=trend))
+            X = hcat(ones(n), t)
         end
     end
 
-    X = modelmatrix(fit)
-    lambda = lower:0.05:upper
-    xl = loglik = zeros(length(lambda))
+    λs = collect(lower:0.05:upper)
+    loglik = similar(λs)
 
-    for (i, la) in enumerate(lambda)
-        if abs(la) > 0.02
-            xt = (x .^ la .- 1) / la
+    for (i, λ) in enumerate(λs)
+        xt = if abs(λ) > 0.02
+            (x .^ λ .- 1) ./ λ
         else
-            xt = logx .* (1 .+ (la .* logx) / 2 .* (1 .+ (la .* logx) / 3 .* (1 .+ (la .* logx) / 4)))
+            logx .* (1 .+ (λ .* logx)/2 .* (1 .+ (λ .* logx)/3 .* (1 .+ (λ .* logx)/4)))
         end
-        resid = qr_residuals(X, xt ./ xdot^(la - 1))
-        loglik[i] = -n / 2 * log(sum(resid .^ 2))
+
+        z = xt ./ xdot^(λ - 1)
+        β = X \ z
+        r = z .- X*β
+
+        loglik[i] = -n/2 * log(sum(abs2, r))
     end
 
-    return lambda[argmax(loglik)]
+    return λs[argmax(loglik)]
 end
 
 """

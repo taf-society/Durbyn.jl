@@ -1,5 +1,3 @@
-export decompose, DecomposedTimeSeries
-
 """
     struct DecomposedTimeSeries
 

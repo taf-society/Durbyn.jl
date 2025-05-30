@@ -1,5 +1,3 @@
-export optim_hessian
-
 function compute_gradient(p, fn, gr, fnscale, parscale, ndeps; kwargs...)
     n = length(p)
     df = zeros(n)

@@ -1,4 +1,3 @@
-export Forecast
 struct Forecast
     model::Any
     mean::Any

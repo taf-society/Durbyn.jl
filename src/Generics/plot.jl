@@ -1,4 +1,3 @@
-export plot
 function plot(forecast::Forecast; show_fitted=true, show_residuals=false, title="Forecast Plot")
     n_history = length(forecast.x)
     time_history = 1:n_history

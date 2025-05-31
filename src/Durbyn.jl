@@ -21,7 +21,9 @@ using .Arima
 using .Generics 
 
 import .Utils: air_passengers
+import .Generics: plot
 
 export air_passengers
+export plot
 
 end

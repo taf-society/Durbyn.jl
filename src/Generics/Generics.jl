@@ -1,7 +1,9 @@
 module Generics
 
+using Plots
 include("forecast.jl")
 include("plot.jl")
 
-export Forecast, plot
+export Forecast
+export plot
 end

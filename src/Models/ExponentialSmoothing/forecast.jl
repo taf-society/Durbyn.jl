@@ -430,6 +430,7 @@ function forecast_ets_base(
 
     return Forecast(
         object,
+        object.method,
         mean,
         level,
         object.x,
@@ -441,7 +442,7 @@ function forecast_ets_base(
 end
 
 function forecast(
-    object::EtsModel;
+    object::Union{EtsModel, HoltWinters, Holt, SES};
     h = nothing,
     level = [80, 95],
     fan = false,

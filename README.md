@@ -43,14 +43,54 @@ Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 
 ## Usage
 
-Durbyn provides ETS (Error, Trend, Seasonal) model functionality for time series forecasting. Here’s a basic example:
+### Forecasting using Exponential Smoothing.
 
 ```julia
+
 using Durbyn
+using Durbyn.ExponentialSmoothing
+import Durbyn.Generics: plot
 
-# Load example dataset
-ap = air_passengers()
+ap = air_passengers();
+fit_ets = ets(ap, 12, "ZZZ")
+fc_ets = forecast(fit_ets, h = 12)
+plot(fc_ets)
 
+
+ses_fit = ses(ap, 12)
+ses_fc = forecast(ses_fit, h = 12)
+plot(ses_fc)
+
+
+holt_fit = holt(ap, 12)
+holt_fc = forecast(holt_fit, h = 12)
+plot(holt_fc)
+
+
+hw_fit = holt_winters(ap, 12)
+hw_fc = forecast(hw_fit, h = 12)
+plot(hw_fc)
+
+# Forecasting Intermittent Demand
+data = [6, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0,
+0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 
+0, 0, 0, 0, 0];
+
+m = 1
+fit_crst =croston(data, m)
+fc_crst = forecast(fit_crst, 12)
+plot(fc_crst)
+
+# Planned (conformalize the forecast)
+fc_conformal = conformalize(fc)
+
+```
+
+### Forecasting using Arima
+
+```julia
 # Fit an arima model
 fit = arima(ap, 12, order = PDQ(2,1,1), seasonal=PDQ(0,1,0))
 
@@ -63,38 +103,6 @@ fit = auto_arima(ap, 12)
 ## Generate a forecast
 fc = forecast(fit, h = 12)
 
-# Fit an ETS model
-fit = ets(ap, 12, "ZZZ")
-
-# Generate a forecast
-fc = forecast(fit, h = 12)
-
-
-# Plot the forecast
-plot(fc)
-
-# Forecasting Intermittent Demand
-data = [6, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0,
-0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 
-0, 0, 0, 0, 0];
-
-m = 1
-# Fit a Croston's Method
-fit=croston(data, m)
-# Generate a forecast
-fc = forecast(fit, 12)
-
-plot(fc)
-
-
-# Planned (conformalize the forecast)
-
-fc_conformal = conformalize(fc)
-
 ```
-
-## Future Plans
 
 Durbyn will introduce a **DataFrame-based interface** (tidy forecasting) similar to the **R fable** package, allowing for a more intuitive workflow when working with time series data.

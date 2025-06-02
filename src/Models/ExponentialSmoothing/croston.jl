@@ -33,6 +33,7 @@ function croston(y::AbstractArray, m::Int; alpha::Union{Float64,Bool,Nothing} = 
 
     positions = findall(>(0), x)
     tt = diff(vcat(0, positions))
+    tt = na_omit(tt)
 
     if length(y) == 1 && length(tt) == 1
         type = CrostonType(2)

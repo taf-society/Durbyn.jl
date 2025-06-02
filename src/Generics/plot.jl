@@ -1,7 +1,9 @@
-function plot(forecast::Forecast; show_fitted=true, show_residuals=false, title="Forecast Plot")
+function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
     n_history = length(forecast.x)
     time_history = 1:n_history
     time_forecast = (n_history + 1):(n_history + length(forecast.mean))
+    title="Forecast Plot from "
+    title = title*forecast.method
     p = Plots.plot(time_history, forecast.x, label="Historical Data", lw=2, title=title, xlabel="Time", ylabel="Value", linestyle=:dash)
     Plots.plot!(time_forecast, forecast.mean, label="Forecast Mean", lw=3, color=:blue)
     num_levels = size(forecast.upper, 2)

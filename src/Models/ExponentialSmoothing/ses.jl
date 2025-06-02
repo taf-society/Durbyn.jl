@@ -29,38 +29,95 @@ SES model output
 struct SES
     fitted::AbstractArray
     residuals::AbstractArray
-    components::Vector{Any}
+    components::Union{Vector{Any}, Any}
     x::AbstractArray
-    par
-    loglik::Union{Float64, Int}
+    par::Any
+    loglik::Union{Float64,Int}
     initstate::AbstractArray
     states::AbstractArray
-    state_names
-    SSE::Union{Float64, Int}
-    sigma2::Union{Float64, Int}
+    state_names::Any
+    SSE::Union{Float64,Int}
+    sigma2::Union{Float64,Int}
     m::Int
-    lambda::Union{Float64, Bool, Nothing}
+    lambda::Union{Float64,Bool,Nothing}
     biasadj::Bool
-    aic::Union{Float64, Int}
-    bic::Union{Float64, Int}
-    aicc::Union{Float64, Int}
-    mse::Union{Float64, Int}
-    amse::Union{Float64, Int}
-    fit
+    aic::Union{Float64,Int}
+    bic::Union{Float64,Int}
+    aicc::Union{Float64,Int}
+    mse::Union{Float64,Int}
+    amse::Union{Float64,Int}
+    fit::Any
     method::String
 end
 
-function ses(y::AbstractArray, m::Int; initial::String="optimal",
-    alpha::Union{Float64,Bool,Nothing}=nothing,
-    lambda::Union{Float64,Bool,Nothing}=nothing, biasadj::Bool=false)
+function ses(
+    y::AbstractArray,
+    m::Int;
+    initial::String = "optimal",
+    alpha::Union{Float64,Bool,Nothing} = nothing,
+    lambda::Union{Float64,Bool,Nothing} = nothing,
+    biasadj::Bool = false,
+)
 
     initial = match_arg(initial, ["optimal", "simple"])
     model = nothing
     if initial == "optimal"
-        model = ets_base_model(y, m, "ANN", alpha=alpha, opt_crit="mse", lambda=lambda, biasadj=biasadj)
+        model = ets_base_model(
+            y,
+            m,
+            "ANN",
+            alpha = alpha,
+            opt_crit = "mse",
+            lambda = lambda,
+            biasadj = biasadj,
+        )
+        loglik = model.loglik
+        aic = model.aic
+        bic = model.bic
+        aicc = model.aicc
+        mse = model.mse
+        amse = model.amse
+        fit = model.fit
     else
-        model = holt_winters_conventional(y, m, alpha=alpha, beta=false, gamma=false, lambda=lambda, biasadj=biasadj)
+        model = holt_winters_conventional(
+            y,
+            m,
+            alpha = alpha,
+            beta = false,
+            gamma = false,
+            lambda = lambda,
+            biasadj = biasadj,
+        )
+        loglik = NaN
+        aic = NaN
+        bic = NaN
+        aicc = NaN
+        mse = NaN
+        amse = NaN
+        fit = nothing
     end
-
-    return model
+    
+    return SES(
+        model.fitted,
+        model.residuals,
+        model.components,
+        model.x,
+        model.par,
+        loglik,
+        model.initstate,
+        model.states,
+        model.state_names,
+        model.SSE,
+        model.sigma2,
+        model.m,
+        model.lambda,
+        model.biasadj,
+        aic,
+        bic,
+        aicc,
+        mse,
+        amse,
+        fit,
+        "Simple Exponential Smoothing",
+    )
 end

@@ -1,5 +1,6 @@
 struct Forecast
     model::Any
+    method::String
     mean::Any
     level::Any
     x::Any

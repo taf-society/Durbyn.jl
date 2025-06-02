@@ -12,11 +12,11 @@ import ..Generics: Forecast
 
 include("ets_utils.jl")
 include("ets.jl")
-include("forecast.jl")
 include("holt.jl")
 include("holt_winters.jl")
 include("ses.jl")
 include("croston.jl")
+include("forecast.jl")
 
 export ets, forecast, holt, holt_winters, ses, croston
 

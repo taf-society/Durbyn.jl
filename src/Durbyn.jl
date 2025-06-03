@@ -10,8 +10,8 @@ include("Models/Naive/Naive.jl")
 include("Models/ExponentialSmoothing/ExponentialSmoothing.jl")
 include("Models/Arima/Arima.jl")
 include("Models/IntermittentDemand/IntermittentDemand.jl")
+include("Models/Arar/Arar.jl")
 
-#include("Models/Arar/Arar.jl")
 
 using .Utils  
 using .ExponentialSmoothing
@@ -19,6 +19,7 @@ using .Optim
 using .Stats
 using .Naive
 using .Arima
+using .Arar
 using .Generics 
 using .IntermittentDemand
 

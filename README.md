@@ -123,4 +123,17 @@ fit = auto_arima(ap, 12)
 fc = forecast(fit, h = 12)
 ```
 
+### Forecasting using ARAR model
+
+```julia
+
+ap = air_passengers();
+using Durbyn.Arar
+
+fit = arar(ap, max_ar_depth = 13)
+fc = forecast(fit, 12)
+plot(fc)
+
+```
+
 Durbyn will introduce a **DataFrame-based interface** (tidy forecasting) similar to the **R fable** package, allowing for a more intuitive workflow when working with time series data.

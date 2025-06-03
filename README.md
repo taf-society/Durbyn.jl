@@ -70,8 +70,10 @@ plot(holt_fc)
 hw_fit = holt_winters(ap, 12)
 hw_fc = forecast(hw_fit, h = 12)
 plot(hw_fc)
+```
+### Forecasting Intermittent Demand Data
 
-# Forecasting Intermittent Demand
+```julia
 data = [6, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0,
@@ -119,7 +121,6 @@ fit = auto_arima(ap, 12)
 
 ## Generate a forecast
 fc = forecast(fit, h = 12)
-
 ```
 
 Durbyn will introduce a **DataFrame-based interface** (tidy forecasting) similar to the **R fable** package, allowing for a more intuitive workflow when working with time series data.

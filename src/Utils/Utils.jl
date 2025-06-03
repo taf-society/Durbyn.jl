@@ -228,3 +228,17 @@ function na_interp(x, m; lambda=nothing, linear=nothing)
 end
 
 end
+
+function evaluation_metrics(actual, pred)
+    error = actual .- pred
+    mse = mean(error.^2)
+    mae = mean(abs.(error))
+    n = length(actual)
+    temp = cumsum(actual) ./ (1:n)
+    n = ceil(Int, 0.3 * n)
+    temp[1:n] .= temp[n]
+    error2 = pred .- temp
+    mar = sum(abs.(error2))
+    msr = sum(error2.^2)
+    return Dict("mse" => mse, "mae" => mae, "mar" => mar, "msr" => msr)
+end

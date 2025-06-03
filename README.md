@@ -78,10 +78,27 @@ data = [6, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 
 0, 0, 0, 0, 0];
 
+# Based on Shenstone, L., and Hyndman, R.J. (2005)
 m = 1
 fit_crst =croston(data, m)
 fc_crst = forecast(fit_crst, 12)
 plot(fc_crst)
+
+# this module is based on Kourentzes (2014)
+using Durbyn.IntermittentDemand
+
+# Classical Croston Method based Croston, J. (1972) 
+crst1 =croston_classic(data, 12)
+plot(crst1, show_fitted = true)
+
+# Croston Method with Syntetos-Boylan Approximation
+crst2 =croston_sba(data, 12)
+plot(crst2, show_fitted = true)
+
+# Croston-Shale-Boylan-Johnston Bias Correction Method
+crst3 =croston_sbj(data, 12)
+plot(crst3, show_fitted = true)
+
 
 # Planned (conformalize the forecast)
 fc_conformal = conformalize(fc)

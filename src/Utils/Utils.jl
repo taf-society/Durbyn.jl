@@ -227,8 +227,6 @@ function na_interp(x, m; lambda=nothing, linear=nothing)
     println("just a test place holder:", lambda)
 end
 
-end
-
 function evaluation_metrics(actual, pred)
     error = actual .- pred
     mse = mean(error.^2)
@@ -241,4 +239,6 @@ function evaluation_metrics(actual, pred)
     mar = sum(abs.(error2))
     msr = sum(error2.^2)
     return Dict("mse" => mse, "mae" => mae, "mar" => mar, "msr" => msr)
+end
+
 end

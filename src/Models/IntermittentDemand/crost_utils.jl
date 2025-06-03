@@ -201,5 +201,5 @@ function crost(x, h, w,init,nop,method,cost,init_opt,na_rm)
 
     return Dict("x" => out["data"], "fitted" => out["frc_in"],
      "residuals" => res, "weights" => out["weights"], 
-     "initial" => out["initial"],  "components" => out["components"]), "mean" => out["frc_out"]
+     "initial" => out["initial"],  "components" => out["components"]), out["frc_out"]
 end

@@ -139,5 +139,62 @@ function croston_sbj(x::Vector, h::Int = 10; w::Union{Nothing, Number, Vector{}}
     init::String = "mean", nop::Int = 2, cost::String = "mar", init_opt::Bool = true, na_rm::Bool = false)
     model, mean = crost(x, h, w, init, nop, "sbj", cost, init_opt, na_rm)
 
-    return IntermittentDemandForecast(mean, model, "Croston Method with Shale-Boylan-Johnston Bias Correction")
+    return IntermittentDemandForecast(mean, model, "Croston-Shale-Boylan-Johnston Bias Correction Method")
+end
+
+"""
+plot(forecast::IntermittentDemandForecast; show_fitted::Bool = false) -> Plot
+
+Visualize an intermittent demand forecast result, including historical data, forecast mean, and optionally fitted values.
+
+Arguments
+
+forecast::IntermittentDemandForecast: The forecast result to plot.
+
+show_fitted::Bool: Whether to include in-sample fitted values on the plot. Defaults to false.
+
+Returns
+
+Plot: A Plots.jl object showing the historical demand, forecast horizon, and optionally fitted values.
+
+Description
+
+This function generates a time series plot from an IntermittentDemandForecast object. It displays the historical input series and the forecast mean. If show_fitted is true, the fitted values from the in-sample model are also included as a dashed overlay.
+
+Useful for validating forecast quality and understanding model behavior visually.
+"""
+function plot(forecast::IntermittentDemandForecast; show_fitted::Bool = false)
+    
+    history = forecast.model["x"]
+    n_history = length(history)
+    mean_fc = forecast.mean
+    time_history = 1:n_history
+    time_forecast = (n_history+1):(n_history+length(mean_fc))
+
+    p = Plots.plot(
+        time_history,
+        history,
+        label = "Historical Data",
+        lw = 2,
+        title = forecast.method,
+        xlabel = "Time",
+        ylabel = "Value",
+        linestyle = :dash,
+    )
+
+    Plots.plot!(time_forecast, mean_fc, label = "Forecast Mean", lw = 3, color = :blue)
+
+    if show_fitted
+        fitted_val = forecast.model["fitted"]
+        Plots.plot!(
+            time_history,
+            fitted_val,
+            label = "Fitted Values",
+            lw = 3,
+            linestyle = :dash,
+            color = :blue,
+        )
+    end
+
+    return p
 end

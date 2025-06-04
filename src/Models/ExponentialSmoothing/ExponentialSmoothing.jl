@@ -7,8 +7,10 @@ import DataStructures: OrderedDict
 using Polynomials
 using LinearAlgebra
 using Distributions
+using Plots
 import Statistics: mean
-import ..Generics: Forecast
+import ..Generics: Forecast, forecast
+import ..Generics: plot
 
 include("ets_utils.jl")
 include("ets.jl")
@@ -18,6 +20,6 @@ include("ses.jl")
 include("croston.jl")
 include("forecast.jl")
 
-export ets, forecast, holt, holt_winters, ses, croston
+export ets, holt, holt_winters, ses, croston
 
 end

@@ -49,7 +49,6 @@ Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 
 using Durbyn
 using Durbyn.ExponentialSmoothing
-import Durbyn.Generics: plot
 
 ap = air_passengers();
 fit_ets = ets(ap, 12, "ZZZ")
@@ -110,6 +109,7 @@ fc_conformal = conformalize(fc)
 ### Forecasting using Arima
 
 ```julia
+using Durbyn.Arima
 # Fit an arima model
 fit = arima(ap, 12, order = PDQ(2,1,1), seasonal=PDQ(0,1,0))
 
@@ -126,7 +126,7 @@ fc = forecast(fit, h = 12)
 ### Forecasting using ARAR model
 
 ```julia
-
+using Durbyn
 ap = air_passengers();
 using Durbyn.Arar
 

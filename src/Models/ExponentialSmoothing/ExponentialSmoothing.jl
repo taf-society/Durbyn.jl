@@ -1,16 +1,20 @@
 module ExponentialSmoothing
-
-import ..Utils: is_constant, match_arg, na_action, na_omit
-import ..Optim: nmmin
-import ..Stats: box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, fourier
-import DataStructures: OrderedDict
-using Polynomials
+# Standard libs
 using LinearAlgebra
-using Distributions
-using Plots
 import Statistics: mean
-import ..Generics: Forecast, forecast
-import ..Generics: plot
+
+# External packages
+using Optim
+import Optim: optimize, NelderMead, Brent, minimizer, minimum, iterations
+using Plots
+using Polynomials
+using Distributions
+import DataStructures: OrderedDict
+
+# Internal modules
+import ..Utils: is_constant, match_arg, na_action, na_omit
+import ..Stats: box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, fourier
+import ..Generics: Forecast, forecast, plot
 
 include("ets_utils.jl")
 include("ets.jl")

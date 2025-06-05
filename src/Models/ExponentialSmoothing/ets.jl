@@ -22,7 +22,7 @@ function ets(
     use_initial_values::Bool = false,
     na_action_type::String = "na_contiguous",
     opt_method::String = "Nelder-Mead",
-    iterations::Int = 2000,
+    iterations::Int = 500,
     kwargs...,
 )
 

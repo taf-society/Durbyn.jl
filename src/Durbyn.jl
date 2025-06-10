@@ -13,14 +13,14 @@ include("Models/IntermittentDemand/IntermittentDemand.jl")
 include("Models/Arar/Arar.jl")
 
 
-using .Utils  
+using .Utils
+using .Generics  
 using .ExponentialSmoothing
 using .Optim
 using .Stats
 using .Naive
 using .Arima
 using .Arar
-using .Generics 
 using .IntermittentDemand
 
 import .Utils: air_passengers

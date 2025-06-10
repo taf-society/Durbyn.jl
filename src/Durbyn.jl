@@ -2,7 +2,7 @@ module Durbyn
 
 include("Utils/Utils.jl")
 
-include("Optim/Optim.jl")
+include("Optimize/Optimize.jl")
 include("Stats/Stats.jl")
 include("Generics/Generics.jl")
 
@@ -16,7 +16,7 @@ include("Models/Arar/Arar.jl")
 using .Utils
 using .Generics  
 using .ExponentialSmoothing
-using .Optim
+using .Optimize
 using .Stats
 using .Naive
 using .Arima

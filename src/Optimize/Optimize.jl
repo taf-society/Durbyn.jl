@@ -1,4 +1,4 @@
-module Optim
+module Optimize
 
 include("nmmin.jl")
 include("optim_hessian.jl")

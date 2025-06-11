@@ -37,68 +37,47 @@ function holt_winters(
     phi::Union{Float64,Bool,Nothing} = nothing,
     lambda::Union{Float64,Bool,Nothing} = nothing,
     biasadj::Bool = false,
+    options::NelderMeadOptions = NelderMeadOptions(),
 )
 
     initial = match_arg(initial, ["optimal", "simple"])
     seasonal = match_arg(seasonal, ["additive", "multiplicative"])
-    model = nothing
 
     if m <= 1
         throw(ArgumentError("The time series should have frequency greater than 1."))
     end
 
     if length(y) <= m + 3
-        throw(
-            ArgumentError("I need at least $(m + 3) observations to estimate seasonality."),
-        )
+        throw(ArgumentError("I need at least $(m + 3) observations to estimate seasonality."))
     end
 
+    if seasonal == "additive" && exponential
+        throw(ArgumentError("Forbidden model combination: additive seasonality with exponential trend."))
+    end
+
+    model_code = ""
+
     if initial == "optimal" || damped
-        if seasonal == "additive" && exponential
-            throw(ArgumentError("Forbidden model combination"))
-        elseif seasonal == "additive" && !exponential
-            model = ets_base_model(
-                y,
-                m,
-                "AAA",
-                alpha = alpha,
-                beta = beta,
-                gamma = gamma,
-                phi = phi,
-                damped = damped,
-                opt_crit = "mse",
-                lambda = lambda,
-                biasadj = biasadj,
-            )
-        elseif seasonal != "additive" && exponential
-            model = ets_base_model(
-                y,
-                m,
-                "MMMN",
-                alpha = alpha,
-                beta = beta,
-                gamma = gamma,
-                phi = phi,
-                damped = damped,
-                opt_crit = "mse",
-                lambda = lambda,
-                biasadj = biasadj,
-            )
-        else  # if seasonal != "additive" && !exponential
-            model = ets_base_model(
-                y,
-                m,
-                "MAM",
-                alpha = alpha,
-                beta = beta,
-                gamma = gamma,
-                phi = phi,
-                damped = damped,
-                opt_crit = "mse",
-                lambda = lambda,
-                biasadj = biasadj,
-            )
+        if seasonal == "additive"
+            model_code = exponential ? "ANA" : "AAA"
+        else
+            model_code = exponential ? "MMM" : "MAM"
         end
+
+        model = ets_base_model(
+            y,
+            m,
+            model_code,
+            alpha = alpha,
+            beta = beta,
+            gamma = gamma,
+            phi = phi,
+            damped = damped,
+            opt_crit = "mse",
+            lambda = lambda,
+            biasadj = biasadj,
+            options = options,
+        )
     else
         model = holt_winters_conventional(
             y,
@@ -111,60 +90,18 @@ function holt_winters(
             exponential = exponential,
             lambda = lambda,
             biasadj = biasadj,
+            options = options,
         )
     end
 
-    if initial == "optimal" || damped
-        if exponential
-            model = ets_base_model(
-                y,
-                m,
-                "MMN",
-                beta = beta,
-                phi = phi,
-                damped = damped,
-                opt_crit = "mse",
-                lambda = lambda,
-                biasadj = biasadj,
-            )
-        else
-            model = ets_base_model(
-                y,
-                m,
-                "AAN",
-                beta = beta,
-                phi = phi,
-                damped = damped,
-                opt_crit = "mse",
-                lambda = lambda,
-                biasadj = biasadj,
-            )
-        end
-    else
-        model = holt_winters_conventional(
-            y,
-            m,
-            alpha = alpha,
-            beta = beta,
-            gamma = false,
-            phi = phi,
-            exponential = exponential,
-            lambda = lambda,
-            biasadj = biasadj,
-        )
-    end
-
-    if damped
-        method = "Damped Holt's method"
-        if initial == "simple"
-            @warn "Damped Holt's method requires optimal initialization"
-        end
-    else
-        method = "Holt's method"
-    end
-
+    method = damped ? "Damped Holt-Winters'" : "Holt-Winters'"
+    method *= seasonal == "additive" ? " additive method" : " multiplicative method"
     if exponential
-        method = method * " with exponential trend"
+        method *= " with exponential trend"
+    end
+
+    if damped && initial == "simple"
+        @warn "Damped Holt-Winters' method requires optimal initialization"
     end
 
     return HoltWinters(

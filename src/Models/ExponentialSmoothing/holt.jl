@@ -35,6 +35,8 @@ function holt(
     phi::Union{Float64,Bool,Nothing} = nothing,
     lambda::Union{Float64,Bool,Nothing} = nothing,
     biasadj::Bool = false,
+    options::NelderMeadOptions = NelderMeadOptions(),
+    
 )
 
     initial = match_arg(initial, ["optimal", "simple"])
@@ -61,6 +63,7 @@ function holt(
                 opt_crit = "mse",
                 lambda = lambda,
                 biasadj = biasadj,
+                options = options,
             )
         else
             model = ets_base_model(
@@ -74,6 +77,7 @@ function holt(
                 opt_crit = "mse",
                 lambda = lambda,
                 biasadj = biasadj,
+                options = options
             )
         end
     else
@@ -87,6 +91,7 @@ function holt(
             exponential = exponential,
             lambda = lambda,
             biasadj = biasadj,
+            options = options
         )
     end
 

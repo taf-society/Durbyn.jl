@@ -1069,6 +1069,7 @@ function holt_winters_conventional(
     lambda::Union{Nothing,Float64} = nothing,
     biasadj::Bool = false,
     warnings::Bool = true,
+    options::NelderMeadOptions
 )
     if !(seasonal in ["additive", "multiplicative"])
         throw(
@@ -1232,21 +1233,13 @@ function holt_winters_conventional(
                 b_start,
                 s_start,
             )
-        bound_index = filter(i -> i > 0, select)
-        # sol = nmmin(cal_opt_sse_closure, starting_points)
 
-        # is_convergence = sol.fail == 0
-        # minimizers = sol.x_opt
-        # iterations = sol.evals
+        sol = nmmin(cal_opt_sse_closure, starting_points,  options)
 
-        sol = optimize(cal_opt_sse_closure, lower[bound_index], upper[bound_index], 
-        starting_points, Fminbox(LBFGS()),)
-
-        is_convergence = Optim.converged(sol)
-        minimizers = Optim.minimizer(sol)
-        iterations = Optim.iterations(sol)
-
-
+        is_convergence = sol.fail == 0
+        minimizers = sol.x_opt
+        iterations = sol.evals
+        
 
         if !is_convergence | any((minimizers .< 0) .| (minimizers .> 1))
             if iterations > 50
@@ -1501,10 +1494,8 @@ function optim_ets_base(
     nmse,
     bounds,
     m,
-    initial_params;
-    fun = NelderMead(),
-    iterations = 2000,
-    kwargs...)
+    initial_params,
+    options)
 
     init_alpha = initial_params["alpha"]
     init_beta = initial_params["beta"]
@@ -1515,7 +1506,7 @@ function optim_ets_base(
     opt_gamma = !isnan(init_gamma)
     opt_phi = !isnan(init_phi)
 
-    result = optimize(par -> objective_fun(
+    result = nmmin(par -> objective_fun(
             par,
             y,
             nstate,
@@ -1537,13 +1528,12 @@ function optim_ets_base(
             opt_beta,
             opt_gamma,
             opt_phi,
-        ),
-        opt_params, fun,  
-        Optim.Options(iterations = iterations, kwargs...))
+        ), opt_params, 
+        options)
 
-    optimized_params = Optim.minimizer(result)
-    optimized_value = Optim.minimum(result)
-    number_of_iterations = Optim.iterations(result)
+    optimized_params = result.x_opt
+    optimized_value = result.f_opt
+    number_of_iterations = result.evals
 
     optimized_params =
         create_params(optimized_params, opt_alpha, opt_beta, opt_gamma, opt_phi)
@@ -1571,9 +1561,7 @@ function etsmodel(
     opt_crit::String,
     nmse::Int,
     bounds::String,
-    optim_method = NelderMead(),
-    maxit::Int = 2000;
-    kwargs...)
+    options::NelderMeadOptions)
 
     if seasontype == "N"
         m = 1
@@ -1704,9 +1692,7 @@ function etsmodel(
         bounds,
         m,
         initial_params,
-        fun = optim_method,
-        iterations = maxit,
-        kwargs...)
+        options)
 
     fit_par = optimized_fit["optimized_params"]
 
@@ -2017,6 +2003,7 @@ function fit_small_dataset(
     seasontype,
     lambda,
     biasadj,
+    options
 )
 
     if seasontype in ["A", "M"]
@@ -2033,6 +2020,7 @@ function fit_small_dataset(
                 lambda = lambda,
                 biasadj = biasadj,
                 warnings = false,
+                options = options
             )
             return fit
         catch e
@@ -2054,6 +2042,7 @@ function fit_small_dataset(
                 lambda = lambda,
                 biasadj = biasadj,
                 warnings = false,
+                options = options
             )
             return fit
         catch e
@@ -2076,6 +2065,7 @@ function fit_small_dataset(
                 lambda = lambda,
                 biasadj = biasadj,
                 warnings = false,
+                options = options
             )
             return fit
         catch e
@@ -2097,6 +2087,7 @@ function fit_small_dataset(
             lambda = lambda,
             biasadj = biasadj,
             warnings = false,
+            options = options
         )
     catch e
         nothing
@@ -2115,6 +2106,7 @@ function fit_small_dataset(
             lambda = lambda,
             biasadj = biasadj,
             warnings = false,
+            options = options
         )
     catch e
         nothing
@@ -2208,9 +2200,7 @@ function fit_ets_models(
     nmse,
     bounds,
     ic,
-    opt_method,
-    iterations;
-    kwargs...)
+    options)
 
     best_ic = Inf
     best_model = nothing
@@ -2235,9 +2225,7 @@ function fit_ets_models(
                 opt_crit,
                 nmse,
                 bounds,
-                opt_method,
-                iterations;
-                kwargs...)
+                options)
             fit_ic = get_ic(the_fit_model, ic)
             if fit_ic < best_ic
                 best_ic = fit_ic
@@ -2277,9 +2265,7 @@ function fit_best_ets_model(
     restrict = true,
     additive_only = false,
     allow_multiplicative_trend = true,
-    opt_method = NelderMead(),
-    iterations = 2000,
-    kwargs...)
+    options)
 
     grid = generate_ets_grid_fixed(
         errortype,
@@ -2306,9 +2292,7 @@ function fit_best_ets_model(
         nmse,
         bounds,
         ic,
-        opt_method,
-        iterations;
-        kwargs...)
+        options)
 
     best_model = result["best_model"]
     best_params = result["best_params"]
@@ -2324,23 +2308,6 @@ function fit_best_ets_model(
     method = "ETS($(best_e),$(best_t)$(best_d ? "d" : ""),$(best_s))"
     components = [best_e, best_t, best_s, best_d]
     return Dict("model" => best_model, "method" => method, "components" => components)
-end
-
-function get_optimization_method(opt_method::String)
-    opt_methods = Dict(
-        "Nelder-Mead" => Optim.NelderMead(),
-        "BFGS" => Optim.BFGS(),
-        "CG" => Optim.ConjugateGradient(),
-        "L-BFGS-B" => Optim.LBFGS(),
-        "SANN" => Optim.SimulatedAnnealing(),
-        "Brent" => Optim.Brent(),
-    )
-
-    if haskey(opt_methods, opt_method)
-        return opt_methods[opt_method]
-    else
-        error("Unsupported optimization method: $opt_method")
-    end
 end
 
 
@@ -2366,15 +2333,8 @@ function ets_base_model(
     allow_multiplicative_trend::Bool = false,
     use_initial_values::Bool = false,
     na_action_type::String = "na_contiguous",
-    opt_method::String = "Nelder-Mead",
-    iterations::Int = 500,
-    kwargs...,
+    options::NelderMeadOptions,
 )
-
-    opt_method =
-        match_arg(opt_method, ["Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SANN", "Brent"])
-
-   opt_method = get_optimization_method(opt_method)
 
     orig_y,
     y,
@@ -2441,6 +2401,7 @@ function ets_base_model(
             seasontype,
             lambda,
             biasadj,
+            options
         )
     end
 
@@ -2465,9 +2426,7 @@ function ets_base_model(
         restrict = additive_only,
         additive_only = additive_only,
         allow_multiplicative_trend = allow_multiplicative_trend,
-        opt_method = opt_method,
-        iterations = iterations;
-        kwargs...)
+        options = options)
 
     method = model["method"]
     components = model["components"]

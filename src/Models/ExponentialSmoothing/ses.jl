@@ -57,6 +57,7 @@ function ses(
     alpha::Union{Float64,Bool,Nothing} = nothing,
     lambda::Union{Float64,Bool,Nothing} = nothing,
     biasadj::Bool = false,
+    options::NelderMeadOptions = NelderMeadOptions(),
 )
 
     initial = match_arg(initial, ["optimal", "simple"])
@@ -70,6 +71,7 @@ function ses(
             opt_crit = "mse",
             lambda = lambda,
             biasadj = biasadj,
+            options = options,
         )
         loglik = model.loglik
         aic = model.aic
@@ -87,6 +89,7 @@ function ses(
             gamma = false,
             lambda = lambda,
             biasadj = biasadj,
+            options = options,
         )
         loglik = NaN
         aic = NaN

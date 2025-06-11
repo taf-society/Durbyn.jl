@@ -20,7 +20,12 @@ struct CrostonForecast
 end
 
 
-function croston(y::AbstractArray, m::Int; alpha::Union{Float64,Bool,Nothing} = nothing)
+function croston(
+    y::AbstractArray,
+    m::Int;
+    alpha::Union{Float64,Bool,Nothing} = nothing,
+    options::NelderMeadOptions = NelderMeadOptions(),
+)
 
     x = copy(y)
     y = [val for val in x if val > 0]
@@ -44,8 +49,8 @@ function croston(y::AbstractArray, m::Int; alpha::Union{Float64,Bool,Nothing} = 
         y_f_struct = nothing
         p_f_struct = nothing
     else
-        y_f_struct = ses(y, m, initial = "simple", alpha = alpha)
-        p_f_struct = ses(tt, m, initial = "simple", alpha = alpha)
+        y_f_struct = ses(y, m, initial = "simple", alpha = alpha, options = options)
+        p_f_struct = ses(tt, m, initial = "simple", alpha = alpha, options = options)
         type = CrostonType(4)
     end
     out = CrostonFit(y_f_struct, p_f_struct, type, x, y, tt, m)

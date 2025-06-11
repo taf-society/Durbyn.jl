@@ -21,9 +21,7 @@ function ets(
     allow_multiplicative_trend::Bool = false,
     use_initial_values::Bool = false,
     na_action_type::String = "na_contiguous",
-    opt_method::String = "Nelder-Mead",
-    iterations::Int = 500,
-    kwargs...,
+    options::NelderMeadOptions = NelderMeadOptions()
 )
 
     if model == "ZZZ" && is_constant(y)
@@ -52,9 +50,7 @@ function ets(
         allow_multiplicative_trend = allow_multiplicative_trend,
         use_initial_values = use_initial_values,
         na_action_type = na_action_type,
-        opt_method = opt_method,
-        iterations = iterations,
-        kwargs...,
+        options=options
     )
 
     return out

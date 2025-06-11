@@ -4,8 +4,6 @@ using LinearAlgebra
 import Statistics: mean
 
 # External packages
-using Optim
-import Optim: optimize, NelderMead, Brent, minimizer, minimum, iterations
 using Plots
 using Polynomials
 using Distributions
@@ -15,6 +13,7 @@ import DataStructures: OrderedDict
 import ..Utils: is_constant, match_arg, na_action, na_omit
 import ..Stats: box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, fourier
 import ..Generics: Forecast, forecast, plot
+import ..Optimize: nmmin, NelderMeadOptions
 
 include("ets_utils.jl")
 include("ets.jl")

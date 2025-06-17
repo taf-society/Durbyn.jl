@@ -452,15 +452,14 @@ function handle_p_equals_0(V::AbstractArray, r::Int)
         for j = 0:i
             ind -= 1
 
-            res[ind] = V[ind]
+            res[ind + 1] = V[ind+1]
 
             if j != 0
                 indn -= 1
-                res[ind] = 2.0 * res[ind]
+                res[ind+1] += res[indn+1]
             end
         end
     end
-
     return res
 end
 
@@ -715,7 +714,7 @@ function arima_css(y::AbstractArray, arma::Vector{Int}, phi::AbstractArray, thet
         end
     end
 
-    return ssq / nu, resid
+    return Dict("sigma2" => ssq / nu, "resid" => resid)
 end
 
  function make_arima(phi::Vector{Float64}, theta::Vector{Float64}, Delta::Vector{Float64}; kappa::Float64=1e6, SSinit::String="Gardner1980", tol::Float64=eps(Float64))
@@ -952,9 +951,9 @@ function arima_like(y,
 
     # return matching R signature
     if use_resid
-        return ssq, sumlog, nu, rsResid
+        return Dict("ssq" => ssq, "sumlog" => sumlog, "nu" => nu, "resid" => rsResid)
     else
-        return ssq, sumlog, nu
+        return Dict("ssq" => ssq, "sumlog" => sumlog, "nu" => nu)
     end
 end
 
@@ -971,8 +970,7 @@ function arima(x::AbstractArray,
     method = "CSS",
     n_cond = nothing,
     SSinit = "Gardner1980",
-    optim_method = :BFGS,
-    optim_control = Dict(:maxiter => 100),
+    options::NelderMeadOptions = NelderMeadOptions(),
     kappa = 1e6,)
 
     # Internal helper: convolution
@@ -986,23 +984,31 @@ function arima(x::AbstractArray,
     function upARIMA(mod, phi, theta)
         p = length(phi)
         q = length(theta)
-        mod.phi = phi
-        mod.theta = theta
         r = max(p, q + 1)
 
+        mod = (mod..., phi = phi, theta = theta)
+
         if p > 0
-            mod.T[1:p, 1] .= phi
+            T = copy(mod.T)
+            T[1:p, 1] .= phi
+            mod = (mod..., T = T)
         end
 
         if r > 1
-            mod.Pn[1:r, 1:r] .= SS_G ? getQ0(phi, theta) : getQ0bis(phi, theta, 0.0)
+            Pn = copy(mod.Pn)
+            Pn[1:r, 1:r] .= SS_G ? getQ0(phi, theta) : getQ0bis(phi, theta, 0.0)
         else
-            mod.Pn[1, 1] = (p > 0) ? 1 / (1 - phi[1]^2) : 1.0
+            Pn = copy(mod.Pn)
+            Pn[1, 1] = (p > 0) ? 1 / (1 - phi[1]^2) : 1.0
         end
+        mod = (mod..., Pn = Pn)
 
-        mod.a .= 0.0
+        a = fill(0.0, size(mod.a))
+        mod = (mod..., a = a)
+
         return mod
     end
+
 
     # ARIMA likelihood
     function arimaSS(y, mod)
@@ -1015,20 +1021,22 @@ function arima(x::AbstractArray,
         par[mask] = p
         trarma = arima_transpar(par, arma, trans)
 
+        Z = upARIMA(mod, trarma[1], trarma[2])
+
         try
             Z = upARIMA(mod, trarma[1], trarma[2])
-        catch
-            @warn "Updating arima failed"
+        catch e
+            @warn "Updating arima failed $e"
             return typemax(Float64)
         end
 
         if ncxreg > 0
             x = x .- xreg * par[narma+1:end]
         end
-        res = arima_like(x, Z.phi, Z.theta, Z.Delta, Z.a, Z.P, Z.Pn, 0, false)
+        resss = arima_like(x, Z.phi, Z.theta, Z.Delta, Z.a, Z.P, Z.Pn, 0, false)
 
-        s2 = res[1] / res[3]
-        return 0.5 * (log(s2) + res[2] / res[3])
+        s2 = resss["ssq"] / resss["nu"]
+        return 0.5 * (log(s2) + resss["sumlog"] / resss["nu"])
     end
 
     # Conditional sum of squares objective
@@ -1041,8 +1049,8 @@ function arima(x::AbstractArray,
             x = x .- xreg * par[narma+1:end]
         end
 
-        ross, _ = arima_css(x, arma, trarma[1], trarma[2], ncond)
-        return 0.5 * log(ross)
+        ross = arima_css(x, arma, trarma[1], trarma[2], ncond)
+        return 0.5 * log(ross["sigma2"])
     end
 
     # Check AR polynomial stationarity
@@ -1301,7 +1309,7 @@ function arima(x::AbstractArray,
         if no_optim
             res = (converged=true, minimizer=zeros(0), minimum=armaCSS(zeros(0)))
         else
-            opt = nmmin(p -> armaCSS(p), init[mask])
+            opt = nmmin(p -> armaCSS(p), init[mask], options)
 
             res = (
                 converged=isapprox(opt.fail, 0, atol=1e-7),
@@ -1327,13 +1335,13 @@ function arima(x::AbstractArray,
         arimaSS(x, mod)
         
         val = arima_css(x, arma, trarma[1], trarma[2], ncond)
-        sigma2 = val[1]
+        sigma2 = val["sigma2"]
         
 
         if no_optim
             var = zeros(0)
         else
-            hessian = optim_hessian(res.minimizer, p -> armaCSS(p))
+            hessian = optim_hessian(p -> armaCSS(p), res.minimizer)
             var = inv(hessian * n_used)
         end
 
@@ -1346,7 +1354,7 @@ function arima(x::AbstractArray,
                     minimum=armaCSS(zeros(0)),
                 )
             else
-                opt = nmmin(p -> armaCSS(p), init[mask])
+                opt = nmmin(p -> armaCSS(p), init[mask], options)
                 res = (
                     converged=isapprox(opt.fail, 0, atol=1e-7),
                     minimizer=opt.x_opt,
@@ -1394,7 +1402,7 @@ function arima(x::AbstractArray,
                 minimum=armafn(zeros(0), transform_pars),
             )
         else
-            opt = nmmin(p -> armafn(p, transform_pars), init[mask])
+            opt = nmmin(p -> armafn(p, transform_pars), init[mask], options)
             
             res = (
                 converged=isapprox(opt.fail, 0, atol=1e-7),
@@ -1427,7 +1435,10 @@ function arima(x::AbstractArray,
 
             if any(coef[mask] .!= res.minimizer)
                 old_convergence = res.converged
-                opt = nmmin(p -> armafn(p, true), coef[mask], maxit=0)
+                options2 = NelderMeadOptions(options.abstol, options.intol, 
+                options.alpha, options.beta, options.gamma, options.trace, 0)
+
+                opt = nmmin(p -> armafn(p, true), coef[mask], options2)
                 hessian = optim_hessian(p -> armafn(p, true), opt.x_opt)
 
                 res = (
@@ -1438,7 +1449,7 @@ function arima(x::AbstractArray,
                 )
                 coef[mask] .= res.minimizer
             else
-                hessian = optim_hessian(p -> armafn_opt(p, true), res.minimizer)
+                hessian = optim_hessian(p -> armafn(p, true), res.minimizer)
             end
 
             A = arima_gradtrans(coef, arma)
@@ -1449,7 +1460,7 @@ function arima(x::AbstractArray,
             if no_optim
                 var = zeros(0)
             else
-                hessian = optim_hessian(p -> armafn_opt(p, true), res.minimizer)
+                hessian = optim_hessian(p -> armafn(p, true), res.minimizer)
                 var = inv(hessian * n_used)
             end
         end
@@ -1462,7 +1473,7 @@ function arima(x::AbstractArray,
         else
             arimaSS(x, mod)
         end
-        sigma2 = val[1][1] / n_used
+        sigma2 = val["ssq"][1] / n_used
     end
 
     # # Final steps
@@ -1495,8 +1506,7 @@ function arima(x::AbstractArray,
         A = A[mask, mask]
         var = A * var * transpose(A)
     end
-
-    resid = val[2]
+    resid = val["resid"]
 
     result = ArimaFit(
         arima_coef,
@@ -1516,6 +1526,7 @@ function arima(x::AbstractArray,
     return result
 
 end
+
 """
 kalman_forecast(n, Z, a, P, T, V, h)
 

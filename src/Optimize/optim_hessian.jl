@@ -157,7 +157,7 @@ println(hessian_himmelblau)
 - The `gr` function must return a vector of gradients for each parameter, i.e., it should have the same length as `par`.
 
 """
-function optim_hessian(par, fn, gr = nothing; fnscale = 1.0, parscale = nothing, ndeps = nothing, kwargs...)
+function optim_hessian(fn, par, gr = nothing; fnscale = 1.0, parscale = nothing, ndeps = nothing, kwargs...)
     
     npar = length(par)
     fn1(par) = fn(par; kwargs...)

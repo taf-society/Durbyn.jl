@@ -25,8 +25,10 @@ using .IntermittentDemand
 
 import .Utils: air_passengers
 import .Generics: plot
+import .Optimize: NelderMeadOptions
 
 export air_passengers
 export plot
+export NelderMeadOptions
 
 end

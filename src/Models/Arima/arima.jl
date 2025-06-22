@@ -124,6 +124,8 @@ A struct containing the results of an ARIMA model fit. This type holds all relev
 
 """
 struct ArimaFit
+    y::AbstractArray
+    fitted::AbstractArray
     coef::ArimaCoef
     sigma2::Float64
     var_coef::Matrix{Float64}
@@ -137,6 +139,7 @@ struct ArimaFit
     nobs::Int
     model::NamedTuple
     xreg::Any
+    method::String
 end
 
 function Base.show(io::IO, fit::ArimaFit)
@@ -1507,8 +1510,11 @@ function arima(x::AbstractArray,
         var = A * var * transpose(A)
     end
     resid = val["resid"]
+    fitted = y + resid
 
     result = ArimaFit(
+        y,
+        fitted,
         arima_coef,
         sum(resid .^ 2) / n_used,
         var,
@@ -1522,6 +1528,7 @@ function arima(x::AbstractArray,
         n_used,
         mod,
         xreg_original,
+        "ARIMA($(order.p),$(order.d),$(order.q))(" * "$(seasonal.p),$(seasonal.d),$(seasonal.q))[$m]"
     )
     return result
 
@@ -1576,6 +1583,92 @@ function kalman_forecast(
         se[l] = h + dot(Z, P * Z)
     end
     return forecasts, se
+end
+
+struct ArimaPredictions
+    prediction::Vector{Float64}
+    se::Vector{Float64}
+    y::AbstractVector
+    fitted::Vector{Float64}
+    residuals::Vector{Float64}
+    method::String
+end
+
+"""
+    plot(pred::ArimaPredictions;
+         levels=[80,95],
+         show_fitted=true,
+         show_residuals=false)
+
+Assumes `pred.se` already = √(variance) if `pred.se_fit` was true, or NaN otherwise.
+Draws:
+  • dashed history (`pred.y`)
+  • solid blue forecast mean
+  • shaded PIs at each `levels`%
+  • optional dotted fitted-values overlay
+  • optional residuals subplot
+"""
+function plot(pred::ArimaPredictions;
+              levels         = [80, 95],
+              show_fitted    = true,
+              show_residuals = false)
+
+    n_hist = length(pred.y)
+    n_fore = length(pred.prediction)
+    t_hist = 1:n_hist
+    t_fore = (n_hist+1):(n_hist + n_fore)
+    se_vec = pred.se
+
+    k = length(levels)
+    lower = zeros(n_fore, k)
+    upper = zeros(n_fore, k)
+    for (i, lvl) in enumerate(levels)
+        α = 1 - lvl/100
+        z = quantile(Normal(), 1 - α/2)
+        me = se_vec .* z
+        lower[:,i] = pred.prediction .- me
+        upper[:,i] = pred.prediction .+ me
+    end
+
+    title = "Forecast Plot from " * pred.method
+    p = Plots.plot(t_hist, pred.y;
+                   label     = "Historical Data",
+                   lw        = 2,
+                   linestyle = :dash,
+                   title     = title,
+                   xlabel    = "Time",
+                   ylabel    = "Value")
+
+    Plots.plot!(p, t_fore, pred.prediction;
+                label = "Forecast Mean",
+                lw    = 3,
+                color = :blue)
+
+    for i in 1:k
+        fillcol = i == k ? "#D5DBFF" : "#596DD5"
+        ribbon  = upper[:,i] .- lower[:,i]
+        Plots.plot!(p, t_fore, upper[:,i];
+                    ribbon    = ribbon,
+                    fillcolor = fillcol,
+                    linecolor = fillcol,
+                    label     = "$(levels[i])% PI")
+    end
+
+    if show_fitted && !isempty(pred.fitted)
+        Plots.plot!(p, t_hist, pred.fitted;
+                    label     = "Fitted Values",
+                    linestyle = :dot)
+    end
+
+    if show_residuals && !isempty(pred.residuals)
+        pr = Plots.plot(t_hist, pred.residuals;
+                        label = "Residuals",
+                        lw    = 1,
+                        color = :red)
+        p = Plots.plot(p, pr; layout = (2,1), link = :x)
+    end
+
+    return p
 end
 
 function predict_arima(
@@ -1639,8 +1732,9 @@ function predict_arima(
 
     if se_fit
         se = sqrt.(se .* model.sigma2)
-        return pred, se
     else
-        return pred
+        se = fill(NaN, length(pred))
     end
+
+    return ArimaPredictions(pred, se, model.y, model.fitted, model.residuals, model.method)
 end

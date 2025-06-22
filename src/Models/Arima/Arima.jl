@@ -18,6 +18,6 @@ import ..Optimize: nmmin, NelderMeadOptions, optim_hessian
 
 import Base: show
 include("arima.jl")
-export arima, ArimaFit, PDQ, ArimaCoef, predict_arima
+export arima, ArimaFit, PDQ, ArimaCoef, predict_arima, ArimaPredictions
 
 end

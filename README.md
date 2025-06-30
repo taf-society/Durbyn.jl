@@ -89,20 +89,40 @@ plot(fc_crst)
 using Durbyn.IntermittentDemand
 
 # Classical Croston Method based Croston, J. (1972) 
-crst1 =croston_classic(data, 12)
-plot(crst1, show_fitted = true)
+crst1 =croston_classic(data)
+fc1 = forecast(crst1, h = 12)
+
+residuals(crst1)
+residuals(fc1)
+
+fitted(crst1)
+fitted(fc1)
+
+plot(fc1, show_fitted = true)
 
 # Croston Method with Syntetos-Boylan Approximation
-crst2 =croston_sba(data, 12)
-plot(crst2, show_fitted = true)
+crst2 =croston_sba(data)
+fc2 = forecast(crst2, h = 12)
+
+residuals(crst2)
+residuals(fc2)
+
+fitted(crst2)
+fitted(fc2)
+
+plot(fc2, show_fitted = true)
 
 # Croston-Shale-Boylan-Johnston Bias Correction Method
-crst3 =croston_sbj(data, 12)
-plot(crst3, show_fitted = true)
+crst3 =croston_sbj(data)
+fc3 = forecast(crst3, h = 12)
 
+residuals(crst3)
+residuals(fc3)
 
-# Planned (conformalize the forecast)
-fc_conformal = conformalize(fc)
+fitted(crst3)
+fitted(fc3)
+
+plot(fc3, show_fitted = true)
 
 ```
 

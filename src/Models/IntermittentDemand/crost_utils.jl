@@ -1,5 +1,105 @@
+"""
+    struct IntermittentDemandCrostonFit
 
-function crost_cost(params, x, cost_metric, method, fixed_weights, num_params, optimize_weights, 
+Structure representing the results and configuration for a Croston-based
+intermittent demand forecasting method.
+
+# Fields
+- `weights::AbstractArray`: Smoothing parameters for demand and interval. 
+
+- `initial::AbstractArray`: Initial values for demand and interval smoothing. 
+
+- `method::String`: The Croston method used. One of:
+    - `"Croston-Shale-Boylan-Johnston Bias Correction Method"`
+    - `"Croston Method with Syntetos-Boylan Approximation"`
+    - `"Classical Croston Method"`
+
+- `na_rm::Bool`: Logical value indicating whether missing (`missing`) values should be removed 
+  prior to fitting the model.
+
+- `x::AbstractArray`: The input demand time series data.
+
+"""
+struct IntermittentDemandCrostonFit
+    weights::AbstractArray
+    initial::AbstractArray
+    method::String
+    na_rm::Bool
+    x::AbstractArray
+end
+
+"""
+IntermittentDemandForecast
+
+A container for storing the results of an intermittent demand forecast model.
+
+Fields
+
+mean::Any: The mean forecast values over the prediction horizon, typically a vector of numeric values.
+
+model::IntermittentDemandCrostonFit: A dictionary containing detailed output from the fitted forecasting model, including in-sample forecasts, smoothing weights, initial values, and model components.
+
+method::Any: A label describing the forecasting method used, such as "Classical Croston Method", "Croston Method with Syntetos-Boylan Approximation", or "Croston Method with Shale-Boylan-Johnston Bias Correction".
+
+Description
+
+This struct serves as a standardized return object for various Croston-based forecasting methods, helping users interpret, validate, or visualize forecast results from intermittent demand models.
+"""
+struct IntermittentDemandForecast
+    mean::Any
+    model::IntermittentDemandCrostonFit
+    method::Any
+end
+
+function croston_opt(x, method, cost, w, nop, init, init_opt)
+
+    nzd = findall(xi -> xi != 0, x)
+    k = length(nzd)
+    intervals = [nzd[1], nzd[2:k] .- nzd[1:(k-1)]...]
+
+    if isnothing(w) && !init_opt
+        p0 = fill(0.05, nop)
+        lbound = fill(0, nop)
+        ubound = fill(1, nop)
+
+        if nop != 1
+            wopt = optimize(p -> croston_cost(p, x, cost, method, w,
+                nop, true, init, init_opt, lbound, ubound),
+                p0, NelderMead(), Options(iterations = 2000)).minimizer
+        else
+            wopt = optimize(p -> croston_cost([p], x, cost, method, w,
+                nop, true, init, init_opt, lbound, ubound),
+                lbound[1], ubound[1], Brent()).minimizer
+        end
+
+        wopt = [wopt..., init...]
+
+    elseif isnothing(w) && init_opt
+        p0 = [fill(0.05, nop)..., init[1], init[2]]
+        lbound = [fill(0, nop)..., 0, 1]
+        ubound = [fill(1, nop)..., maximum(x), minimum(intervals)]
+
+        wopt = optimize(p -> croston_cost(p, x, cost, method, w,
+            nop, true, init, true, lbound, ubound),
+            p0, NelderMead(), Options(iterations = 2000)).minimizer
+
+    elseif !isnothing(w) && init_opt
+        nop = length(w)
+        p0 = [init[1], init[2]]
+        lbound = [0, 1]
+        ubound = [maximum(x), maximum(intervals)]
+
+        wopt = optimize(p -> croston_cost(p, x, cost, method, w,
+            nop, false, init, true, lbound, ubound),
+            p0, NelderMead(), Options(iterations = 2000)).minimizer
+
+        wopt = [wopt..., init...]
+    end
+
+    return Dict("w" => wopt[1:nop], "init" => wopt[(nop+1):(nop+2)])
+end
+
+function croston_cost(params, x, cost_metric, method, fixed_weights, num_params, optimize_weights, 
     initial_values, optimize_inits, lower_bounds, upper_bounds)
     forecast_input = nothing
 
@@ -11,7 +111,7 @@ function crost_cost(params, x, cost_metric, method, fixed_weights, num_params, o
         inits = params
     end
 
-    forecast_result = crost_not_optimized(x, 0, collect(weights), inits, method, false)
+    forecast_result = pred_crost(x, 0, collect(weights), inits, method, false)
     forecast_input = forecast_result["frc_in"]
 
     error = evaluation_metrics(x, forecast_input)[cost_metric]
@@ -26,88 +126,7 @@ function crost_cost(params, x, cost_metric, method, fixed_weights, num_params, o
     return error
 end
 
-function crost_opt(x, method, cost, w, nop, init, init_opt)
-
-    nzd = findall(xi -> xi != 0, x)
-    k = length(nzd)
-    intervals = [nzd[1], nzd[2:k] .- nzd[1:(k-1)]...]
-
-    if isnothing(w) && !init_opt
-        p0 = fill(0.05, nop)
-        lbound = fill(0, nop)
-        ubound = fill(1, nop)
-
-        if nop != 1
-            wopt = optimize(p -> crost_cost(p, x, cost, method, w,
-                nop, true, init, init_opt, lbound, ubound),
-                p0, NelderMead(), Options(iterations = 2000)).minimizer
-        else
-            wopt = optimize(p -> crost_cost([p], x, cost, method, w,
-                nop, true, init, init_opt, lbound, ubound),
-                lbound[1], ubound[1], Brent()).minimizer
-        end
-
-        wopt = [wopt..., init...]
-
-    elseif isnothing(w) && init_opt
-        p0 = [fill(0.05, nop)..., init[1], init[2]]
-        lbound = [fill(0, nop)..., 0, 1]
-        ubound = [fill(1, nop)..., maximum(x), minimum(intervals)]
-
-        wopt = optimize(p -> crost_cost(p, x, cost, method, w,
-            nop, true, init, true, lbound, ubound),
-            p0, NelderMead(), Options(iterations = 2000)).minimizer
-
-    elseif !isnothing(w) && init_opt
-        nop = length(w)
-        p0 = [init[1], init[2]]
-        lbound = [0, 1]
-        ubound = [maximum(x), maximum(intervals)]
-
-        wopt = optimize(p -> crost_cost(p, x, cost, method, w,
-            nop, false, init, true, lbound, ubound),
-            p0, NelderMead(), Options(iterations = 2000)).minimizer
-
-        wopt = [wopt..., init...]
-    end
-
-    return Dict("w" => wopt[1:nop], "init" => wopt[(nop+1):(nop+2)])
-end
-
-function crost_optimized(x, h, init, nop, method, cost, init_opt, na_rm)
-    
-    if !(nop in [1, 2])
-        @warn "nop can be either 1 or 2. Overriden to 2."
-        nop = 2
-    end
-
-    if na_rm
-        x = filter(!ismissing, x)
-    end
-
-    @assert sum(x .!= 0) >= 2 "I need at least two non-zero values to model your time series."
-    nzd = findall(xi -> xi != 0, x)
-    z = x[nzd]
-    k = length(nzd)
-    intervals = [nzd[1], nzd[2:k] .- nzd[1:(k-1)]...]
-
-    if !(isa(init, Array))
-        init = init == "mean" ? [z[1], mean(intervals)] : [z[1], intervals[1]]
-    end
-
-    wopt = crost_opt(x, method, cost, nothing, nop, init, init_opt)
-    w = wopt["w"]
-    init = wopt["init"]
-
-    if na_rm 
-        na_rm = false
-    end
-
-    out = crost_not_optimized(x, h, w, init, method, na_rm)
-    return(out)
-end
-
-function crost_not_optimized(x,h,w,init,method,na_rm)
+function pred_crost(x,h,w,init,method,na_rm)
 
     if na_rm
         x = filter(!ismissing, x)
@@ -185,21 +204,145 @@ function crost_not_optimized(x,h,w,init,method,na_rm)
     )
 end
 
-function crost(x, h, w,init,nop,method,cost,init_opt,na_rm)
+function fit_croston(x, method::String="croston", cost::String="mse", 
+                     nop::Int=2, init_strategy::String="mean", 
+                     optimize_init::Bool=true, na_rm::Bool=false)
 
     method = match_arg(method, ["croston", "sba", "sbj"])
-    init = match_arg(init, ["naive", "mean"])
     cost = match_arg(cost, ["mar", "msr", "mae", "mse"])
+    init_strategy = match_arg(init_strategy, ["naive", "mean"])
+    y = copy(x)
 
-    out = if isnothing(w) || init_opt
-        crost_optimized(x, h, init, nop, method, cost, init_opt, na_rm)
-    else
-        crost_not_optimized(x, h, w, init, method, na_rm)
+    if !(nop in [1, 2])
+        @warn "nop can be either 1 or 2. Overriden to 2."
+        nop = 2
     end
 
-    res = out["data"] - out["frc_in"]
+    if na_rm
+        x = filter(!ismissing, x)
+    end
 
-    return Dict("x" => out["data"], "fitted" => out["frc_in"],
-     "residuals" => res, "weights" => out["weights"], 
-     "initial" => out["initial"],  "components" => out["components"]), out["frc_out"]
+    @assert sum(x .!= 0) >= 2 "Need at least two non-zero values to model the time series."
+
+    nzd = findall(!=(0), x)
+    intervals = [nzd[1]; diff(nzd)]
+
+    z = x[nzd]
+    init = init_strategy == "mean" ? [z[1], mean(intervals)] : [z[1], intervals[1]]
+
+    opt = croston_opt(x, method, cost, nothing, nop, init, optimize_init)
+
+    return IntermittentDemandCrostonFit(opt["w"], opt["init"], method, na_rm, y)
+end
+
+function predict_croston(model::IntermittentDemandCrostonFit, h::Int)
+
+    w = model.weights
+    init = model.initial
+    method = model.method
+    na_rm = model.na_rm
+    x = model.x
+
+    return pred_crost(x, h, w, init, method, na_rm)
+end
+
+
+"""
+    forecast(object::IntermittentDemandCrostonFit; h::Int = 10) 
+        -> IntermittentDemandForecast
+
+Generate forecasts for intermittent demand using a fitted Croston-based model.
+
+# Arguments
+
+- `object::IntermittentDemandCrostonFit`: A fitted intermittent demand model, as returned by 
+  functions like [`croston_classic`] or other Croston variants. This object contains the smoothing 
+  parameters, initialization strategy, input data, and method type.
+
+- `h::Int`: Forecast horizon (i.e., number of future periods to predict). Default is `10`.
+
+# Returns
+
+- `IntermittentDemandForecast`: An object that encapsulates the forecasted values, the original fitted 
+  model (`IntermittentDemandCrostonFit`), and the method used.
+
+# Example
+
+```julia
+fit = croston_classic(demand_series)
+fc = forecast(fit, h=12)
+println(fc.forecast)
+````
+
+"""
+function forecast(object::IntermittentDemandCrostonFit; h::Int = 10)
+    out = predict_croston(object, h)
+    return IntermittentDemandForecast(out["frc_out"], object, object.method)
+end
+
+"""
+    fitted(object::IntermittentDemandCrostonFit) -> AbstractVector
+    fitted(object::IntermittentDemandForecast) -> AbstractVector
+
+Extract the in-sample fitted values from a Croston-based intermittent demand model.
+
+# Arguments
+
+- `object::IntermittentDemandCrostonFit`: A fitted Croston model containing smoothing parameters, initialization settings, and original data.
+
+- `object::IntermittentDemandForecast`: A forecast object wrapping a `IntermittentDemandCrostonFit` model.
+
+# Returns
+
+- `AbstractVector`: A vector of in-sample fitted values corresponding to the input demand time series. These represent the model's estimates at each time step during training.
+
+# Description
+
+This function returns the in-sample forecasts (`frc_in`) produced by the Croston-based model. It reconstructs the fitted values using the original demand data, smoothing weights, initialization values, and selected Croston method variant.
+
+For `IntermittentDemandForecast` objects, the method delegates to the underlying fitted model.
+"""
+function fitted(object::IntermittentDemandCrostonFit)
+    w = object.weights
+    init = object.initial
+    method = object.method
+    na_rm = object.na_rm
+    x = object.x
+
+    return pred_crost(x, 0, w, init, method, na_rm)["frc_in"]
+end
+
+function fitted(object::IntermittentDemandForecast)
+fitted(object.model)
+end
+
+"""
+    residuals(object::IntermittentDemandCrostonFit) -> AbstractVector
+    residuals(object::IntermittentDemandForecast) -> AbstractVector
+
+Compute the residuals from an intermittent demand model.
+
+# Arguments
+
+- `object::IntermittentDemandCrostonFit`: A fitted Croston model object.
+
+- `object::IntermittentDemandForecast`: A forecast object wrapping a fitted Croston model.
+
+# Returns
+
+- `AbstractVector`: A vector of residuals, computed as the difference between observed values and fitted in-sample forecasts.
+
+# Description
+
+Residuals represent the error between the actual demand values and the fitted values produced by the model.
+This function subtracts the in-sample forecasts from the original demand time series (`x`) to yield these residuals.
+
+For `IntermittentDemandForecast` objects, residuals are computed by delegating to the underlying model.
+"""
+function residuals(object::IntermittentDemandCrostonFit)
+    object.x - fitted(object) 
+end
+
+function residuals(object::IntermittentDemandForecast)
+    residuals(object.model) 
 end

@@ -51,6 +51,25 @@ struct IntermittentDemandForecast
     method::Any
 end
 
+function show(io::IO, model::IntermittentDemandCrostonFit)
+    println(io, "IntermittentDemandCrostonFit:")
+    println(io, "  Method:     ", model.method)
+    println(io, "  NA Removed: ", model.na_rm)
+    println(io, "  Weights:    ", model.weights)
+    println(io, "  Initial:    ", model.initial)
+    println(io, "  Data Length:", length(model.x))
+end
+
+
+function show(io::IO, forecast::IntermittentDemandForecast)
+    println(io, "IntermittentDemandForecast:")
+    println(io, "  Method:     ", forecast.method)
+    println(io, "  Mean (first 5 values): ", forecast.mean[1:min(5, end)])
+    println(io, "  Model Summary:")
+    show(io, forecast.model)
+end
+
+
 function croston_opt(x, method, cost, w, nop, init, init_opt)
 
     nzd = findall(xi -> xi != 0, x)

@@ -1,9 +1,11 @@
 module IntermittentDemand
 using Statistics
 using Plots
-using ..Generics
+import Base: show
 import Statistics: mean
 import Optim: optimize, NelderMead, Brent, Options
+
+using ..Generics
 import ..Utils: evaluation_metrics
 import ..Utils: match_arg
 import ..Generics: plot

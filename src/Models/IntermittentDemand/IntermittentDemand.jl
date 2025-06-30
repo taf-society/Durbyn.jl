@@ -14,6 +14,8 @@ import ..Generics: forecast
 include("crost_utils.jl")
 include("crost.jl")
 
-export croston_classic, croston_sba, croston_sbj, IntermittentDemandForecast, IntermittentDemandCrostonFit, residuals, fitted
+export croston_classic, croston_sba, croston_sbj
+export IntermittentDemandForecast
+export IntermittentDemandCrostonFit, residuals, fitted
 
 end

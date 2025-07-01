@@ -1,0 +1,284 @@
+using Statistics
+using Optim
+using Distributions
+
+"""
+    ArarmaModel
+
+Struct to hold parameters and data for an ARARMA model.
+"""
+struct ArarmaModel
+    Ψ::Vector{Float64}
+    Sbar::Float64
+    gamma::Vector{Float64}
+    best_ϕ::Vector{Float64}
+    σ2::Float64
+    best_lag::Tuple{Int, Int, Int, Int}
+    y_original::Vector{Float64}
+    best_θ::Vector{Float64}
+    ma_order::Int
+    ar_order::Int
+    aic::Float64
+    bic::Float64
+    loglik::Float64
+end
+
+
+# Returns a vector selecting elements of `x` at indices `idxs`, replacing any out-of-bounds values with zero.
+function safe_slice(x::Vector{T}, idxs::AbstractVector{Int}) where T
+    out = similar(idxs, T)
+    n = length(x)
+    for (i, idx) in enumerate(idxs)
+        out[i] = (1 <= idx <= n) ? x[idx] : zero(T)
+    end
+    return out
+end
+
+# Generates the AR psi-weights vector for arbitrary lag structure.
+function compute_xi(Ψ::Vector{Float64}, ϕ::Vector{Float64}, lags::NTuple{4, Int})
+    _, i, j, k_lag = lags
+    xi = [Ψ; zeros(k_lag)]
+    ϕ_pad = vcat(ϕ, zeros(4 - length(ϕ)))
+
+    xi .-= ϕ_pad[1] .* vcat(0.0, Ψ, zeros(k_lag - 1))
+    xi .-= ϕ_pad[2] .* vcat(zeros(i), Ψ, zeros(k_lag - i))
+    xi .-= ϕ_pad[3] .* vcat(zeros(j), Ψ, zeros(k_lag - j))
+    xi .-= ϕ_pad[4] .* vcat(zeros(k_lag), Ψ)
+    return xi
+end
+
+
+# Fits ARMA(p, q) model using MLE, returns (ϕ, θ, σ²).
+# Numerically stable: σ² is log-parametrized.
+
+function fit_arma(p::Int, q::Int, y::Vector{Float64})
+    n = length(y)
+    μ = mean(y)
+    y_demeaned = y .- μ
+    max_lag = max(p, q)
+    function arma_loss(params)
+        ϕ = params[1:p]
+        θ = params[p+1:p+q]
+        logσ2 = params[end]
+        σ2 = exp(logσ2)
+        ε = zeros(n)
+        for t in (max_lag + 1):n
+            ar_idx = reverse((t-p):(t-1))
+            ma_idx = reverse((t-q):(t-1))
+            ar_part = dot(ϕ, safe_slice(y_demeaned, ar_idx))
+            ma_part = dot(θ, safe_slice(ε, ma_idx))
+            ε[t] = y_demeaned[t] - (ar_part + ma_part)
+        end
+        return sum(ε.^2) / σ2 + n * log(σ2 + 1e-8)
+    end
+    init = [zeros(p + q); log(var(y))]
+    result = optimize(arma_loss, init, BFGS())
+    est_params = Optim.minimizer(result)
+    return (est_params[1:p], est_params[p+1:p+q], exp(est_params[end]))
+end
+
+
+
+# Returns sample autocovariances up to lag `maxlag`.
+# Assumes x is mean-centered.
+function autocovariances(x::Vector{Float64}, maxlag::Int)
+    n = length(x)
+    return [dot(x[1:(n-i)], x[(i+1):n]) / n for i in 0:maxlag]
+end
+
+"""
+    ararma(y; max_ar_depth=26, max_lag=40, p=4, q=1)
+
+Fits an ARARMA model to series y.
+"""
+function ararma(y::Vector{Float64}; max_ar_depth::Int=26, max_lag::Int=40, p::Int=4, q::Int=1)
+    Y = copy(y)
+    Ψ = [1.0]
+
+    # --- AR pre-whitening, unchanged ---
+    for _ in 1:3
+        n = length(y)
+        ϕ = [sum(y[(τ+1):n] .* y[1:(n-τ)]) / sum(y[1:(n-τ)].^2) for τ in 1:15]
+        err = [sum((y[(τ+1):n] - ϕ[τ]*y[1:(n-τ)]).^2) / sum(y[(τ+1):n].^2) for τ in 1:15]
+        τ = argmin(err)
+        if err[τ] <= 8/n || (ϕ[τ] >= 0.93 && τ > 2)
+            y = y[(τ+1):n] .- ϕ[τ] * y[1:(n-τ)]
+            Ψ = [Ψ; zeros(τ)] .- ϕ[τ] .* [zeros(τ); Ψ]
+        elseif ϕ[τ] >= 0.93
+            A = zeros(2,2)
+            A[1,1] = sum(y[2:(n-1)].^2)
+            A[1,2] = A[2,1] = sum(y[1:(n-2)] .* y[2:(n-1)])
+            A[2,2] = sum(y[1:(n-2)].^2)
+            b = [sum(y[3:n] .* y[2:(n-1)]), sum(y[3:n] .* y[1:(n-2)])]
+            ϕ_2 = (A' * A) \ (A' * b)
+            y = y[3:n] .- ϕ_2[1]*y[2:(n-1)] .- ϕ_2[2]*y[1:(n-2)]
+            Ψ = vcat(Ψ, 0.0, 0.0) .- ϕ_2[1]*vcat(0.0, Ψ, 0.0) .- ϕ_2[2]*vcat(0.0, 0.0, Ψ)
+        else
+            break
+        end
+    end
+
+    Sbar = mean(y)
+    X = y .- Sbar
+    n = length(X)
+    gamma = [sum((X[1:(n-i)] .- mean(X)) .* (X[(i+1):n] .- mean(X))) / n for i in 0:max_lag]
+
+    # --- AR lag selection (unchanged) ---
+    best_σ2 = Inf
+    best_lag = (1, 0, 0, 0)
+    best_phi = zeros(4)
+    A = fill(gamma[1], 4, 4)
+    b = zeros(4)
+    for i in 2:(max_ar_depth-2), j in (i+1):(max_ar_depth-1), k in (j+1):max_ar_depth
+        A[1,2] = A[2,1] = gamma[i]
+        A[1,3] = A[3,1] = gamma[j]
+        A[2,3] = A[3,2] = gamma[j-i+1]
+        A[1,4] = A[4,1] = gamma[k]
+        A[2,4] = A[4,2] = gamma[k-i+1]
+        A[3,4] = A[4,3] = gamma[k-j+1]
+        b .= [gamma[2], gamma[i+1], gamma[j+1], gamma[k+1]]
+        ϕ = (A' * A) \ (A' * b)
+        σ2 = gamma[1] - ϕ[1]*gamma[2] - ϕ[2]*gamma[i+1] - ϕ[3]*gamma[j+1] - ϕ[4]*gamma[k+1]
+        if σ2 < best_σ2
+            best_σ2 = σ2
+            best_phi = copy(ϕ)
+            best_lag = (1, i, j, k)
+        end
+    end
+
+    xi = compute_xi(Ψ, best_phi, best_lag)
+    k = length(xi)
+    n = length(Y)
+    c = (1 - sum(best_phi)) * Sbar
+
+    # --- Fitted values for AR part only ---
+    fitted_vals = fill(NaN, n)
+    for t in k:n
+        idxs = t .- (1:(k-1))
+        ar_pred = -sum(xi[2:k] .* Y[idxs]) + c
+        fitted_vals[t] = ar_pred
+    end
+
+    residuals = Y .- fitted_vals
+    ϕ_ar, θ_ma, σ2_hat = fit_arma(p, q, residuals[k:end])
+
+    # --- Information criteria calculation ---
+    arma_resid = residuals[k:end]
+    n_eff = length(arma_resid)
+    k_param = p + q         # Do NOT include variance as a parameter
+
+    loglik = -0.5 * n_eff * (log(2π * σ2_hat) + 1)
+    aic = 2 * k_param - 2 * loglik
+    bic = log(n_eff) * k_param - 2 * loglik
+
+    return ArarmaModel(Ψ, Sbar, gamma, ϕ_ar, σ2_hat, best_lag, Y, θ_ma, q, p, aic, bic, loglik)
+end
+
+
+"""
+    fitted(model)
+
+Returns fitted values for the full ARARMA model.
+"""
+function fitted(model::ArarmaModel)
+    y = model.y_original
+    xi = compute_xi(model.Ψ, model.best_ϕ, model.best_lag)
+    n = length(y)
+    k = length(xi)
+    q = model.ma_order
+    c = (1 - sum(model.best_ϕ)) * model.Sbar
+    θ = model.best_θ
+
+    fitted_vals = fill(NaN, n)
+    ε = zeros(n)
+
+    for t in k:n
+        idxs = t .- (1:(k-1))
+        ar_part = -sum(xi[2:k] .* safe_slice(y, idxs)) + c
+        ma_idxs = (t-q):(t-1)
+        ma_part = (t > q) ? dot(θ, reverse(safe_slice(ε, ma_idxs))) : 0.0
+        fitted_vals[t] = ar_part + ma_part
+        ε[t] = y[t] - fitted_vals[t]
+    end
+    return fitted_vals
+end
+
+"""
+    residuals(model)
+
+Returns residuals for the ARARMA model.
+"""
+residuals(model::ArarmaModel) = model.y_original .- fitted(model)
+
+"""
+    forecast(model, h; level=[80,95])
+
+Returns h-step-ahead forecasts and confidence intervals.
+"""
+function forecast(model::ArarmaModel, h::Int; level::Vector{Int}=[80,95])
+    y = copy(model.y_original)
+    n = length(y)
+    xi = compute_xi(model.Ψ, model.best_ϕ, model.best_lag)
+    k = length(xi)
+    q = model.ma_order
+    θ = model.best_θ
+    ϕ = model.best_ϕ
+    σ2 = model.σ2
+    Sbar = model.Sbar
+    c = (1 - sum(ϕ)) * Sbar
+
+    y_ext = [y; zeros(h)]
+    ε_ext = zeros(n + h)
+    forecasts = zeros(h)
+
+    for t in 1:h
+        idx = n + t
+        idxs = idx .- (1:(k-1))
+        ar_part = -sum(xi[2:k] .* safe_slice(y_ext, idxs)) + c
+        ma_idxs = (idx-q):(idx-1)
+        ma_part = (t > q) ? dot(θ[1:q], reverse(safe_slice(ε_ext, ma_idxs))) : 0.0
+        forecasts[t] = ar_part + ma_part
+        ε_ext[idx] = 0.0 # Future residuals set to 0 (mean forecast)
+        y_ext[idx] = forecasts[t]
+    end
+
+    # Forecast error variance (tau recursion)
+    τ = zeros(h)
+    τ[1] = 1.0
+    for j in 2:h
+        τ[j] = -sum(τ[1:j-1] .* xi[j:-1:2])
+    end
+    se = sqrt.(σ2 .* [sum(τ[1:j].^2) for j in 1:h])
+    z = level .|> l -> quantile(Normal(), 0.5 + l/200)
+
+    upper = [forecasts .+ zi .* se for zi in z]
+    lower = [forecasts .- zi .* se for zi in z]
+
+    return Dict(
+        "forecast" => forecasts,
+        "lower" => lower,
+        "upper" => upper,
+        "level" => level
+    )
+end
+
+function ararma_auto(y::Vector{Float64}; max_p::Int=4, max_q::Int=2, crit::Symbol=:aic, max_ar_depth::Int=26, max_lag::Int=40)
+    best_score = Inf
+    best_model = nothing
+    for p in 0:max_p, q in 0:max_q
+        if p == 0 && q == 0
+            continue
+        end
+        try
+            model = ararma(y; p=p, q=q, max_ar_depth=max_ar_depth, max_lag=max_lag)
+            score = crit === :aic ? model.aic : model.bic
+            if score < best_score
+                best_score = score
+                best_model = model
+            end
+        catch err
+            
+        end
+    end
+    return best_model
+end

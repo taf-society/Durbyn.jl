@@ -28,7 +28,7 @@ import .Generics: plot
 import .Optimize: NelderMeadOptions
 
 export air_passengers
-export plot
+export plot, forecast
 export NelderMeadOptions
 
 end

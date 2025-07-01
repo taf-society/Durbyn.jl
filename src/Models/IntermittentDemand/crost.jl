@@ -179,7 +179,7 @@ function plot(object::IntermittentDemandForecast; show_fitted::Bool = false)
         history,
         label = "Historical Data",
         lw = 2,
-        title = object.method,
+        title = "Intermittent Demand Forecast using " * object.method * " Method",
         xlabel = "Time",
         ylabel = "Value",
         linestyle = :dash,

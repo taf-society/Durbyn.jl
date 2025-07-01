@@ -92,36 +92,6 @@ function update_fit(fit::AutoArimaFit;
         n_cond, nobs, model, xreg)
 end
 
-"""
-Usage in `myarima`: immediately wrap the raw ArimaFit before any update_fit calls.
-
-```julia
-# after calling the base `arima(...)`:
-if fit_raw isa ArimaFit
-    # convert to AutoArimaFit with empty ICs
-    fit = AutoArimaFit(fit_raw)
-else
-    return Dict(:ic=>Inf)
-end
-
-# ... later, when computing ICs:
-if !isnan(aic_val)
-    bic_val  = aic_val + npar*(log(nstar)-2)
-    aicc_val = aic_val + 2*npar*(npar+1)/(nstar-npar-1)
-    ic_val   = ic==:bic  ? bic_val : ic==:aicc ? aicc_val : aic_val
-    fit = update_fit(fit;
-                     aic=aic_val,
-                     bic=bic_val,
-                     aicc=aicc_val,
-                     ic=ic_val)
-else
-    fit = update_fit(fit; ic=Inf)
-end
-```
-
-
-
-
 function update_fit(fit::ArimaFit;
                     coef = fit.coef,
                     sigma2 = fit.sigma2,
@@ -404,13 +374,3 @@ function search_arima(x::AbstractArray, m::Int;
 
     return bestfit
 end
-
-
-using Durbyn.Arima
-using Durbyn
-
-ap = air_passengers();
-
-search_arima(ap, 12)
-
-myarima(ap, 12, PDQ(0, 1, 1),  PDQ(0, 1, 1))

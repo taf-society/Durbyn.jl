@@ -143,15 +143,29 @@ fit = auto_arima(ap, 12)
 fc = forecast(fit, h = 12)
 ```
 
-### Forecasting using ARAR model
+### Forecasting using Ararma and Arar models
 
 ```julia
-using Durbyn
-ap = air_passengers();
-using Durbyn.Arar
+# Ararma module
 
+using Durbyn
+using Durbyn.Ararma
+
+ap = air_passengers();
+
+# basing arar model
 fit = arar(ap, max_ar_depth = 13)
-fc = forecast(fit, 12)
+fc = forecast(fit, h = 12)
+plot(fc)
+
+# arar model
+fit = ararma(ap, p = 0, q = 1)
+fc = forecast(fit, h = 12)
+plot(fc)
+
+# auto arar model
+fit = auto_ararma(ap)
+fc = forecast(fit, h = 12)
 plot(fc)
 
 ```

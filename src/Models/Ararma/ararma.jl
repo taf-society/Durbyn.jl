@@ -1,7 +1,3 @@
-using Statistics
-using Optim
-using Distributions
-
 """
     ArarmaModel
 
@@ -51,7 +47,7 @@ end
 # Fits ARMA(p, q) model using MLE, returns (ϕ, θ, σ²).
 # Numerically stable: σ² is log-parametrized.
 
-function fit_arma(p::Int, q::Int, y::Vector{Float64})
+function fit_arma(p::Int, q::Int, y::Vector{Float64}, options::NelderMeadOptions=NelderMeadOptions())
     n = length(y)
     μ = mean(y)
     y_demeaned = y .- μ
@@ -72,8 +68,9 @@ function fit_arma(p::Int, q::Int, y::Vector{Float64})
         return sum(ε.^2) / σ2 + n * log(σ2 + 1e-8)
     end
     init = [zeros(p + q); log(var(y))]
-    result = optimize(arma_loss, init, BFGS())
-    est_params = Optim.minimizer(result)
+
+    est_params = nmmin(arma_loss, init, options).x_opt
+
     return (est_params[1:p], est_params[p+1:p+q], exp(est_params[end]))
 end
 
@@ -91,7 +88,8 @@ end
 
 Fits an ARARMA model to series y.
 """
-function ararma(y::Vector{Float64}; max_ar_depth::Int=26, max_lag::Int=40, p::Int=4, q::Int=1)
+function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int=4, q::Int=1, 
+    options::NelderMeadOptions=NelderMeadOptions())
     Y = copy(y)
     Ψ = [1.0]
 
@@ -160,7 +158,7 @@ function ararma(y::Vector{Float64}; max_ar_depth::Int=26, max_lag::Int=40, p::In
     end
 
     residuals = Y .- fitted_vals
-    ϕ_ar, θ_ma, σ2_hat = fit_arma(p, q, residuals[k:end])
+    ϕ_ar, θ_ma, σ2_hat = fit_arma(p, q, residuals[k:end], options)
 
     # --- Information criteria calculation ---
     arma_resid = residuals[k:end]
@@ -215,7 +213,7 @@ residuals(model::ArarmaModel) = model.y_original .- fitted(model)
 
 Returns h-step-ahead forecasts and confidence intervals.
 """
-function forecast(model::ArarmaModel, h::Int; level::Vector{Int}=[80,95])
+function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
     y = copy(model.y_original)
     n = length(y)
     xi = compute_xi(model.Ψ, model.best_ϕ, model.best_lag)
@@ -251,18 +249,20 @@ function forecast(model::ArarmaModel, h::Int; level::Vector{Int}=[80,95])
     se = sqrt.(σ2 .* [sum(τ[1:j].^2) for j in 1:h])
     z = level .|> l -> quantile(Normal(), 0.5 + l/200)
 
-    upper = [forecasts .+ zi .* se for zi in z]
-    lower = [forecasts .- zi .* se for zi in z]
+    upper = reduce(hcat,[forecasts .+ zi .* se for zi in z])
+    lower = reduce(hcat,[forecasts .- zi .* se for zi in z])
 
-    return Dict(
-        "forecast" => forecasts,
-        "lower" => lower,
-        "upper" => upper,
-        "level" => level
-    )
+    fits = fitted(model)
+    res = residuals(model)
+    method = "Ararma($(model.ar_order), $(model.ma_order))"
+
+    return Forecast(model, method, forecasts, level, model.y_original, upper, lower, fits, res)
 end
 
-function ararma_auto(y::Vector{Float64}; max_p::Int=4, max_q::Int=2, crit::Symbol=:aic, max_ar_depth::Int=26, max_lag::Int=40)
+function auto_ararma(y::Vector{<:Real}; max_p::Int=4, max_q::Int=2, 
+    crit::Symbol=:aic, max_ar_depth::Int=26, max_lag::Int=40, 
+    options::NelderMeadOptions=NelderMeadOptions())
+
     best_score = Inf
     best_model = nothing
     for p in 0:max_p, q in 0:max_q
@@ -270,14 +270,14 @@ function ararma_auto(y::Vector{Float64}; max_p::Int=4, max_q::Int=2, crit::Symbo
             continue
         end
         try
-            model = ararma(y; p=p, q=q, max_ar_depth=max_ar_depth, max_lag=max_lag)
+            model = ararma(y; p=p, q=q, max_ar_depth=max_ar_depth, max_lag=max_lag, options=options)
             score = crit === :aic ? model.aic : model.bic
             if score < best_score
                 best_score = score
                 best_model = model
             end
         catch err
-            
+            @info "Model selection issue: $err"
         end
     end
     return best_model

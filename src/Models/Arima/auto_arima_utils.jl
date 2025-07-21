@@ -374,3 +374,39 @@ function search_arima(x::AbstractArray, m::Int;
 
     return bestfit
 end
+
+function fitted(model::ArimaFit)
+    return model.fitted
+end
+
+function residuals(model::ArimaFit)
+    return model.residuals
+end
+
+function forecast(model::ArimaFit; h::Int, xreg = nothing, level::Vector{Int}=[80,95])
+    
+    forecasts = predict_arima(model, h, newxreg = xreg, se_fit = true)
+
+    se = forecasts.se
+    forecasts = forecasts.prediction
+
+    z = level .|> l -> quantile(Normal(), 0.5 + l / 200)
+
+    upper = reduce(hcat, [forecasts .+ zi .* se for zi in z])
+    lower = reduce(hcat, [forecasts .- zi .* se for zi in z])
+
+    fits = fitted(model)
+    res = residuals(model)
+
+    return Forecast(
+        model,
+        model.method,
+        forecasts,
+        level,
+        model.y_original,
+        upper,
+        lower,
+        fits,
+        res,
+    )
+end

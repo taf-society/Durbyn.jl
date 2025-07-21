@@ -332,7 +332,7 @@ function fitted(object::IntermittentDemandCrostonFit)
 end
 
 function fitted(object::IntermittentDemandForecast)
-fitted(object.model)
+    return fitted(object.model)
 end
 
 """
@@ -359,9 +359,9 @@ This function subtracts the in-sample forecasts from the original demand time se
 For `IntermittentDemandForecast` objects, residuals are computed by delegating to the underlying model.
 """
 function residuals(object::IntermittentDemandCrostonFit)
-    object.x - fitted(object) 
+    return object.x - fitted(object)
 end
 
 function residuals(object::IntermittentDemandForecast)
-    residuals(object.model) 
+    return residuals(object.model)
 end

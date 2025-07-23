@@ -65,37 +65,48 @@ function show(io::IO, coef::ArimaCoef)
     end
 end
 
-
 """
     ArimaFit
 
-A struct containing the results of an ARIMA model fit. This type holds all relevant output from the estimation process, including coefficients, variance estimates, likelihood information, and model structure.
+A struct containing the results of an ARIMA model fit. This type holds all relevant output from the estimation process, including coefficients, variance estimates, likelihood information, model structure, and information criteria.
 
 # Fields
 
-- `coef::Vector{Float64}`  
-  A flat vector of estimated AR, MA, seasonal AR, seasonal MA, and regression coefficients. This corresponds to the complete set of model parameters. You can extract and interpret names from the `model[:names]` field.
+- `y::AbstractArray`
+  The observed time series data provided to the model.
 
-- `sigma2::Float64`  
+- `fitted::AbstractArray`
+  The in-sample fitted values produced by the model.
+
+- `coef::ArimaCoef`
+  The estimated AR, MA, seasonal AR, seasonal MA, and regression coefficients for the model. See the `model[:names]` field for parameter names and ordering.
+
+- `sigma2::Float64`
   The estimated variance of the model innovations (errors), typically the maximum likelihood estimate (MLE).
 
-- `var_coef::Matrix{Float64}`  
+- `var_coef::Matrix{Float64}`
   The estimated variance-covariance matrix of the coefficients in `coef`.
 
-- `mask::Vector{Bool}`  
-  A logical vector indicating which parameters were estimated (vs fixed or excluded). This is used internally for model inference.
+- `mask::Vector{Bool}`
+  A logical vector indicating which parameters were estimated (vs fixed or excluded). Used internally for model inference.
 
-- `loglik::Float64`  
+- `loglik::Float64`
   The maximized log-likelihood value of the (possibly differenced) data.
 
-- `aic::Union{Float64, Nothing}`  
-  The Akaike Information Criterion (AIC) for the fitted model, derived from the log-likelihood. This is only meaningful when the model is fit using maximum likelihood (`method = "ML"`). If not applicable, this field is `nothing`.
+- `aic::Union{Float64, Nothing}`
+  The Akaike Information Criterion (AIC) for the fitted model, derived from the log-likelihood or innovation variance. May be `nothing` if not applicable.
 
-- `residuals::Vector{Float64}`  
-  The residuals (estimated innovations) from the fitted ARIMA model.
+- `bic::Union{Float64, Nothing}`
+  The Bayesian Information Criterion (BIC) for the fitted model, computed from the likelihood and parameter count. May be `nothing` if not applicable.
 
-- `arma::Vector{Int}`  
-  A compact encoding of the model specification. This vector typically contains:  
+- `aicc::Union{Float64, Nothing}`
+  The corrected Akaike Information Criterion (AICc), useful for small sample sizes. May be `nothing` if not applicable.
+
+- `ic::Union{Float64, Nothing}`
+  The selected information criterion value, as chosen by user preference (`:aic`, `:bic`, or `:aicc`). May be `nothing` if not applicable.
+
+- `arma::Vector{Int}`
+  A compact encoding of the model specification, typically:  
   `[p, q, P, Q, s, d, D]`, where:
     - `p`: number of non-seasonal AR terms  
     - `q`: number of non-seasonal MA terms  
@@ -105,25 +116,35 @@ A struct containing the results of an ARIMA model fit. This type holds all relev
     - `d`: order of non-seasonal differencing  
     - `D`: order of seasonal differencing  
 
-- `convergence_code::Int`  
-  The return code from the optimization routine. A value of `0` typically indicates successful convergence.
+- `residuals::Vector{Float64}`
+  The residuals (estimated innovations) from the fitted ARIMA model.
 
-- `n_cond::Int`  
+- `convergence_code::Bool`
+  Indicates whether the optimization converged successfully (`true`) or not (`false`).
+
+- `n_cond::Int`
   The number of initial observations not used due to conditioning in the likelihood computation (e.g., due to differencing or initial values).
 
-- `nobs::Int`  
+- `nobs::Int`
   The number of observations actually used for parameter estimation (after differencing or trimming).
 
-- `model::Dict{Symbol,Any}`  
-  A dictionary containing model metadata. Keys may include:
-    - `:names` — names of the coefficients
+- `model::NamedTuple`
+  A named tuple containing model metadata. Fields may include:
+    - `:names` — parameter names
     - `:arma` — the raw arma vector
     - `:call` — a string representation of the function call
     - `:series` — the name of the original time series
-    - Other implementation-specific values such as design matrices or internal state components
+    - Additional fields as required for the internal state
+
+- `xreg::Any`
+  The exogenous regressors matrix (if any) used in model fitting.
+
+- `method::String`
+  The estimation method used, such as `"ML"` (maximum likelihood) or `"CSS"` (conditional sum of squares).
 
 """
-struct ArimaFit
+
+mutable struct ArimaFit
     y::AbstractArray
     fitted::AbstractArray
     coef::ArimaCoef
@@ -132,6 +153,9 @@ struct ArimaFit
     mask::Vector{Bool}
     loglik::Float64
     aic::Union{Float64,Nothing}
+    bic::Union{Float64,Nothing}
+    aicc::Union{Float64,Nothing}
+    ic::Union{Float64,Nothing}
     arma::Vector{Int}
     residuals::Vector{Float64}
     convergence_code::Bool
@@ -141,6 +165,7 @@ struct ArimaFit
     xreg::Any
     method::String
 end
+
 
 function Base.show(io::IO, fit::ArimaFit)
     println(io, "ARIMA Fit Summary")
@@ -1521,6 +1546,9 @@ function arima(x::AbstractArray,
         mask,
         loglik,
         aic,
+        nothing, 
+        nothing, 
+        nothing, 
         arma,
         resid,
         res.converged,
@@ -1737,4 +1765,40 @@ function predict_arima(
     end
 
     return ArimaPredictions(pred, se, model.y, model.fitted, model.residuals, model.method)
+end
+
+function fitted(model::ArimaFit)
+    return model.fitted
+end
+
+function residuals(model::ArimaFit)
+    return model.residuals
+end
+
+function forecast(model::ArimaFit; h::Int, xreg = nothing, level::Vector{Int}=[80,95])
+    
+    forecasts = predict_arima(model, h, newxreg = xreg, se_fit = true)
+
+    se = forecasts.se
+    forecasts = forecasts.prediction
+
+    z = level .|> l -> quantile(Normal(), 0.5 + l / 200)
+
+    upper = reduce(hcat, [forecasts .+ zi .* se for zi in z])
+    lower = reduce(hcat, [forecasts .- zi .* se for zi in z])
+
+    fits = fitted(model)
+    res = residuals(model)
+
+    return Forecast(
+        model,
+        model.method,
+        forecasts,
+        level,
+        model.y_original,
+        upper,
+        lower,
+        fits,
+        res,
+    )
 end

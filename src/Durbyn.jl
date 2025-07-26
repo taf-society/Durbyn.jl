@@ -3,8 +3,8 @@ module Durbyn
 include("Utils/Utils.jl")
 
 include("Optimize/Optimize.jl")
-include("Stats/Stats.jl")
 include("Generics/Generics.jl")
+include("Stats/Stats.jl")
 
 include("Models/Naive/Naive.jl")
 include("Models/ExponentialSmoothing/ExponentialSmoothing.jl")

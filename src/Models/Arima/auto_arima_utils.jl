@@ -277,9 +277,7 @@ function fit_custom_arima(x, m;
     end
 end
 
-
-
-# Helper: Generate all model combinations
+# Generate all model combinations
 function generate_model_grid(max_p, max_q, max_P, max_Q, maxK, max_order)
     # Create all combinations
     combos = [
@@ -335,9 +333,6 @@ function find_best_arima_serial(x, m, d, D, grid, ic, trace, approximation, offs
     return (bestfit = bestfit, best_ic = best_ic, constant = constant)
 end
 
-
-using Distributed
-
 @everywhere begin
     # Define PDQ, ArimaFit, etc. here, or import your module
 
@@ -359,8 +354,7 @@ using Distributed
     end
 end
 
-# addprocs(4)  # or whatever you need
-# Make sure fit_arima_model and types are available to all workers
+# addprocs(4)  # or whatever needed
 
 function find_best_arima_parallel(x, m, d, D, grid, ic, trace, approximation, offset, xreg, num_cores=nothing; kwargs...)
     # Ensure sufficient processes

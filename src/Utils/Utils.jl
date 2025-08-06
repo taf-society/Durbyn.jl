@@ -1,6 +1,9 @@
 module Utils
 
 import Statistics: mean
+export NamedMatrix, get_elements, get_vector, align_columns, add_dift_term, cbind
+
+include("named_matrix.jl")
 
 """
     struct ModelFitError <: Exception
@@ -61,6 +64,51 @@ end
 
 function is_constant(data::AbstractArray)
     return all(x -> x == data[1], data)
+end
+
+"""
+    na_omit_pair(x::AbstractVector, X::AbstractMatrix)
+
+Remove all rows from the input vector `x` and matrix `X` where either `x` or any column of the corresponding row in `X` contains missing data or `NaN`.
+
+# Arguments
+- `x::AbstractVector`: A vector of numeric values, which may contain `missing` or `NaN`.
+- `X::AbstractMatrix`: A matrix of numeric values, with the same number of rows as `x`. May contain `missing` or `NaN`.
+
+# Returns
+- `x_clean::Vector`: A vector containing the elements of `x` where both `x` and the corresponding row in `X` contain no `missing` or `NaN` values.
+- `X_clean::Matrix`: A matrix containing only the rows of `X` where both `x` and the corresponding row in `X` contain no `missing` or `NaN` values.
+
+# Details
+A row is removed if **either** the value in `x` or **any** value in the corresponding row of `X` is `missing` or `NaN`. Only the rows that are fully complete (i.e., not `missing` and not `NaN` in both `x` and `X`) are kept.
+
+# Example
+
+```julia
+x = [1.0, NaN, 3.0, missing, 5.0]
+X = [1.0 2.0;
+     3.0 NaN;
+     5.0 6.0;
+     7.0 8.0;
+     missing 10.0]
+
+x_clean, X_clean = na_omit_pair(x, X)
+
+println(x_clean)  # Output: [1.0, 3.0]
+println(X_clean)  # Output: [1.0 2.0; 5.0 6.0]
+```
+"""
+function na_omit_pair(x::AbstractVector, X::AbstractMatrix)
+    @assert length(x) == size(X, 1) "x and X must have the same number of rows"
+    function row_ok(i)
+        xi = x[i]
+        Xi = X[i, :]
+        not_missing = !ismissing(xi) && !isnan(xi) &&
+                      all(!ismissing(Xi[j]) && !isnan(Xi[j]) for j in 1:length(Xi))
+        return not_missing
+    end
+    idxs = [i for i in 1:length(x) if row_ok(i)]
+    return x[idxs], X[idxs, :]
 end
 
 function na_omit(x::AbstractArray)

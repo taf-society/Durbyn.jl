@@ -6,5 +6,6 @@ include("plot.jl")
 include("generics.jl")
 
 export Forecast, forecast
-export plot, fitted, residuals, summary
+export plot, fitted, residuals, summary, predict
+export coef, coefficients, coefs
 end

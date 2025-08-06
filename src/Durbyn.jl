@@ -24,11 +24,12 @@ using .Ararma
 using .IntermittentDemand
 
 import .Utils: air_passengers
-import .Generics: plot
+import .Generics: plot, fitted, residuals, summary, predict, forecast
 import .Optimize: NelderMeadOptions
 
 export air_passengers
-export plot, forecast, fitted, residuals
+export plot, fitted, residuals, summary, predict, forecast
+export coef, coefficients, coefs
 export NelderMeadOptions
 
 end

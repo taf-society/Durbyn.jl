@@ -1,68 +1,48 @@
 """
-    ArimaCoef
+    ArimaStateSpace
 
-Struct to hold ARIMA model coefficients.
+A struct representing a univariate ARIMA state-space model, including AR and MA parameters, differencing, and state-space matrices.
 
-Parameters:
-- `ar::Vector{Float64}`: Autoregressive (AR) coefficients.
-- `ma::Vector{Float64}`: Moving average (MA) coefficients.
-- `sar::Vector{Float64}`: Seasonal autoregressive (SAR) coefficients.
-- `sma::Vector{Float64}`: Seasonal moving average (SMA) coefficients.
-- `intercept::Vector{Float64}`: Model intercept(s) (constant term).
-
-This struct is used to store the estimated parameters of an ARIMA(p, d, q)(P, D, Q)s model,
-where `ar`, `ma`, `sar`, and `sma` correspond to the non-seasonal and seasonal components.
-All fields are vectors of `Float64` to allow for multiple coefficients in extended models.
+# Fields
+- `phi::AbstractVector`   : AR coefficients (length ≥ 0)
+- `theta::AbstractVector` : MA coefficients (length ≥ 0)
+- `Delta::AbstractVector` : Differencing coefficients (for seasonal/nonseasonal differences)
+- `Z::AbstractVector`     : Observation coefficients
+- `a::AbstractVector`     : Current state estimate
+- `P::AbstractMatrix`     : Current state covariance matrix
+- `T::AbstractMatrix`     : Transition/state evolution matrix
+- `V::Any`                : Innovations or 'RQR', for process covariance
+- `h::Real`               : Observation variance
+- `Pn::AbstractMatrix`    : Prior state covariance at time t-1 (not updated by KalmanForecast)
 """
-
-struct ArimaCoef
-    ar::Vector{Float64}
-    ma::Vector{Float64}
-    sar::Vector{Float64}
-    sma::Vector{Float64}
-    intercept::Vector{Float64}
+mutable struct ArimaStateSpace
+    phi::AbstractVector
+    theta::AbstractVector
+    Delta::AbstractVector
+    Z::AbstractVector
+    a::AbstractVector
+    P::AbstractMatrix
+    T::AbstractMatrix
+    V::Any
+    h::Real
+    Pn::AbstractMatrix
 end
 
-function show(io::IO, coef::ArimaCoef)
-    println(io, "ARIMA Coefficients:")
-    if !isempty(coef.ar)
-        println(
-            io,
-            "  AR : ",
-            join(["ar$(i)=$(round(v, digits=4))" for (i, v) in enumerate(coef.ar)], ", "),
-        )
-    end
-    if !isempty(coef.ma)
-        println(
-            io,
-            "  MA : ",
-            join(["ma$(i)=$(round(v, digits=4))" for (i, v) in enumerate(coef.ma)], ", "),
-        )
-    end
-    if !isempty(coef.sar)
-        println(
-            io,
-            "  SAR: ",
-            join(["sar$(i)=$(round(v, digits=4))" for (i, v) in enumerate(coef.sar)], ", "),
-        )
-    end
-    if !isempty(coef.sma)
-        println(
-            io,
-            "  SMA: ",
-            join(["sma$(i)=$(round(v, digits=4))" for (i, v) in enumerate(coef.sma)], ", "),
-        )
-    end
-    if !isempty(coef.intercept)
-        println(
-            io,
-            "  INTERCEPT: ",
-            join(
-                ["x$(i)=$(round(v, digits=4))" for (i, v) in enumerate(coef.intercept)],
-                ", ",
-            ),
-        )
-    end
+function show(io::IO, s::ArimaStateSpace)
+    println(io, "ArimaStateSpace:")
+    println(io, "  phi   (AR coefficients):         ", s.phi)
+    println(io, "  theta (MA coefficients):         ", s.theta)
+    println(io, "  Delta (Differencing coeffs):     ", s.Delta)
+    println(io, "  Z     (Observation coeffs):      ", s.Z)
+    println(io, "  a     (Current state estimate):  ", s.a)
+    println(io, "  P     (Current state covariance):")
+    show(io, "text/plain", s.P)
+    println(io, "\n  T     (Transition matrix):")
+    show(io, "text/plain", s.T)
+    println(io, "\n  V     (Innovations or 'RQR'):    ", s.V)
+    println(io, "  h     (Observation variance):    ", s.h)
+    println(io, "  Pn    (Prior state covariance):")
+    show(io, "text/plain", s.Pn)
 end
 
 """
@@ -78,7 +58,7 @@ A struct containing the results of an ARIMA model fit. This type holds all relev
 - `fitted::AbstractArray`
   The in-sample fitted values produced by the model.
 
-- `coef::ArimaCoef`
+- `coef::NamedMatrix`
   The estimated AR, MA, seasonal AR, seasonal MA, and regression coefficients for the model. See the `model[:names]` field for parameter names and ordering.
 
 - `sigma2::Float64`
@@ -147,7 +127,7 @@ A struct containing the results of an ARIMA model fit. This type holds all relev
 mutable struct ArimaFit
     y::AbstractArray
     fitted::AbstractArray
-    coef::ArimaCoef
+    coef::NamedMatrix
     sigma2::Float64
     var_coef::Matrix{Float64}
     mask::Vector{Bool}
@@ -161,7 +141,7 @@ mutable struct ArimaFit
     convergence_code::Bool
     n_cond::Int
     nobs::Int
-    model::NamedTuple
+    model::ArimaStateSpace
     xreg::Any
     method::String
 end
@@ -172,34 +152,12 @@ function Base.show(io::IO, fit::ArimaFit)
     println(io, "-----------------")
 
     println(io, "Coefficients:")
-    println(io, "  AR:   ", isempty(fit.coef.ar) ? "None" : join(fit.coef.ar, ", "))
-    println(io, "  MA:   ", isempty(fit.coef.ma) ? "None" : join(fit.coef.ma, ", "))
-    println(io, "  SAR:  ", isempty(fit.coef.sar) ? "None" : join(fit.coef.sar, ", "))
-    println(io, "  SMA:  ", isempty(fit.coef.sma) ? "None" : join(fit.coef.sma, ", "))
-    println(
-        io,
-        "  INTERCEPT: ",
-        isempty(fit.coef.intercept) ? "None" : join(fit.coef.intercept, ", "),
-    )
+    show(io, fit.coef)  # use NamedMatrix's show for aligned table
 
     println(io, "\nSigma²: ", fit.sigma2)
     println(io, "Log-likelihood: ", fit.loglik)
-    println(io, "AIC: ", isnothing(fit.aic) ? "N/A" : fit.aic)
-    println(io, "ARMA Order: (p, d, q) = ", fit.arma)
-    println(io, "Residuals (first 5): ", join(fit.residuals[1:min(end, 5)], ", "))
-    println(io, "Convergence Code: ", fit.convergence_code)
-    println(io, "Number of Conditional Terms: ", fit.n_cond)
-    println(io, "Number of Observations: ", fit.nobs)
-    println(io, "Mask: ", join(fit.mask, ", "))
-
-    println(io, "\nVariance-Covariance Matrix:")
-    show(io, "text/plain", fit.var_coef)
-
-    println(io, "\n\nModel Info:")
-    for (k, v) in pairs(fit.model)
-        println(io, "  $(k): $(v)")
-    end
 end
+
 
 """
 A struct representing the parameters of an ARIMA model: autoregressive (`p`), differencing (`d`), and moving average (`q`) terms.
@@ -232,7 +190,334 @@ struct PDQ
     end
 end
 
-function partrans(p::Int, raw::AbstractVector, new::AbstractVector)
+# helper for compute_arima_likelihood
+function state_prediction!(anew::AbstractArray, a::AbstractArray, p::Int, r::Int, d::Int, rd::Int, phi::AbstractArray, delta::AbstractArray)
+     for i in 1:r
+        tmp = (i < r) ? a[i + 1] : 0.0
+        if i <= p
+            tmp += phi[i] * a[1]
+        end
+        anew[i] = tmp
+    end
+    
+    if d > 0
+        for i in (r + 2):(rd)
+            anew[i] = a[i - 1]
+        end
+        tmp = a[1]
+        for i in 1:d
+            tmp += delta[i] * a[r + i]
+        end
+        anew[r + 1] = tmp
+    end
+end
+# helper for compute_arima_likelihood
+function predict_covariance_nodiff!(Pnew::Matrix{Float64}, P::Matrix{Float64},
+    r::Int, p::Int, q::Int,
+    phi::Vector{Float64}, theta::Vector{Float64})
+    for i in 1:r
+
+        if i == 1
+            vi = 1.0
+        elseif i - 1 <= q
+            vi = theta[i-1]
+        else
+            vi = 0.0
+        end
+
+        for j in 1:r
+
+            if j == 1
+                tmp = vi
+            elseif j - 1 <= q
+                tmp = vi * theta[j-1]
+            else
+                tmp = 0.0
+            end
+
+            if i <= p && j <= p
+                tmp = tmp + phi[i] * phi[j] * P[1, 1]
+            end
+
+            if i <= r - 1 && j <= r - 1
+                tmp = tmp + P[i+1, j+1]
+            end
+
+            if i <= p && j < r - 1
+                tmp = tmp + phi[i] * P[j+1, 1]
+            end
+
+            if j <= p && i < r - 1
+                tmp = tmp + phi[j] * P[i+1, 1]
+            end
+
+            Pnew[i, j] = tmp
+        end
+    end
+end
+# helper for compute_arima_likelihood
+function predict_covariance_with_diff!(Pnew::Matrix{Float64}, P::Matrix{Float64},
+    r::Int, d::Int, p::Int, q::Int, rd::Int,
+    phi::Vector{Float64}, delta::Vector{Float64},
+    theta::Vector{Float64}, mm::Matrix{Float64})
+    # Step 1: mm = T * P
+    for i in 1:r
+        for j in 1:rd
+            tmp = 0.0
+            if i <= p
+                tmp = tmp + phi[i] * P[1, j]
+            end
+            if i < r
+                tmp = tmp + P[i+1, j]
+            end
+            mm[i, j] = tmp
+        end
+    end
+    
+    for j in 1:rd
+        tmp = P[1, j]
+        for k in 1:d
+            tmp = tmp + delta[k] * P[r+k, j]
+        end
+        mm[r+1, j] = tmp
+    end
+
+    for i in 2:d
+        for j in 1:rd
+            mm[r+i, j] = P[r+i-1, j]
+        end
+    end
+
+    # Step 2: Pnew = mm * Tᵀ
+    for i in 1:r
+        for j in 1:rd
+            tmp = 0.0
+            if i <= p
+                tmp = tmp + phi[i] * mm[1, j]
+            end
+            if i < r
+                tmp = tmp + mm[i+1, j]
+            end
+            Pnew[i, j] = tmp
+        end
+    end
+
+    for j in 1:rd
+        tmp = mm[1, j]
+        for k in 1:d
+            tmp = tmp + delta[k] * mm[r+k, j]
+        end
+        Pnew[r+1, j] = tmp
+    end
+
+    for i in 2:d
+        for j in 1:rd
+            Pnew[r+i, j] = mm[r+i-1, j]
+        end
+    end
+
+    # Step 3: Add noise (MA(q))
+    for i in 1:(q+1)
+        if i == 1
+            vi = 1.0
+        else
+            vi = theta[i-1]
+        end
+
+        for j in 1:(q+1)
+            if j == 1
+                vj = 1.0
+            else
+                vj = theta[j-1]
+            end
+            Pnew[i, j] = Pnew[i, j] + vi * vj
+        end
+    end
+end
+# helper for compute_arima_likelihood
+# This is a bit confusing: C code uses row major operations. Pnew[i + r * j]
+function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, useResid, rsResid, l, ssq, sumlog, nu,)
+
+    # 1) residual
+    resid = y_obs - anew[1]
+    for i in 1:d
+        resid = resid - delta[i] * anew[r+i]
+    end
+
+    # 2) build M = Pnew * [1; delta]
+    for i in 1:rd
+        tmp = Pnew[i, 1]
+        for j in 1:d
+            tmp += Pnew[i, r+j] * delta[j]
+        end
+        M[i] = tmp
+    end
+
+    # 3) compute gain = H* M
+    gain = M[1]
+    for j in 1:d
+        gain += delta[j] * M[r+j]
+    end
+
+    # 4) update ssq, sumlog, nu if gain is “safe”
+    if gain < 1e4
+        nu[] += 1
+        ssq[] += resid^2 / gain
+        sumlog[] += log(gain)
+    end
+
+    # 5) optionally store standardized residual
+    if useResid
+        rsResid[l] = resid / sqrt(gain)
+    end
+
+    # 6) state update: a = anew + (M * resid)/gain
+    for i in 1:rd
+        a[i] = anew[i] + M[i] * resid / gain
+    end
+
+    # 7) covariance update: P = Pnew - (M Mᵀ)/gain
+    for i = 1:rd
+        for j = 1:rd
+            P[i, j] = Pnew[i, j] - (M[i] * M[j]) / gain
+        end
+    end
+end
+
+"""
+    compute_arima_likelihood(y::Vector{Float64},
+                             model::ArimaStateSpace,
+                             update_start::Int,
+                             give_resid::Bool)
+
+Compute the Gaussian log-likelihood and related quantities for a univariate ARIMA model using the Kalman filter.
+ 
+It runs a Kalman filter on the observed time series `y`, using the state-space representation stored in `model`.  
+It accumulates the innovation sum of squares and the log-determinant contributions required for the Gaussian likelihood.  
+If `give_resid` is true, the function also computes and returns the standardized residuals.
+
+# Arguments
+- `y::Vector{Float64}`: Observed time series (univariate).
+- `model::ArimaStateSpace`: State-space model, as returned by `initialize_arima_state`.
+- `update_start::Int`: The time index at which to begin updating the likelihood and residuals (typically 1).
+- `give_resid::Bool`: If true, also compute and return standardized residuals.
+
+# Returns
+A `Dict` with keys:
+- `"ssq"`: Sum of squared innovations.
+- `"sumlog"`: Accumulated log-determinants of the prediction error variances.
+- `"nu"`: Innovations (prediction errors).
+- `"resid"`: (only if `give_resid` is true) Standardized residuals.
+
+# Notes
+- The arguments and behavior closely follow the C implementation in R's base ARIMA code.
+- For details on the state-space representation, see [`initialize_arima_state`](@ref).
+
+# References
+- Durbin, J. & Koopman, S. J. (2001). *Time Series Analysis by State Space Methods*. Oxford University Press.
+- Gardner, G., Harvey, A. C. & Phillips, G. D. A. (1980). Algorithm AS 154. *Applied Statistics*, 29, 311-322.
+
+"""
+function compute_arima_likelihood( y::Vector{Float64}, model::ArimaStateSpace, update_start::Int, give_resid::Bool,)
+
+    phi = model.phi
+    theta = model.theta
+    delta = model.Delta
+    a = model.a
+    P = model.P
+    Pnew = model.Pn
+
+    n = length(y)
+    rd = length(a)
+    p = length(phi)
+    q = length(theta)
+    d = length(delta)
+    r = rd - d
+
+    ssq = Ref(0.0)
+    sumlog = Ref(0.0)
+    nu = Ref(0)
+
+    anew = zeros(rd)
+    M = zeros(rd)
+    if d > 0
+        mm = zeros(rd, rd)
+    else
+        mm = nothing
+    end
+
+    if give_resid
+        rsResid = zeros(n)
+    else
+        rsResid = nothing
+    end
+    for l = 1:n
+        state_prediction!(anew, a, p, r, d, rd, phi, delta)
+
+        if !isnan(y[l])
+            kalman_update!(y[l], anew, delta, Pnew, M, d, r, rd, a, P, give_resid, rsResid, l, ssq, sumlog, nu)
+        else
+            a .= anew
+            if give_resid
+                rsResid[l] = NaN
+            end
+        end
+
+        if l > update_start
+            if d == 0
+                predict_covariance_nodiff!(Pnew, P, r, p, q, phi, theta)
+            else
+                predict_covariance_with_diff!(Pnew, P, r, d, p, q, rd, phi, delta, theta, mm)
+            end
+            P .= Pnew
+        end
+    end
+
+    result_stats = [ssq[], sumlog[], nu[]]
+
+    if give_resid
+        return (stats = result_stats, residuals = rsResid)
+    else
+        return result_stats
+    end
+end
+
+
+"""
+    transform_unconstrained_to_ar_params!(p, raw, dest)
+
+Convert a vector of unconstrained real numbers to autoregressive (AR) coefficients.
+
+This routine implements the two-step transformation used in the R reference
+implementation: it first maps the unconstrained `raw` values into the open
+interval `(-1, 1)` via the hyperbolic tangent to obtain partial autocorrelation
+coefficients (PACF), and then applies the Durbin-Levinson recursion to obtain
+the corresponding AR parameters.  The result is written in-place to `dest`.
+
+Arguments
+---------
+- `p::Int`: the number of parameters to transform.  Must satisfy `p ≤ 100`.
+- `raw::AbstractVector`: a vector of length at least `p` containing the
+  unconstrained parameters.
+- `new::AbstractVector`: a preallocated vector of length at least `p` into
+  which the AR coefficients will be written.  On entry its contents are
+  ignored; on exit it contains the transformed values.
+
+Throws
+------
+`ArgumentError` if `p > 100`.
+
+Notes
+-----
+This function mutates its `new` argument.  A working copy of the first
+`p` elements is used internally to avoid aliasing.
+"""
+# Tested and it is safe. Possible improvement potatial.
+function transform_unconstrained_to_ar_params!(
+    p::Int,
+    raw::AbstractVector,
+    new::AbstractVector,
+)
     if p > 100
         throw(ArgumentError("The function can only transform 100 parameters in arima0"))
     end
@@ -247,10 +532,41 @@ function partrans(p::Int, raw::AbstractVector, new::AbstractVector)
         end
         new[1:(j-1)] .= work[1:(j-1)]
     end
+
 end
 
 
-function arima_gradtrans(x::AbstractArray, arma::AbstractArray)
+"""
+    compute_arima_transform_gradient(x, arma)
+
+Compute the Jacobian matrix of the ARIMA parameter transformation.
+
+This function numerically approximates the gradient (Jacobian) of the
+transformation that maps unconstrained parameter vectors to the ARIMA
+parameter space.  It mirrors the behaviour of the R/C implementation
+`ARIMA_Gradtrans` by perturbing each parameter individually by a small
+epsilon (`1e-3`) and computing the resulting change in the transformed
+coefficients.  The result is returned as a square matrix where each
+row corresponds to the gradient with respect to one parameter.
+
+Arguments
+---------
+- `x::AbstractArray`: the vector of input parameters (potentially
+  partially constrained).  Its length determines the dimension of the
+  Jacobian.
+- `arma::AbstractArray`: a vector encoding the ARIMA order.  The first
+  three entries correspond to the number of non-seasonal AR terms (`p`),
+  the number of non-seasonal MA terms (`q`), and the number of
+  seasonal AR terms (`P`), respectively.  Only these three values are
+  used by this function.
+
+Returns
+-------
+A dense `n*n` matrix of `Float64` where `n = length(x)`.  Elements
+outside the blocks corresponding to AR parameters are zero.
+"""
+# The function is tested works as expected
+function compute_arima_transform_gradient(x::AbstractArray, arma::AbstractArray)
     eps = 1e-3
     mp, mq, msp = arma[1:3]
     n = length(x)
@@ -266,11 +582,11 @@ function arima_gradtrans(x::AbstractArray, arma::AbstractArray)
             w1[i] = x[i]
         end
 
-        partrans(mp, w1, w2)
+        transform_unconstrained_to_ar_params!(mp, w1, w2)
 
         for i = 1:mp
             w1[i] += eps
-            partrans(mp, w1, w3)
+            transform_unconstrained_to_ar_params!(mp, w1, w3)
             for j = 1:mp
                 y[i, j] = (w3[j] - w2[j]) / eps
             end
@@ -283,10 +599,10 @@ function arima_gradtrans(x::AbstractArray, arma::AbstractArray)
         for i = 1:msp
             w1[i] = x[i+v]
         end
-        partrans(msp, w1, w2)
+        transform_unconstrained_to_ar_params!(msp, w1, w2)
         for i = 1:msp
             w1[i] += eps
-            partrans(msp, w1, w3)
+            transform_unconstrained_to_ar_params!(msp, w1, w3)
             for j = 1:msp
                 y[i+v, j+v] = (w3[j] - w2[j]) / eps
             end
@@ -296,20 +612,64 @@ function arima_gradtrans(x::AbstractArray, arma::AbstractArray)
     return y
 end
 
-function arima_undopars(x::AbstractArray, arma::AbstractArray)
+"""
+    undo_arima_parameter_transform(x, arma)
+
+Undo the ARIMA parameter transformations applied to the AR coefficients.
+
+Given a vector of transformed parameters `x` and the ARIMA specification `arma`,
+this function applies the inverse of the parameter transformation used in
+`transform_unconstrained_to_ar_params!` to restore the original (unconstrained)
+parameters.  It mirrors the behaviour of the C function `ARIMA_undoPars`.
+The result is returned as a copy of `x` with the AR terms replaced by
+their inverse-transformed values.
+
+Arguments
+---------
+- `x::AbstractArray`: a vector containing the transformed parameters.
+- `arma::AbstractArray`: a vector encoding the ARIMA order.  Only the
+  first three elements (`p`, `q`, `P`) are used here.
+
+Returns
+-------
+A new vector of the same length as `x` containing the untransformed
+parameters.
+"""
+# The function is tested works as expected
+function undo_arima_parameter_transform(x::AbstractArray, arma::AbstractArray)
     mp, mq, msp = arma[1:3]
     res = copy(x)
     if mp > 0
-        partrans(mp, x, res)
+        transform_unconstrained_to_ar_params!(mp, x, res)
     end
     v = mp + mq
     if msp > 0
-        partrans(msp, @view(x[v+1:end]), @view(res[v+1:end]))
+        transform_unconstrained_to_ar_params!(msp, @view(x[v+1:end]), @view(res[v+1:end]))
     end
     return res
 end
 
-function tsconv(a::AbstractArray, b::AbstractArray)
+"""
+    time_series_convolution(a, b)
+
+Perform a discrete convolution between two numeric sequences.
+
+This function computes the convolution of vectors `a` and `b`, returning
+an array whose length is `length(a) + length(b) - 1`.  It corresponds to
+the helper `TSconv` in the R/C source and is used to construct
+difference operators for the ARIMA model.
+
+Arguments
+---------
+- `a::AbstractArray`: the first sequence.
+- `b::AbstractArray`: the second sequence.
+
+Returns
+-------
+A vector containing the convolution of `a` and `b`.
+"""
+# The function is tested works as expected
+function time_series_convolution(a::AbstractArray, b::AbstractArray)
     na = length(a)
     nb = length(b)
     nab = na + nb - 1
@@ -323,7 +683,29 @@ function tsconv(a::AbstractArray, b::AbstractArray)
     return ab
 end
 
-function inclu2(
+"""
+    update_least_squares!(n_parameters, xnext, xrow, ynext, d, rbar, thetab)
+
+Internal helper used by `compute_q0_covariance_matrix` to update the
+least-squares regression quantities when processing autocovariances.  This
+function closely follows the Fortran routine used in the R implementation.
+It updates the arrays `d`, `rbar` and `thetab` in place, based on the
+incoming observation `xnext` and response `ynext`.
+
+Arguments
+---------
+- `n_parameters::Int`: the number of parameters in the regression.
+- `xnext::AbstractArray`: the new predictor values.
+- `xrow::AbstractArray`: a working array to hold modified predictor values.
+- `ynext::Float64`: the new response value.
+- `d::AbstractArray`: diagonal of the regression matrix to be updated.
+- `rbar::AbstractArray`: upper triangular portion of the regression matrix.
+- `thetab::AbstractArray`: regression coefficients to be updated.
+
+This function mutates `d`, `rbar` and `thetab` and returns nothing.
+"""
+# The function is tested works as expected
+function update_least_squares!(
     n_parameters::Int,
     xnext::AbstractArray,
     xrow::AbstractArray,
@@ -333,7 +715,7 @@ function inclu2(
     thetab::AbstractArray,
 )
 
-    for i = 1:n_parameters
+for i = 1:n_parameters
         xrow[i] = xnext[i]
     end
 
@@ -360,14 +742,14 @@ function inclu2(
             thetab[i] = cbar * thetab[i] + sbar * xk
 
 
-            if abs(ynext) > 1000 || abs(thetab[i]) > 1000
-                ynext = sign(ynext) * 1000
-                thetab[i] = sign(thetab[i]) * 1000
-            end
+            # if abs(ynext) > 1000 || abs(thetab[i]) > 1000
+            #     ynext = sign(ynext) * 1000
+            #     thetab[i] = sign(thetab[i]) * 1000
+            # end
 
-            if abs(ynext) < 1e-5
-                ynext = 0.0
-            end
+            # if abs(ynext) < 1e-5
+            #     ynext = 0.0
+            # end
 
             if di == 0.0
                 return
@@ -380,12 +762,36 @@ function inclu2(
     return
 end
 
-function inv_par_trans(ϕ::AbstractVector)
+"""
+    inverse_ar_parameter_transform(ϕ)
+
+Compute the inverse transformation from AR coefficients to unconstrained
+parameters.
+
+This function reverses the Durbin-Levinson transformation applied by
+`transform_unconstrained_to_ar_params!`.  Given a vector of AR
+coefficients `ϕ`, it returns the corresponding unconstrained parameters
+on the real line by running the recursion backwards and applying the
+inverse hyperbolic tangent.
+
+Arguments
+---------
+- `ϕ::AbstractVector`: vector of AR coefficients.
+
+Returns
+-------
+A vector of the same length as `ϕ` containing the unconstrained
+parameters.
+"""
+# The function is tested works as expected
+function inverse_ar_parameter_transform(ϕ::AbstractVector)
     p = length(ϕ)
     new = Array{Float64}(undef, p)
     copy!(new, ϕ)
     work = similar(new)
-    # backward Durbin–Levinson
+    # Perform the backward Durbin-Levinson recursion.  This recovers the
+    # partial autocorrelations from the AR coefficients.
+    # This is confusing be carriful.
     for j in p:-1:2
         a = new[j]
         denom = 1 - a^2
@@ -395,12 +801,33 @@ function inv_par_trans(ϕ::AbstractVector)
         end
         new[1:j-1] = work[1:j-1]
     end
-    return atanh.(new)
+    return map(x -> abs(x) <= 1 ? atanh(x) : NaN, new)
 end
 
+"""
+    inverse_arima_parameter_transform(θ, arma)
 
+Apply the inverse ARIMA parameter transformation to a parameter vector.
 
-function arima_invtrans(θ::AbstractVector, arma::AbstractVector{Int})
+Given a parameter vector `θ` and the ARIMA specification `arma`, this
+function applies the inverse transformation used in the ARIMA fitting
+process to recover the unconstrained parameters.  It reverses the
+seasonal and non-seasonal AR transformations by calling
+`inverse_ar_parameter_transform` on the appropriate slices.
+
+Arguments
+---------
+- `θ::AbstractVector`: vector of transformed parameters.
+- `arma::AbstractVector{Int}`: vector encoding the ARIMA order.  The
+  first three elements correspond to the non-seasonal AR (`p`), MA (`q`)
+  and seasonal AR (`P`) orders.
+
+Returns
+-------
+A new vector containing the unconstrained parameters.
+"""
+# The function is tested works as expected
+function inverse_arima_parameter_transform(θ::AbstractVector, arma::AbstractVector{Int})
     mp, mq, msp = arma
     n = length(θ)
     v = mp + mq
@@ -411,12 +838,12 @@ function arima_invtrans(θ::AbstractVector, arma::AbstractVector{Int})
 
     # non‐seasonal AR
     if mp > 0
-        transformed[1:mp] = inv_par_trans(raw[1:mp])
+        transformed[1:mp] = inverse_ar_parameter_transform(raw[1:mp])
     end
 
     # seasonal AR
     if msp > 0
-        transformed[v+1:v+msp] = inv_par_trans(raw[v+1:v+msp])
+        transformed[v+1:v+msp] = inverse_ar_parameter_transform(raw[v+1:v+msp])
     end
 
     return transformed
@@ -452,7 +879,6 @@ function compute_v(phi::AbstractArray, theta::AbstractArray, r::Int)
     end
     return V
 end
-
 
 # Helper for getQ0
 function handle_r_equals_1(p::Int, phi::AbstractArray)
@@ -490,7 +916,6 @@ function handle_p_equals_0(V::AbstractArray, r::Int)
     end
     return res
 end
-
 
 # Helper for getQ0
 function handle_p_greater_than_0(
@@ -546,7 +971,7 @@ function handle_p_greater_than_0(
             end
             xnext[ind2+1] += 1.0
 
-            inclu2(num_params, xnext, xrow, ynext, res, rbar, thetab)
+            update_least_squares!(num_params, xnext, xrow, ynext, res, rbar, thetab)
 
             xnext[ind2+1] = 0.0
             if i != (r - 1)
@@ -619,7 +1044,31 @@ function unpack_full_matrix(res_flat::AbstractArray, r::Int)
     return reshape(res_flat, r, r)
 end
 
-function getQ0(phi::AbstractArray, theta::AbstractArray)
+
+
+"""
+    compute_q0_covariance_matrix(phi, theta)
+
+Compute the initial state covariance matrix for the AR component of an ARIMA model.
+
+This function implements the algorithm described in the R `getQ0` function.  It
+takes the AR (`phi`) and MA (`theta`) coefficient vectors and returns the
+covariance matrix `Q₀` used to initialize the state-space representation of the
+ARIMA model.  Internally it constructs the vector of autocovariances and
+invokes a series of helper functions to fill in the appropriate blocks of
+the matrix.
+
+Arguments
+---------
+- `phi::AbstractArray`: vector of non-seasonal AR coefficients.
+- `theta::AbstractArray`: vector of non-seasonal MA coefficients.
+
+Returns
+-------
+A symmetric matrix of size `r*r`, where `r = max(length(phi), length(theta) + 1)`.
+"""
+# The function is tested works as expected
+function compute_q0_covariance_matrix(phi::AbstractArray, theta::AbstractArray)
     p = length(phi)
     q = length(theta)
 
@@ -645,8 +1094,67 @@ function getQ0(phi::AbstractArray, theta::AbstractArray)
     return res_full
 end
 
-function arima_transpar(params_in::AbstractArray, arma::Vector{Int}, trans::Bool)
-    mp, mq, msp, msq, ns = arma
+"""
+    getQ0bis(phi, theta, tol)
+
+Compute the initial covariance matrix for the AR component of an ARIMA model
+using the Rossignol (2011) method.
+
+The original C code in R exposes two methods for computing the initial
+covariance matrix used by the Kalman filter: the Gardner (1980) approach
+(`getQ0`) and the Rossignol (2011) approach (`getQ0bis`).  The latter is
+more computationally intensive and relies on numerically solving a set of
+Yule-Walker equations.  For the purposes of this translation we provide
+a simplified implementation: this function simply delegates to
+`compute_q0_covariance_matrix`, which corresponds to the Gardner method.
+If a more faithful implementation is required, this function can be
+replaced by an appropriate algorithm.  The parameter `tol` is currently
+ignored.
+
+Arguments
+---------
+- `phi::AbstractArray`: vector of non-seasonal AR coefficients.
+- `theta::AbstractArray`: vector of non-seasonal MA coefficients.
+- `tol::Real`: tolerance parameter (unused).
+
+Returns
+-------
+A symmetric matrix of size `r*r`, where `r = max(length(phi), length(theta) + 1)`.
+"""
+function getQ0bis(phi::AbstractArray, theta::AbstractArray, tol::Real)
+    return compute_q0_covariance_matrix(phi, theta)
+end
+
+"""
+    transform_arima_parameters(params_in, arma, trans)
+
+Transform a flat parameter vector into AR and MA coefficient vectors.
+
+This function expands and optionally transforms the parameters of an ARIMA
+model.  Given a vector of raw parameters `params_in` and the ARIMA order
+`arma`, it produces the non-seasonal and seasonal AR (`phi`) and MA
+(`theta`) coefficient vectors.  If `trans` is `true` the unconstrained
+parameters are first passed through `transform_unconstrained_to_ar_params!`
+for stability.
+
+Arguments
+---------
+- `params_in::AbstractArray`: input parameter vector.
+- `arma::Vector{Int}`: model specification `[p, q, P, Q, s, d, D]`.
+- `trans::Bool`: whether to apply the parameter transformation before
+  expansion.
+
+Returns
+-------
+A tuple `(phi, theta)` containing the expanded AR and MA coefficient vectors.
+"""
+# The function is tested works as expected
+function transform_arima_parameters(
+    params_in::AbstractArray,
+    arma::Vector{Int},
+    trans::Bool,
+)
+mp, mq, msp, msq, ns = arma
     p = mp + ns * msp
     q = mq + ns * msq
 
@@ -656,11 +1164,11 @@ function arima_transpar(params_in::AbstractArray, arma::Vector{Int}, trans::Bool
 
     if trans
         if mp > 0
-            partrans(mp, params_in, params)
+            transform_unconstrained_to_ar_params!(mp, params_in, params)
         end
         v = mp + mq
         if msp > 0
-            partrans(msp, params_in[v+1:end], params[v+1:end])
+            transform_unconstrained_to_ar_params!(msp, params_in[v+1:end], params[v+1:end])
         end
     end
 
@@ -689,7 +1197,40 @@ function arima_transpar(params_in::AbstractArray, arma::Vector{Int}, trans::Bool
     return (phi, theta)
 end
 
-function arima_css(y::AbstractArray, arma::Vector{Int}, phi::AbstractArray, theta::AbstractArray, ncond::Int)
+"""
+    compute_css_residuals(y, arma, phi, theta, ncond)
+
+Compute the conditional sum of squares (CSS) and residuals for an ARIMA model.
+
+This routine mirrors the behaviour of the R function `ARIMA_CSS`.  It first
+applies the appropriate differencing specified by the ARIMA order and then
+computes the residuals of the ARMA model defined by `phi` and `theta`.  The
+sum of squared residuals and the number of non-missing residuals are used
+to compute the innovation variance estimate.  When called from the
+high-level `arima` function, these residuals provide a fast approximate
+estimate of the parameters prior to full maximum likelihood estimation.
+
+Arguments
+---------
+- `y::AbstractArray`: the observed series (may contain missing values).
+- `arma::Vector{Int}`: model specification `[p, q, P, Q, s, d, D]`.
+- `phi::AbstractArray`: vector of non-seasonal AR coefficients.
+- `theta::AbstractArray`: vector of non-seasonal MA coefficients.
+- `ncond::Int`: number of initial observations to condition on.
+
+Returns
+-------
+A `Dict` with keys `"sigma2"` giving the variance estimate and
+`"resid"` giving the vector of residuals.
+"""
+# The function is tested works as expected
+function compute_css_residuals(
+    y::AbstractArray,
+    arma::Vector{Int},
+    phi::AbstractArray,
+    theta::AbstractArray,
+    ncond::Int,
+)
     n = length(y)
     p = length(phi)
     q = length(theta)
@@ -745,7 +1286,42 @@ function arima_css(y::AbstractArray, arma::Vector{Int}, phi::AbstractArray, thet
     return Dict("sigma2" => ssq / nu, "resid" => resid)
 end
 
- function make_arima(phi::Vector{Float64}, theta::Vector{Float64}, Delta::Vector{Float64}; kappa::Float64=1e6, SSinit::String="Gardner1980", tol::Float64=eps(Float64))
+"""
+    initialize_arima_state(phi, theta, Delta; kappa=1e6, SSinit="Gardner1980", tol=eps(Float64))
+
+Create and initialize the state-space representation of an ARIMA model.
+
+Given vectors of AR coefficients `phi`, MA coefficients `theta`, and the differencing polynomial `Delta`, 
+this function constructs all state-space matrices required for Kalman filtering and smoothing.  
+This function mirrors the structure and logic of the corresponding C function used in R, and is used internally 
+by high-level ARIMA fitting routines.
+
+The initial state covariance matrix `Pn` is computed either by `compute_q0_covariance_matrix` (for `SSinit="Gardner1980"`)
+or by `getQ0bis` (for `SSinit="Rossignol2011"`).
+
+# Arguments
+- `phi::Vector{Float64}`: Non-seasonal AR coefficients.
+- `theta::Vector{Float64}`: Non-seasonal MA coefficients.
+- `Delta::Vector{Float64}`: Differencing polynomial coefficients.
+- `kappa::Float64`: Prior variance used to initialize the differenced states (default: `1e6`).
+- `SSinit::String`: Method for computing the initial covariance matrix ("Gardner1980" or "Rossignol2011").
+- `tol::Float64`: Tolerance parameter used by the Rossignol method.
+
+# Returns
+- An [`ArimaStateSpace`](@ref) struct containing the fields:
+    - `phi`, `theta`, `Delta`, `Z`, `a`, `P`, `T`, `V`, `h`, `Pn`  
+      (see [`ArimaStateSpace`](@ref) for field descriptions).
+
+# Notes
+- This function is intended for internal use, typically by higher-level ARIMA fitting routines.
+- The returned struct can be used directly with Kalman filtering and smoothing algorithms.
+
+# References
+- Gardner, G., Harvey, A. C. & Phillips, G. D. A. (1980). Algorithm AS 154: An algorithm for exact maximum likelihood estimation of autoregressive-moving average models by means of Kalman filtering. *Applied Statistics*, 29, 311-322.
+- Durbin, J. & Koopman, S. J. (2001). *Time Series Analysis by State Space Methods*. Oxford University Press.
+
+"""
+function initialize_arima_state(phi::Vector{Float64}, theta::Vector{Float64}, Delta::Vector{Float64}; kappa::Float64=1e6, SSinit::String="Gardner1980", tol::Float64=eps(Float64))
     p = length(phi)
     q = length(theta)
     r = max(p, q + 1)
@@ -782,7 +1358,7 @@ end
     Pn = zeros(Float64, rd, rd)
     if r > 1
         if SSinit == "Gardner1980"
-            Pn[1:r, 1:r] = getQ0(phi, theta)
+            Pn[1:r, 1:r] = compute_q0_covariance_matrix(phi, theta)
         elseif SSinit == "Rossignol2011"
             Pn[1:r, 1:r] = getQ0bis(phi, theta, tol)
         else
@@ -800,334 +1376,341 @@ end
             Pn[i, i] = kappa
         end
     end
-    return (
-        phi=phi,
-        theta=theta,
-        Delta=Delta,
-        Z=Z,
-        a=a,
-        P=P,
-        T=T,
-        V=V,
-        h=h,
-        Pn=Pn,
-    )
+    return ArimaStateSpace(phi, theta, Delta, Z, a, P, T, V, h, Pn)
 end
 
 
-function arima_like(y,
-                    phi,
-                    theta,
-                    delta,
-                    a,
-                    Pflat,
-                    Pnflat,
-                    up::Int,
-                    use_resid::Bool)
-    # dimensions
-    n  = length(y)
-    rd = length(a)
-    p  = length(phi)
-    q  = length(theta)
-    d  = length(delta)
-    r  = rd - d
+"""
+    process_xreg(xreg::Union{NamedMatrix, Nothing}, n::Int)
 
-    # stats
-    sumlog = 0.0
-    ssq    = 0.0
-    nu     = 0
+Process an exogenous regressor `xreg` (which may be `nothing` or a `NamedMatrix`).
 
-    # operate in-place
-    # P    = Pflat
-    # Pnew = Pnflat
+Returns:
+- `xreg::Matrix{Float64}`: the data matrix (guaranteed Float64 type)
+- `ncxreg::Int`: number of columns in `xreg`
+- `nmxreg::Vector{String}`: column names
 
-    P = copy(reshape(Pflat, 1, :))[:]
-    Pnew = copy(reshape(Pnflat, 1, :))[:]
+# Arguments
+- `xreg`: either `nothing` or a `NamedMatrix`
+- `n`: number of rows expected
 
-    # scratch
-    anew   = similar(a)
-    M      = similar(a)
-    mm     = d > 0 ? zeros(rd, rd) : nothing
-    rsResid= use_resid ? fill(NaN, n) : nothing
-
-    for l in 1:n
-        # state prediction
-        for i in 1:r
-            tmp = (i < r) ? a[i+1] : 0.0
-            tmp += (i <= p) ? phi[i] * a[1] : 0.0
-            anew[i] = tmp
-        end
-        if d > 0
-            anew[(r+2):rd] .= a[(r+1):(rd-1)]
-            tmp = a[1]
-            for i = 1:d
-                tmp += delta[i] * a[r+i]
-            end
-            anew[r+1] = tmp
-        end
-
-        # covariance prediction
-        if l > up+1
-            if d == 0
-                for i = 1:r
-                    vi = (i == 1) ? 1.0 : (i - 1 <= q ? theta[i-1] : 0.0)
-                    for j = 1:r
-                        tmp = 0.0
-                        tmp += (j == 1) ? vi : (j - 1 <= q ? vi * theta[j-1] : 0.0)
-                        tmp += (i <= p && j <= p) ? phi[i] * phi[j] * P[1] : 0.0
-                        tmp += (i < r && j < r) ? P[i+1+r*(j-1)] : 0.0
-                        tmp += (i <= p && j < r) ? phi[i] * P[j+1] : 0.0
-                        tmp += (j <= p && i < r) ? phi[j] * P[i+1] : 0.0
-                        Pnew[i+r*(j-1)] = tmp
-                    end
-                end
-            else
-                for i = 1:r
-                    for j = 1:rd
-                        tmp = 0.0
-                        tmp += (i <= p) ? phi[i] * P[1+(j-1)*rd] : 0.0
-                        tmp += (i < r) ? P[i+1+(j-1)*rd] : 0.0
-                        mm[i, j] = tmp
-                    end
-                end
-                
-                for j in 1:rd
-                    tmp = P[1+(j-1)*rd]
-                    for k = 1:d
-                        tmp += delta[k] * P[r+k+(j-1)*rd]
-                    end
-                    mm[r+1, j] = tmp
-                end
-                # 
-                for k in 2:d, j in 1:rd
-                    mm[r+k,j] = P[(r+k-1) + (j-1)*rd]
-                end
-
-                for i = 1:rd
-                    for j = 1:r
-                        tmp = 0.0
-                        tmp += (j <= p) ? phi[j] * mm[i, 1] : 0.0
-                        tmp += (j < r) ? mm[i, j+1] : 0.0
-                        Pnew[i+(j-1)*rd] = tmp
-                    end
-                end
-
-                for i = 1:rd
-                    tmp = mm[i, 1]
-                    for k = 1:d
-                        tmp += delta[k] * mm[i, r+k]
-                    end
-                    Pnew[i+r*rd] = tmp
-                end
-
-                for i = 2:d
-                    for j = 1:rd
-                        Pnew[j+(r+i-1)*rd] = mm[j, r+i-1]
-                    end
-                end
-                
-                for i in 1:(q+1), j in 1:(q+1)
-                    vi = (i == 1) ? 1.0 : theta[i-1]
-                    Pnew[i + (j-1)*rd] += vi * ((j == 1) ? 1.0 : theta[j-1])
-                end
-            end
-        end
-
-        # measurement update
-        if !isnan(y[l])
-            resid = y[l] - anew[1]
-            for k in 1:d
-                resid -= delta[k] * anew[r+k]
-            end
-
-            for i in 1:rd
-                tmp = Pnew[i]
-                for k in 1:d
-                    tmp += Pnew[i + (r+k-1)*rd] * delta[k]
-                end
-                M[i] = tmp
-            end
-            gain = M[1]
-            for k in 1:d
-                gain += delta[k] * M[r+k]
-            end
-
-            # original <= 1e4 guard
-            if gain < 1e4
-                nu += 1
-                ssq += resid^2 / gain
-                sumlog += log(gain)
-            end
-            if use_resid
-                rsResid[l] = resid / sqrt(gain)
-            end
-
-            for i in 1:rd
-                a[i] = anew[i] + M[i] * resid / gain
-            end
-            for i in 1:rd, j in 1:rd
-                P[i + (j-1)*rd] = Pnew[i + (j-1)*rd] - M[i]*M[j]/gain
-            end
-        else
-            a .= anew
-            P .= Pnew
-            if use_resid
-                rsResid[l] = NaN
-            end
-        end
-    end
-
-    # return matching R signature
-    if use_resid
-        return Dict("ssq" => ssq, "sumlog" => sumlog, "nu" => nu, "resid" => rsResid)
+# Throws
+- `ArgumentError` if the number of rows in `xreg` does not match `n`
+"""
+function process_xreg(xreg::Union{NamedMatrix,Nothing}, n::Int)
+    if xreg === nothing
+        xreg_mat = Matrix{Float64}(undef, n, 0)
+        ncxreg = 0
+        nmxreg = String[]
     else
-        return Dict("ssq" => ssq, "sumlog" => sumlog, "nu" => nu)
+        if size(xreg.data, 1) != n
+            throw(ArgumentError("Lengths of x and xreg do not match!"))
+        end
+        xreg_mat = xreg.data
+        # Ensure Float64 if needed as in R but I am not sure. I will discuss with Rob.
+        # For datasets where the integer are used such as dummy variables.
+        if !(eltype(xreg_mat) <: Float64)
+            xreg_mat = Float64.(xreg_mat)
+        end
+        ncxreg = size(xreg_mat, 2)
+        nmxreg = xreg.colnames
     end
+    return xreg_mat, ncxreg, nmxreg
 end
 
+"""
+    regress_and_update!(init0, parscale, x, xreg, mask, narma, ncxreg, order_d, seasonal_d, m, Delta)
 
-function arima(x::AbstractArray,
-    m;
+Regression block for exogenous regressors with missing value handling and coefficient scaling.
+
+# Arguments
+- `x::Vector{Float64}`: Target variable (can contain NaN for missing values).
+- `xreg::Matrix{Float64}`: Regressor matrix (can contain NaN for missing).
+- `mask::Vector{Bool}`: Boolean mask for fixed/free parameters (length: narma + ncxreg).
+- `narma::Int`: Number of ARMA params (used for mask indexing).
+- `ncxreg::Int`: Number of exogenous regressors.
+- `order_d::Int`: Order of nonseasonal differencing.
+- `seasonal_d::Int`: Order of seasonal differencing.
+- `m::Int`: Seasonal period.
+- `Delta::Vector`: Differencing indices (used for n_used).
+
+# Returns
+Tuple: (`init0`, `parscale`, `n_used`)
+"""
+function regress_and_update!(
+    x::AbstractArray,
+    xreg::Matrix,
+    mask::AbstractArray,
+    narma::Int,
+    ncxreg::Int,
+    order_d::Int,
+    seasonal_d::Int,
+    m::Int,
+    Delta::AbstractArray,
+)
+
+    init0 = zeros(narma)
+    parscale = ones(narma)
+    # Convert missings to NaN everywhere
+    x, xreg = na_omit_pair(x, xreg)
+
+    orig_xreg = (ncxreg == 1) || any(.!mask[(narma+1):(narma+ncxreg)])
+
+    if !orig_xreg
+        rows_good = [all(isfinite, row) for row in eachrow(xreg)]
+        S = svd(xreg[rows_good, :])
+        xreg = xreg * S.V
+    else
+        S = nothing
+    end
+
+    dx = copy(x)
+    dxreg = copy(xreg)
+    if order_d > 0
+        dx = diff(dx; lag = 1, differences = order_d)
+        dxreg = diff(dxreg; lag = 1, differences = order_d)
+        dx, dxreg = na_omit_pair(dx, dxreg)
+    end
+    if m > 1 && seasonal_d > 0
+        dx = diff(dx; lag = m, differences = seasonal_d)
+        dxreg = diff(dxreg; lag = m, differences = seasonal_d)
+        dx, dxreg = na_omit_pair(dx, dxreg)
+    end
+
+    if length(dx) > size(dxreg, 2)
+        try
+            fit = Stats.ols(dx, dxreg)
+            fit_rank = rank(dxreg)
+        catch e
+            @warn "Fitting OLS to difference data failed: $e"
+            fit = nothing
+            fit_rank = 0
+        end
+    else
+        @warn "Not enough observations to fit OLS (length(dx) = $(length(dx)), predictors = $(size(dxreg, 2)))."
+        fit = nothing
+        fit_rank = 0
+    end
+
+    if fit_rank == 0
+        x, xreg = na_omit_pair(x, xreg)
+        fit = Stats.ols(x, xreg)
+    end
+
+    isna = isnan.(x) .| [any(isnan, row) for row in eachrow(xreg)]
+    n_used = sum(.!isna) - length(Delta)
+    model_coefs = Stats.coefficients(fit)
+    init0 = append!(init0, model_coefs)
+    ses = fit.se
+    parscale = append!(parscale, 10 * ses)
+
+    return init0, parscale, n_used, orig_xreg, S
+end
+
+"""
+    prep_coefs(
+        arma::Vector{Int}, 
+        coef::AbstractArray, 
+        cn::Vector{String}, 
+        ncxreg::Int
+    ) -> NamedMatrix
+
+Construct a `NamedMatrix` representing model coefficients, assigning appropriate names to each coefficient 
+according to AR, MA, seasonal, and exogenous (xreg) components.
+
+# Arguments
+
+- `arma::Vector{Int}`: A vector of length 4 specifying the orders of the model in the form 
+  `[AR, MA, SAR, SMA]`, where:
+    - `AR`: Number of non-seasonal autoregressive coefficients.
+    - `MA`: Number of non-seasonal moving average coefficients.
+    - `SAR`: Number of seasonal autoregressive coefficients.
+    - `SMA`: Number of seasonal moving average coefficients.
+
+- `coef::AbstractArray`: A one-dimensional array of coefficient values, ordered as specified by the model.
+
+- `cn::Vector{String}`: Names of exogenous regressors (if any).
+
+- `ncxreg::Int`: Number of exogenous regressors.
+
+# Returns
+
+- A `NamedMatrix` object containing the coefficients as a 1-row matrix, with column names 
+  corresponding to parameter names such as `"ar1"`, `"ma1"`, `"sar1"`, `"sma1"`, and any 
+  exogenous regressor names.
+
+# Example
+
+```julia
+arma = [2, 1, 0, 0]                  # AR(2), MA(1), no seasonal
+coef = [0.8, -0.3, 0.4, 1.2]         # AR1, AR2, MA1, xreg1
+cn = ["xreg1"]                       # exogenous name(s)
+ncxreg = 1
+
+nm = prep_coefs(arma, coef, cn, ncxreg)
+
+# Output: NamedMatrix with columns ["ar1", "ar2", "ma1", "xreg1"]
+"""
+function prep_coefs(arma::Vector{Int}, coef::AbstractArray, cn::Vector{String}, ncxreg::Int)
+    names = String[]
+    if arma[1] > 0
+        append!(names, ["ar$(i)" for i in 1:arma[1]])
+    end
+    if arma[2] > 0
+        append!(names, ["ma$(i)" for i in 1:arma[2]])
+    end
+    if arma[3] > 0
+        append!(names, ["sar$(i)" for i in 1:arma[3]])
+    end
+    if arma[4] > 0
+        append!(names, ["sma$(i)" for i in 1:arma[4]])
+    end
+    if ncxreg > 0
+        append!(names, cn)
+    end
+    mat = reshape(coef, 1, :)
+    return NamedMatrix(mat, names)
+end
+
+function update_arima(mod::ArimaStateSpace, phi, theta; ss_g=true)
+    p = length(phi)
+    q = length(theta)
+    r = max(p, q + 1)
+
+    mod.phi = phi
+    mod.theta = theta
+
+    if p > 0
+        mod.T[1:p, 1] .= phi
+    end
+
+    if r > 1
+        if ss_g
+            mod.Pn[1:r, 1:r] .= compute_q0_covariance_matrix(phi, theta)
+        else
+            mod.Pn[1:r, 1:r] .= getQ0bis(phi, theta, 0.0)
+        end
+    else
+        if p > 0
+            mod.Pn[1, 1] = 1 / (1 - phi[1]^2)
+        else
+            mod.Pn[1, 1] = 1.0
+        end
+    end
+
+    mod.a .= 0.0
+    return mod
+end
+
+# Check AR polynomial stationarity
+function ar_check(ar)
+    v = vcat(1.0, -ar...)
+    last_nz = findlast(x -> x != 0.0, v)
+    p = last_nz === nothing ? 0 : last_nz - 1
+    if p == 0
+        return true
+    end
+
+    coeffs = vcat(1.0, -ar[1:p]...)
+    rts = roots(Polynomial(coeffs))
+
+    return all(abs.(rts) .> 1.0)
+end
+
+# Invert MA polynomial
+function ma_invert(ma)
+    q = length(ma)
+    cdesc = vcat(1.0, ma...)
+    nz = findall(x -> x != 0.0, cdesc)
+    q0 = isempty(nz) ? 0 : maximum(nz) - 1
+    if q0 == 0
+        return ma
+    end
+    cdesc_q = cdesc[1:q0+1]
+    rts = roots(Polynomial(cdesc_q))
+    ind = abs.(rts) .< 1.0
+    if all(.!ind)
+        return ma
+    end
+    if q0 == 1
+        return vcat(1.0 / ma[1], zeros(q - q0))
+    end
+    rts[ind] .= 1.0 ./ rts[ind]
+    x = [1.0]
+    for r in rts
+        x = vcat(x, 0.0) .- (vcat(0.0, x) ./ r)
+    end
+    return vcat(real.(x[2:end]), zeros(q - q0))
+end
+
+function arima(
+    x::AbstractArray,
+    m::Int;
     order::PDQ = PDQ(0, 0, 0),
     seasonal::PDQ = PDQ(0, 0, 0),
-    xreg = nothing,
-    include_mean = true,
-    transform_pars = true,
-    fixed = nothing,
-    init = nothing,
-    method = "CSS",
-    n_cond = nothing,
-    SSinit = "Gardner1980",
+    xreg::Union{Nothing, NamedMatrix} = nothing,
+    include_mean::Bool = true,
+    transform_pars::Bool = true,
+    fixed::Union{Nothing, AbstractArray} = nothing,
+    init::Union{Nothing, AbstractArray}= nothing,
+    method::String = "CSS",
+    n_cond::Union{Nothing, AbstractArray} = nothing,
+    SSinit::String = "Gardner1980",
     options::NelderMeadOptions = NelderMeadOptions(),
-    kappa = 1e6,)
+    kappa::Real = 1e6,)
 
-    # Internal helper: convolution
-    function TS_add(a, b)
-        return TSconv(a, b)
-    end
-
+    SSinit = match_arg(SSinit, ["Gardner1980", "Rossignol2011"])
+    method = match_arg(method, ["CSS-ML", "ML", "CSS"])
     SS_G = SSinit == "Gardner1980"
 
-    # Update ARIMA structure
-    function upARIMA(mod, phi, theta)
-        p = length(phi)
-        q = length(theta)
-        r = max(p, q + 1)
-
-        mod = (mod..., phi = phi, theta = theta)
-
-        if p > 0
-            T = copy(mod.T)
-            T[1:p, 1] .= phi
-            mod = (mod..., T = T)
-        end
-
-        if r > 1
-            Pn = copy(mod.Pn)
-            Pn[1:r, 1:r] .= SS_G ? getQ0(phi, theta) : getQ0bis(phi, theta, 0.0)
-        else
-            Pn = copy(mod.Pn)
-            Pn[1, 1] = (p > 0) ? 1 / (1 - phi[1]^2) : 1.0
-        end
-        mod = (mod..., Pn = Pn)
-
-        a = fill(0.0, size(mod.a))
-        mod = (mod..., a = a)
-
-        return mod
-    end
-
-
-    # ARIMA likelihood
-    function arimaSS(y, mod)
-        return arima_like(y, mod.phi, mod.theta, mod.Delta, mod.a, mod.P, mod.Pn, 0, true)
+    # State-space likelihood
+    function compute_state_space_likelihood(y, model)
+        # Delegate to the Kalman filter based likelihood computation.
+        return compute_arima_likelihood(y, model, 0, true)
     end
 
     # Objective for ML optimization
     function armafn(p, trans)
         par = copy(coef)
         par[mask] = p
-        trarma = arima_transpar(par, arma, trans)
+        trarma = transform_arima_parameters(par, arma, trans)
 
-        Z = upARIMA(mod, trarma[1], trarma[2])
+        #Z = upARIMA(mod, trarma[1], trarma[2])
+        Z = update_arima(mod, trarma[1], trarma[2]; ss_g=SS_G)
 
         try
-            Z = upARIMA(mod, trarma[1], trarma[2])
+            #Z = upARIMA(mod, trarma[1], trarma[2])
+            Z = update_arima(mod, trarma[1], trarma[2]; ss_g=SS_G)
         catch e
             @warn "Updating arima failed $e"
             return typemax(Float64)
         end
 
         if ncxreg > 0
-            x = x .- xreg * par[narma+1:end]
+            x = x .- xreg * par[narma+1 : narma+ncxreg]
         end
-        resss = arima_like(x, Z.phi, Z.theta, Z.Delta, Z.a, Z.P, Z.Pn, 0, false)
+        resss =
+            compute_arima_likelihood(x, Z, 0, false)
 
         s2 = resss["ssq"] / resss["nu"]
         return 0.5 * (log(s2) + resss["sumlog"] / resss["nu"])
     end
-
     # Conditional sum of squares objective
     function armaCSS(p)
         par = copy(fixed)
         par[mask] .= p
-        trarma = arima_transpar(par, arma, false)
+        trarma = transform_arima_parameters(par, arma, false)
 
         if ncxreg > 0
-            x = x .- xreg * par[narma+1:end]
+            x = x .- xreg * par[narma+1 : narma+ncxreg]
         end
 
-        ross = arima_css(x, arma, trarma[1], trarma[2], ncond)
+        ross = compute_css_residuals(x, arma, trarma[1], trarma[2], ncond)
         return 0.5 * log(ross["sigma2"])
     end
-
-    # Check AR polynomial stationarity
-    function arCheck(ar)
-        v = vcat(1.0, -ar...)
-        last_nz = findlast(x -> x != 0.0, v)
-        p = last_nz === nothing ? 0 : last_nz - 1
-        if p == 0
-            return true
-        end
-
-        coeffs = vcat(1.0, -ar[1:p]...)
-        rts = roots(Polynomial(coeffs))
-
-        return all(abs.(rts) .> 1.0)
-    end
-
-    # Invert MA polynomial
-    function maInvert(ma)
-        q = length(ma)
-        cdesc = vcat(1.0, ma...)
-        nz = findall(x -> x != 0.0, cdesc)
-        q0 = isempty(nz) ? 0 : maximum(nz) - 1
-        if q0 == 0
-            return ma
-        end
-        cdesc_q = cdesc[1:q0+1]
-        rts = roots(Polynomial(cdesc_q))
-        ind = abs.(rts) .< 1.0
-        if all(.!ind)
-            return ma
-        end
-        if q0 == 1
-            return vcat(1.0 / ma[1], zeros(q - q0))
-        end
-        rts[ind] .= 1.0 ./ rts[ind]
-        x = [1.0]
-        for r in rts
-            x = vcat(x, 0.0) .- (vcat(0.0, x) ./ r)
-        end
-        return vcat(real.(x[2:end]), zeros(q - q0))
-    end
-
-    SSinit = match_arg(SSinit, ["Gardner1980", "Rossignol2011"])
-    method = match_arg(method, ["CSS-ML", "ML", "CSS"])
-
+    
     n = length(x)
     y = copy(x)
-    xreg_original = xreg === nothing ? nothing : copy(xreg)
 
     arma = [order.p, order.q, seasonal.p, seasonal.q, m, order.d, seasonal.d]
 
@@ -1137,49 +1720,35 @@ function arima(x::AbstractArray,
     Delta = [1.0]
 
     for _ = 1:order.d
-        Delta = tsconv(Delta, [1.0, -1.0])
+        Delta = time_series_convolution(Delta, [1.0, -1.0])
     end
 
     for _ = 1:seasonal.d
         seasonal_filter = [1.0; zeros(m - 1); -1.0]
-        Delta = tsconv(Delta, seasonal_filter)
+        Delta = time_series_convolution(Delta, seasonal_filter)
     end
-    
+
     Delta = -Delta[2:end]
 
     nd = order.d + seasonal.d
     n_used = length(na_omit(x)) - length(Delta)
 
-    # Build build xreg
-    if isnothing(xreg)
-        xreg = Matrix{Float64}(undef, n, 0)
-        ncxreg = 0
-    else
-        if size(xreg, 1) != n
-            throw(ArgumentError("Lengths of x and xreg do not match!"))
+    xreg_original = xreg
+
+    if include_mean && (nd == 0)
+        if xreg === nothing
+            xreg = NamedMatrix(zeros(n, 0), String[])
         end
-        ncxreg = size(xreg, 2)
+        xreg = add_dift_term(xreg, ones(n), "intercept")
     end
 
-    nmxreg = ["ex_$(i)" for i = 1:ncxreg]
+    xreg, ncxreg, nmxreg = process_xreg(xreg, n)
 
-    if include_mean && nd == 0
-        intercept = ones(Float64, n, 1)
-
-        if ncxreg == 0
-            xreg = intercept
-        else
-            xreg = hcat(intercept, xreg)
-        end
-
-        ncxreg += 1
-        nmxreg = ["intercept"; nmxreg]
-    end
-    # adjust method
     if method == "CSS-ML"
-        anyna = any(isnan, x)
+        has_missing = xi -> (ismissing(xi) || isnan(xi))
+        anyna = any(has_missing, x)
         if ncxreg > 0
-            anyna |= any(isnan, xreg)
+            anyna |= any(has_missing, xreg)
         end
         if anyna
             method = "ML"
@@ -1221,86 +1790,13 @@ function arima(x::AbstractArray,
         end
     end
 
-    init0 = zeros(narma)
-    parscale = ones(narma)
-
     # estimate init and scale
     if ncxreg > 0
-        orig_xreg = (ncxreg == 1) || any(!mask[narma+1:narma+ncxreg])
-
-        if !orig_xreg
-            rows_good = all.(isfinite, eachrow(xreg))
-            S = svd(xreg[rows_good, :])
-            xreg = xreg * S.V
-        end
-
-        dx = copy(x)
-        dxreg = copy(xreg)
-
-        if order.d > 0
-            dx = diff(dx, dims=1, n=order.d)
-            dxreg = diff(dxreg, dims=1, n=order.d)
-        end
-
-        if m > 1 && seasonal.d > 0
-            dx = diff(dx, m, seasonal.d)
-            dxreg = diff(dxreg, m, seasonal.d)
-        end
-
-        # Filter out rows with any NaNs in x or xreg
-        valid_x_rows = .!(isnan.(x)) .& .!([any(isnan, row) for row in eachrow(xreg)])
-        x_clean = x[valid_x_rows]
-        xreg_clean = xreg[valid_x_rows, :]
-
-        # Filter out rows with any NaNs in dx or dxreg
-        valid_dx_rows = .!(isnan.(dx)) .& .!([any(isnan, row) for row in eachrow(dxreg)])
-        dx_clean = dx[valid_dx_rows]
-        dxreg_clean = dxreg[valid_dx_rows, :]
-
-        nobs = length(x_clean)  # Already cleaned, so no need for na_omit
-
-        β = nothing
-        ses = nothing
-        fit_success = false
-
-        # Attempt regression: dx ~ dxreg - 1
-        if size(dx_clean, 1) > size(dxreg_clean, 2)
-            try
-                β = dxreg_clean \ dx_clean
-                residuals = dx_clean - dxreg_clean * β
-                σ2 = sum(residuals .^ 2) / (length(dx_clean) - size(dxreg_clean, 2))
-
-                XtX = dxreg_clean' * dxreg_clean
-                cov_β = σ2 * (cholesky(Symmetric(XtX)) \ I)
-                ses = sqrt.(diag(cov_β))
-
-                fit_success = true
-            catch e
-                @warn "dxreg fit failed: $e"
-                fit_success = false
-            end
-        end
-
-        # Fallback regression: x ~ xreg - 1
-        if !fit_success
-            try
-                β = xreg_clean \ x_clean
-                residuals = x_clean - xreg_clean * β
-                σ2 = sum(residuals .^ 2) / (length(x_clean) - size(xreg_clean, 2))
-
-                XtX = xreg_clean' * xreg_clean
-                cov_β = σ2 * (cholesky(Symmetric(XtX)) \ I)
-                ses = sqrt.(diag(cov_β))
-            catch e
-                error("Least squares fitting failed in fallback: $e")
-            end
-        end
-
-        # Final updates
-        init0 = vcat(init0, β)
-        parscale = vcat(parscale, 10 .* ses)
-
-        n_used = nobs - length(Delta)
+        init0, parscale, n_used, orig_xreg, S = 
+        regress_and_update!(x, xreg, mask, narma, ncxreg, order.d, seasonal.d, m, Delta)
+    else
+        init0 = zeros(narma)
+        parscale = ones(narma)
     end
 
     if n_used <= 0
@@ -1313,36 +1809,44 @@ function arima(x::AbstractArray,
         end
 
         ind = map(x -> isnan(x) || ismissing(x), init)
-        init[ind] .= init0[ind]
+        if any(ind)
+           init[ind] .= init0[ind] 
+        end
 
         if method == "ML"
             p, d, q = arma[1:3]
-            if p > 0 && !arCheck(init[1:p])
-                error("non-stationary AR part")
+            if p > 0
+                if !ar_check(init[1:p])
+                    error("non-stationary AR part")
+                end
             end
-            if q > 0 && !arCheck(init[p+d+1:p+d+q])
-                error("non-stationary seasonal AR part")
+            if q > 0
+                sa_start = p + d + 1
+                sa_stop = p + d + q
+                if !ar_check(init[sa_start:sa_stop])
+                    error("non-stationary seasonal AR part")
+                end
             end
             if transform_pars
-                init = arima_invtrans(init, arma)
+                init = inverse_arima_parameter_transform(init, arma)
             end
         end
     else
-        init = init0
+        init = copy(init0)
     end
 
     coef = copy(Float64.(fixed))
 
     if method == "CSS"
         if no_optim
-            res = (converged=true, minimizer=zeros(0), minimum=armaCSS(zeros(0)))
+            res = (converged = true, minimizer = zeros(0), minimum = armaCSS(zeros(0)))
         else
             opt = nmmin(p -> armaCSS(p), init[mask], options)
-
+            
             res = (
-                converged=isapprox(opt.fail, 0, atol=1e-7),
-                minimizer=opt.x_opt,
-                minimum=opt.f_opt,
+                converged = opt.fail == 0,
+                minimizer = opt.x_opt,
+                minimum = opt.f_opt,
             )
         end
 
@@ -1352,19 +1856,24 @@ function arima(x::AbstractArray,
 
         coef[mask] .= res.minimizer
 
-        trarma = arima_transpar(coef, arma, false)
-        mod = make_arima(trarma[1], trarma[2], Delta, kappa=kappa, SSinit=SSinit)
-
+        trarma = transform_arima_parameters(coef, arma, false)
+        mod = initialize_arima_state(
+            trarma[1],
+            trarma[2],
+            Delta;
+            kappa = kappa,
+            SSinit = SSinit,
+        )
+        
         if ncxreg > 0
-            x = x - xreg * coef[narma.+(1:ncxreg)]
+            x = x - xreg * coef[narma+1 : narma+ncxreg]
         end
-        
-        #keep for now
-        arimaSS(x, mod)
-        
-        val = arima_css(x, arma, trarma[1], trarma[2], ncond)
+
+        compute_state_space_likelihood(x, mod)
+
+        val = compute_css_residuals(x, arma, trarma[1], trarma[2], ncond)
         sigma2 = val["sigma2"]
-        
+
 
         if no_optim
             var = zeros(0)
@@ -1377,16 +1886,16 @@ function arima(x::AbstractArray,
         if method == "CSS-ML"
             if no_optim
                 res = (
-                    converged=true,
-                    minimizer=zeros(sum(mask)),
-                    minimum=armaCSS(zeros(0)),
+                    converged = true,
+                    minimizer = zeros(sum(mask)),
+                    minimum = armaCSS(zeros(0)),
                 )
             else
                 opt = nmmin(p -> armaCSS(p), init[mask], options)
                 res = (
-                    converged=isapprox(opt.fail, 0, atol=1e-7),
-                    minimizer=opt.x_opt,
-                    minimum=opt.f_opt,
+                    converged = isapprox(opt.fail, 0, atol = 1e-7),
+                    minimizer = opt.x_opt,
+                    minimum = opt.f_opt,
                 )
             end
 
@@ -1394,11 +1903,11 @@ function arima(x::AbstractArray,
                 init[mask] .= res.minimizer
             end
 
-            if arma[1] > 0 && !arCheck(init[1:arma[1]])
+            if arma[1] > 0 && !ar_check(init[1:arma[1]])
                 error("Non-stationary AR part from CSS")
             end
 
-            if arma[3] > 0 && !arCheck(init[sum(arma[1:2])+1:sum(arma[1:3])])
+            if arma[3] > 0 && !ar_check(init[sum(arma[1:2])+1:sum(arma[1:3])])
                 error("Non-stationary seasonal AR part from CSS")
             end
 
@@ -1406,36 +1915,42 @@ function arima(x::AbstractArray,
         end
 
         if transform_pars
-            init = arima_invtrans(init, arma)
+            init = inverse_arima_parameter_transform(init, arma)
 
             if arma[2] > 0
                 ind = (arma[1]+1):(arma[1]+arma[2])
-                init[ind] .= maInvert(init[ind])
+                init[ind] .= ma_invert(init[ind])
             end
 
             if arma[4] > 0
                 ind = sum(arma[1:3])+1:sum(arma[4])
-                init[ind] .= maInvert(init[ind])
+                init[ind] .= ma_invert(init[ind])
             end
         end
 
-        trarma = arima_transpar(init, arma, transform_pars)
-        mod = make_arima(trarma[1], trarma[2], Delta, kappa=kappa, SSinit=SSinit)
+        trarma = transform_arima_parameters(init, arma, transform_pars)
+        mod = initialize_arima_state(
+            trarma[1],
+            trarma[2],
+            Delta;
+            kappa = kappa,
+            SSinit = SSinit,
+        )
 
         if no_optim
 
             res = (
-                converged=true,
-                minimizer=zeros(0),
-                minimum=armafn(zeros(0), transform_pars),
+                converged = true,
+                minimizer = zeros(0),
+                minimum = armafn(zeros(0), transform_pars),
             )
         else
             opt = nmmin(p -> armafn(p, transform_pars), init[mask], options)
-            
+
             res = (
-                converged=isapprox(opt.fail, 0, atol=1e-7),
-                minimizer=opt.x_opt,
-                minimum=opt.f_opt,
+                converged = isapprox(opt.fail, 0, atol = 1e-7),
+                minimizer = opt.x_opt,
+                minimum = opt.f_opt,
             )
         end
 
@@ -1450,40 +1965,47 @@ function arima(x::AbstractArray,
             if arma[2] > 0
                 ind = (arma[1]+1):(arma[1]+arma[2])
                 if all(mask[ind])
-                    coef[ind] .= maInvert(coef[ind])
+                    coef[ind] .= ma_invert(coef[ind])
                 end
             end
 
             if arma[4] > 0
                 ind = sum(arma[1:3])+1:arma[4]
                 if all(mask[ind])
-                    coef[ind] .= maInvert(coef[ind])
+                    coef[ind] .= ma_invert(coef[ind])
                 end
             end
 
             if any(coef[mask] .!= res.minimizer)
                 old_convergence = res.converged
-                options2 = NelderMeadOptions(options.abstol, options.intol, 
-                options.alpha, options.beta, options.gamma, options.trace, 0)
+                options2 = NelderMeadOptions(
+                    options.abstol,
+                    options.intol,
+                    options.alpha,
+                    options.beta,
+                    options.gamma,
+                    options.trace,
+                    0,
+                )
 
                 opt = nmmin(p -> armafn(p, true), coef[mask], options2)
                 hessian = optim_hessian(p -> armafn(p, true), opt.x_opt)
 
                 res = (
-                    converged=old_convergence,
-                    minimizer=opt.x_opt,
-                    minimum=opt.f_opt,
-                    hessian=hessian,
+                    converged = old_convergence,
+                    minimizer = opt.x_opt,
+                    minimum = opt.f_opt,
+                    hessian = hessian,
                 )
                 coef[mask] .= res.minimizer
             else
                 hessian = optim_hessian(p -> armafn(p, true), res.minimizer)
             end
 
-            A = arima_gradtrans(coef, arma)
+            A = compute_arima_transform_gradient(coef, arma)
             A = A[mask, mask]
             var = A' * ((hessian * n_used) \ A)
-            coef = arima_undopars(coef, arma)
+            coef = undo_arima_parameter_transform(coef, arma)
         else
             if no_optim
                 var = zeros(0)
@@ -1493,13 +2015,19 @@ function arima(x::AbstractArray,
             end
         end
 
-        trarma = arima_transpar(coef, arma, false)
-        mod = make_arima(trarma[1], trarma[2], Delta, kappa=kappa, SSinit=SSinit)
+        trarma = transform_arima_parameters(coef, arma, false)
+        mod = initialize_arima_state(
+            trarma[1],
+            trarma[2],
+            Delta;
+            kappa = kappa,
+            SSinit = SSinit,
+        )
 
         val = if ncxreg > 0
-            arimaSS(x - xreg * coef[narma+(1:ncxreg)], mod)
+            compute_state_space_likelihood(x - xreg * coef[narma+1 : narma+ncxreg], mod)
         else
-            arimaSS(x, mod)
+            compute_state_space_likelihood(x, mod)
         end
         sigma2 = val["ssq"][1] / n_used
     end
@@ -1509,31 +2037,16 @@ function arima(x::AbstractArray,
     aic = method != "CSS" ? value + 2 * sum(mask) + 2 : NaN
     loglik = -0.5 * value
 
-    idx = 1
-    ar = arma[1] > 0 ? coef[idx:idx+arma[1]-1] : Float64[]
-    idx += arma[1]
-
-    ma = arma[2] > 0 ? coef[idx:idx+arma[2]-1] : Float64[]
-    idx += arma[2]
-
-    sar = arma[3] > 0 ? coef[idx:idx+arma[3]-1] : Float64[]
-    idx += arma[3]
-
-    sma = arma[4] > 0 ? coef[idx:idx+arma[4]-1] : Float64[]
-    idx += arma[4]
-
-    intercept = ncxreg > 0 ? coef[idx:idx+ncxreg-1] : Float64[]
-
-    arima_coef = ArimaCoef(ar, ma, sar, sma, intercept)
-
     if ncxreg > 0 && !orig_xreg
         ind = narma .+ (1:ncxreg)
-        flat_coef[ind] = S_v * flat_coef[ind]
+        coef[ind] = S.V * coef[ind]
         A = Matrix{Float64}(I, narma + ncxreg, narma + ncxreg)
-        A[ind, ind] = S_v
+        A[ind, ind] = S.V
         A = A[mask, mask]
         var = A * var * transpose(A)
     end
+
+    arima_coef = prep_coefs(arma, coef, nmxreg, ncxreg)
     resid = val["resid"]
     fitted = y + resid
 
@@ -1546,9 +2059,9 @@ function arima(x::AbstractArray,
         mask,
         loglik,
         aic,
-        nothing, 
-        nothing, 
-        nothing, 
+        nothing,
+        nothing,
+        nothing,
         arma,
         resid,
         res.converged,
@@ -1556,61 +2069,81 @@ function arima(x::AbstractArray,
         n_used,
         mod,
         xreg_original,
-        "ARIMA($(order.p),$(order.d),$(order.q))(" * "$(seasonal.p),$(seasonal.d),$(seasonal.q))[$m]"
+        "ARIMA($(order.p),$(order.d),$(order.q))(" *
+        "$(seasonal.p),$(seasonal.d),$(seasonal.q))[$m]",
     )
     return result
 
 end
 
 """
-kalman_forecast(n, Z, a, P, T, V, h)
+    kalman_forecast(n_ahead::Int, mod::ArimaStateSpace; update::Bool=false)
 
-Perform Kalman filter-based forecasting for an ARIMA model.
-
-Arguments:
-- `n::Int`: Number of forecast steps to generate.
-- `Z::Vector{Float64}`: Observation matrix (state vector mapping).
-- `a::Vector{Float64}`: Current state vector (mean of the state distribution).
-- `P::Matrix{Float64}`: Current state covariance matrix.
-- `T::Matrix{Float64}`: Transition matrix (state evolution).
-- `V::Matrix{Float64}`: Observation noise covariance matrix.
-- `h::Float64`: Observation noise variance (scalar).
-
-Returns:
-- `forecasts::Vector{Float64}`: Vector of length `n` containing forecasted values.
-- `se::Vector{Float64}`: Vector of length `n` containing standard errors of forecasts.
-
-Description:
-This function implements the Kalman filter recursion to generate forecasts and their standard errors for an ARIMA model. It uses the provided state vector `a`, covariance matrix `P`, and model matrices to iteratively compute forecasts over `n` time steps. The function makes internal copies of `a` and `P` to avoid modifying the original inputs.
-
-Note: This implementation assumes the model is already in state-space form and that the matrices are appropriately dimensioned for the ARIMA process.
+Forecast n steps ahead from the current state of the ARIMA state-space model `mod`.
+Returns a NamedTuple with fields:
+- `pred`: Vector of n_ahead predictions.
+- `var`: Vector of corresponding (unscaled) prediction variances.
+If `update` is true, the updated model is also returned in the NamedTuple as `mod`.
 """
-function kalman_forecast(
-    n::Int,
-    Z::Vector{Float64},
-    a::Vector{Float64},
-    P::Matrix{Float64},
-    T::Matrix{Float64},
-    V::Matrix{Float64},
-    h::Float64,
-)
+function kalman_forecast(n_ahead::Int, mod::ArimaStateSpace; update::Bool=false)
+    # Extract state-space components
+    Z = mod.Z
+    a = copy(mod.a)
+    P = copy(mod.P)
+    Tmat = mod.T
+    V = mod.V
+    h = mod.h
+
     p = length(a)
-    a = copy(a)
-    P = copy(P)
-    forecasts = zeros(n)
-    se = zeros(n)
-    for l = 1:n
-        anew = T * a
+
+    forecasts = Vector{Float64}(undef, n_ahead)
+    variances = Vector{Float64}(undef, n_ahead)
+
+    anew = similar(a)
+    Pnew = similar(P)
+    mm = similar(P)
+
+    for l in 1:n_ahead
+        for i in 1:p
+            tmp = zero(eltype(a))
+            for k in 1:p
+                tmp += Tmat[i, k] * a[k]
+            end
+            anew[i] = tmp
+        end
         a .= anew
-        forecasts[l] = dot(Z, a)
 
-        mm = T * P
-        Pn = V + mm * transpose(T)
-        P .= Pn
+        # Forecast mean
+        fc = sum(a .* Z)
+        forecasts[l] = fc
 
-        se[l] = h + dot(Z, P * Z)
+        # Compute mm = T * P
+        for i in 1:p, j in 1:p
+            mm[i, j] = sum(Tmat[i, k] * P[k, j] for k in 1:p)
+        end
+        # Compute Pnew = V + mm * T'
+        for i in 1:p, j in 1:p
+            tmp = V isa AbstractMatrix ? V[i, j] : (i == j ? V : 0.0)
+            tmp += sum(mm[i, k] * Tmat[j, k] for k in 1:p)
+            Pnew[i, j] = tmp
+        end
+        P .= Pnew
+
+        # Forecast variance: h + Z' * P * Z
+        #h + sum(Z[i] * Z[j] * P[i, j] for i in 1:p for j in 1:p)
+        tmpvar = h + dot(Z, P * Z)
+        variances[l] = tmpvar
     end
-    return forecasts, se
+
+    result = (pred = forecasts, var = variances)
+    if update
+        # Optionally, return the updated model
+        updated_mod = deepcopy(mod)
+        updated_mod.a .= a
+        updated_mod.P .= P
+        result = merge(result, (; mod = updated_mod))
+    end
+    return result
 end
 
 struct ArimaPredictions
@@ -1636,128 +2169,124 @@ Draws:
   • optional dotted fitted-values overlay
   • optional residuals subplot
 """
-function plot(pred::ArimaPredictions;
-              levels         = [80, 95],
-              show_fitted    = true,
-              show_residuals = false)
+function plot(
+    pred::ArimaPredictions;
+    levels = [80, 95],
+    show_fitted = true,
+    show_residuals = false,
+)
 
     n_hist = length(pred.y)
     n_fore = length(pred.prediction)
     t_hist = 1:n_hist
-    t_fore = (n_hist+1):(n_hist + n_fore)
+    t_fore = (n_hist+1):(n_hist+n_fore)
     se_vec = pred.se
 
     k = length(levels)
     lower = zeros(n_fore, k)
     upper = zeros(n_fore, k)
     for (i, lvl) in enumerate(levels)
-        α = 1 - lvl/100
-        z = quantile(Normal(), 1 - α/2)
+        α = 1 - lvl / 100
+        z = quantile(Normal(), 1 - α / 2)
         me = se_vec .* z
-        lower[:,i] = pred.prediction .- me
-        upper[:,i] = pred.prediction .+ me
+        lower[:, i] = pred.prediction .- me
+        upper[:, i] = pred.prediction .+ me
     end
 
     title = "Forecast Plot from " * pred.method
-    p = Plots.plot(t_hist, pred.y;
-                   label     = "Historical Data",
-                   lw        = 2,
-                   linestyle = :dash,
-                   title     = title,
-                   xlabel    = "Time",
-                   ylabel    = "Value")
+    p = Plots.plot(
+        t_hist,
+        pred.y;
+        label = "Historical Data",
+        lw = 2,
+        linestyle = :dash,
+        title = title,
+        xlabel = "Time",
+        ylabel = "Value",
+    )
 
-    Plots.plot!(p, t_fore, pred.prediction;
-                label = "Forecast Mean",
-                lw    = 3,
-                color = :blue)
+    Plots.plot!(p, t_fore, pred.prediction; label = "Forecast Mean", lw = 3, color = :blue)
 
-    for i in 1:k
+    for i = 1:k
         fillcol = i == k ? "#D5DBFF" : "#596DD5"
-        ribbon  = upper[:,i] .- lower[:,i]
-        Plots.plot!(p, t_fore, upper[:,i];
-                    ribbon    = ribbon,
-                    fillcolor = fillcol,
-                    linecolor = fillcol,
-                    label     = "$(levels[i])% PI")
+        ribbon = upper[:, i] .- lower[:, i]
+        Plots.plot!(
+            p,
+            t_fore,
+            upper[:, i];
+            ribbon = ribbon,
+            fillcolor = fillcol,
+            linecolor = fillcol,
+            label = "$(levels[i])% PI",
+        )
     end
 
     if show_fitted && !isempty(pred.fitted)
-        Plots.plot!(p, t_hist, pred.fitted;
-                    label     = "Fitted Values",
-                    linestyle = :dot)
+        Plots.plot!(p, t_hist, pred.fitted; label = "Fitted Values", linestyle = :dot)
     end
 
     if show_residuals && !isempty(pred.residuals)
-        pr = Plots.plot(t_hist, pred.residuals;
-                        label = "Residuals",
-                        lw    = 1,
-                        color = :red)
-        p = Plots.plot(p, pr; layout = (2,1), link = :x)
+        pr = Plots.plot(t_hist, pred.residuals; label = "Residuals", lw = 1, color = :red)
+        p = Plots.plot(p, pr; layout = (2, 1), link = :x)
     end
 
     return p
 end
 
-function predict_arima(
-    model::ArimaFit,
-    n_ahead::Int;
-    newxreg = nothing,
-    se_fit::Bool = true,
-)
+function predict_arima(model::ArimaFit, n_ahead::Int=1; 
+    newxreg::Union{Nothing, NamedMatrix}= nothing, se_fit::Bool=true)
 
     myncol(x) = x === nothing ? 0 : size(x, 2)
 
-    coefs_struct = model.coef
-    coef_names = String[]
-    coefs = Float64[]
-
-    append!(coefs, coefs_struct.ar)
-    append!(coef_names, ["ar_$i" for i = 1:length(coefs_struct.ar)])
-
-    append!(coefs, coefs_struct.ma)
-    append!(coef_names, ["ma_$i" for i = 1:length(coefs_struct.ma)])
-
-    append!(coefs, coefs_struct.sar)
-    append!(coef_names, ["sar_$i" for i = 1:length(coefs_struct.sar)])
-
-    append!(coefs, coefs_struct.sma)
-    append!(coef_names, ["sma_$i" for i = 1:length(coefs_struct.sma)])
-
-    append!(coefs, coefs_struct.intercept)
-    append!(coef_names, ["intercept" for _ in coefs_struct.intercept])
-
-    ncxreg = count(occursin("ex_", name) for name in coef_names)
-
-    if myncol(newxreg) != ncxreg
-        throw(ArgumentError("`xreg` and `newxreg` have different numbers of columns"))
+    if newxreg isa NamedMatrix
+        newxreg = align_columns(newxreg, model.xreg.colnames)
+        newxreg = newxreg.data
     end
 
     arma = model.arma
+    coefs = vec(model.coef.data)
+    coef_names = model.coef.colnames
     narma = sum(arma[1:4])
+    ncoefs = length(coefs)
+
+    xreg_names = filter(n -> !(startswith(n, "ar") || startswith(n, "ma") ||
+                               startswith(n, "sar") || startswith(n, "sma")), coef_names)
+    intercept_idx = findfirst(==("intercept"), coef_names)
+    has_intercept = intercept_idx !== nothing
+
+    ncxreg = length(xreg_names) - (has_intercept ? 1 : 0)
+    if myncol(newxreg) != ncxreg
+        throw(ArgumentError("`xreg` and `newxreg` have different numbers of columns"))
+    end
     xm = zeros(n_ahead)
-
-    if length(coefs) > narma
-
-        if coef_names[narma+1] == "intercept"
-            intercept = ones(n_ahead, 1)
-            newxreg = newxreg === nothing ? intercept : hcat(intercept, newxreg)
-            ncxreg += 1
+    if ncoefs > narma
+        if has_intercept && coef_names[narma+1] == "intercept"
+            intercept_col = ones(n_ahead, 1)
+            usexreg = newxreg === nothing ? intercept_col : hcat(intercept_col, newxreg)
+            reg_coef_inds = (narma+1):ncoefs
+        else
+            usexreg = newxreg
+            reg_coef_inds = (narma+1):ncoefs
         end
-
-        xm = narma == 0 ? newxreg * coefs : newxreg * coefs[(narma+1):end]
-        xm = vec(xm)
+        if narma == 0
+            xm = vec(usexreg * coefs)
+        else
+            xm = vec(usexreg * coefs[reg_coef_inds])
+        end
     end
 
-    Z, a, P, T, V, h = model.model.Z,
-    model.model.a,
-    model.model.P,
-    model.model.T,
-    model.model.V,
-    model.model.h
-    pred, se = kalman_forecast(n_ahead, Z, a, P, T, V, h)
-    pred += xm
+    # Z, a, P, T, V, h = model.model.Z,
+    # model.model.a,
+    # model.model.P,
+    # model.model.T,
+    # model.model.V,
+    # model.model.h
+    # pred, se = kalman_forecast(n_ahead, Z, a, P, T, V, h)
 
+    pred, se = kalman_forecast(n_ahead, model.model, update=false)
+    println("se = ", se)
+   
+    pred = pred .+ xm
     if se_fit
         se = sqrt.(se .* model.sigma2)
     else
@@ -1765,7 +2294,9 @@ function predict_arima(
     end
 
     return ArimaPredictions(pred, se, model.y, model.fitted, model.residuals, model.method)
+
 end
+
 
 function fitted(model::ArimaFit)
     return model.fitted
@@ -1775,8 +2306,8 @@ function residuals(model::ArimaFit)
     return model.residuals
 end
 
-function forecast(model::ArimaFit; h::Int, xreg = nothing, level::Vector{Int}=[80,95])
-    
+function forecast(model::ArimaFit; h::Int, xreg = nothing, level::Vector{Int} = [80, 95])
+
     forecasts = predict_arima(model, h, newxreg = xreg, se_fit = true)
 
     se = forecasts.se
@@ -1795,7 +2326,7 @@ function forecast(model::ArimaFit; h::Int, xreg = nothing, level::Vector{Int}=[8
         model.method,
         forecasts,
         level,
-        model.y_original,
+        model.y,
         upper,
         lower,
         fits,

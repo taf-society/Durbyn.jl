@@ -418,14 +418,15 @@ A `Dict` with keys:
 - Gardner, G., Harvey, A. C. & Phillips, G. D. A. (1980). Algorithm AS 154. *Applied Statistics*, 29, 311-322.
 
 """
+# Tested and it is safe. Possible improvement potatial.
 function compute_arima_likelihood( y::Vector{Float64}, model::ArimaStateSpace, update_start::Int, give_resid::Bool,)
 
     phi = model.phi
     theta = model.theta
     delta = model.Delta
     a = model.a
-    P = model.P
-    Pnew = model.Pn
+    P = copy(model.P)
+    Pnew = copy(model.Pn)
 
     n = length(y)
     rd = length(a)
@@ -740,16 +741,6 @@ for i = 1:n_parameters
             xk = ynext
             ynext = xk - xi * thetab[i]
             thetab[i] = cbar * thetab[i] + sbar * xk
-
-
-            # if abs(ynext) > 1000 || abs(thetab[i]) > 1000
-            #     ynext = sign(ynext) * 1000
-            #     thetab[i] = sign(thetab[i]) * 1000
-            # end
-
-            # if abs(ynext) < 1e-5
-            #     ynext = 0.0
-            # end
 
             if di == 0.0
                 return
@@ -1283,7 +1274,7 @@ function compute_css_residuals(
         end
     end
 
-    return Dict("sigma2" => ssq / nu, "resid" => resid)
+    return (sigma2 = ssq / nu, residuals = resid)
 end
 
 """
@@ -1321,6 +1312,7 @@ or by `getQ0bis` (for `SSinit="Rossignol2011"`).
 - Durbin, J. & Koopman, S. J. (2001). *Time Series Analysis by State Space Methods*. Oxford University Press.
 
 """
+# The function is tested works as expected
 function initialize_arima_state(phi::Vector{Float64}, theta::Vector{Float64}, Delta::Vector{Float64}; kappa::Float64=1e6, SSinit::String="Gardner1980", tol::Float64=eps(Float64))
     p = length(phi)
     q = length(theta)
@@ -1689,11 +1681,10 @@ function arima(
         if ncxreg > 0
             x = x .- xreg * par[narma+1 : narma+ncxreg]
         end
-        resss =
-            compute_arima_likelihood(x, Z, 0, false)
+        resss = compute_arima_likelihood(x, Z, 0, false)
 
-        s2 = resss["ssq"] / resss["nu"]
-        return 0.5 * (log(s2) + resss["sumlog"] / resss["nu"])
+        s2 = resss[1] / resss[3]
+        return 0.5 * (log(s2) + resss[2] / resss[3])
     end
     # Conditional sum of squares objective
     function armaCSS(p)
@@ -1706,7 +1697,7 @@ function arima(
         end
 
         ross = compute_css_residuals(x, arma, trarma[1], trarma[2], ncond)
-        return 0.5 * log(ross["sigma2"])
+        return 0.5 * log(ross[:sigma2])
     end
     
     n = length(x)
@@ -1868,11 +1859,11 @@ function arima(
         if ncxreg > 0
             x = x - xreg * coef[narma+1 : narma+ncxreg]
         end
-
+        # Change a in mod
         compute_state_space_likelihood(x, mod)
 
         val = compute_css_residuals(x, arma, trarma[1], trarma[2], ncond)
-        sigma2 = val["sigma2"]
+        sigma2 = val[:sigma2]
 
 
         if no_optim
@@ -1893,7 +1884,7 @@ function arima(
             else
                 opt = nmmin(p -> armaCSS(p), init[mask], options)
                 res = (
-                    converged = isapprox(opt.fail, 0, atol = 1e-7),
+                    converged = opt.fail==0,
                     minimizer = opt.x_opt,
                     minimum = opt.f_opt,
                 )
@@ -1956,7 +1947,7 @@ function arima(
 
 
         if !res.converged
-            @warn "CSS-ML optimization convergence issue."
+            @warn "Possible convergence problem."
         end
 
         coef[mask] .= res.minimizer
@@ -2029,12 +2020,17 @@ function arima(
         else
             compute_state_space_likelihood(x, mod)
         end
-        sigma2 = val["ssq"][1] / n_used
+        sigma2 = val[1][1] / n_used
     end
 
     # # Final steps
     value = 2 * n_used * res.minimum + n_used + n_used * log(2 * π)
-    aic = method != "CSS" ? value + 2 * sum(mask) + 2 : NaN
+    
+    if method != "CSS"
+        aic = value + 2 * sum(mask) + 2
+    else
+        aic = NaN
+    end
     loglik = -0.5 * value
 
     if ncxreg > 0 && !orig_xreg
@@ -2047,7 +2043,7 @@ function arima(
     end
 
     arima_coef = prep_coefs(arma, coef, nmxreg, ncxreg)
-    resid = val["resid"]
+    resid = val[:residuals]
     fitted = y + resid
 
     result = ArimaFit(
@@ -2275,17 +2271,8 @@ function predict_arima(model::ArimaFit, n_ahead::Int=1;
         end
     end
 
-    # Z, a, P, T, V, h = model.model.Z,
-    # model.model.a,
-    # model.model.P,
-    # model.model.T,
-    # model.model.V,
-    # model.model.h
-    # pred, se = kalman_forecast(n_ahead, Z, a, P, T, V, h)
-
     pred, se = kalman_forecast(n_ahead, model.model, update=false)
-    println("se = ", se)
-   
+    
     pred = pred .+ xm
     if se_fit
         se = sqrt.(se .* model.sigma2)

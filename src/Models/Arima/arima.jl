@@ -2066,6 +2066,15 @@ function arima(
     resid = val[:residuals]
     fitted = y + resid
 
+    if ncxreg > 0
+        fit_method = "Regression with ARIMA($(order.p),$(order.d),$(order.q))(" * 
+        "$(seasonal.p),$(seasonal.d),$(seasonal.q))[$m]" * 
+        " errors"
+    else
+        fit_method = "ARIMA($(order.p),$(order.d),$(order.q))(" * 
+        "$(seasonal.p),$(seasonal.d),$(seasonal.q))[$m]"
+    end
+
     result = ArimaFit(
         y,
         fitted,
@@ -2085,8 +2094,7 @@ function arima(
         n_used,
         mod,
         xreg_original,
-        "ARIMA($(order.p),$(order.d),$(order.q))(" *
-        "$(seasonal.p),$(seasonal.d),$(seasonal.q))[$m]",
+        fit_method,
     )
     return result
 

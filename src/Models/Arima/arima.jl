@@ -156,6 +156,9 @@ function Base.show(io::IO, fit::ArimaFit)
 
     println(io, "\nSigma²: ", fit.sigma2)
     println(io, "Log-likelihood: ", fit.loglik)
+    if !isnan(fit.aic)
+        println(io, "AIC: ", fit.aic)
+    end
 end
 
 
@@ -1666,6 +1669,7 @@ function arima(
         par = copy(coef)
         par[mask] = p
         trarma = transform_arima_parameters(par, arma, trans)
+        xxi = copy(x)
 
         #Z = upARIMA(mod, trarma[1], trarma[2])
         Z = update_arima(mod, trarma[1], trarma[2]; ss_g=SS_G)
@@ -1679,9 +1683,9 @@ function arima(
         end
 
         if ncxreg > 0
-            x = x .- xreg * par[narma+1 : narma+ncxreg]
+            xxi = xxi .- xreg * par[narma+1 : narma+ncxreg]
         end
-        resss = compute_arima_likelihood(x, Z, 0, false)
+        resss = compute_arima_likelihood(xxi, Z, 0, false)
 
         s2 = resss[1] / resss[3]
         return 0.5 * (log(s2) + resss[2] / resss[3])
@@ -1691,12 +1695,13 @@ function arima(
         par = copy(fixed)
         par[mask] .= p
         trarma = transform_arima_parameters(par, arma, false)
+        x_in = copy(x)
 
         if ncxreg > 0
-            x = x .- xreg * par[narma+1 : narma+ncxreg]
+            x_in = x_in .- xreg * par[narma+1 : narma+ncxreg]
         end
 
-        ross = compute_css_residuals(x, arma, trarma[1], trarma[2], ncond)
+        ross = compute_css_residuals(x_in, arma, trarma[1], trarma[2], ncond)
         return 0.5 * log(ross[:sigma2])
     end
     
@@ -1832,11 +1837,14 @@ function arima(
         if no_optim
             res = (converged = true, minimizer = zeros(0), minimum = armaCSS(zeros(0)))
         else
-            opt = nmmin(p -> armaCSS(p), init[mask], options)
-            
+            opt = nmmin(
+                p -> armaCSS(descaler(p, parscale)),
+                scaler(init[mask], parscale),
+                options,
+            )
             res = (
                 converged = opt.fail == 0,
-                minimizer = opt.x_opt,
+                minimizer = descaler(opt.x_opt, parscale),
                 minimum = opt.f_opt,
             )
         end
@@ -1882,10 +1890,15 @@ function arima(
                     minimum = armaCSS(zeros(0)),
                 )
             else
-                opt = nmmin(p -> armaCSS(p), init[mask], options)
+
+                opt = nmmin(
+                    p -> armaCSS(descaler(p, parscale)),
+                    scaler(init[mask], parscale),
+                    options,
+                )
                 res = (
-                    converged = opt.fail==0,
-                    minimizer = opt.x_opt,
+                    converged = opt.fail == 0,
+                    minimizer = descaler(opt.x_opt, parscale),
                     minimum = opt.f_opt,
                 )
             end
@@ -1936,11 +1949,14 @@ function arima(
                 minimum = armafn(zeros(0), transform_pars),
             )
         else
-            opt = nmmin(p -> armafn(p, transform_pars), init[mask], options)
-
+            opt = nmmin(
+                p -> armafn(descaler(p, parscale), transform_pars),
+                scaler(init[mask], parscale),
+                options,
+            )
             res = (
-                converged = isapprox(opt.fail, 0, atol = 1e-7),
-                minimizer = opt.x_opt,
+                converged = opt.fail == 0,
+                minimizer = descaler(opt.x_opt, parscale),
                 minimum = opt.f_opt,
             )
         end
@@ -1979,15 +1995,19 @@ function arima(
                     0,
                 )
 
-                opt = nmmin(p -> armafn(p, true), coef[mask], options2)
-                hessian = optim_hessian(p -> armafn(p, true), opt.x_opt)
-
-                res = (
-                    converged = old_convergence,
-                    minimizer = opt.x_opt,
-                    minimum = opt.f_opt,
-                    hessian = hessian,
+                opt = nmmin(
+                    p -> armafn(descaler(p, parscale), true),
+                    scaler(coef[mask], parscale),
+                    options2,
                 )
+                res = (
+                    converged = opt.fail == 0,
+                    minimizer = descaler(opt.x_opt, parscale),
+                    minimum = opt.f_opt,
+                )
+
+                hessian = optim_hessian(p -> armafn(p, true), res.minimizer)
+                
                 coef[mask] .= res.minimizer
             else
                 hessian = optim_hessian(p -> armafn(p, true), res.minimizer)
@@ -2124,7 +2144,8 @@ function kalman_forecast(n_ahead::Int, mod::ArimaStateSpace; update::Bool=false)
             Pnew[i, j] = tmp
         end
         P .= Pnew
-
+        # Choose later which one is better
+        # 
         # Forecast variance: h + Z' * P * Z
         #h + sum(Z[i] * Z[j] * P[i, j] for i in 1:p for j in 1:p)
         tmpvar = h + dot(Z, P * Z)

@@ -1,111 +1,148 @@
-function prepare_drift(model, x, xreg; drift_col=1)
-    # Get drift vector
-    drift_vec = model.xreg[:, drift_col]
+function _has_coef(model, name::AbstractString)
+    if hasproperty(model, :coefnames) && model.coefnames !== nothing
+        return any(==(name), String.(model.coefnames))
+    end
+    if hasproperty(model, :coef)
+        c = getfield(model, :coef)
+        if c isa NamedTuple
+            return haskey(c, Symbol(name))
+        elseif c isa Dict
+            return haskey(c, name)
+        elseif c isa NamedMatrix
+            return any(==(name), c.colnames)
+        elseif c isa AbstractVector && hasproperty(model, :coeflabels) && model.coeflabels !== nothing
+            return any(==(name), String.(model.coeflabels))
+        end
+    end
+    return false
+end
 
+_namedmatrix_has_col(nm::NamedMatrix, name::AbstractString) = any(==(name), nm.colnames)
+
+time_index(n::Int, m::Int; start::Float64=1.0) = start .+ (0:n-1) ./ max(m, 1)
+
+function _npar(fit) :: Int
+    if hasproperty(fit, :mask) && fit.mask !== nothing
+        return count(identity, fit.mask) + 1
+    elseif hasproperty(fit, :coef) && fit.coef !== nothing
+        return (fit.coef isa NamedMatrix ? size(fit.coef.data, 2) : length(fit.coef)) + 1
+    else
+        return 1
+    end
+end
+
+
+_arma_from(order::PDQ, seasonal::PDQ, m::Int) = [order.p, order.q, seasonal.p, seasonal.q, m, order.d, seasonal.d]
+
+
+function _residual_window(r::AbstractVector)
+    r_m = Vector{Union{Missing,Float64}}(undef, length(r))
+    @inbounds for i in eachindex(r)
+        v = r[i]
+        r_m[i] = (v === missing || (v isa Real && isnan(v))) ? missing : Float64(v)
+    end
+    first = findfirst(!ismissing, r_m)
+    last  = findlast(!ismissing, r_m)
+    return r_m, first, last
+end
+
+function _prepend_drift_col(xreg::Union{Nothing,NamedMatrix}, drift::AbstractVector{<:Real})
+    driftcol = reshape(Float64.(drift), :, 1)
+    if xreg === nothing
+        return NamedMatrix(driftcol, ["drift"])
+    else
+        
+        return add_dift_term(xreg, driftcol, "drift")
+    end
+end
+
+function prepare_drift(model, x, xreg::Union{Nothing,NamedMatrix})
     n_train = length(model.x)
-    time_train = 1:n_train
-    X = [ones(n_train) time_train]
-    coef = X \ drift_vec
+    m_train = hasproperty(model, :arma) ? Int(model.arma[5]) : 1
+    start_train = hasproperty(model, :tstart) ? float(model.tstart) : 1.0
+    t_train = time_index(n_train, m_train; start=start_train)
+
+    (hasproperty(model, :xreg) && model.xreg !== nothing && _namedmatrix_has_col(model.xreg, "drift")) ||
+        error("Refit requested but original model has no 'drift' regressor recorded.")
+    drift_vec = get_vector(model.xreg; col="drift")
+
+    X = hcat(ones(n_train), t_train)
+    fitt = ols(drift_vec, X)
+    coef = coefficients(fitt)
+    a, b = coef[1], coef[2]
 
     n_new = length(x)
-    time_new = 1:n_new
-    newxreg = coef[1] .+ coef[2] .* time_new
+    m_new = hasproperty(model, :arma) ? Int(model.arma[5]) : 1
+    start_new = hasproperty(model, :tstart_new) ? float(model.tstart_new) : 1.0
+    t_new = time_index(n_new, m_new; start=start_new)
+    new_drift = a .+ b .* t_new
 
-    if xreg !== nothing && !isempty(xreg)
-        if size(xreg, 1) != n_new
-            error("Number of rows in xreg ($(size(xreg,1))) does not match length of x ($(n_new)).")
-        end
-        xreg = hcat(newxreg, xreg)
-    else
-        xreg = reshape(newxreg, :, 1)
-    end
-    return xreg
+    xreg_with_drift = _prepend_drift_col(xreg, new_drift)
+    xreg_aligned = align_columns(xreg_with_drift, model.xreg.colnames)
+    return xreg_aligned
 end
 
-function refit_arima_model(x, model, xreg, method, use_intercept)
-    # Extract model orders and seasonal info
-    order = PDQ(model.arma[1], model.arma[6], model.arma[2]) # (p, d, q)
-    seasonal_order = PDQ(model.arma[3], model.arma[7], model.arma[4]) # (P, D, Q)
-    m = model.arma[5]
-    fixed_coefs = model.coef
 
-    # Prepare keyword arguments
-    kwargs = Dict(
-        :order => order,
-        :seasonal => seasonal_order,
-        :include_mean => use_intercept,
-        :method => method,
-        :fixed => fixed_coefs
+function refit_arima_model(x, m::Int, model, xreg::Union{Nothing,NamedMatrix}, method::String; kwargs...)
+    p, q, P, Q, m0, d, D = model.arma
+    order    = PDQ(Int(p), Int(d), Int(q))
+    seasonal = PDQ(Int(P), Int(D), Int(Q))
+
+    fit = arima(x, m;
+        order        = order,
+        seasonal     = seasonal,
+        xreg         = xreg,
+        include_mean = _has_coef(model, "intercept"),
+        method       = method,
+        fixed        = hasproperty(model, :coef) ? model.coef : nothing,
+        kwargs...
     )
 
-    if xreg !== nothing
-        kwargs[:xreg] = xreg
+    if hasproperty(fit, :var_coef) && hasproperty(fit, :coef) && fit.coef !== nothing
+        k = (fit.coef isa NamedMatrix) ? size(fit.coef.data, 2) : length(fit.coef)
+        fit.var_coef = zeros(k, k)
     end
-
-    refit = arima(x, m; kwargs...)
-
-    # Set variance-covariance matrix of coefs to zeros, as in R
-    if hasproperty(refit, :var_coef)
-        refit.var_coef = zeros(length(refit.coef), length(refit.coef))
+    if xreg !== nothing && hasproperty(fit, :xreg)
+        fit.xreg = xreg
     end
-
-    if xreg !== nothing && hasproperty(refit, :xreg)
-        refit.xreg = xreg
+    if hasproperty(model, :sigma2) && hasproperty(fit, :sigma2)
+        fit.sigma2 = model.sigma2
     end
-
-    if hasproperty(refit, :sigma2)
-        refit.sigma2 = model.sigma2
-    end
-
-    return refit
+    return fit
 end
 
-function arima_rjh(y, m;
-    order::PDQ = PDQ(0, 0, 0),
-    seasonal::PDQ = PDQ(0, 0, 0),
-    xreg = nothing,
-    include_mean = true,
-    include_drift = false,
-    include_constant = nothing, # Should be nothing or bool
+function arima_rjh(y, m::Int;
+    order::PDQ = PDQ(0,0,0),
+    seasonal::PDQ = PDQ(0,0,0),
+    xreg::Union{Nothing,NamedMatrix} = nothing,
+    include_mean::Bool = true,
+    include_drift::Bool = false,
+    include_constant = nothing,
     lambda = nothing,
-    biasadj = false,
-    method = "CSS-ML",
-    model = nothing, # should be an ArimaFit or nothing
+    biasadj::Bool = false,
+    method::String = "CSS-ML",
+    model = nothing,
     x = y,
     kwargs...
 )
     origx = y
-    method = match_arg(method, ["CSS-ML", "ML", "CSS"])
+    method = match_arg(method, ["CSS-ML","ML","CSS"])
 
     if lambda !== nothing
-        x = box_cox(x, m, lambda=lambda)
+        x = box_cox(x, m; lambda=lambda)
     end
 
-    if xreg !== nothing
-        if !(eltype(xreg) <: Number)
-            error("xreg should be a numeric matrix or vector")
-        end
-        xreg = convert(Matrix{Float64}, xreg)
+    seasonal = (m <= 1) ? PDQ(0,0,0) : seasonal
+    if (m <= 1) && (length(x) <= order.d)
+        error("Not enough data to fit the model")
+    elseif (m > 1) && (length(x) <= order.d + seasonal.d * m)
+        error("Not enough data to fit the model")
     end
 
-    # Check Seasonal Model
-    if m <=1 
-        seasonal = PDQ(0,0,0)
-        m = 1
-        if length(x) <= order.d
-            @error "Not enough data to fit the model: not enough data for regular differencing."
-        end
-    else
-        if length(x) <= order.d + seasonal.d * m
-            @error "Not enough data to fit the model: not enough data for seasonal differencing."
-        end
-    end
-
-    # include_constant logic
     if include_constant !== nothing
-        if include_constant
+        if include_constant === true
             include_mean = true
-            if (order.d + seasonal.order.d) == 1
+            if (order.d + seasonal.d) == 1
                 include_drift = true
             end
         else
@@ -113,57 +150,81 @@ function arima_rjh(y, m;
             include_drift = false
         end
     end
-
-    if (order.d + seasonal.order.d) > 1 && include_drift
-        @warn("No drift term fitted as the order of difference is 2 or more.")
+    if (order.d + seasonal.d) > 1 && include_drift
+        @warn "No drift term fitted as the order of difference is 2 or more."
         include_drift = false
     end
 
-    if isa(model, ArimaFit)
-        use_drift = "intercept" in propertynames(model.coef)
-        use_intercept = "intercept" in propertynames(model.coef)
-        if use_drift
-            xreg = prepare_drift(model, x, xreg)
+    fit = nothing
+    if model !== nothing
+        had_xreg = hasproperty(model, :xreg) && model.xreg !== nothing
+        use_drift = had_xreg && _namedmatrix_has_col(model.xreg, "drift")
+        if had_xreg
+            xreg === nothing && error("No regressors provided")
         end
-        if get(model, :xreg, nothing) !== nothing && (xreg === nothing || size(xreg,2) != size(model.xreg,2))
-            error("Regressors do not match those used for the fitted model")
-        end
-        fit = refit_arima_model(x, m, model, xreg, method, use_drift, use_intercept)
-        fit.lambda = get(model, :lambda, nothing)
+
+        xreg2 = use_drift ? prepare_drift(model, x, xreg) :
+                 (had_xreg ? align_columns(xreg, model.xreg.colnames) : xreg)
+
+        fit = refit_arima_model(x, m, model, xreg2, method; kwargs...)
+        fit.lambda = hasproperty(model, :lambda) ? model.lambda : lambda
+
     else
-        # Handle drift for new model
-        if include_drift
-            drift_vec = collect(1:length(x))
-            if xreg !== nothing
-                xreg = hcat(drift_vec, xreg)
-            else
-                xreg = reshape(drift_vec, :, 1)
-            end
-        end
+        xreg2 = include_drift ? _prepend_drift_col(xreg, 1:length(x)) : xreg
 
         fit = arima(x, m;
-            order=order,
-            seasonal=seasonal.order,
-            period=seasonal.period,
-            include_mean=include_mean,
-            method=method,
-            xreg=xreg,
+            order        = order,
+            seasonal     = seasonal,
+            xreg         = xreg2,
+            include_mean = include_mean,
+            method       = method,
             kwargs...
         )
-        fit.lambda = lambda
-
-        npar = sum(fit.mask) + 1 
-        missing = isnan.(fit.residuals)
-        firstnonmiss = findfirst(!ismissing, fit.residuals)
-        lastnonmiss = findlast(!ismissing, fit.residuals)
-        n = sum(.!missing[firstnonmiss:lastnonmiss])
-        nstar = n - order[2] - seasonal.order[2] * seasonal.period
-        fit.sigma2 = sum(skipmissing(fit.residuals).^2) / (nstar - npar + 1)
     end
 
-    fit.series = series
-    fit.xreg = xreg
-    fit.x = origx
-    
+    if !hasproperty(fit, :arma) || fit.arma === nothing
+        fit.arma = _arma_from(order, seasonal, m)
+    end
+
+    r = fit.residuals
+    r_m, first, last = _residual_window(r)
+    (first === nothing || last === nothing) && error("No non-missing residuals produced by the fit")
+
+    n     = count(!ismissing, @view r_m[first:last])
+    npar  = _npar(fit)
+    d     = Int(fit.arma[6])
+    D     = Int(fit.arma[7])
+    mm    = Int(fit.arma[5])
+    nstar = n - d - D*mm
+
+    if hasproperty(fit, :aic) && fit.aic !== nothing
+        fit.aicc = fit.aic + 2npar * (nstar / (nstar - npar - 1) - 1)
+        fit.bic  = fit.aic + npar * (log(nstar) - 2)
+    end
+
+    if model === nothing && hasproperty(fit, :sigma2)
+        ss = zero(Float64)
+        @inbounds for i in first:last
+            v = r_m[i]
+            if v !== missing
+                ss += v*v
+            end
+        end
+        fit.sigma2 = ss / (nstar - npar + 1)
+    end
+
+    if hasproperty(fit, :xreg)
+        fit.xreg = (model === nothing) ? (include_drift ? xreg2 : xreg) : xreg2
+    end
+    if hasproperty(fit, :x)
+        fit.x = origx
+    end
+    if hasproperty(fit, :series)
+        fit.series = "x"
+    end
+    if lambda !== nothing && hasproperty(fit, :lambda_biasadj)
+        fit.lambda_biasadj = biasadj
+    end
+
     return fit
 end

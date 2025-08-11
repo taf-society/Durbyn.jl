@@ -24,10 +24,12 @@ using .Ararma
 using .IntermittentDemand
 
 import .Utils: air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_dift_term, cbind
+import .Utils: Formula, parse_formula, compile, model_matrix, model_frame
 import .Generics: plot, fitted, residuals, summary, predict, forecast
 import .Optimize: NelderMeadOptions
 
 export air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_dift_term, cbind
+export Formula, parse_formula, compile, model_matrix, model_frame
 export plot, fitted, residuals, summary, predict, forecast
 export coef, coefficients, coefs
 export NelderMeadOptions

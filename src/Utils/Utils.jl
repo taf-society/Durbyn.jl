@@ -1,9 +1,13 @@
 module Utils
+using LinearAlgebra
+using Base: @static
 
 import Statistics: mean
 export NamedMatrix, get_elements, get_vector, align_columns, add_dift_term, cbind
-
+export Formula, parse_formula, compile, model_matrix, model_frame
+export air_passengers
 include("named_matrix.jl")
+include("model_frame.jl")
 
 """
     struct ModelFitError <: Exception

@@ -214,7 +214,7 @@ function align_columns(new_data::NamedMatrix, ref_colnames::Vector{String})
 end
 
 """
-    add_dift_term(nm::NamedMatrix{T}, dift::Vector{T}, dift_name::String) where {T}
+    add_drift_term(nm::NamedMatrix{T}, dift::Vector{T}, dift_name::String) where {T}
 
 Return a new `NamedMatrix` with a "dift term" column prepended to the existing data.
 
@@ -232,11 +232,11 @@ A new `NamedMatrix{T}` with `dift` as the first column and `dift_name` as its co
 # Example
 ```julia
 nm = NamedMatrix([1 2; 3 4; 5 6], ["x1", "x2"])
-nm2 = add_dift_term(nm, [10, 20, 30], "dift")
+nm2 = add_drift_term(nm, [10, 20, 30], "dift")
 nm2.colnames  # ["dift", "x1", "x2"]
 ````
 """
-function add_dift_term(nm::NamedMatrix, dift::AbstractArray, dift_name::String)
+function add_drift_term(nm::NamedMatrix, dift::AbstractArray, dift_name::String)
     if length(dift) != size(nm.data, 1)
         error("Dift vector length must match the number of rows in the matrix")
     end

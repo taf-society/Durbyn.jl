@@ -1,3 +1,66 @@
+"""
+    ArimaRJHFit
+
+Represents the results of fitting an ARIMA model to a univariate time series using  
+Rob J. Hyndman's implementation, which is largely a wrapper around the `arima`  
+function from the `stats` package, with additional features.
+
+This implementation:
+  * Allows inclusion of a drift term in the model.
+  * Can take an ARIMA model from a previous call and reapply it to new data `y`.
+  * Supports optional Box-Cox transformation with bias adjustment for forecasts.
+
+# Fields
+
+- `model::ArimaFit`  
+  The fitted ARIMA model results stored as an [`ArimaFit`] object, containing coefficients, diagnostics, residuals, likelihood measures, and model metadata.
+
+- `lambda::Union{Real, Nothing}`  
+  The Box-Cox transformation parameter applied to the input series before model fitting.  
+    - `nothing` indicates no transformation was applied.  
+    - A real value specifies the λ used in the transformation:  
+      - `λ = 1` → no transformation  
+      - `λ = 0` → log transformation  
+      - Other values correspond to the Box-Cox formula.
+
+- `biasadj::Bool`  
+  Indicates whether a bias adjustment was applied when back-transforming forecasts from the Box-Cox scale to the original data scale.  
+    - `true` → forecasts were bias-adjusted to improve accuracy  
+    - `false` → forecasts were directly back-transformed without bias adjustment.
+
+# Notes
+
+The Rob J. Hyndman ARIMA approach is widely used in forecasting applications because of its:
+  * Flexibility in including drift terms.
+  * Seamless handling of transformations.
+  * Compatibility with automated model selection procedures (e.g., `auto.arima`).
+
+`ArimaRJHFit` retains all standard ARIMA fit output via the `model` field,  
+while adding transformation-specific metadata to ensure reproducibility and  
+correct interpretation of results.
+"""
+struct ArimaRJHFit
+    model::ArimaFit
+    lambda::Union{Real, Nothing}
+    biasadj::Bool
+end
+
+
+function Base.show(io::IO, fit::ArimaRJHFit)
+    fit = fit.model
+    println(io, "ARIMA RJH Fit Summary")
+    println(io, "-----------------")
+
+    println(io, "Coefficients:")
+    show(io, fit.coef)
+
+    println(io, "\nSigma²: ", fit.sigma2)
+    println(io, "Log-likelihood: ", fit.loglik)
+    if !isnan(fit.aic)
+        println(io, "AIC: ", fit.aic)
+    end
+end
+
 time_index(n::Int, m::Int; start::Float64 = 1.0) = start .+ (0:n-1) ./ max(m, 1)
 
 has_coef(fit::ArimaFit, name::AbstractString) = any(==(name), fit.coef.colnames)
@@ -16,7 +79,7 @@ end
 function prepend_drift(xreg::Union{Nothing,NamedMatrix}, drift::AbstractVector{<:Real})
     driftcol = reshape(Float64.(drift), :, 1)
     return xreg === nothing ? NamedMatrix(driftcol, ["drift"]) :
-           add_dift_term(xreg, driftcol, "drift")
+           add_drift_term(xreg, driftcol, "drift")
 end
 
 function prepare_drift(model::ArimaFit, x, xreg::Union{Nothing,NamedMatrix})
@@ -80,6 +143,116 @@ function refit_arima_model(
     return fit
 end
 
+"""
+    arima_rjh(
+        y,
+        m::Int;
+        order::PDQ = PDQ(0, 0, 0),
+        seasonal::PDQ = PDQ(0, 0, 0),
+        xreg::Union{Nothing,NamedMatrix} = nothing,
+        include_mean::Bool = true,
+        include_drift::Bool = false,
+        include_constant = nothing,
+        lambda = nothing,
+        biasadj::Bool = false,
+        method::String = "CSS-ML",
+        model::Union{Nothing,ArimaFit} = nothing,
+        kwargs...
+    ) -> ArimaRJHFit
+
+Fit an ARIMA model to a **univariate** time series.
+
+This is a Julia adaptation of Rob J. Hyndman's ARIMA routine (a wrapper around
+`stats::arima`) with two key extensions: support for a **drift** term and
+optional **Box-Cox transformation** with mean (bias) adjustment on the
+back-transformed scale. You can also pass a previously fitted model and
+re-apply it to new data `y` without re-estimating parameters.
+
+# Arguments
+- `y`: Univariate time series (vector or `AbstractArray`) to be modeled.
+- `m::Int`: Seasonal period (e.g., 12 for monthly data, 4 for quarterly).
+- `order::PDQ`: Non-seasonal orders `(p, d, q)`.
+- `seasonal::PDQ`: Seasonal orders `(P, D, Q)`; use `m` to control the period.
+- `xreg::Union{Nothing,NamedMatrix}`: Optional exogenous regressors with the same number of rows as `y`. Must be numeric; not a DataFrame.
+- `include_mean::Bool = true`: Include an intercept/mean term for **undifferenced** series; ignored when differencing is present in a way that the mean is not identifiable.
+- `include_drift::Bool = false`: Include a **linear drift** term (i.e., regression with ARIMA errors).
+- `include_constant = nothing`: If `true`, sets `include_mean = true` for undifferenced series and `include_drift = true` for differenced series. If more than one difference is taken in total (`d + D > 1`), **no constant** is included regardless of this setting (to avoid inducing higher-order polynomial trends).
+- `lambda = nothing`: Box-Cox transformation parameter.
+  - `nothing` → no transformation.
+  - Real value → apply Box-Cox with that λ (`λ = 0` corresponds to log transform, `λ = 1` to no transform).
+  - `:auto` (if used) → select λ automatically (BoxCox.lambda equivalent).
+- `biasadj::Bool = false`: When `lambda` is set, use bias-adjusted back-transformation so that fitted values and forecasts approximate **means** on the original scale (otherwise they approximate medians).
+- `method::String = "CSS-ML"`: Estimation method. One of `"CSS-ML"`, `"ML"`, `"CSS"`.
+  - `"CSS-ML"` uses Conditional Sum of Squares for starts, then Maximum Likelihood.
+  - `"ML"` uses full Maximum Likelihood.
+  - `"CSS"` minimizes Conditional Sum of Squares.
+- `model::Union{Nothing,ArimaFit} = nothing`: Output from a previous call; when provided, the same model structure is refit to `y` **without** re-estimating parameters.
+- `kwargs...`: Passed through to the underlying optimizer/likelihood routine (advanced use).
+
+# Details
+The fitted model is a regression with ARIMA errors:
+
+ ```math
+y_t = c + β' x_t + z_t
+```
+
+where `x_t` are exogenous regressors (if any) and `z_t` follows an
+ARIMA(p, d, q)*(P, D, Q)[m] process.  
+If there are no regressors and `d = D = 0`, the intercept `c` estimates the
+series mean. When a Box-Cox transform is used, the model is estimated on the
+transformed scale; fitted values and forecasts are then back-transformed, with
+optional bias adjustment (`biasadj = true`) to target the mean on the original
+scale.
+
+# Returns
+An [`ArimaRJHFit`] object containing:
+- `model::ArimaFit`: coefficients, fitted values, residuals, information criteria,
+  likelihood, variance estimates, convergence info, etc.
+- `lambda`: the Box-Cox parameter used (or `nothing`).
+- `biasadj::Bool`: whether mean-adjusted back-transformation was applied.
+
+Notable components inside `model` include:
+- `sigma2`: Bias-adjusted MLE of the innovation variance.
+- `x`: The (possibly transformed) time series used in estimation.
+- `xreg`: The regressors used (if supplied).
+
+# Notes
+- `include_constant=true` is a convenience that sets sensible defaults for
+  `include_mean`/`include_drift` based on differencing, mirroring Hyndman's design.
+- If `d + D > 1`, no constant is included irrespective of settings, to avoid
+  induced quadratic or higher-order trends.
+- Passing `model` refits that model structure to `y` without re-optimization.
+
+# References
+- Hyndman, R.J. & Athanasopoulos, G. (2018). *Forecasting: Principles and Practice* (2nd ed.), OTexts.
+- Base algorithmic details follow `arima`.
+
+# Examples
+```julia
+# Seasonal monthly series with drift and automatic λ selection
+fit = arima_rjh(
+    y, 12;
+    order = PDQ(1,1,1),
+    seasonal = PDQ(0,1,1),
+    include_drift = true,
+    lambda = :auto,
+    method = "CSS-ML"
+)
+
+# Refit the same model structure to new data y2
+fit2 = arima_rjh(y2, 12; model = fit.model)
+
+# With exogenous regressors
+fitx = arima_rjh(
+    y, 4;
+    order = PDQ(0,1,1),
+    seasonal = PDQ(0,1,1),
+    xreg = X,
+    include_mean = false,
+    method = "ML"
+)
+````
+"""
 function arima_rjh(
     y,
     m::Int;
@@ -169,6 +342,6 @@ function arima_rjh(
     if model === nothing && xreg2 !== nothing
         fit.xreg = xreg2
     end
-
-    return fit
+    
+    return ArimaRJHFit(fit, lambda, biasadj)
 end

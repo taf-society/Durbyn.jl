@@ -38,7 +38,17 @@ end
 NamedMatrix(data::Matrix{T}, colnames::Vector{String}) where {T} =
     NamedMatrix{T}(data, nothing, colnames)
 
+function NamedMatrix(nrows::Integer, colnames::Vector{String};
+                     T::Type{<:Number}=Float64, rownames::Union{Vector{String},Nothing}=nothing)
+    data = fill(NaN, nrows, length(colnames))
+    NamedMatrix{T}(data, rownames, colnames)
+end
 
+function setrow!(nm::NamedMatrix{T}, i::Integer, row) where {T}
+    length(row) == size(nm.data, 2) || error("Row length != number of columns")
+    nm.data[i, :] .= row
+    return nm
+end
 
 function Base.show(io::IO, nm::NamedMatrix)
     nrow, ncol = size(nm.data)
@@ -65,6 +75,94 @@ function Base.show(io::IO, nm::NamedMatrix)
         end
         println(io)
     end
+end
+
+function is_constant(X::NamedMatrix)
+    is_constant(X.data)
+end
+
+is_constant_all(X::NamedMatrix) = is_constant_all(X.data)
+
+function _select_columns(X::NamedMatrix, keep::AbstractVector{Bool})
+    length(keep) == size(X.data, 2) ||
+        throw(ArgumentError("keep mask length $(length(keep)) ≠ ncols $(size(X.data,2))"))
+    newdata     = X.data[:, keep]
+    newcolnames = X.colnames[keep]
+    return NamedMatrix{eltype(X.data)}(newdata, X.rownames, newcolnames)
+end
+
+
+"""
+    drop_constant_columns(X::NamedMatrix; allow_empty::Bool=false) -> Union{NamedMatrix, Nothing}
+
+Return a new `NamedMatrix` with all constant columns removed.  
+A column is considered constant if all of its values are equal.
+
+- By default, if all columns are constant, the function returns `nothing`.
+- If `allow_empty=true`, the function returns a `NamedMatrix` with
+  `n` rows and zero columns instead of `nothing`.
+
+# Examples
+```julia
+julia> data = [1 2 5;
+               1 3 5;
+               1 4 5];
+
+julia> nm = NamedMatrix{Int}(data, ["r1","r2","r3"], ["c1","c2","c3"]);
+
+julia> is_constant(nm)
+3-element Vector{Bool}:
+ true
+ false
+ true
+
+julia> drop_constant_columns(nm).colnames
+1-element Vector{String}:
+ "c2"
+
+julia> data2 = [1 5;
+                1 5;
+                1 5];
+
+julia> nm2 = NamedMatrix{Int}(data2, ["r1","r2","r3"], ["c1","c2"]);
+
+julia> drop_constant_columns(nm2)
+nothing
+
+julia> drop_constant_columns(nm2; allow_empty=true).data
+3*0 Matrix{Int64}
+"""
+function drop_constant_columns(X::NamedMatrix; allow_empty::Bool=false)
+     constmask = is_constant(X)
+    any(constmask) || return X
+
+    keep = .!constmask
+    if !allow_empty && count(keep) == 0
+        @warn "All columns are constant; nothing to keep"
+        return nothing
+    end
+    
+    return _select_columns(X, keep)
+end
+
+function is_rank_deficient(X::NamedMatrix; add_intercept::Bool=true)
+    A = X.data
+    M = add_intercept ? hcat(ones(size(A,1)), A) : A
+    
+    notnan(v) = !(v isa AbstractFloat && isnan(v))
+    keep = [all(!ismissing, r) && all(notnan, r) for r in eachrow(M)]
+    M = M[keep, :]
+    isempty(M) && return true
+
+    r = rank(float.(M)) 
+    return r < size(M, 2)
+end
+
+function ensure_full_rank(X::NamedMatrix; add_intercept::Bool=true)
+    if is_rank_deficient(X; add_intercept=add_intercept)
+        throw(ArgumentError("xreg is rank deficient"))
+    end
+    return X
 end
 
 """

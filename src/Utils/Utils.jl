@@ -66,9 +66,24 @@ function as_integer(x::Int)
     x
 end
 
-function is_constant(data::AbstractArray)
-    return all(x -> x == data[1], data)
+# function is_constant(data::AbstractVector)
+#     return all(x -> x == data[1], data)
+# end
+
+# vector method
+function is_constant(data::AbstractVector)
+    isempty(data) && return true
+    v = first(data)
+    all(==(v), data)
 end
+# Matrix method
+function is_constant(X::AbstractMatrix)
+    map(is_constant, eachcol(X))
+end
+
+is_constant_all(X::AbstractMatrix) = all(is_constant(X))
+is_constant_all(data::AbstractVector) = is_constant(data)
+
 
 """
     na_omit_pair(x::AbstractVector, X::AbstractMatrix)
@@ -115,8 +130,11 @@ function na_omit_pair(x::AbstractVector, X::AbstractMatrix)
     return x[idxs], X[idxs, :]
 end
 
-function na_omit(x::AbstractArray)
-    filter(y -> !ismissing(y) && !isnan(y), skipmissing(x))
+# function na_omit(x::AbstractArray)
+#     filter(y -> !ismissing(y) && !isnan(y), skipmissing(x))
+# end
+function na_omit(x::AbstractVector)
+    [v for v in x if !ismissing(v) && !(v isa AbstractFloat && isnan(v))]
 end
 
 function duplicated(arr::Vector{T})::Vector{Bool} where {T}

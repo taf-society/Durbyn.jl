@@ -583,7 +583,7 @@ function auto_arima(
                 method = method,
                 kwargs...,
             )
-            result = setrow!(result, k, (p, d, q, P-1, D, Q, constant, fit.ic))
+            result = setrow!(result, k, (p, d, q, P - 1, D, Q, constant, fit.ic))
             if fit.ic < bestfit.ic
                 bestfit = fit
                 P -= 1
@@ -624,7 +624,7 @@ function auto_arima(
                 kwargs...,
             )
 
-            result = setrow!(result, k, (p, d, q, P, D, Q-1, constant, fit.ic))
+            result = setrow!(result, k, (p, d, q, P, D, Q - 1, constant, fit.ic))
             if fit.ic < bestfit.ic
                 bestfit = fit
                 Q -= 1
@@ -753,7 +753,7 @@ function auto_arima(
             end
         end
 
-         newm = newmodel(
+        newm = newmodel(
             p,
             d,
             q,
@@ -838,7 +838,7 @@ function auto_arima(
 
 
 
-         newm = newmodel(
+        newm = newmodel(
             p,
             d,
             q,
@@ -880,7 +880,7 @@ function auto_arima(
         end
 
 
-         newm = newmodel(
+        newm = newmodel(
             p - 1,
             d,
             q,
@@ -920,7 +920,7 @@ function auto_arima(
             end
         end
 
-         newm = newmodel(
+        newm = newmodel(
             p,
             d,
             q - 1,
@@ -961,7 +961,7 @@ function auto_arima(
         end
 
 
-         newm = newmodel(
+        newm = newmodel(
             p + 1,
             d,
             q,
@@ -1001,9 +1001,305 @@ function auto_arima(
             end
         end
 
-        
+        newm = newmodel(
+            p,
+            d,
+            q + 1,
+            P,
+            D,
+            Q,
+            constant,
+            get_elements(result, row = collect(1:k)),
+        )
 
+        if q < max_q && newm
+            k += 1
+            if k > nmodels
+                continue
+            end
+
+            fit = fit_custom_arima(
+                x,
+                m,
+                order = PDQ(p, d, q + 1),
+                seasonal = PDQ(P, D, Q),
+                constant = constant,
+                ic = ic,
+                trace = trace,
+                approximation = approximation,
+                offset = offset,
+                xreg = xreg,
+                method = method,
+                kwargs...,
+            )
+
+            result = setrow!(result, k, (p, d, q + 1, P, D, Q, constant, fit.ic))
+            if fit.ic < bestfit.ic
+                bestfit = fit
+                q += 1
+                continue
+            end
+        end
+
+
+        newm = newmodel(
+            p - 1,
+            d,
+            q - 1,
+            P,
+            D,
+            Q,
+            constant,
+            get_elements(result, row = collect(1:k)),
+        )
+
+        if q > 0 && p > 0 && newm
+
+            k += 1
+            if k > nmodels
+                continue
+            end
+
+            fit = fit_custom_arima(
+                x,
+                m,
+                order = PDQ(p - 1, d, q - 1),
+                seasonal = PDQ(P, D, Q),
+                constant = constant,
+                ic = ic,
+                trace = trace,
+                approximation = approximation,
+                offset = offset,
+                xreg = xreg,
+                method = method,
+                kwargs...,
+            )
+
+            result = setrow!(result, k, (p - 1, d, q - 1, P, D, Q, constant, fit.ic))
+            if fit.ic < bestfit.ic
+                bestfit = fit
+                p -= 1
+                q -= 1
+                continue
+            end
+        end
+
+
+        newm = newmodel(
+            p - 1,
+            d,
+            q + 1,
+            P,
+            D,
+            Q,
+            constant,
+            get_elements(result, row = collect(1:k)),
+        )
+
+        if q > max_q && p > 0 && newm
+
+            k += 1
+            if k > nmodels
+                continue
+            end
+
+            fit = fit_custom_arima(
+                x,
+                m,
+                order = PDQ(p - 1, d, q + 1),
+                seasonal = PDQ(P, D, Q),
+                constant = constant,
+                ic = ic,
+                trace = trace,
+                approximation = approximation,
+                offset = offset,
+                xreg = xreg,
+                method = method,
+                kwargs...,
+            )
+
+            result = setrow!(result, k, (p - 1, d, q + 1, P, D, Q, constant, fit.ic))
+            if fit.ic < bestfit.ic
+                bestfit = fit
+                p -= 1
+                q += 1
+                continue
+            end
+        end
+
+
+        newm = newmodel(
+            p + 1,
+            d,
+            q - 1,
+            P,
+            D,
+            Q,
+            constant,
+            get_elements(result, row = collect(1:k)),
+        )
+
+        if q > 0 && p > max_p && newm
+
+            k += 1
+            if k > nmodels
+                continue
+            end
+
+            fit = fit_custom_arima(
+                x,
+                m,
+                order = PDQ(p + 1, d, q - 1),
+                seasonal = PDQ(P, D, Q),
+                constant = constant,
+                ic = ic,
+                trace = trace,
+                approximation = approximation,
+                offset = offset,
+                xreg = xreg,
+                method = method,
+                kwargs...,
+            )
+
+            result = setrow!(result, k, (p + 1, d, q - 1, P, D, Q, constant, fit.ic))
+            if fit.ic < bestfit.ic
+                bestfit = fit
+                p += 1
+                q -= 1
+                continue
+            end
+        end
+
+
+        newm = newmodel(
+            p + 1,
+            d,
+            q + 1,
+            P,
+            D,
+            Q,
+            constant,
+            get_elements(result, row = collect(1:k)),
+        )
+
+        if q < max_q && p < max_p && newm
+
+            k += 1
+            if k > nmodels
+                continue
+            end
+
+            fit = fit_custom_arima(
+                x,
+                m,
+                order = PDQ(p + 1, d, q + 1),
+                seasonal = PDQ(P, D, Q),
+                constant = constant,
+                ic = ic,
+                trace = trace,
+                approximation = approximation,
+                offset = offset,
+                xreg = xreg,
+                method = method,
+                kwargs...,
+            )
+
+            result = setrow!(result, k, (p + 1, d, q + 1, P, D, Q, constant, fit.ic))
+            if fit.ic < bestfit.ic
+                bestfit = fit
+                p += 1
+                q += 1
+                continue
+            end
+        end
+
+
+        if allowdrift || allowmean
+
+            newm = newmodel(
+                p,
+                d,
+                q,
+                P,
+                D,
+                Q,
+                constant,
+                get_elements(result, row = collect(1:k)),
+            )
+
+            if newm
+
+                k += 1
+                if k > nmodels
+                    continue
+                end
+
+                fit = fit_custom_arima(
+                    x,
+                    m,
+                    order = PDQ(p, d, q),
+                    seasonal = PDQ(P, D, Q),
+                    constant = constant,
+                    ic = ic,
+                    trace = trace,
+                    approximation = approximation,
+                    offset = offset,
+                    xreg = xreg,
+                    method = method,
+                    kwargs...,
+                )
+
+                result = setrow!(result, k, (p, d, q, P, D, Q, constant, fit.ic))
+                if fit.ic < bestfit.ic
+                    bestfit = fit
+                    constant = !constant
+                end
+            end
+
+        end
 
     end
 
+    if k > nmodels
+        @warn "Stepwise search was stopped early due to reaching the model number limit: $nmodels"
+    end
+
+    if approximation #&& bestfit$arma
+        if trace
+            println("Now re-fitting the best model(s) without approximations...")
+        end
+    end
+
+    icorder = get_elements(result, col = 8)
+    nmodels = count(v -> !(ismissing(v) || isnan(v)), icorder)
+    icorder = sortperm(icorder)
+
+    for i = 1:nmodels
+        mod = get_elements(result, row = i)
+
+        fit = fit_custom_arima(
+            x,
+            m,
+            order = PDQ(mod[1], d, mod[3]),
+            seasonal = PDQ(mod[4], D, mod[6]),
+            constant = mod[7],
+            ic = ic,
+            trace = trace,
+            approximation = false,
+            xreg = xreg,
+            method = method,
+            kwargs...,
+        )
+
+        if fit.ic < Inf
+            bestfit = fit
+            break
+        end
+    end
+
+    if trace
+        println("Best model found!")
+    end
+
+    return bestfit
 end

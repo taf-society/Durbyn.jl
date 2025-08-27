@@ -3,11 +3,12 @@ using LinearAlgebra
 using Base: @static
 
 import Statistics: mean
-export NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
+export NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind, setrow!
 export Formula, parse_formula, compile, model_matrix, model_frame
 export air_passengers
 include("named_matrix.jl")
 include("model_frame.jl")
+include("math.jl")
 
 """
     struct ModelFitError <: Exception
@@ -66,21 +67,115 @@ function as_integer(x::Int)
     x
 end
 
-# function is_constant(data::AbstractVector)
-#     return all(x -> x == data[1], data)
-# end
 
-# vector method
+"""
+    is_constant(data::AbstractVector) -> Bool
+
+Return `true` if all **non-missing** elements of `data` are equal, treating multiple
+`NaN` values as equal. Returns `true` for an empty vector or an all-`missing` vector.
+
+### Rules
+- `missing` values are ignored when checking constancy.
+- `NaN` values are considered equal to each other (via `isequal`).
+- If any two **non-missing** values differ (by `isequal`), return `false`.
+
+# Examples
+```jldoctest
+julia> is_constant([missing, missing])
+true
+
+julia> is_constant([5.0, 5.0, missing, 5.0])
+true
+
+julia> is_constant([NaN, NaN, missing])
+true
+
+julia> is_constant([NaN, 1.0, NaN])
+false
+
+julia> is_constant([5.0, 6.0, 5.0])
+false
+
+julia> is_constant(Float64[])
+true
+````
+"""
 function is_constant(data::AbstractVector)
     isempty(data) && return true
-    v = first(data)
-    all(==(v), data)
+    it = skipmissing(data)
+    first_pair = iterate(it)
+    first_pair === nothing && return true  # all values were missing
+    v, st = first_pair
+    while true
+        nxt = iterate(it, st)
+        nxt === nothing && return true
+        x, st = nxt
+        if !isequal(x, v)
+            return false
+        end
+    end
 end
-# Matrix method
+
+"""
+    is_constant(X::AbstractMatrix) -> Vector{Bool}
+
+Apply [`is_constant(::AbstractVector)`] to each **column** of `X` and return a
+`Vector{Bool}` of the same length as `size(X, 2)`.
+
+This answers: “Is each column constant (ignoring missings, treating NaNs as equal)?”
+
+If you want a single answer for *all* columns, use:
+`all(is_constant, eachcol(X))`.
+
+# Examples
+```jldoctest
+julia> X = [1.0  NaN   2.0;
+            1.0  NaN   2.0;
+            1.0  NaN   3.0];
+
+julia> is_constant(X)
+3-element BitVector:
+  1  # first column all 1.0
+  1  # second column all NaN (treated equal)
+  0  # third column has 2.0 and 3.0
+
+julia> all(is_constant, eachcol(X))
+false
+````
+"""
 function is_constant(X::AbstractMatrix)
     map(is_constant, eachcol(X))
 end
 
+"""
+    is_constant_all(data::AbstractVector) -> Bool
+    is_constant_all(X::AbstractMatrix) -> Bool
+
+Return `true` if the container is entirely constant.
+
+- For a vector: returns the same as [`is_constant(::AbstractVector)`],
+  i.e. `true` if all non-missing elements are equal (treating multiple `NaN`s as equal).
+- For a matrix: returns `true` only if **every column** is constant.
+
+# Examples
+```jldoctest
+julia> is_constant_all([missing, 5.0, 5.0, missing])
+true
+
+julia> X = [1.0  2.0;
+            1.0  2.0;
+            1.0  2.0];
+
+julia> is_constant_all(X)   # both columns constant
+true
+
+julia> Y = [1.0  2.0;
+            1.0  3.0;
+            1.0  2.0];
+
+julia> is_constant_all(Y)   # second column not constant
+false
+"""
 is_constant_all(X::AbstractMatrix) = all(is_constant(X))
 is_constant_all(data::AbstractVector) = is_constant(data)
 

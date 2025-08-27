@@ -21,8 +21,8 @@ function compute_approx_offset(;
     m::Int = 1,
     xreg::Union{NamedMatrix,Nothing} = nothing,              # matrix/vector or nothing
     truncate::Union{Int,Nothing} = nothing,
-    kwargs...,
-)
+    kwargs... 
+    )
     # no approximation -> zero offset
     if !approximation
         #return (offset = 0.0, fit = nothing)
@@ -55,7 +55,7 @@ function compute_approx_offset(;
         fit = if D == 0
             arima(
                 xx,
-                m;
+                m,
                 order = PDQ(0, d, 0),
                 seasonal_order = PDQ(0, 0, 0),
                 xreg = Xreg,
@@ -126,6 +126,10 @@ function auto_arima(
     test = match_arg(test, ["kpss", "adf", "pp"])
     seasonal_test = match_arg(seasonal_test, ["seas", "ocsb", "hegy", "ch"])
 
+    if isnothing(approximation)
+        approximation = (length(y) > 150 | m > 12)
+    end
+
     # Trim leading/trailing missings and count non-missing in the trimmed span
     x = copy(y)
     firstnm, serieslength, x = analyze_series(x)
@@ -162,11 +166,9 @@ function auto_arima(
         @warn "m < 1 not supported; ignoring seasonality."
     end
 
-    serieslength = 23
-    m = 12
     # Cap per series length
     max_p = min(max_p, fld(serieslength, 3))
-    max_q = min(max_q, fld(serieslength / 3))
+    max_q = min(max_q, fld(serieslength, 3))
     max_P = min(max_P, fld(fld(serieslength, 3), m))
     max_Q = min(max_Q, fld(fld(serieslength, 3), m))
 
@@ -289,33 +291,33 @@ function auto_arima(
             if D > 0 && d == 0
                 fit = arima_rjh(
                     x,
-                    m;
+                    m,
                     order = PDQ(0, d, 0),
                     seasonal_order = PDQ(0, D, 0),
                     include_constant = true,
                     fixed = mean2(dx) ./ m,
-                    method = method;
+                    method = method,
                     kwargs...,
                 )
             elseif D > 0 && d > 0
                 fit = arima_rjh(
                     x,
-                    m;
+                    m,
                     order = PDQ(0, d, 0),
                     seasonal_order = PDQ(0, D, 0),
-                    method = method;
+                    method = method,
                     kwargs...,
                 )
             elseif d == 2
-                fit = arima_rjh(x, m; order = PDQ(0, d, 0), method = method; kwargs...)
+                fit = arima_rjh(x, m, order = PDQ(0, d, 0), method = method, kwargs...)
             elseif d < 2
                 fit = arima_rjh(
                     x,
-                    m;
+                    m,
                     order = PDQ(0, d, 0),
                     include_constant = true,
                     fixed = mean2(dx),
-                    method = method;
+                    method = method,
                     kwargs...,
                 )
             else
@@ -328,20 +330,20 @@ function auto_arima(
             if D > 0
                 fit = arima_rjh(
                     x,
-                    m;
+                    m,
                     order = PDQ(0, d, 0),
                     seasonal_order = PDQ(0, D, 0),
                     xreg = xreg,
-                    method = method;
+                    method = method,
                     kwargs...,
                 )
             else
                 fit = arima_rjh(
                     x,
-                    m;
+                    m,
                     order = PDQ(0, d, 0),
                     xreg = xreg,
-                    method = method;
+                    method = method,
                     kwargs...,
                 )
             end
@@ -373,9 +375,9 @@ function auto_arima(
         kwargs...,
     )
 
-    allowdrift = allowdrift && (d_val + D_val) == 1
-    allowmean = allowmean && (d_val + D_val) == 0
-    base_constant = allowdrift || allowmean
+    allowdrift = allowdrift && (d + D) == 1
+    allowmean = allowmean && (d + D) == 0
+    constant = allowdrift || allowmean
 
     if trace && approximation
         println("\nFitting models using approximations...\n")
@@ -455,7 +457,7 @@ function auto_arima(
         method = method,
         kwargs...,
     )
-
+    println("model :", fit)
     result = setrow!(result, 2, (p, d, q, P, D, Q, constant, fit.ic))
 
     if fit.ic < bestfit.ic

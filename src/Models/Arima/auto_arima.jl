@@ -64,7 +64,7 @@ function compute_approx_offset(;
         else
             arima(
                 xx,
-                m;
+                m,
                 order = PDQ(0, d, 0),
                 seasonal_order = PDQ(0, D, 0),
                 xreg = Xreg,
@@ -84,6 +84,19 @@ function compute_approx_offset(;
     end
 end
 
+
+function newmodel(p::Int, d::Int, q::Int, P::Int, D::Int, Q::Int, constant::Bool, results::Matrix)
+    n = size(results, 1)
+    for i in 1:n
+        row = results[i, 1:7]
+        if !all(ismissing.(row))
+            if (p, d, q, P, D, Q, constant) == Tuple(row)
+                return false
+            end
+        end
+    end
+    return true
+end
 
 function auto_arima(
     y::AbstractVector,
@@ -423,8 +436,10 @@ function auto_arima(
     q, start_q = min(start_p, max_q), min(start_p, max_q)
     P, start_P = min(start_p, max_P), min(start_p, max_P)
     Q, start_Q = min(start_p, max_Q), min(start_p, max_Q)
+    
+    result_cols = ["p", "d", "q", "P", "D", "Q", "constant", "ic"]
 
-    result = NamedMatrix(nmodels, ["p", "d", "q", "P", "D", "Q", "constant", "ic"])
+    result = NamedMatrix(nmodels, result_cols)
 
     bestfit = fit_custom_arima(
         x,
@@ -563,7 +578,7 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
         if P > 0 && newm
             k += 1
@@ -602,7 +617,7 @@ function auto_arima(
             D,
             Q - 1,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if Q > 0 && newm
@@ -642,7 +657,7 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if P < max_P && newm
@@ -682,7 +697,7 @@ function auto_arima(
             D,
             Q + 1,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if Q < max_Q && newm
@@ -722,7 +737,7 @@ function auto_arima(
             D,
             Q - 1,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if Q > 0 && P > 0 && newm
@@ -763,7 +778,7 @@ function auto_arima(
             D,
             Q + 1,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if Q < max_Q && P > 0 && newm
@@ -805,7 +820,7 @@ function auto_arima(
             D,
             Q - 1,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if Q > 0 && P < max_P && newm
@@ -848,7 +863,7 @@ function auto_arima(
             D,
             Q + 1,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if Q < max_Q && P < max_P && newm
@@ -890,7 +905,7 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if p > 0 && newm
@@ -930,7 +945,7 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if q > 0 && newm
@@ -971,7 +986,7 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if p < max_p && newm
@@ -1011,7 +1026,7 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if q < max_q && newm
@@ -1052,7 +1067,7 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if q > 0 && p > 0 && newm
@@ -1095,7 +1110,7 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if q > max_q && p > 0 && newm
@@ -1138,7 +1153,7 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if q > 0 && p > max_p && newm
@@ -1181,7 +1196,7 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k)),
+            get_elements(result, row = collect(1:k), col = result_cols)
         )
 
         if q < max_q && p < max_p && newm
@@ -1226,7 +1241,7 @@ function auto_arima(
                 D,
                 Q,
                 constant,
-                get_elements(result, row = collect(1:k)),
+                get_elements(result, row = collect(1:k), col = result_cols)
             )
 
             if newm
@@ -1272,19 +1287,21 @@ function auto_arima(
         end
     end
 
-    icorder = get_elements(result, col = 8)
+    icorder = as_vector(get_elements(result, col = 8))
     nmodels = count(v -> !(ismissing(v) || isnan(v)), icorder)
+    println(icorder)
     icorder = sortperm(icorder)
 
     for i = 1:nmodels
         mod = get_elements(result, row = i)
+        println("mod = ", mod)
 
         fit = fit_custom_arima(
             x,
             m,
-            order = PDQ(mod[1], d, mod[3]),
-            seasonal = PDQ(mod[4], D, mod[6]),
-            constant = mod[7],
+            order = PDQ(as_integer(mod[1]), d, as_integer(mod[3])),
+            seasonal = PDQ(as_integer(mod[4]), D, as_integer(mod[6])),
+            constant = mod[7] > 0 ? true : false,
             ic = ic,
             trace = trace,
             approximation = false,

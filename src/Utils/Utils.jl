@@ -4,11 +4,28 @@ using Base: @static
 
 import Statistics: mean
 export NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind, setrow!
-export Formula, parse_formula, compile, model_matrix, model_frame
+export Formula, parse_formula, compile, model_matrix, model_frame, as_vector
 export air_passengers
 include("named_matrix.jl")
 include("model_frame.jl")
 include("math.jl")
+
+
+"""
+    as_vector(x::Matrix)
+
+Convert a matrix slice to a `Vector` if it has only 1 row or 1 column.
+Throws an error otherwise.
+"""
+function as_vector(x::AbstractMatrix)
+    r, c = size(x)
+    if r == 1 || c == 1
+        return vec(x)   # turn 1×N or M×1 into a Vector
+    else
+        error("Matrix must have exactly 1 row or 1 column; got $(r)×$(c).")
+    end
+end
+
 
 """
     struct ModelFitError <: Exception
@@ -52,7 +69,7 @@ function Base.showerror(io::IO, e::ModelFitError)
 end
 
 function as_integer(x::AbstractVector{T}) where {T<:AbstractFloat}
-    floor.(Int32, x)
+    floor.(Int64, x)
 end
 
 function as_integer(x::AbstractVector{Int})
@@ -60,7 +77,7 @@ function as_integer(x::AbstractVector{Int})
 end
 
 function as_integer(x::T) where {T<:AbstractFloat}
-    floor(Int32, x)
+    floor(Int64, x)
 end
 
 function as_integer(x::Int)

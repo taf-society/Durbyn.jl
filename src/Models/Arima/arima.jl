@@ -2074,7 +2074,10 @@ function arima(
         fit_method = "ARIMA($(order.p),$(order.d),$(order.q))(" * 
         "$(seasonal.p),$(seasonal.d),$(seasonal.q))[$m]"
     end
-
+    
+    if size(var) == (0, )
+        var = reshape(var, 0, 0)
+    end
     result = ArimaFit(
         y,
         fitted,

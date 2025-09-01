@@ -1,66 +1,3 @@
-"""
-    ArimaRJHFit
-
-Represents the results of fitting an ARIMA model to a univariate time series using  
-Rob J. Hyndman's implementation, which is largely a wrapper around the `arima`  
-function from the `stats` package, with additional features.
-
-This implementation:
-  * Allows inclusion of a drift term in the model.
-  * Can take an ARIMA model from a previous call and reapply it to new data `y`.
-  * Supports optional Box-Cox transformation with bias adjustment for forecasts.
-
-# Fields
-
-- `model::ArimaFit`  
-  The fitted ARIMA model results stored as an [`ArimaFit`] object, containing coefficients, diagnostics, residuals, likelihood measures, and model metadata.
-
-- `lambda::Union{Real, Nothing}`  
-  The Box-Cox transformation parameter applied to the input series before model fitting.  
-    - `nothing` indicates no transformation was applied.  
-    - A real value specifies the λ used in the transformation:  
-      - `λ = 1` → no transformation  
-      - `λ = 0` → log transformation  
-      - Other values correspond to the Box-Cox formula.
-
-- `biasadj::Bool`  
-  Indicates whether a bias adjustment was applied when back-transforming forecasts from the Box-Cox scale to the original data scale.  
-    - `true` → forecasts were bias-adjusted to improve accuracy  
-    - `false` → forecasts were directly back-transformed without bias adjustment.
-
-# Notes
-
-The Rob J. Hyndman ARIMA approach is widely used in forecasting applications because of its:
-  * Flexibility in including drift terms.
-  * Seamless handling of transformations.
-  * Compatibility with automated model selection procedures (e.g., `auto.arima`).
-
-`ArimaRJHFit` retains all standard ARIMA fit output via the `model` field,  
-while adding transformation-specific metadata to ensure reproducibility and  
-correct interpretation of results.
-"""
-struct ArimaRJHFit
-    model::ArimaFit
-    lambda::Union{Real, Nothing}
-    biasadj::Bool
-end
-
-
-function Base.show(io::IO, fit::ArimaRJHFit)
-    fit = fit.model
-    println(io, "ARIMA RJH Fit Summary")
-    println(io, "-----------------")
-
-    println(io, "Coefficients:")
-    show(io, fit.coef)
-
-    println(io, "\nSigma²: ", fit.sigma2)
-    println(io, "Log-likelihood: ", fit.loglik)
-    if !isnan(fit.aic)
-        println(io, "AIC: ", fit.aic)
-    end
-end
-
 time_index(n::Int, m::Int; start::Float64 = 1.0) = start .+ (0:n-1) ./ max(m, 1)
 
 has_coef(fit::ArimaFit, name::AbstractString) = any(==(name), fit.coef.colnames)
@@ -158,7 +95,7 @@ end
         method::String = "CSS-ML",
         model::Union{Nothing,ArimaFit} = nothing,
         kwargs...
-    ) -> ArimaRJHFit
+    ) -> ArimaFit
 
 Fit an ARIMA model to a **univariate** time series.
 
@@ -205,11 +142,9 @@ optional bias adjustment (`biasadj = true`) to target the mean on the original
 scale.
 
 # Returns
-An [`ArimaRJHFit`] object containing:
+An [`ArimaFit`] object containing:
 - `model::ArimaFit`: coefficients, fitted values, residuals, information criteria,
   likelihood, variance estimates, convergence info, etc.
-- `lambda`: the Box-Cox parameter used (or `nothing`).
-- `biasadj::Bool`: whether mean-adjusted back-transformation was applied.
 
 Notable components inside `model` include:
 - `sigma2`: Bias-adjusted MLE of the innovation variance.
@@ -343,5 +278,8 @@ function arima_rjh(
         fit.xreg = xreg2
     end
     
-    return ArimaRJHFit(fit, lambda, biasadj)
+    fit.lambda = lambda
+    fit.lambda = lambda
+    
+    return fit
 end

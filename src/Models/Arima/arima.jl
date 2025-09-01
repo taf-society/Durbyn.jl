@@ -48,82 +48,84 @@ end
 """
     ArimaFit
 
-A struct containing the results of an ARIMA model fit. This type holds all relevant output from the estimation process, including coefficients, variance estimates, likelihood information, model structure, and information criteria.
+Holds the results of an ARIMA/SARIMA fit (including ARIMAX). This struct stores the data,
+estimated parameters, likelihood and information criteria, residuals, and model metadata.
 
 # Fields
+- `y::AbstractArray`  
+  The observed time-series data provided to the model.
 
-- `y::AbstractArray`
-  The observed time series data provided to the model.
+- `fitted::AbstractArray`  
+  In-sample fitted values.
 
-- `fitted::AbstractArray`
-  The in-sample fitted values produced by the model.
+- `coef::NamedMatrix`  
+  Estimated coefficients (AR, MA, seasonal AR/MA, regressors). See `model.names` (or
+  `model[:names]` if applicable) for parameter names and ordering.
 
-- `coef::NamedMatrix`
-  The estimated AR, MA, seasonal AR, seasonal MA, and regression coefficients for the model. See the `model[:names]` field for parameter names and ordering.
+- `sigma2::Float64`  
+  Estimated innovation variance.
 
-- `sigma2::Float64`
-  The estimated variance of the model innovations (errors), typically the maximum likelihood estimate (MLE).
+- `var_coef::Matrix{Float64}`  
+  Variance-covariance matrix of the estimated coefficients.
 
-- `var_coef::Matrix{Float64}`
-  The estimated variance-covariance matrix of the coefficients in `coef`.
+- `mask::Vector{Bool}`  
+  Indicates which parameters were estimated (vs. fixed/excluded).
 
-- `mask::Vector{Bool}`
-  A logical vector indicating which parameters were estimated (vs fixed or excluded). Used internally for model inference.
+- `loglik::Float64`  
+  Maximized log-likelihood.
 
-- `loglik::Float64`
-  The maximized log-likelihood value of the (possibly differenced) data.
+- `aic::Union{Float64,Nothing}`  
+- `bic::Union{Float64,Nothing}`  
+- `aicc::Union{Float64,Nothing}`  
+  Information criteria computed from the fitted model (may be `nothing` if not applicable).
 
-- `aic::Union{Float64, Nothing}`
-  The Akaike Information Criterion (AIC) for the fitted model, derived from the log-likelihood or innovation variance. May be `nothing` if not applicable.
+- `ic::Union{Float64,Nothing}`  
+  The value of the information criterion selected for model comparison.
 
-- `bic::Union{Float64, Nothing}`
-  The Bayesian Information Criterion (BIC) for the fitted model, computed from the likelihood and parameter count. May be `nothing` if not applicable.
+- `arma::Vector{Int}`  
+  Compact model specification: `[p, q, P, Q, s, d, D]`.
 
-- `aicc::Union{Float64, Nothing}`
-  The corrected Akaike Information Criterion (AICc), useful for small sample sizes. May be `nothing` if not applicable.
+- `residuals::Vector{Float64}`  
+  Model residuals (estimated innovations).
 
-- `ic::Union{Float64, Nothing}`
-  The selected information criterion value, as chosen by user preference (`:aic`, `:bic`, or `:aicc`). May be `nothing` if not applicable.
+- `convergence_code::Bool`  
+  `true` if the optimizer reported successful convergence, `false` otherwise.
 
-- `arma::Vector{Int}`
-  A compact encoding of the model specification, typically:  
-  `[p, q, P, Q, s, d, D]`, where:
-    - `p`: number of non-seasonal AR terms  
-    - `q`: number of non-seasonal MA terms  
-    - `P`: number of seasonal AR terms  
-    - `Q`: number of seasonal MA terms  
-    - `s`: seasonal period  
-    - `d`: order of non-seasonal differencing  
-    - `D`: order of seasonal differencing  
+- `n_cond::Int`  
+  Number of initial observations excluded due to conditioning (e.g., differencing).
 
-- `residuals::Vector{Float64}`
-  The residuals (estimated innovations) from the fitted ARIMA model.
+- `nobs::Int`  
+  Number of observations used in estimation (after differencing/trimming).
 
-- `convergence_code::Bool`
-  Indicates whether the optimization converged successfully (`true`) or not (`false`).
+- `model::ArimaStateSpace`  
+  State-space representation and model metadata.
 
-- `n_cond::Int`
-  The number of initial observations not used due to conditioning in the likelihood computation (e.g., due to differencing or initial values).
+- `xreg::Any`  
+  Exogenous regressors matrix used in fitting (if any).
 
-- `nobs::Int`
-  The number of observations actually used for parameter estimation (after differencing or trimming).
+- `method::String`  
+  Estimation method (e.g., `"ML"`, `"CSS"`).
 
-- `model::NamedTuple`
-  A named tuple containing model metadata. Fields may include:
-    - `:names` — parameter names
-    - `:arma` — the raw arma vector
-    - `:call` — a string representation of the function call
-    - `:series` — the name of the original time series
-    - Additional fields as required for the internal state
+- `lambda::Union{Real,Nothing}`  
+  Box-Cox transformation parameter used (if any).
 
-- `xreg::Any`
-  The exogenous regressors matrix (if any) used in model fitting.
+- `biasadj::Bool`  
+  Whether bias adjustment was applied when back-transforming from Box-Cox scale.
 
-- `method::String`
-  The estimation method used, such as `"ML"` (maximum likelihood) or `"CSS"` (conditional sum of squares).
+- `offset::Float64`  
+  Constant offset applied internally (e.g., for transformed models).
+
+# Usage
+```julia
+fit = auto_arima(y, 12)
+fit.ic               # selected IC value
+fit.arma             # [p, q, P, Q, s, d, D]
+fit.coef             # parameter table with names
+fit.residuals        # innovations
+fit.model            # state-space representation
+````
 
 """
-
 mutable struct ArimaFit
     y::AbstractArray
     fitted::AbstractArray
@@ -144,6 +146,9 @@ mutable struct ArimaFit
     model::ArimaStateSpace
     xreg::Any
     method::String
+    lambda::Union{Real, Nothing}
+    biasadj::Bool
+    offset::Float64
 end
 
 

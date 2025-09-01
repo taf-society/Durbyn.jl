@@ -1,3 +1,89 @@
+function analyze_series(x::AbstractVector)
+    miss = ismissing.(x)
+    first = findfirst(!, miss)
+    last = findlast(!, miss)
+
+    if first === nothing
+        return (firstnonmiss = nothing, serieslength = 0, x_trim = x)
+    end
+
+    serieslength = count(!, @view miss[first:last])
+    x_trim = x[first:end]   # trim leading missings only
+
+    (firstnonmiss = first, serieslength = serieslength, x_trim = x_trim)
+end
+
+function compute_approx_offset(;
+    approximation::Bool,
+    x::AbstractVector,
+    d::Int,
+    D::Int,
+    m::Int = 1,
+    xreg::Union{NamedMatrix,Nothing} = nothing,              # matrix/vector or nothing
+    truncate::Union{Int,Nothing} = nothing,
+    kwargs... 
+    )
+    # no approximation -> zero offset
+    if !approximation
+        #return (offset = 0.0, fit = nothing)
+        return 0.0
+    end
+
+
+    xx = x
+    Xreg = xreg
+    N0 = length(xx)
+
+    # truncate tail of x (and xreg if it aligns with x)
+    if truncate !== nothing && N0 > truncate
+        start_idx = N0 - truncate + 1
+        xx = collect(@view xx[start_idx:end])
+
+        if Xreg !== nothing
+            # row count of xreg
+            nrows = size(Xreg.data, 1)
+            if nrows == N0
+                Xreg = get_elements(Xreg, row = collect(start_idx:nrows))
+            end
+        end
+    end
+
+    serieslength = length(xx)
+
+    # quick ARIMA fit and offset
+    try
+        fit = if D == 0
+            arima(xx, m, order = PDQ(0, d, 0), seasonal = PDQ(0, 0, 0), xreg = Xreg, kwargs...)
+        else
+            arima(xx, m, order = PDQ(0, d, 0), seasonal = PDQ(0, D, 0), xreg = Xreg, kwargs...)
+        end
+
+        loglik = fit.loglik
+        sigma2 = fit.sigma2
+        offset = -2 * loglik - serieslength * log(sigma2)
+        #return (offset=offset, fit=fit)
+        return offset
+    catch
+        # mirrors try-error fallback: offset <- 0
+        #return (offset=0.0, fit=nothing)
+        return 0.0
+    end
+end
+
+
+function newmodel(p::Int, d::Int, q::Int, P::Int, D::Int, Q::Int, constant::Bool, results::Matrix)
+    n = size(results, 1)
+    for i in 1:n
+        row = results[i, 1:7]
+        if !all(ismissing.(row))
+            if (p, d, q, P, D, Q, constant) == Tuple(row)
+                return false
+            end
+        end
+    end
+    return true
+end
+
 get_pdq(x) = hasproperty(x, :p) ? (x.p, x.d, x.q) : (x[1], x[2], x[3])
 get_sum(x) = hasproperty(x, :p) ? x.p + x.d + x.q : sum(x)
 
@@ -29,7 +115,7 @@ function fit_custom_arima(
     ic::AbstractString = "aic",
     trace::Bool = false,
     approximation::Bool = false,
-    offset::Real = 0,
+    offset::Float64 = 0.0,
     xreg::Union{Nothing,NamedMatrix} = nothing,
     method::Union{Nothing,AbstractString} = nothing,
     kwargs...,
@@ -279,7 +365,7 @@ function search_arima(
     trace::Bool = false,
     approximation::Bool = false,
     xreg = nothing,
-    offset = nothing,
+    offset::Float64 = 0.0,
     allowdrift::Bool = true,
     allowmean::Bool = true,
     kwargs...,

@@ -457,7 +457,7 @@ function auto_arima(
         method = method,
         kwargs...,
     )
-    println("model :", fit)
+
     result = setrow!(result, 2, (p, d, q, P, D, Q, constant, fit.ic))
 
     if fit.ic < bestfit.ic

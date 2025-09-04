@@ -1,10 +1,8 @@
-# Durbyn
+![](docs/src/assets/logo.png){fig-align="center" width="350"}
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://taf-society.github.io/Durbyn.jl/stable/)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://taf-society.github.io/Durbyn.jl/dev/)
-[![Build Status](https://github.com/taf-society/Durbyn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/taf-society/Durbyn.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/taf-society/Durbyn.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/taf-society/Durbyn.jl)
+# Durbyn.jl
 
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://taf-society.github.io/Durbyn.jl/stable/) [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://taf-society.github.io/Durbyn.jl/dev/) [![Build Status](https://github.com/taf-society/Durbyn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/taf-society/Durbyn.jl/actions/workflows/CI.yml?query=branch%3Amain) [![Coverage](https://codecov.io/gh/taf-society/Durbyn.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/taf-society/Durbyn.jl)
 
 ## About
 
@@ -16,13 +14,12 @@ This package is currently under development and will be part of the **TAFS Forec
 
 **TAFS (Time Series Analysis and Forecasting Society)** is a non-profit association registered as a **"Verein"** in Vienna, Austria. The organization connects a global audience of academics, experts, practitioners, and students to engage, share, learn, and innovate in the fields of data science and artificial intelligence, with a particular focus on time-series analysis, forecasting, and decision science. [TAFS](https://taf-society.org/)
 
-
 TAFS's mission includes:
 
-- **Connecting**: Hosting events and discussion groups to establish connections and build a community of like-minded individuals.
-- **Learning**: Providing a platform to learn about the latest research, real-world problems, and applications.
-- **Sharing**: Inviting experts, academics, practitioners, and others to present and discuss problems, research, and solutions.
-- **Innovating**: Supporting the transfer of research into solutions and helping to drive innovations.
+-   **Connecting**: Hosting events and discussion groups to establish connections and build a community of like-minded individuals.
+-   **Learning**: Providing a platform to learn about the latest research, real-world problems, and applications.
+-   **Sharing**: Inviting experts, academics, practitioners, and others to present and discuss problems, research, and solutions.
+-   **Innovating**: Supporting the transfer of research into solutions and helping to drive innovations.
 
 As a registered non-profit association under Austrian law, TAFS ensures that all contributions remain fully open source and cannot be privatized or commercialized. [TAFS](https://taf-society.org/)
 
@@ -34,10 +31,9 @@ The Durbyn package is licensed under the **MIT License**, allowing for open-sour
 
 Durbyn is still in development. Once it is officially released, you will be able to install it using Julia’s package manager:
 
-
 For the latest development version, you can install directly from GitHub:
 
-```julia
+``` julia
 Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 ```
 
@@ -45,7 +41,7 @@ Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 
 ### Forecasting using Exponential Smoothing.
 
-```julia
+``` julia
 
 using Durbyn
 using Durbyn.ExponentialSmoothing
@@ -70,9 +66,10 @@ hw_fit = holt_winters(ap, 12)
 hw_fc = forecast(hw_fit, h = 12)
 plot(hw_fc)
 ```
+
 ### Forecasting Intermittent Demand Data
 
-```julia
+``` julia
 data = [6, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0,
@@ -123,12 +120,11 @@ fitted(crst3)
 fitted(fc3)
 
 plot(fc3, show_fitted = true)
-
 ```
 
 ### Forecasting using Arima
 
-```julia
+``` julia
 using Durbyn.Arima
 # Fit an arima model
 fit = arima(ap, 12, order = PDQ(2,1,1), seasonal=PDQ(0,1,0))
@@ -147,7 +143,7 @@ plot(fc)
 
 ### Forecasting using Ararma and Arar models
 
-```julia
+``` julia
 # Ararma module
 
 using Durbyn
@@ -169,7 +165,6 @@ plot(fc)
 fit = auto_ararma(ap)
 fc = forecast(fit, h = 12)
 plot(fc)
-
 ```
 
 Durbyn will introduce a **DataFrame-based interface** (tidy forecasting) similar to the **R fable** package, allowing for a more intuitive workflow when working with time series data.

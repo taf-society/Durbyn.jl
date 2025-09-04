@@ -20,7 +20,7 @@ struct ArarmaModel
 end
 
 
-# Returns a vector selecting elements of `x` at indices `idxs`, replacing any out-of-bounds values with zero.
+
 function safe_slice(x::Vector{T}, idxs::AbstractVector{Int}) where T
     out = similar(idxs, T)
     n = length(x)
@@ -30,7 +30,7 @@ function safe_slice(x::Vector{T}, idxs::AbstractVector{Int}) where T
     return out
 end
 
-# Generates the AR psi-weights vector for arbitrary lag structure.
+
 function compute_xi(Ψ::Vector{Float64}, ϕ::Vector{Float64}, lags::NTuple{4, Int})
     _, i, j, k_lag = lags
     xi = [Ψ; zeros(k_lag)]
@@ -93,7 +93,6 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
     Y = copy(y)
     Ψ = [1.0]
 
-    # --- AR pre-whitening, unchanged ---
     for _ in 1:3
         n = length(y)
         ϕ = [sum(y[(τ+1):n] .* y[1:(n-τ)]) / sum(y[1:(n-τ)].^2) for τ in 1:15]
@@ -121,7 +120,6 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
     n = length(X)
     gamma = [sum((X[1:(n-i)] .- mean(X)) .* (X[(i+1):n] .- mean(X))) / n for i in 0:max_lag]
 
-    # --- AR lag selection (unchanged) ---
     best_σ2 = Inf
     best_lag = (1, 0, 0, 0)
     best_phi = zeros(4)
@@ -149,7 +147,6 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
     n = length(Y)
     c = (1 - sum(best_phi)) * Sbar
 
-    # --- Fitted values for AR part only ---
     fitted_vals = fill(NaN, n)
     for t in k:n
         idxs = t .- (1:(k-1))
@@ -160,10 +157,9 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
     residuals = Y .- fitted_vals
     ϕ_ar, θ_ma, σ2_hat = fit_arma(p, q, residuals[k:end], options)
 
-    # --- Information criteria calculation ---
     arma_resid = residuals[k:end]
     n_eff = length(arma_resid)
-    k_param = p + q         # Do NOT include variance as a parameter
+    k_param = p + q 
 
     loglik = -0.5 * n_eff * (log(2π * σ2_hat) + 1)
     aic = 2 * k_param - 2 * loglik
@@ -236,11 +232,10 @@ function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
         ma_idxs = (idx-q):(idx-1)
         ma_part = (t > q) ? dot(θ[1:q], reverse(safe_slice(ε_ext, ma_idxs))) : 0.0
         forecasts[t] = ar_part + ma_part
-        ε_ext[idx] = 0.0 # Future residuals set to 0 (mean forecast)
+        ε_ext[idx] = 0.0
         y_ext[idx] = forecasts[t]
     end
 
-    # Forecast error variance (tau recursion)
     τ = zeros(h)
     τ[1] = 1.0
     for j in 2:h

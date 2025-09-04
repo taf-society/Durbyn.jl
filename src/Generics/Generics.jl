@@ -1,6 +1,7 @@
 module Generics
 
 using Plots
+import Base: show, summary
 include("forecast.jl")
 include("plot.jl")
 include("generics.jl")

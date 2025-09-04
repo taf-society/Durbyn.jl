@@ -29,8 +29,9 @@ makedocs(;
     ],
 )
 
+
 deploydocs(
-repo = "github.com/taf-society/Durbyn.jl",
-devbranch = "master",
-push_preview = true,
+    repo = "github.com/taf-society/Durbyn.jl",
+    devbranch = "master",
+    push_preview = true,
 )

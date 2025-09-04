@@ -32,6 +32,6 @@ makedocs(;
 
 deploydocs(
     repo = "github.com/taf-society/Durbyn.jl",
-    devbranch = "master",
+    devbranch = "main",
     push_preview = true,
 )

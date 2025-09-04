@@ -1,0 +1,35 @@
+/* ===== Durbyn.jl custom theme ===== */
+:root{
+  --brand: #2e7dd7;
+  --ink: #0b1324;
+  --muted: #6b7280;
+  --bg: #ffffff;
+  --card: #f8fafc;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0b1324; --ink:#ebf0f6; --card:#0f1a2b; }
+}
+
+body { background: var(--bg); color: var(--ink); }
+
+/* HERO */
+.hero{ padding: 3rem 0 2rem; text-align:center; }
+.hero .logo{ width: 96px; height: 96px; border-radius: 20px; box-shadow: 0 8px 20px rgba(0,0,0,.15); }
+.hero h1{ font-size: 2.4rem; margin: .75rem 0 .25rem; }
+.hero p{ color: var(--muted); margin: 0 auto 1rem; max-width: 720px; }
+
+.cta-row{ display: inline-flex; gap: .75rem; margin: .75rem 0 0; }
+.btn{ padding: .6rem 1rem; border-radius: .75rem; border:1px solid rgba(0,0,0,.1); text-decoration:none; }
+.btn.primary{ background: var(--brand); color: white; border-color: var(--brand); }
+.btn.ghost{ background: transparent; }
+
+/* BADGES */
+.badges{ display:flex; gap:.5rem; justify-content:center; margin-top:.75rem; filter: saturate(0.9); }
+
+/* GRID */
+.feature-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 1rem; margin: 1.25rem 0; }
+.card{ background: var(--card); padding: 1rem; border-radius: 14px; border:1px solid rgba(0,0,0,.06); box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+.card h3{ margin-top:0; }
+
+/* FOOTER */
+.footer{ opacity:.7; text-align:center; font-size:.9rem; padding:1rem 0 0; }

@@ -18,10 +18,10 @@ include("UnitTests/adf.jl")
 include("UnitTests/kpss.jl")
 include("UnitTests/phillips_perron.jl")
 include("embed.jl")
-#include("UnitTests/ndiffs.jl")
+include("UnitTests/ndiffs.jl")
 
 export box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, 
 fourier, STLResult, stl, ols, OlsFit, coef, coefficients, coefs, adf, ADF, 
-kpss, KPSS, phillips_perron, PhillipsPerron, embed
+kpss, KPSS, phillips_perron, PhillipsPerron, embed, ndiffs
 
 end

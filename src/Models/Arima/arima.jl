@@ -147,8 +147,8 @@ mutable struct ArimaFit
     xreg::Any
     method::String
     lambda::Union{Real, Nothing}
-    biasadj::Bool
-    offset::Float64
+    biasadj::Union{Bool, Nothing}
+    offset::Union{Float64, Nothing}
 end
 
 
@@ -2103,6 +2103,9 @@ function arima(
         mod,
         xreg_original,
         fit_method,
+        nothing,
+        nothing,
+        nothing,
     )
     return result
 

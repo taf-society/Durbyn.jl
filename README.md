@@ -1,5 +1,6 @@
-| ![Durbyn Logo](docs/src/assets/logo.png) |
-|:----------------------------------------:|
+<div align="center">
+<img src="docs/src/assets/logo.png"/>
+</div>
 
 # Durbyn.jl
 

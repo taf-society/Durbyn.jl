@@ -18,12 +18,12 @@ makedocs(;
         pages = [
             "Home" => "index.md",
             "Quick Start" => "quickstart.md",
-            "User Guide" => Any[
-                "Exponential Smoothing"=>"expsmoothing.md",
-                "Intermittent Demand"=>"intermittent.md",
-                "ARIMA"=>"arima.md",
-                "ARAR/ARARMA"=>"ararma.md",
-            ],
+            # "User Guide" => Any[
+            #     "Exponential Smoothing"=>"expsmoothing.md",
+            #     "Intermittent Demand"=>"intermittent.md",
+            #     "ARIMA"=>"arima.md",
+            #     "ARAR/ARARMA"=>"ararma.md",
+            # ],
             "API Reference" => "api.md",
         ],
     ],

@@ -13,7 +13,7 @@ Polynomials = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
-DataStructures = "0.18.22"
+DataStructures = "0.18.22, 0.19"
 Distributions = "0.25.120"
 LinearAlgebra = "1.11.0"
 Optim = "1.12.0"

@@ -11,7 +11,6 @@ makedocs(;
     format = Documenter.HTML(;
         canonical = "https://taf-society.github.io/Durbyn.jl/",
         assets = String[joinpath(@__DIR__, "src", "assets", "theme.css")],
-        analytics = nothing,
         footer = "<div class=\"footer\">Made with ❤ using Documenter.jl • © 2025 Time Series Analysis and Forecasting Society</div>",
     ),
     pages = [

@@ -5,8 +5,8 @@ Holds the fitted parameters of an ARAR (AutoRegressive with Adaptive Reduction) 
 
 # Fields
 
-- `Ψ::AbstractArray`  
-  The memory-shortening filter vector derived during the preprocessing stage of the ARAR algorithm.
+- `psi::AbstractArray`  
+  The memory-shortening filter vector (Ψ) derived during the preprocessing stage of the ARAR algorithm.
 
 - `Sbar::Float64`  
   The mean of the memory-shortened series `S`. Used for reconstructing forecasts and fitted values.
@@ -15,12 +15,12 @@ Holds the fitted parameters of an ARAR (AutoRegressive with Adaptive Reduction) 
   The autocovariance sequence of the shortened, mean-adjusted series. Used in selecting AR lags 
   and estimating AR coefficients.
 
-- `best_ϕ::AbstractArray`  
-  The vector of autoregressive coefficients (φ) estimated after fitting an AR(4) model to the 
+- `best_phi::AbstractArray`  
+  The vector of autoregressive coefficients (ϕ) estimated after fitting an AR(4) model to the 
   shortened series with selected lags.
 
-- `σ2::Float64`  
-  The estimated innovation variance (white noise variance) of the fitted AR model.
+- `sigma2::Float64`  
+  The estimated innovation variance (σ²; white noise variance) of the fitted AR model.
 
 - `best_lag::Tuple{Int, Int, Int, Int}`  
   The selected lags used in the final AR model (typically (1, i, j, k)) that yielded the minimum 
@@ -32,28 +32,28 @@ Holds the fitted parameters of an ARAR (AutoRegressive with Adaptive Reduction) 
 # Notes
 
 This struct is typically returned by a `arar(y)` function and can be passed to forecast and diagnostic 
-    methods such as `forecast`, `fitted`, or `residuals`.
-
+methods such as `forecast`, `fitted`, or `residuals`.
 """
 struct ARAR
-    Ψ::AbstractArray
+    psi::AbstractArray
     Sbar::Float64
     gamma::AbstractArray
-    best_ϕ::AbstractArray
-    σ2::Float64
+    best_phi::AbstractArray
+    sigma2::Float64
     best_lag::Tuple{Int, Int, Int, Int}
     y::AbstractArray
 end
+
 
 function Base.show(io::IO, model::ARAR)
     println(io, "ARAR Model Summary")
     println(io, "------------------")
     println(io, "Number of observations: ", length(model.y))
     println(io, "Selected AR lags: ", model.best_lag)
-    println(io, "AR coefficients (ϕ): ", round.(model.best_ϕ, digits=4))
-    println(io, "Residual variance (σ²): ", round(model.σ2, digits=4))
+    println(io, "AR coefficients (ϕ): ", round.(model.best_phi, digits=4))
+    println(io, "Residual variance (σ²): ", round(model.sigma2, digits=4))
     println(io, "Mean of shortened series (S̄): ", round(model.Sbar, digits=4))
-    println(io, "Length of memory-shortening filter (Ψ): ", length(model.Ψ))
+    println(io, "Length of memory-shortening filter (Ψ): ", length(model.psi))
 end
 
 """
@@ -201,8 +201,8 @@ fitted_vals = fitted(model)
 """
 function fitted(model::ARAR)
     y = model.y
-    ϕ = model.best_ϕ
-    Ψ = model.Ψ
+    ϕ = model.best_phi
+    Ψ = model.psi
     Sbar = model.Sbar
     lags = model.best_lag
     xi = compute_xi(Ψ, ϕ, lags)
@@ -299,9 +299,9 @@ println("95% upper bound:", fc.upper[2])
 """
 function forecast(model::ARAR; h::Int, level::Vector{Int}=[80, 95])
     i, j, k = model.best_lag[2:end]
-    ϕ = model.best_ϕ
-    σ2 = model.σ2
-    Ψ = model.Ψ
+    ϕ = model.best_phi
+    σ2 = model.sigma2
+    Ψ = model.psi
     Sbar = model.Sbar
     y = copy(model.y)
     n = length(y)

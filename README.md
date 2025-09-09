@@ -8,7 +8,7 @@
 
 ## About
 
-**Durbyn** is a Julia package that implements the functionality of the R **forecast** package, providing tools for time series forecasting. The name "Durbyn" comes from the Kurdish word for binoculars—where *Dur* means "far" and *Byn* means "to see."
+**Durbyn** is a Julia package that implements the functionality of the R **forecast** package, providing tools for time series forecasting. The name Durbyn traces back to Kurdish, where Dur means “far” and Byn means “to see,” together signifying binoculars, which is why the package logo features them.
 
 This package is currently under development and will be part of the **TAFS Forecasting Ecosystem**, an open-source initiative.
 

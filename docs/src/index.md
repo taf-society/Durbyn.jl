@@ -4,8 +4,9 @@
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://taf-society.github.io/Durbyn.jl/stable/) [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://taf-society.github.io/Durbyn.jl/dev/) [![Build Status](https://github.com/taf-society/Durbyn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/taf-society/Durbyn.jl/actions/workflows/CI.yml?query=branch%3Amain) [![Coverage](https://codecov.io/gh/taf-society/Durbyn.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/taf-society/Durbyn.jl)
 
-**Durbyn** is a Julia package that implements functionality of the R **forecast** package, providing tools for time-series forecasting.  
-The name “Durbyn” comes from Kurdish — *Dur* (“far”) + *Byn* (“to see”).
+**Durbyn** is a Julia package that implements functionality of the R **forecast** package, providing tools for time-series forecasting.
+
+The name Durbyn traces back to Kurdish, where Dur means “far” and Byn means “to see,” together signifying binoculars, which is why the package logo features them.
 
 > This site documents the development version. After your first tagged release, see **stable** docs for the latest release.
 

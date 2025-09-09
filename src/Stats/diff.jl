@@ -1,6 +1,6 @@
 function lag_series(x::AbstractVector, k::Int)
     n = length(x)
-    result = Vector{Union{Missing, eltype(x)}}(missing, n)
+    result = fill(NaN, length(x))
     
     if k > 0
         for i in (k+1):n
@@ -107,7 +107,7 @@ function diff(x::AbstractMatrix; lag::Int=1, differences::Int=1)
         return x[1:0, :]
     end
 
-    r = Matrix{Union{Missing, eltype(x)}}(x)
+    r = fill(NaN, size(x))
 
     for _ in 1:differences
         for j in 1:ncol

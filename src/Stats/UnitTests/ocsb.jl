@@ -32,6 +32,78 @@ struct OCSB
     res::Vector{Float64}
 end
 
+import Base: show, summary
+
+"""
+    summary(x::OCSB) -> String
+
+Concise one-liner with the key bits: test statistic, type, and lag.
+Includes an approximate p-value when critical values are available.
+"""
+function summary(x::OCSB)
+    stat = round(x.teststat; digits=4)
+    tstr = x.type === :seasonal ? "seasonal" : String(x.type)
+    # Try to include a p-value if we can compute it; otherwise omit.
+    pstr = try
+        pv = round(pvalue(x); digits=4)
+        ", p=$(pv)"
+    catch
+        ""
+    end
+    return "OCSB(stat=$(stat), type=$(tstr), lag=$(x.lag)$(pstr))"
+end
+
+"""
+Pretty printer for plain-text displays.
+Respects `io[:compact]` and prints a compact single-line form if requested.
+"""
+function show(io::IO, ::MIME"text/plain", x::OCSB)
+    # Honor compact contexts even in text/plain
+    if get(io, :compact, false)
+        print(io, "OCSB(", round(x.teststat; digits=4), ")")
+        return
+    end
+
+    println(io, "OCSB Seasonal Unit Root Test")
+    dtype = x.type === :seasonal ? "seasonal" : String(x.type)
+    println(io, "Deterministic component (type): ", dtype)
+    println(io, "AR lag order (p): ", x.lag)
+    println(io, "Test statistic (t on Z₅): ", round(x.teststat; digits=4))
+
+    # Optionally show an approximate p-value if critical values exist
+    has_cvals = !isempty(x.cval) && !isempty(x.clevels) && length(x.cval) == length(x.clevels)
+    if has_cvals
+        try
+            pv = round(pvalue(x); digits=4)
+            println(io, "Approx. p-value (interp.): ", pv)
+        catch
+            # ignore if pvalue computation fails
+        end
+    end
+
+    if has_cvals
+        println(io, "\nCritical values:")
+        # pair and print; keep user order (often 10%, 5%, 1%)
+        for (α, cv) in zip(x.clevels, x.cval)
+            # format levels like 10%, 5%, 1%
+            lvl = isa(α, Number) ? "$(Int(round(100α)))%" : string(α)
+            println(io, "  ", lpad(lvl, 4), " : ", round(cv; digits=4))
+        end
+    end
+end
+
+"""
+Fallback `show` for non-mime contexts.
+Defers to text/plain unless `:compact` is set, in which case we print a short form.
+"""
+function show(io::IO, x::OCSB)
+    if get(io, :compact, false)
+        print(io, "OCSB(", round(x.teststat; digits=4), ")")
+    else
+        show(io, MIME("text/plain"), x)
+    end
+end
+
 @inline z_at(x, t, m) = x[t] - x[t-1] - x[t-m] + x[t-m-1]
 @inline w_at(x, t, m) = x[t] - x[t-m]
 @inline v_at(x, t)    = x[t] - x[t-1]
@@ -250,6 +322,6 @@ function ocsb(;
 )
 
     lag_method = match_arg(lag_method, ["fixed", "aic", "bic", "aicc"])
-
+    lag_method = Symbol(lag_method)
     return ocsb(x, m, lag_method = lag_method, maxlag = maxlag, clevels = clevels)
 end

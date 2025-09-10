@@ -1,6 +1,6 @@
 module Stats
 import Base: show, summary
-import Statistics: mean, std, quantile, minimum, maximum
+import Statistics: mean, std, quantile, minimum, maximum, var
 using Plots
 import LinearAlgebra: diag, dot
 
@@ -21,9 +21,10 @@ include("embed.jl")
 include("UnitTests/ndiffs.jl")
 include("UnitTests/ocsb.jl")
 include("mstl.jl")
+include("seasonal_strength.jl")
 
 export box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, 
 fourier, STLResult, stl, ols, OlsFit, coef, coefficients, coefs, adf, ADF, 
-kpss, KPSS, phillips_perron, PhillipsPerron, embed, ndiffs, ocsb, mstl, MSTLResult
+kpss, KPSS, phillips_perron, PhillipsPerron, embed, ndiffs, ocsb, mstl, MSTLResult, seasonal_strength
 
 end

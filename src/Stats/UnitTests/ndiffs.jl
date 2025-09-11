@@ -33,6 +33,7 @@ _firststat(ts) = isa(ts, Number) ? float(ts) : float(Array(ts)[1])
 
 """
     ndiffs(x; alpha=0.05, test=:kpss, type=:level, max_d=2; kwargs...) -> Int
+    ndiffs(;x, alpha=0.05, test="kpss", type="level", max_d=2; kwargs...) -> Int
 
 Number of differences required for a stationary series.
 
@@ -206,4 +207,21 @@ function ndiffs(
     end
 
     return d
+end
+
+function ndiffs(;
+    x::AbstractVector,
+    alpha::Float64 = 0.05,
+    test::String = "kpss",
+    type::String = "level",
+    max_d::Int = 2,
+    kwargs...,)::Int
+
+    test = match_arg(test, ["kpss", "adf", "pp"])
+    type = match_arg(type, ["level", "trend"])
+    
+    test = Symbol(test)
+    type = Symbol(type)
+
+    ndiffs(x, alpha = alpha, test = test, type = type, max_d = max_d, kwargs...)
 end

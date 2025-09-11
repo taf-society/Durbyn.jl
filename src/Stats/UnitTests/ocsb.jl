@@ -187,7 +187,7 @@ aicc_lm(fit) = begin
 end
 
 """
-ocsb(x::AbstractVector{<:Real}; m::Int, lag_method::Symbol = :fixed,
+ocsb(x::AbstractVector{<:Real}, m::Int; lag_method::Symbol = :fixed,
         maxlag::Int = 0, clevels::AbstractVector{<:Real} = [0.10, 0.05, 0.01])
 
 ocsb(; x::AbstractVector{<:Real}, m::Int, lag_method::String = "fixed",

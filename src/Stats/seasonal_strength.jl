@@ -22,7 +22,7 @@ end
 
 """
     seasonal_strength(res::MSTLResult) -> Vector{Float64}
-    seasonal_strength(x::AbstractVector; periods=..., kwargs...) -> Vector{Float64}
+    seasonal_strength(x::AbstractVector; m=..., kwargs...) -> Vector{Float64}
 
 Compute the **seasonal strength** of each seasonal component in an MSTL decomposition.
 

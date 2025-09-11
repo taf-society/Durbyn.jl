@@ -22,9 +22,10 @@ include("UnitTests/ndiffs.jl")
 include("UnitTests/ocsb.jl")
 include("mstl.jl")
 include("seasonal_strength.jl")
+include("UnitTests/nsdiffs.jl")
 
 export box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, 
 fourier, STLResult, stl, ols, OlsFit, coef, coefficients, coefs, adf, ADF, 
-kpss, KPSS, phillips_perron, PhillipsPerron, embed, ndiffs, ocsb, mstl, MSTLResult, seasonal_strength
-
+kpss, KPSS, phillips_perron, PhillipsPerron, embed, ndiffs, ocsb, mstl, MSTLResult, 
+seasonal_strength, nsdiffs
 end

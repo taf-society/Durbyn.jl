@@ -56,8 +56,42 @@ function Base.show(io::IO, model::ARAR)
     println(io, "Length of memory-shortening filter (Ψ): ", length(model.psi))
 end
 
+function setup_params(y_in::AbstractVector;
+                      max_ar_depth::Union{Int, Nothing}=nothing,
+                      max_lag::Union{Int, Nothing}=nothing)
+
+    n = length(y_in)
+
+    if n < 10
+        @warn "Training data is too short (length=$n). The model may be unreliable."
+    end
+
+    if isnothing(max_ar_depth)
+        if n > 40
+            max_ar_depth = 26
+        elseif n >= 13
+            max_ar_depth = 13
+        else  # 10 ≤ n < 13
+            max_ar_depth = max(4, ceil(Int, n/3))
+        end
+    end
+
+    if isnothing(max_lag)
+        if n > 40
+            max_lag = 40
+        elseif n >= 13
+            max_lag = 13
+        else
+            max_lag = max(4, ceil(Int, n/2))
+        end
+    end
+
+    return max_ar_depth, max_lag
+end
+
+
 """
-    arar(y::AbstractArray; max_ar_depth::Int=26, max_lag::Int=40) -> ARAR
+    arar(y::AbstractArray; max_ar_depth::Union{Int, Nothing}=nothing, max_lag::Union{Int, Nothing}=nothing) -> ARAR
 
 Fits an Autoregressive model with memory-shortening transformations to a univariate time series.
 
@@ -68,11 +102,13 @@ Fits an Autoregressive model with memory-shortening transformations to a univari
 
 # Keyword Arguments
 
-- `max_ar_depth::Int=26`:  
-  The maximum lag to consider when selecting the best 4-lag AR model. Must be at least 4.
+- `max_ar_depth::Union{Int, Nothing}=nothing`:  
+  The maximum lag to consider when selecting the best 4-lag AR model. Must be at least 4. 
+  If it is not provided selected based on y.
 
-- `max_lag::Int=40`:  
+- `max_lag::Union{Int, Nothing}=nothing`:  
   The maximum lag to use when computing the autocovariance sequence of the memory-shortened series.
+  If it is not provided selected based on y.
 
 # Returns
 
@@ -90,16 +126,16 @@ This method is useful for short or nonstationary time series, especially when co
 
 ```julia
 y = randn(100)
-model = arar(y; max_ar_depth=20, max_lag=30)
+model = arar(y)
 ````
 
 Use the resulting `ARAR` model with `forecast(model, h, ...)`, `fitted(model)`, and `residuals(model)` for analysis and prediction.
 
 """
-function arar(y::AbstractArray; max_ar_depth::Int=26, max_lag::Int=40)
+function arar(y::AbstractArray; max_ar_depth::Union{Int, Nothing}=nothing, max_lag::Union{Int, Nothing}=nothing)
     Y = copy(y)
     Ψ = [1.0]
-
+    max_ar_depth, max_lag = setup_params(y, max_ar_depth = max_ar_depth, max_lag = max_lag)
     for _ in 1:3
         n = length(y)
         ϕ = map(τ -> sum(y[(τ + 1):n] .* y[1:(n - τ)]) / sum(y[1:(n - τ)].^2), 1:15)

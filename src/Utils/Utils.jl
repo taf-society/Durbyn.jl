@@ -242,12 +242,12 @@ function na_omit_pair(x::AbstractVector, X::AbstractMatrix)
     return x[idxs], X[idxs, :]
 end
 
-# function na_omit(x::AbstractArray)
-#     filter(y -> !ismissing(y) && !isnan(y), skipmissing(x))
-# end
 function na_omit(x::AbstractVector)
     [v for v in x if !ismissing(v) && !(v isa AbstractFloat && isnan(v))]
 end
+
+isna(v) = ismissing(v) || (v isa AbstractFloat && isnan(v))
+
 
 function duplicated(arr::Vector{T})::Vector{Bool} where {T}
     seen = Dict{T,Bool}()

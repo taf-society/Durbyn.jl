@@ -4,7 +4,7 @@ import Statistics: mean, std, quantile, minimum, maximum, var
 using Plots
 import LinearAlgebra: diag, dot
 
-import ..Utils: na_omit, as_integer, mean2, is_constant, match_arg, NamedMatrix
+import ..Utils: na_omit, as_integer, mean2, is_constant, match_arg, NamedMatrix, isna
 import ..Generics: plot, summary, fitted, residuals, predict
 
 include("box_cox.jl")
@@ -23,9 +23,10 @@ include("UnitTests/ocsb.jl")
 include("mstl.jl")
 include("seasonal_strength.jl")
 include("UnitTests/nsdiffs.jl")
+include("approx.jl")
 
 export box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, 
 fourier, STLResult, stl, ols, OlsFit, coef, coefficients, coefs, adf, ADF, 
 kpss, KPSS, phillips_perron, PhillipsPerron, embed, ndiffs, ocsb, mstl, MSTLResult, 
-seasonal_strength, nsdiffs
+seasonal_strength, nsdiffs, approx, approxfun
 end

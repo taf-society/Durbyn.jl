@@ -202,10 +202,10 @@ function auto_arima(
         D = 0
         max_P = 0
         max_Q = 0
-    elseif D === missing && length(xx) <= 2 * m
+    elseif D === nothing && length(xx) <= 2 * m
         D = 0
-    elseif D === missing
-        D = nsdiffs(xx; test = seasonal_test, maxD = max_D, seasonal_test_args...)
+    elseif D === nothing
+        D = nsdiffs(x = xx, m = m, test = seasonal_test, maxD = max_D, seasonal_test_args...)
         # Ensure xreg not null after seasonal differencing
         if D > 0 && xregg !== nothing
             diffxreg = diff(xregg; differences = D, lag = m)
@@ -221,7 +221,7 @@ function auto_arima(
             end
         end
     end
-
+    
     # Apply seasonal differencing
     if D > 0
         dx = diff(xx; differences = D, lag = m)
@@ -234,15 +234,16 @@ function auto_arima(
 
     if xregg !== nothing
         if D > 0
-            diffxreg = diff_lag(xregg; differences = D, lag = m)
+            diffxreg = diff(xregg; differences = D, lag = m)
         else
             diffxreg = xregg
         end
     end
 
+
     # non-seasonal differencing choice
-    if d === missing
-        d = ndiffs(dx; test = test, maxd = max_d, test_args...)
+    if d === nothing
+        d = ndiffs(x = dx, test = test, max_d = max_d, test_args...)
         # Ensure xreg not null after additional (non-seasonal) differencing
         if d > 0 && xregg !== nothing
             diffxreg = diff(diffxreg; differences = d, lag = 1)
@@ -252,14 +253,16 @@ function auto_arima(
         end
         # Ensure dx not all missing after additional differencing
         if d > 0
-            diffdx = diff_lag(dx; differences = d, lag = 1)
-            if all(isna, diffdx.data) # TODO
+            diffdx = diff(dx; differences = d, lag = 1)
+            if all(isna, diffdx) # TODO
                 d -= 1
             end
         end
     end
 
     # warnings about too much differencing
+    println("D = ", D)
+    println("d = ", d)
     if D >= 2
         @warn "Having more than one seasonal difference is not recommended. Consider using only one seasonal difference."
     elseif D + d > 2

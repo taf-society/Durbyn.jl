@@ -261,8 +261,6 @@ function auto_arima(
     end
 
     # warnings about too much differencing
-    println("D = ", D)
-    println("d = ", d)
     if D >= 2
         @warn "Having more than one seasonal difference is not recommended. Consider using only one seasonal difference."
     elseif D + d > 2
@@ -1268,12 +1266,10 @@ function auto_arima(
 
     icorder = as_vector(get_elements(result, col = 8))
     nmodels = count(v -> !(ismissing(v) || isnan(v)), icorder)
-    println(icorder)
     icorder = sortperm(icorder)
 
     for i = 1:nmodels
         mod = get_elements(result, row = i)
-        println("mod = ", mod)
 
         fit = fit_custom_arima(
             x,

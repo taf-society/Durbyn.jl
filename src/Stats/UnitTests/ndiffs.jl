@@ -154,7 +154,7 @@ function ndiffs(;
     type = match_arg(type, ["level", "trend"])
 
     test = Symbol(test)
-    type = Symbol(type)::Int
+    type = Symbol(type)
 
     ndiffs(x, alpha=alpha, test=test, type=type, max_d=max_d, kwargs...)
 end

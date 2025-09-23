@@ -2333,30 +2333,30 @@ function residuals(model::ArimaFit)
     return model.residuals
 end
 
-function forecast(model::ArimaFit; h::Int, xreg = nothing, level::Vector{Int} = [80, 95])
+# function forecast(model::ArimaFit; h::Int, xreg = nothing, level::Vector{Int} = [80, 95])
 
-    forecasts = predict_arima(model, h, newxreg = xreg, se_fit = true)
+#     forecasts = predict_arima(model, h, newxreg = xreg, se_fit = true)
 
-    se = forecasts.se
-    forecasts = forecasts.prediction
+#     se = forecasts.se
+#     forecasts = forecasts.prediction
 
-    z = level .|> l -> quantile(Normal(), 0.5 + l / 200)
+#     z = level .|> l -> quantile(Normal(), 0.5 + l / 200)
 
-    upper = reduce(hcat, [forecasts .+ zi .* se for zi in z])
-    lower = reduce(hcat, [forecasts .- zi .* se for zi in z])
+#     upper = reduce(hcat, [forecasts .+ zi .* se for zi in z])
+#     lower = reduce(hcat, [forecasts .- zi .* se for zi in z])
 
-    fits = fitted(model)
-    res = residuals(model)
+#     fits = fitted(model)
+#     res = residuals(model)
 
-    return Forecast(
-        model,
-        model.method,
-        forecasts,
-        level,
-        model.y,
-        upper,
-        lower,
-        fits,
-        res,
-    )
-end
+#     return Forecast(
+#         model,
+#         model.method,
+#         forecasts,
+#         level,
+#         model.y,
+#         upper,
+#         lower,
+#         fits,
+#         res,
+#     )
+# end

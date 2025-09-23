@@ -163,12 +163,13 @@ function box_cox(x::AbstractVector{<:Number}, m::Int; lambda::Union{String,Numbe
 end
 
 """
-    inv_box_cox(x::AbstractVector, lambda::Real, biasadj::Bool = false, fvar = nothing)
+    inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing}=false, 
+    fvar::Union{Nothing,AbstractArray,Dict,NamedTuple}=nothing)
 
 Reverses the Box-Cox transformation.
 
 # Arguments
-- `x::AbstractVector`: A numeric vector or time series.
+- `x::AbstractArray`: A numeric vector or time series.
 - `lambda::Real`: Transformation parameter.
 - `biasadj::Bool`: Use adjusted back-transformed mean for 
 Box-Cox transformations. If transformed data is used to
@@ -187,49 +188,79 @@ A numeric vector of the same length as `x`.
 - Box, G. E. P. and Cox, D. R. (1964). An analysis of transformations. JRSS B, 26, 211–246.
 - Bickel, P. J. and Doksum K. A. (1981). An Analysis of Transformations Revisited. JASA, 76, 296-311.
 """
+function inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing}=false, 
+    fvar::Union{Nothing,AbstractArray,Dict,NamedTuple}=nothing)
 
-function inv_box_cox(x::AbstractVector; lambda::Float64, biasadj::Bool=false, fvar::Union{Nothing,Float64}=nothing)
+    x_work = copy(x)
     if lambda < 0
-        x[x.>-1/lambda] .= NaN
+        thresh = -1 / float(lambda)
+        @inbounds for I in eachindex(x_work)
+            if x_work[I] > thresh
+                x_work[I] = NaN
+            end
+        end
     end
 
+    out = similar(x_work, promote_type(eltype(x_work), Float64))
     if lambda == 0
-        out = exp.(x)
+        out .= exp.(x_work)
     else
-        xx = x * lambda .+ 1
-        out = sign.(xx) .* abs.(xx) .^ (1 / lambda)
+        xx = x_work .* lambda .+ 1
+        out .= sign.(xx) .* abs.(xx).^(1 / lambda)
     end
 
-    if !isa(biasadj, Bool)
+    if biasadj === nothing || !(biasadj isa Bool)
         @warn "biasadj information not found, defaulting to false."
         biasadj = false
     end
 
     if biasadj
-        if isnothing(fvar)
-            error("fvar must be provided when biasadj=true")
-        end
+        fvar_local = fvar
+        fvar_local === nothing && error("fvar must be provided when biasadj=true")
 
-        if typeof(fvar) <: Dict
-            level = maximum(fvar[:level])
-            if size(fvar[:upper], 2) > 1 && size(fvar[:lower], 2) > 1
-                i = findfirst(x -> x == level, fvar[:level])
-                fvar[:upper] = fvar[:upper][:, i]
-                fvar[:lower] = fvar[:lower][:, i]
+        if (fvar_local isa Dict) || (fvar_local isa NamedTuple)
+            level = maximum(fvar_local[:level])
+            upper = fvar_local[:upper]
+            lower = fvar_local[:lower]
+
+            if ndims(upper) == 2 && ndims(lower) == 2 && size(upper,2) > 1 && size(lower,2) > 1
+                lvlvec = fvar_local[:level]
+                idx = findfirst(==(level), lvlvec)
+                idx === nothing && error("Requested level $level not found in fvar[:level]")
+                upper = upper[:, idx]
+                lower = lower[:, idx]
             end
+
             if level > 1
                 level /= 100
             end
-            level = mean([level, 1])
-            fvar = (fvar[:upper] - fvar[:lower]) / quantile(Normal(), level) / 2
-            fvar = fvar .^ 2
+            level = mean((level, 1.0))
+
+            q = quantile(Normal(), level)
+            fvar_local = ((upper .- lower) ./ (q * 2)) .^ 2
         end
 
-        if size(fvar, 2) > 1
-            fvar = diagm(fvar)
+        if fvar_local isa AbstractMatrix && size(fvar_local, 2) > 1
+            n = min(size(fvar_local,1), size(fvar_local,2))
+            fvar_local = [fvar_local[i, i] for i in 1:n] 
         end
 
-        out .= out .* (1 .+ 0.5 * fvar .* (1 .- lambda) ./ (out .^ (2 * lambda)))
+        fvar_bc = fvar_local
+        if fvar_local isa AbstractVector
+            L = length(fvar_local)
+            N = length(out)
+            if L == 0
+                error("fvar vector is empty")
+            end
+            reps = cld(N, L)
+            flat = repeat(fvar_local, reps)[1:N]
+            fvar_bc = reshape(flat, size(out))
+        elseif !(fvar_local isa Number) && !(size(fvar_local) == size(out))
+            
+            throw(DimensionMismatch("fvar shape $(size(fvar_local)) is incompatible with out shape $(size(out)). Provide a vector for R-style recycling or a same-shaped array."))
+        end
+
+        out .*= (1 .+ 0.5 .* fvar_bc .* (1 .- lambda) ./ (out .^ (2 * lambda)))
     end
 
     return out

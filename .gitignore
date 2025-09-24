@@ -2,5 +2,6 @@
 *.jl.cov
 *.jl.mem
 /Manifest.toml
-/docs/Manifest.toml
 /deps/deps.jl
+Manifest.toml
+.vscode/settings.json

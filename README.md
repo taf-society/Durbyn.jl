@@ -33,11 +33,21 @@ The Durbyn package is licensed under the **MIT License**, allowing for open-sour
 
 Durbyn is still in development. Once it is officially released, you will be able to install it using Julia’s package manager:
 
-For the latest development version, you can install directly from GitHub:
+For the latest development version, you can install directly from GitHub by typing
 
 ``` julia
-Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
+julia> using Pkg
+julia> Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 ```
+
+or 
+
+```julia
+julia> ]
+(@v1.xx) pkg> add https://github.com/taf-society/Durbyn.jl
+```
+
+in Julia REPL.
 
 ## Usage
 

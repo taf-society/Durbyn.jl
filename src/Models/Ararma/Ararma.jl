@@ -7,6 +7,7 @@ import ..Generics: Forecast
 import ..Generics: forecast, fitted, residuals
 import ..Optimize: NelderMeadOptions, nmmin
 
+include("setup_params.jl")
 include("arar.jl")
 include("ararma.jl")
 

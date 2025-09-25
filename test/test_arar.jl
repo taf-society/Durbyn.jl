@@ -3,7 +3,7 @@ using Durbyn
 import Durbyn.Generics: Forecast
 using Durbyn.Ararma
 
-@testset "Durbyn.Ararma - ARAR tests" begin
+@testset "Durbyn.Ararma - ARAR tests" verbose=true begin
     ap = air_passengers()
 
     @testset "Basic fit & forecast (equal depths/lags)" begin

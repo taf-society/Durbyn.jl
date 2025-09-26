@@ -11,9 +11,9 @@ An ARIMA model is denoted as **ARIMA(p, d, q)**, where:
 
 Formally, the model is written as:
 
-$$
-\Phi(B)\Delta^d X_t = \Theta(B)\varepsilon_t
-$$
+```math
+\Phi(B) \Delta^d X_t = \Theta(B) \varepsilon_t,
+```
 
 where:
 
@@ -37,18 +37,18 @@ If $d = 0$, the model reduces to ARMA(p, q).
 ### Definition
 Seasonal ARIMA extends ARIMA to account for **seasonality**. It is denoted as:
 
-$$
-ARIMA(p,d,q)(P,D,Q)_m
-$$
+```math
+ARIMA(p, d, q)(P, D, Q)_m,
+```
 
 where:
 - $P, D, Q$ are the seasonal AR, differencing, and MA orders,
 - $m$ is the seasonal period (e.g., 12 for monthly data with yearly seasonality).
 
 ### Model Form
-$$
-\Phi(B)\Phi_s(B^m)\Delta^d \Delta_m^D X_t = \Theta(B)\Theta_s(B^m)\varepsilon_t
-$$
+```math
+\Phi(B)\Phi_s(B^m) \Delta^d \Delta_m^D X_t = \Theta(B)\Theta_s(B^m)\varepsilon_t,
+```
 
 where:
 - $\Phi_s(B^m)$ and $\Theta_s(B^m)$ capture seasonal AR and MA terms,
@@ -65,9 +65,9 @@ where:
 ### Definition
 An ARIMAX model incorporates external regressors (covariates) into the ARIMA framework:
 
-$$
-\Phi(B)\Delta^d X_t = \beta Z_t + \Theta(B)\varepsilon_t
-$$
+```math
+\Phi(B) \Delta^d X_t = \beta Z_t + \Theta(B) \varepsilon_t,
+```
 
 where:
 
@@ -85,9 +85,9 @@ where:
 ### Definition
 SARIMAX generalizes SARIMA by including **exogenous regressors**:
 
-$$
-\Phi(B)\Phi_s(B^m)\Delta^d \Delta_m^D X_t = \beta Z_t + \Theta(B)\Theta_s(B^m)\varepsilon_t
-$$
+```math
+\Phi(B)\Phi_s(B^m) \Delta^d \Delta_m^D X_t = \beta Z_t + \Theta(B)\Theta_s(B^m)\varepsilon_t.
+```
 
 ### Key Features
 - Combines **seasonality** and **exogenous influences**.
@@ -100,20 +100,19 @@ $$
 ## 5. Auto ARIMA
 
 ### Definition
-**Auto ARIMA** automates the process of identifying the best ARIMA/SARIMA model by searching across possible values of $(p, d, q)$ and seasonal $(P, D, Q)$, selecting the model that minimizes an information criterion such as AIC, AICc, or BIC.
+**Auto ARIMA** automates the process of identifying the best ARIMA/SARIMA model by searching across possible values of (p, d, q) and seasonal (P, D, Q), selecting the model that minimizes an information criterion such as AIC, AICc, or BIC.
 
 ### Algorithm (Hyndman & Khandakar, 2008)
-1. **Unit root tests** (ADF, KPSS, or combinations) to determine differencing orders $d$ and $D$.
+1. **Unit root tests** (ADF, KPSS, or combinations) to determine differencing orders \( d \) and \( D \).
 2. **Initial model selection** based on heuristics.  
-3. **Stepwise search** over $(p, q, P, Q)$ with bounds (e.g., up to 5 for non-seasonal and 2 for seasonal).  
+3. **Stepwise search** over (p, q, P, Q) with bounds (e.g., up to 5 for non-seasonal and 2 for seasonal).  
 4. Evaluate models by likelihood and information criteria.  
 5. Refit the best model with full maximum likelihood.  
 
 ### Advantages
 - Removes the manual effort of model identification.  
 - Scales well to large numbers of series.  
-- Ensures differencing is tested systematically (avoids over-differencing).  
-- Widely implemented in statistical software (e.g., `auto.arima()` in R, Python’s `pmdarima`).  
+- Ensures differencing is tested systematically (avoids over-differencing).
 
 ### Limitations
 - Stepwise search may not find the global optimum.  
@@ -137,7 +136,6 @@ $$
 - Out-of-sample forecast validation.
 
 ---
-
 # Forecasing in Julia Using Seasonal Arima Model
 
 ```julia
@@ -157,7 +155,8 @@ fit2 = auto_arima(ap, 12)
 fc2  = forecast(fit2, h = 12)
 plot(fc)
 ```
----
+
+
 ## References
 - Kunst, R. (2011). *Applied Time Series Analysis — Part II*. University of Vienna.  
 - Hyndman, R.J., & Khandakar, Y. (2008). *Automatic Time Series Forecasting: The forecast Package for R*. Journal of Statistical Software, 27(3).  

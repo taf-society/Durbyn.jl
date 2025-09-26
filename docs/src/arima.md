@@ -17,17 +17,17 @@ Formally, the model is written as:
 
 where:
 
-- $B$ is the backshift operator ($BX_t = X_{t-1}$),
-- $\Phi(B) = 1 - \phi_1B - \cdots - \phi_pB^p$,
-- $\Theta(B) = 1 + \theta_1B + \cdots + \theta_qB^q$,
-- $\Delta^d = (1 - B)^d$ is the differencing operator,
-- $\varepsilon_t$ is white noise.
+- ``B`` is the backshift operator (``BX_t = X_{t-1}``),
+- ``\Phi(B) = 1 - \phi_1B - \cdots - \phi_pB^p``,
+- ``\Theta(B) = 1 + \theta_1B + \cdots + \theta_qB^q``,
+- ``\Delta^d = (1 - B)^d`` is the differencing operator,
+- ``\varepsilon_t`` is white noise.
 
-If $d = 0$, the model reduces to ARMA(p, q).
+If ``d = 0``, the model reduces to ARMA(p, q).
 
 ### Key Features
 - Handles **non-stationary time series** via differencing.
-- Shocks (innovations) have **permanent effects** for $d > 0$.
+- Shocks (innovations) have **permanent effects** for ``d > 0``.
 - Commonly used for macroeconomic and financial data.
 
 ---
@@ -42,8 +42,8 @@ ARIMA(p, d, q)(P, D, Q)_m,
 ```
 
 where:
-- $P, D, Q$ are the seasonal AR, differencing, and MA orders,
-- $m$ is the seasonal period (e.g., 12 for monthly data with yearly seasonality).
+- ``P, D, Q`` are the seasonal AR, differencing, and MA orders,
+- ``m`` is the seasonal period (e.g., 12 for monthly data with yearly seasonality).
 
 ### Model Form
 ```math
@@ -51,8 +51,8 @@ where:
 ```
 
 where:
-- $\Phi_s(B^m)$ and $\Theta_s(B^m)$ capture seasonal AR and MA terms,
-- $\Delta_m^D = (1 - B^m)^D$ applies seasonal differencing.
+- ``\Phi_s(B^m)`` and ``\Theta_s(B^m)`` capture seasonal AR and MA terms,
+- ``\Delta_m^D = (1 - B^m)^D`` applies seasonal differencing.
 
 ### Key Features
 - Captures both **short-term dynamics** (p, d, q) and **seasonal effects** (P, D, Q).
@@ -71,8 +71,8 @@ An ARIMAX model incorporates external regressors (covariates) into the ARIMA fra
 
 where:
 
-- $Z_t$ is a vector of exogenous predictors,
-- $\beta$ are their coefficients.
+- ``Z_t`` is a vector of exogenous predictors,
+- ``\beta`` are their coefficients.
 
 ### Key Features
 - Useful when external factors (e.g., interest rates, marketing spend, policy variables) explain additional variance beyond past values of the series.
@@ -125,7 +125,7 @@ SARIMAX generalizes SARIMA by including **exogenous regressors**:
 
 ### Identification
 - Use **ACF/PACF plots** and **unit root tests** (ADF, PP, KPSS) to choose orders manually (or confirm Auto ARIMA results).
-- Differencing ensures stationarity ($d, D$).
+- Differencing ensures stationarity (``d, D``).
 
 ### Estimation
 - Maximum Likelihood Estimation (MLE) or Conditional Sum of Squares.

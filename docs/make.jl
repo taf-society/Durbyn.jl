@@ -1,4 +1,5 @@
 using Pkg
+Pkg.activate(@__DIR__)
 Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..")))
 Pkg.instantiate()
 
@@ -13,6 +14,7 @@ makedocs(
     format   = Documenter.HTML(
         prettyurls = ON_CI,
         assets     = ["assets/theme.css"],
+        mathengine = Documenter.MathJax3(),   # if does not work try with Documenter.KaTeX()
     ),
     pages    = [
         "Home" => "index.md",

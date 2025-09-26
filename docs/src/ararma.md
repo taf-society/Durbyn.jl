@@ -79,7 +79,8 @@ Assuming the fitted model in equation (3) is an appropriate model, and $Z_t$ is 
 \end{equation}
 with the initial conditions $P_n Y_{n+h} = Y_{n + h}$, for $h\leq0$.
 
-Ref: Brockwell, Peter J, and Richard A. Davis. Introduction to Time Series and Forecasting. [Springer](https://link.springer.com/book/10.1007/978-3-319-29854-2) (2016)
+### Reference: 
+- Brockwell, Peter J, and Richard A. Davis. Introduction to Time Series and Forecasting. [Springer](https://link.springer.com/book/10.1007/978-3-319-29854-2) (2016)
 
 # Forecasing in Julia using Arar Model
 

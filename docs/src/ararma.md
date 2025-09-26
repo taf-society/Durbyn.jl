@@ -11,11 +11,13 @@ $Y_{t},\; t = 1,2,\dots,n$ is "long-memory." After transformation, it fits an au
 The model follows five steps to classify $Y_t$ and take one of the following three actions:
 
 - **L**: declare $Y_t$ as long memory and form  
+
   $$
   \tilde{Y}_t = Y_t - \hat{\phi} Y_{t-\hat{\tau}}
   $$
 
 - **M**: declare $Y_t$ as moderately long memory and form  
+
   $$
   \tilde{Y}_t = Y_t - \hat{\phi}_{1} Y_{t-1} - \hat{\phi}_{2} Y_{t-2}
   $$
@@ -29,12 +31,11 @@ The transformation process continues until classification as short memory, but a
 
 ### Steps
 
-1. For each $\tau = 1,2,\dots,15$, find $\hat{\phi}(\tau)$ that minimizes
+1. For each $\tau = 1,2,\dots,15$, find $\hat{\phi}(\tau)$ that minimizes  
 
    $$
-   ERR(\phi,\tau) \;=\;
-   \frac{\sum_{t=\tau+1}^{n} \big(Y_t - \phi Y_{t-\tau}\big)^2}
-        {\sum_{t=\tau+1}^{n} Y_t^{2}}
+   ERR(\phi,\tau) = \frac{\sum_{t=\tau+1}^{n} \big(Y_t - \phi Y_{t-\tau}\big)^2}
+                           {\sum_{t=\tau+1}^{n} Y_t^{2}}
    $$
 
    Define $Err(\tau) = ERR(\hat{\phi}(\tau), \tau)$ and choose  
@@ -103,6 +104,7 @@ It selects the model with minimal $\sigma^2$.
 ---
 
 ### Forecasting
+
 
 If a short-memory filter is found in the first step, with coefficients  
 $\Psi_0,\Psi_1,\dots,\Psi_k$ ($\Psi_0=1$), then

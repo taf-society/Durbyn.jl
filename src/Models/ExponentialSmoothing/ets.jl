@@ -98,8 +98,8 @@ Convenience accessors such as `fitted(::ETS)` and `residuals(::ETS)` return the
 fitted values and residuals, respectively.
 
 # References
-- Hyndman, R.J., Koehler, A.B., Snyder, R.D., & Grose, S. (2002). *A state space framework for automatic forecasting using exponential smoothing methods*. International Journal of Forecasting, 18(3), 439–454.
-- Hyndman, R.J., Akram, Md., & Archibald, B. (2008). *The admissible parameter space for exponential smoothing models*. Annals of the Institute of Statistical Mathematics, 60(2), 407–426.
+- Hyndman, R.J., Koehler, A.B., Snyder, R.D., & Grose, S. (2002). *A state space framework for automatic forecasting using exponential smoothing methods*. International Journal of Forecasting, 18(3), 439-454.
+- Hyndman, R.J., Akram, Md., & Archibald, B. (2008). *The admissible parameter space for exponential smoothing models*. Annals of the Institute of Statistical Mathematics, 60(2), 407-426.
 - Hyndman, R.J., Koehler, A.B., Ord, J.K., & Snyder, R.D. (2008). *Forecasting with Exponential Smoothing: The State Space Approach*. Springer.
 
 
@@ -117,7 +117,7 @@ fit2 = ets(ap, 12, "AAM")
 fc2 = forecast(fit2, h=12)
 plot(fc2)
 
-# Use a damped trend search and automatic Box–Cox selection
+# Use a damped trend search and automatic Box-Cox selection
 fit3 = ets(ap, 12, "ZZZ"; damped=nothing, lambda="auto", biasadj=true)
 fc3 = forecast(fit3, h=12)
 plot(fc3)

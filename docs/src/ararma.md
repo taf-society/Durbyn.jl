@@ -227,11 +227,16 @@ with initialization ``P_n Y_{n+h}=Y_{n+h}`` for ``h\le 0`` and future shocks set
 
 # Forecasing in Julia using Ararma Model
 ```julia
-fit2 = ararma(ap, p = 0, q = 1)
+using Durbyn
+using Durbyn.Ararma
+
+ap = air_passengers()
+
+fit1 = ararma(ap, p = 0, q = 1)
+fc1  = forecast(fit1, h = 12)
+plot(fc1)
+
+fit2 = auto_ararma(ap)
 fc2  = forecast(fit2, h = 12)
 plot(fc2)
-
-fit3 = auto_ararma(ap)
-fc3  = forecast(fit3, h = 12)
-plot(fc3)
 ```

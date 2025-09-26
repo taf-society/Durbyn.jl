@@ -3,7 +3,6 @@ Pkg.develop(PackageSpec(path=joinpath(@__DIR__, "..")))
 Pkg.instantiate()
 
 using Documenter
-using DocumenterMathJax
 using Durbyn
 
 const ON_CI = get(ENV, "CI", "false") == "true"
@@ -14,7 +13,6 @@ makedocs(
     format   = Documenter.HTML(
         prettyurls = ON_CI,
         assets     = ["assets/theme.css"],
-        mathengine = MathJax3(),
     ),
     pages    = [
         "Home" => "index.md",

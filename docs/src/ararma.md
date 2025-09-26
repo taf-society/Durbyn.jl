@@ -1,86 +1,166 @@
-# ARAR / ARARMA
+# ARAR and ARARMA Models
 
-## Forecasting Using Arar
+## ARAR Model
+The ARAR model applies a memory-shortening transformation if the underlying process of a given time series  
+$Y_{t},\; t = 1,2,\dots,n$ is "long-memory." After transformation, it fits an autoregressive model.
 
-### How Arar Model Works
-The ARAR model applies a memory-shortening transformation if the underlying process of a given time series ${Y_{t}, t = 1, 2, ..., n}$ is "long-memory" then it fits an autoregressive model.
+---
 
 ### Memory Shortening
 
-The model follows five steps to classify ${Y_{t}}$ and take one of the following three actions:
+The model follows five steps to classify $Y_t$ and take one of the following three actions:
 
+- **L**: declare $Y_t$ as long memory and form  
+  $$
+  \tilde{Y}_t = Y_t - \hat{\phi} Y_{t-\hat{\tau}}
+  $$
 
-* L: declare ${Y_{t}}$ as long memory and form  ${Y_{t}}$ by ${\tilde{Y}_{t} = Y_{t} - \hat{\phi}Y_{t - \hat{\tau}}}$
-* M: declare ${Y_{t}}$ as moderately long memory and form  ${Y_{t}}$ by ${\tilde{Y}_{t} = Y_{t} - \hat{\phi}_{1}Y_{t -1} - \hat{\phi}_{2}Y_{t -2}}$
-* S: declare ${Y_{t}}$ as short memory.
+- **M**: declare $Y_t$ as moderately long memory and form  
+  $$
+  \tilde{Y}_t = Y_t - \hat{\phi}_{1} Y_{t-1} - \hat{\phi}_{2} Y_{t-2}
+  $$
 
-If ${Y_{t}}$ declared to be $L$ or $M$ then the series ${Y_{t}}$ is transformed again until. The transformation process continuous until the transformed series is classified as short memory. However, the maximum number of transformation process is three, it is very rare a time series require more than 2.
+- **S**: declare $Y_t$ as short memory.
 
-* 1. For each $\tau = 1, 2, ..., 15$, we find the value $\hat{\phi(\tau)} $ of $\hat{\phi}$ that minimizes $ERR(\phi, \tau) = \frac{\sum_{t=\tau +1 }^{n} [Y_{t} - \phi Y_{t-\tau}]^2 }{\sum_{t=\tau +1 }^{n} Y_{t}^{2}}$ then define $Err(\tau) = ERR(\hat{\phi(\tau), \tau})$ and choose the lag $\hat{\tau}$ to be the value of $\tau$ that minimizes  $Err(\tau)$.
-* 2. If $Err(\hat{\tau}) \leq  8/n$,  ${Y_{t}}$ is a long-memory series.
-* 3. If $\hat{\phi}( \hat{\tau} ) \geq 0.93$ and $\hat{\tau} > 2$,  ${Y_{t}}$ is a long-memory series.
-* 4. If $\hat{\phi}( \hat{\tau} ) \geq 0.93$ and $\hat{\tau} = 1$ or $2$, ${Y_{t}}$ is a long-memory series.
-* 5. If $\hat{\phi}( \hat{\tau} ) < 0.93$, ${Y_{t}}$ is a short-memory series.
+If $Y_t$ is declared L or M, then the series is transformed again until classified as short memory.  
+The transformation process continues until classification as short memory, but at most three times (rarely more than two).
 
+---
 
-### Subset Autoregressive Model:
+### Steps
 
-In the following we will describe how ARAR algorithm fits an autoregressive process to the mean-corrected series $X_{t} = S_{t}- {\bar{S}}$, $t = k+1, ..., n$ where ${S_{t}, t = k + 1, ..., n}$ is the memory-shortened version of  ${Y_{t}}$ which derived from the five steps we described above and $\bar{S}$ is the sample mean of $S_{k+1}, ..., S_{n}$.
+1. For each $\tau = 1,2,\dots,15$, find $\hat{\phi}(\tau)$ that minimizes
 
-The fitted model has the following form:
+   $$
+   ERR(\phi,\tau) \;=\;
+   \frac{\sum_{t=\tau+1}^{n} \big(Y_t - \phi Y_{t-\tau}\big)^2}
+        {\sum_{t=\tau+1}^{n} Y_t^{2}}
+   $$
 
-$X_{t} = \phi_{1}X{t-1} + \phi_{1}X_{t-l_{1}} + \phi_{1}X_{t- l_{1}} + \phi_{1}X_{t-l_{1}} + Z$
+   Define $Err(\tau) = ERR(\hat{\phi}(\tau), \tau)$ and choose  
+   $\hat{\tau}$ as the value of $\tau$ that minimizes $Err(\tau)$.
 
-where $Z \sim WN(0, \sigma^{2})$. The coefficients $\phi_{j}$ and white noise variance $\sigma^2$ can be derived from the Yule-Walker equations for given lags $l_1, l_2,$ and $l_3$ :
+2. If $Err(\hat{\tau}) \leq \tfrac{8}{n}$, declare $Y_t$ long-memory.  
+3. If $\hat{\phi}(\hat{\tau}) \geq 0.93$ and $\hat{\tau}>2$, declare long-memory.  
+4. If $\hat{\phi}(\hat{\tau}) \geq 0.93$ and $\hat{\tau}=1$ or $2$, declare long-memory.  
+5. If $\hat{\phi}(\hat{\tau}) < 0.93$, declare short-memory.
 
-\begin{equation}
+---
+
+### Subset Autoregressive Model
+
+After shortening, define the mean-corrected series
+
+$$
+X_t = S_t - \bar{S}, \quad t = k+1,\dots,n
+$$
+
+where $S_t$ is the memory-shortened series and $\bar{S}$ is the sample mean of $S_{k+1},\dots,S_n$.
+
+The fitted model is
+
+$$
+X_t = \phi_1 X_{t-1} + \phi_{l_1} X_{t-l_1} + \phi_{l_2} X_{t-l_2} + \phi_{l_3} X_{t-l_3} + Z_t,
+\qquad Z_t \sim WN(0,\sigma^2).
+$$
+
+### Yule–Walker Equations
+
+The coefficients $\phi_j$ and white-noise variance $\sigma^2$ come from:
+
+$$
 \begin{bmatrix}
-1 & \hat{\rho}(l_1 - 1) & \hat{\rho}(l_2 - 1) & \hat{\rho}(l_3 - 1)\\
-\hat{\rho}(l_1 - 1) &1 & \hat{\rho}(l_2 - l_1) & \hat{\rho}(l_3 - l_1)\\
-\hat{\rho}(l_2 - 1) & \hat{\rho}(l_2 - l_1) & 1 & \hat{\rho}(l_2 - l_2)\\
-\hat{\rho}(l_3 - 1) & \hat{\rho}(l_3 - l_1) & \hat{\rho}(l_3 - l_1) & 1
-\end{bmatrix}*\begin{bmatrix}
-\phi_{1} \\
-\phi_{l_1} \\
-\phi_{l_2}\\
-\phi_{l_3}
-\end{bmatrix} = \begin{bmatrix} \hat{\rho}(1) \\ \hat{\rho}(l_1) \\ \hat{\rho}(l_2)\\ \hat{\rho}(l_3) \end{bmatrix}
-\end{equation}
+1 & \hat{\rho}(l_1-1) & \hat{\rho}(l_2-1) & \hat{\rho}(l_3-1) \\
+\hat{\rho}(l_1-1) & 1 & \hat{\rho}(l_2-l_1) & \hat{\rho}(l_3-l_1) \\
+\hat{\rho}(l_2-1) & \hat{\rho}(l_2-l_1) & 1 & \hat{\rho}(l_3-l_2) \\
+\hat{\rho}(l_3-1) & \hat{\rho}(l_3-l_1) & \hat{\rho}(l_3-l_2) & 1
+\end{bmatrix}
+\begin{bmatrix}
+\phi_1 \\ \phi_{l_1} \\ \phi_{l_2} \\ \phi_{l_3}
+\end{bmatrix}
+=
+\begin{bmatrix}
+\hat{\rho}(1) \\ \hat{\rho}(l_1) \\ \hat{\rho}(l_2) \\ \hat{\rho}(l_3)
+\end{bmatrix}
+$$
 
-and $\sigma^2 = \hat{\gamma}(0) [1-\phi_1\hat{\rho}(1)] - \phi_{l_1}\hat{\rho}(l_1)] - \phi_{l_2}\hat{\rho}(l_2)] - \phi_{l_3}\hat{\rho}(l_3)]$, where $\hat{\gamma}(j)$ and $\hat{\rho}(j), j = 0, 1, 2, ...,$ are the sample autocovariances and autocorelations of the series $X_{t}$.
+and
 
-The algorithm computes the coefficients of $\phi(j)$ for each set of lags where $1<l_1<l_2<l_3 \leq m$ where m chosen to be 13 or 26. The algorithm selects the model that the Yule-Walker estimate of $\sigma^2$ is minimal.
+$$
+\sigma^2 = \hat{\gamma}(0) \Big(
+  1 - \phi_1 \hat{\rho}(1)
+    - \phi_{l_1} \hat{\rho}(l_1)
+    - \phi_{l_2} \hat{\rho}(l_2)
+    - \phi_{l_3} \hat{\rho}(l_3)
+\Big),
+$$
+
+where $\hat{\gamma}(j)$ and $\hat{\rho}(j)$ are the sample autocovariances and autocorrelations.
+
+The algorithm computes $\phi(j)$ for all sets of lags with $1<l_1<l_2<l_3\leq m$, $m=13$ or $26$.  
+It selects the model with minimal $\sigma^2$.
+
+---
 
 ### Forecasting
 
-If short-memory filter found in first step it has coefficients $\Psi_0, \Psi_1, ..., \Psi_k (k \geq0)$ where $\Psi_0 = 1$. In this case the transforemed series can be expressed as
-\begin{equation}
-    S_t = \Psi(B)Y_t = Y_t + \Psi_1 Y_{t-1} + ...+ \Psi_k Y_{t-k},
-\end{equation}
-where $\Psi(B) = 1 + \Psi_1B + ...+ \Psi_k B^k$ is polynomial in the back-shift operator.
+If a short-memory filter is found in the first step, with coefficients  
+$\Psi_0,\Psi_1,\dots,\Psi_k$ ($\Psi_0=1$), then
 
-If the coefficients of the subset autoregression found in the second step it has coefficients $\phi_1, \phi_{l_1},  \phi_{l_2}$ and $\phi_{l_3}$ then the subset AR model for $X_t = S_t - \bar{S}$ is
+$$
+S_t = \Psi(B) Y_t = Y_t + \Psi_1 Y_{t-1} + \dots + \Psi_k Y_{t-k},
+$$
 
-\begin{equation}
-    \phi(B)X_t = Z_t,
-\end{equation}
+where
 
-where $Z_t$ is a white-noise series with zero mean and constant variance and $\phi(B) = 1 - \phi_1B - \phi_{l_1}B^{l_1} - \phi_{l_2}B^{l_2} - \phi_{l_3}B^{l_3}$. From equation (1) and (2) one can obtain
+$$
+\Psi(B) = 1 + \Psi_1 B + \dots + \Psi_k B^k
+$$
 
-\begin{equation}
-    \xi(B)Y_t = \phi(1)\bar{S} + Z_t,
-\end{equation}
-where $\xi (B) = \Psi(B)\phi(B)$.
+is a polynomial in the backshift operator.
 
-Assuming the fitted model in equation (3) is an appropriate model, and $Z_t$ is uncorrelated with $Y_j, j <t$ $\forall t \in T$, one can determine minimum mean squared error linear predictors $P_n Y_{n + h}$ of $Y_{n+h}$ in terms of ${1, Y_1, ..., Y_n}$ for $n > k + l_3$, from recursions
+If subset AR coefficients are found, the model is
 
-\begin{equation}
-    P_n Y_{n+h} = - \sum_{j = 1}^{k + l_3} \xi P_nY_{n+h-j} + \phi(1)\bar{S},  h\geq 1,
-\end{equation}
-with the initial conditions $P_n Y_{n+h} = Y_{n + h}$, for $h\leq0$.
+$$
+\phi(B) X_t = Z_t,
+$$
 
-### Reference: 
-- Brockwell, Peter J, and Richard A. Davis. Introduction to Time Series and Forecasting. [Springer](https://link.springer.com/book/10.1007/978-3-319-29854-2) (2016)
+with
+
+$$
+\phi(B) = 1 - \phi_1 B - \phi_{l_1} B^{l_1} - \phi_{l_2} B^{l_2} - \phi_{l_3} B^{l_3},
+\quad X_t = S_t - \bar{S}.
+$$
+
+From this:
+
+$$
+\xi(B) Y_t = \phi(1)\bar{S} + Z_t,
+\qquad \xi(B) = \Psi(B)\phi(B).
+$$
+
+---
+
+### Predictors
+
+Assuming the fitted model is valid and $Z_t$ is uncorrelated with past $Y_j$:
+
+$$
+P_n Y_{n+h} = -\sum_{j=1}^{k+l_3} \xi_j \, P_n Y_{n+h-j} + \phi(1)\bar{S},
+\qquad h \geq 1,
+$$
+
+with initial conditions
+
+$$
+P_n Y_{n+h} = Y_{n+h}, \quad h \leq 0.
+$$
+
+---
+
+## Reference
+- Brockwell, Peter J, and Richard A. Davis. *Introduction to Time Series and Forecasting*. [Springer, 2016](https://link.springer.com/book/10.1007/978-3-319-29854-2)
+
 
 # Forecasing in Julia using Arar Model
 

@@ -1763,6 +1763,7 @@ end
 
 function process_parameters(
     y,
+    m,
     model,
     damped,
     alpha,
@@ -1800,7 +1801,7 @@ function process_parameters(
     end
 
     if !isnothing(lambda)
-        y, lambda = box_cox(y, length(y), lambda = lambda)
+        y, lambda = box_cox(y, m, lambda = lambda)
         additive_only = true
     end
 
@@ -1884,8 +1885,7 @@ function ets_refit(
         x = y
 
         if biasadj
-            model.fitted =
-                invboxcox(model.fitted, model.lambda, biasadj, var(model.residuals))
+            model.fitted = inv_box_cox(model.fitted, lambda=model.lambda, biasadj=biasadj, fvar=var(model.residuals))
         end
         model = EtsModel(
             fitted,
@@ -2351,6 +2351,7 @@ function ets_base_model(
     na_action_type,
     ny = process_parameters(
         y,
+        m,
         model,
         damped,
         alpha,
@@ -2393,6 +2394,7 @@ function ets_base_model(
 
         return fit_small_dataset(
             orig_y,
+            m,
             alpha,
             beta,
             gamma,
@@ -2556,7 +2558,7 @@ function simulate_ets(
     end
 
     if !isnothing(lambda)
-        y = InvBoxCox(y, lambda = lambda)
+        y = inv_box_cox(y, lambda=lambda)
     end
 
     return y

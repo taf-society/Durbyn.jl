@@ -165,11 +165,12 @@ function warn_no_intervals(PI, biasadj)
     end
 end
 
-function apply_boxcox_transformation(mean, lower, upper, lambda, biasadj, PI)
+function apply_boxcox_transformation(mean, lower, upper, lambda, biasadj, PI, fvar=nothing)
     if lambda != nothing
-        mean = InvBoxCox(mean, lambda, biasadj, out)
+        mean = inv_box_cox(mean, lambda=lambda, biasadj=biasadj, fvar=fvar)
         if PI
-            lower, upper = InvBoxCox(lower, lambda), InvBoxCox(upper, lambda)
+            lower = inv_box_cox(lower, lambda=lambda)
+            upper = inv_box_cox(upper, lambda=lambda)
         end
     end
 
@@ -412,6 +413,12 @@ function forecast_ets_base(
     m = object.m
     h = initialize_horizon(h, m)
     validate_horizon(h)
+
+    # Use object's lambda if not specified
+    if lambda === nothing && hasfield(typeof(object), :lambda)
+        lambda = object.lambda
+    end
+
     biasadj = initialize_biasadj(biasadj, lambda, get_biasadj(object))
     simulate, bootstrap, fan, npaths, level =
         adjust_for_pi_and_biasadj(PI, biasadj, simulate, bootstrap, fan, npaths, level)
@@ -421,8 +428,12 @@ function forecast_ets_base(
     simulate, bootstrap = adjust_simulation_flags(simulate, bootstrap)
     f = compute_forecast_data(object, h, simulate, npaths, level, bootstrap, damped, n)
     lower, upper = calculate_prediction_intervals(PI, biasadj, f, h, level)
+
+    # Get variance for bias adjustment if available
+    fvar = hasfield(typeof(f), :var) ? f.var : nothing
+
     mean, lower, upper =
-        apply_boxcox_transformation(f.mu, lower, upper, lambda, biasadj, PI)
+        apply_boxcox_transformation(f.mu, lower, upper, lambda, biasadj, PI, fvar)
 
     if !PI
         level = nothing

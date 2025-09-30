@@ -12,7 +12,6 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
     color_ci_80 = "#3498DB"
     color_ci_95 = "#85C1E9"
 
-    # Create main plot with ggplot2-style theme
     p = Plots.plot(
         framestyle=:box,
         grid=true,
@@ -33,7 +32,6 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
         right_margin=8Plots.mm
     )
 
-    # Plot historical data
     Plots.plot!(
         p,
         time_history,
@@ -44,7 +42,6 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
         alpha=0.8
     )
 
-    # Plot fitted values if requested
     if show_fitted && !isempty(forecast.fitted) && !all(isnan.(forecast.fitted))
         Plots.plot!(
             p,
@@ -58,23 +55,17 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
         )
     end
 
-    # Plot confidence intervals (from widest to narrowest for proper layering)
     if forecast.upper !== nothing && forecast.lower !== nothing
         num_levels = size(forecast.upper, 2)
 
-        # Generate colors with gradient from lighter to darker blue
-        # For multiple CIs, use a gradient
         function get_ci_color_alpha(i, num_levels)
             if num_levels == 1
                 return (color_ci_80, 0.4)
             else
-                # Create gradient from light to dark blue
-                # Widest (largest i) gets lightest color
                 ratio = (i - 1) / (num_levels - 1)
 
-                # Interpolate between light blue and darker blue
-                r1, g1, b1 = 133, 193, 233  # Light blue (#85C1E9)
-                r2, g2, b2 = 52, 152, 219   # Darker blue (#3498DB)
+                r1, g1, b1 = 133, 193, 233  
+                r2, g2, b2 = 52, 152, 219 
 
                 r = round(Int, r1 + (r2 - r1) * ratio)
                 g = round(Int, g1 + (g2 - g1) * ratio)
@@ -82,24 +73,20 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
 
                 color_hex = "#" * string(r, base=16, pad=2) * string(g, base=16, pad=2) * string(b, base=16, pad=2)
 
-                # Alpha: wider intervals are more transparent
                 alpha_val = 0.25 + 0.3 * ratio
 
                 return (color_hex, alpha_val)
             end
         end
 
-        # Reverse order so narrowest CI is on top
         for i in num_levels:-1:1
             upper_bound = forecast.upper[:, i]
             lower_bound = forecast.lower[:, i]
 
             fill_color, fill_alpha = get_ci_color_alpha(i, num_levels)
 
-            # Label: show percentage for all levels
             level_label = forecast.level !== nothing ? "$(Int(forecast.level[i]))%" : "CI"
 
-            # Plot upper and lower bounds with visible lines
             Plots.plot!(
                 p,
                 time_forecast,
@@ -115,7 +102,6 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
         end
     end
 
-    # Plot forecast mean
     Plots.plot!(
         p,
         time_forecast,
@@ -127,7 +113,6 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
         alpha=0.9
     )
 
-    # Add title and labels
     title_text = "Forecasts from " * forecast.method
     Plots.plot!(
         p,
@@ -136,9 +121,7 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
         ylabel="Value"
     )
 
-    # If residuals plot is requested, create a layout
     if show_residuals && !isempty(forecast.residuals) && !all(isnan.(forecast.residuals))
-        # Create residuals plot
         p_resid = Plots.plot(
             framestyle=:box,
             grid=true,
@@ -158,7 +141,6 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
             right_margin=8Plots.mm
         )
 
-        # Add zero reference line first
         Plots.hline!(
             p_resid,
             [0],
@@ -182,7 +164,6 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
             ylabel="Residual"
         )
 
-        # Combine plots vertically
         return Plots.plot(p, p_resid, layout=(2, 1), size=(900, 800))
     end
 

@@ -4,6 +4,7 @@ import Statistics: mean, std, quantile, minimum, maximum, var
 using Plots
 import LinearAlgebra: diag, dot
 
+using ..Optimize
 import ..Utils: na_omit, as_integer, mean2, is_constant, match_arg, NamedMatrix, isna
 import ..Generics: plot, summary, fitted, residuals, predict
 

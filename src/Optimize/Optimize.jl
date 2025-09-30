@@ -1,9 +1,11 @@
 module Optimize
 
 include("nmmin.jl")
+include("bfgs.jl")
+include("fmin.jl")
 include("optim_hessian.jl")
 include("scalers.jl")
 
-export nmmin, optim_hessian, NelderMeadOptions, scaler, descaler
+export nmmin, bfgsmin, fmin, optim_hessian, NelderMeadOptions, BFGSOptions, FminOptions, scaler, descaler
 
 end

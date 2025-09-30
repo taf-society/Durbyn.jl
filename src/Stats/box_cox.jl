@@ -4,7 +4,7 @@ function guer_cv(lam::Float64, x::Array{Float64,1}, m::Int; nonseasonal_length::
     nyr = div(nobsf, period)
     nobst = nyr * period
     x_mat = reshape(x[(end-nobst+1):end], period, nyr)
-    x_mean = vec(Statistics.mean(x_mat, dims=1))
+    x_mean = vec(mean(x_mat, dims=1))
     x_sd = vec(std(x_mat, dims=1))
     x_rat = x_sd ./ x_mean .^ (1 - lam)
     return std(x_rat) / mean(x_rat)
@@ -15,8 +15,8 @@ function guerrero(x::Array{Float64,1}, m::Int, lower::Float64=-1.0, upper::Float
         println("Warning: Guerrero's method for selecting a Box-Cox parameter (lambda) is given for strictly positive data.")
     end
 
-    result = optimize(lam -> guer_cv(lam, x, m, nonseasonal_length=nonseasonal_length), lower, upper)
-    return Optim.minimizer(result)
+    result = Optimize.fmin(lam -> guer_cv(lam, x, m, nonseasonal_length=nonseasonal_length), lower, upper)
+    return result.x_opt
 end
 
 function qr_residuals(X, y)
@@ -163,22 +163,22 @@ function box_cox(x::AbstractVector{<:Number}, m::Int; lambda::Union{String,Numbe
 end
 
 """
-    inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing}=false, 
-    fvar::Union{Nothing,AbstractArray,Dict,NamedTuple}=nothing)
+    inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing}=false,
+    fvar::Union{Nothing,Number,AbstractArray,Dict,NamedTuple}=nothing)
 
 Reverses the Box-Cox transformation.
 
 # Arguments
 - `x::AbstractArray`: A numeric vector or time series.
 - `lambda::Real`: Transformation parameter.
-- `biasadj::Bool`: Use adjusted back-transformed mean for 
+- `biasadj::Bool`: Use adjusted back-transformed mean for
 Box-Cox transformations. If transformed data is used to
  produce forecasts and fitted values, a regular back transformation
-  will result in median forecasts. If `biasadj` is `true`, an 
+  will result in median forecasts. If `biasadj` is `true`, an
   adjustment will be made to produce mean forecasts and fitted values.
-- `fvar`: Optional parameter required if `biasadj = true`. 
-Can either be the forecast variance, or a list containing the interval level, a
-nd the corresponding upper and lower intervals.
+- `fvar`: Optional parameter required if `biasadj = true`.
+Can either be a numeric variance (Number), an array of forecast variances,
+or a Dict/NamedTuple containing the interval level and corresponding upper and lower intervals.
 
 # Returns
 A numeric vector of the same length as `x`.
@@ -188,8 +188,8 @@ A numeric vector of the same length as `x`.
 - Box, G. E. P. and Cox, D. R. (1964). An analysis of transformations. JRSS B, 26, 211–246.
 - Bickel, P. J. and Doksum K. A. (1981). An Analysis of Transformations Revisited. JASA, 76, 296-311.
 """
-function inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing}=false, 
-    fvar::Union{Nothing,AbstractArray,Dict,NamedTuple}=nothing)
+function inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing}=false,
+    fvar::Union{Nothing,Number,AbstractArray,Dict,NamedTuple}=nothing)
 
     x_work = copy(x)
     if lambda < 0

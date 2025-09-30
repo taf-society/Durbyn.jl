@@ -22,6 +22,7 @@ include("holt_winters.jl")
 include("ses.jl")
 include("croston.jl")
 include("forecast.jl")
+include("show.jl")
 
 export ets, holt, holt_winters, ses, croston
 

@@ -82,13 +82,16 @@ function croston_opt(x, method, cost, w, nop, init, init_opt)
         ubound = fill(1, nop)
 
         if nop != 1
-            wopt = optimize(p -> croston_cost(p, x, cost, method, w,
-                nop, true, init, init_opt, lbound, ubound),
-                p0, NelderMead(), Options(iterations = 2000)).minimizer
+            cost_fn = p -> croston_cost(p, x, cost, method, w,
+                nop, true, init, init_opt, lbound, ubound)
+            options = NelderMeadOptions(maxit=2000)
+            result = nmmin(cost_fn, p0, options)
+            wopt = result.x_opt
         else
-            wopt = optimize(p -> croston_cost([p], x, cost, method, w,
-                nop, true, init, init_opt, lbound, ubound),
-                lbound[1], ubound[1], Brent()).minimizer
+            cost_fn = p -> croston_cost([p], x, cost, method, w,
+                nop, true, init, init_opt, lbound, ubound)
+            result = fmin(cost_fn, lbound[1], ubound[1])
+            wopt = [result.x_opt]
         end
 
         wopt = [wopt..., init...]
@@ -98,9 +101,11 @@ function croston_opt(x, method, cost, w, nop, init, init_opt)
         lbound = [fill(0, nop)..., 0, 1]
         ubound = [fill(1, nop)..., maximum(x), minimum(intervals)]
 
-        wopt = optimize(p -> croston_cost(p, x, cost, method, w,
-            nop, true, init, true, lbound, ubound),
-            p0, NelderMead(), Options(iterations = 2000)).minimizer
+        cost_fn = p -> croston_cost(p, x, cost, method, w,
+            nop, true, init, true, lbound, ubound)
+        options = NelderMeadOptions(maxit=2000)
+        result = nmmin(cost_fn, p0, options)
+        wopt = result.x_opt
 
     elseif !isnothing(w) && init_opt
         nop = length(w)
@@ -108,11 +113,13 @@ function croston_opt(x, method, cost, w, nop, init, init_opt)
         lbound = [0, 1]
         ubound = [maximum(x), maximum(intervals)]
 
-        wopt = optimize(p -> croston_cost(p, x, cost, method, w,
-            nop, false, init, true, lbound, ubound),
-            p0, NelderMead(), Options(iterations = 2000)).minimizer
+        cost_fn = p -> croston_cost(p, x, cost, method, w,
+            nop, false, init, true, lbound, ubound)
+        options = NelderMeadOptions(maxit=2000)
+        result = nmmin(cost_fn, p0, options)
+        wopt = result.x_opt
 
-        wopt = [wopt..., init...]
+        wopt = [w..., wopt...]
     end
 
     return Dict("w" => wopt[1:nop], "init" => wopt[(nop+1):(nop+2)])

@@ -3,8 +3,8 @@ using Statistics
 using Plots
 import Base: show
 import Statistics: mean
-import Optim: optimize, NelderMead, Brent, Options
 
+using ..Optimize
 using ..Generics
 import ..Utils: evaluation_metrics
 import ..Utils: match_arg

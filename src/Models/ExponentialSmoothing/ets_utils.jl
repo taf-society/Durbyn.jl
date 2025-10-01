@@ -2467,7 +2467,6 @@ end
 function simulate_ets(
     object::ETS,
     nsim::Union{Int,Nothing} = nothing;
-    seed::Union{Int,Nothing} = 42,
     future::Bool = true,
     bootstrap::Bool = false,
     innov::Union{Vector{Float64},Nothing} = nothing,
@@ -2485,11 +2484,7 @@ function simulate_ets(
 
     nsim = isnothing(nsim) ? length(x) : nsim
 
-    if isnothing(innov)
-        if !isnothing(seed)
-            seed!(seed)
-        end
-    else
+    if !isnothing(innov)
         nsim = length(innov)
     end
 
@@ -2509,7 +2504,7 @@ function simulate_ets(
 
     if bootstrap
         res = filter(!ismissing, residuals) .- mean(filter(!ismissing, residuals))
-        e = sample(res, nsim, replace = true)
+        e = rand(res, nsim)
     elseif isnothing(innov)
         e = rand(Normal(0, sqrt(sigma2)), nsim)
     elseif length(innov) == nsim

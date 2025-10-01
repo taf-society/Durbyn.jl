@@ -78,7 +78,10 @@ seasonality using two smoothing equations: one for the level and one for the tre
 # Arguments
 - `y::AbstractArray`: Time series data to fit.
 - `m::Int`: Seasonal period (optional, defaults to 1). Since Holt's method doesn't capture
-  seasonality, this parameter is typically omitted or set to 1.
+  seasonality, this parameter is typically omitted or set to 1. Note: For consistency,
+  always use the same value of `m` when comparing models. Different values of `m` can
+  result in slightly different parameter estimates due to different optimization starting
+  points, even though `m` doesn't affect the underlying model structure for non-seasonal data.
 
 # Keyword Arguments
 - `damped::Bool=false`: If `true`, applies damping to the trend component using parameter φ.
@@ -145,7 +148,7 @@ using Durbyn.ExponentialSmoothing
 t = 1:50
 y = 100 .+ 2 .* t .+ randn(50) .* 5
 
-# Standard Holt's method (m parameter optional)
+# Standard Holt's method (m parameter optional for non-seasonal data)
 fit = holt(y)
 println(fit)
 fc = forecast(fit, h=10)
@@ -166,8 +169,10 @@ fit_bc = holt(y, lambda=0.5, biasadj=true)
 # Simple initialization
 fit_simple = holt(y, initial="simple")
 
-# Can also specify m explicitly (though typically not needed)
-fit_explicit = holt(y, 1, damped=true)
+# Note: For consistency in comparisons, use the same form
+# Either always omit m: holt(y) or always specify it: holt(y, 1)
+fit1 = holt(y)        # Uses m=1 internally
+fit2 = holt(y, 1)     # Explicitly sets m=1 (same as above)
 ```
 
 # When to Use Holt's Method
@@ -296,13 +301,22 @@ function holt(
         method = method * " with exponential trend"
     end
 
+    # Handle fields that don't exist in HoltWintersConventional
+    loglik = hasfield(typeof(model), :loglik) ? model.loglik : NaN
+    aic = hasfield(typeof(model), :aic) ? model.aic : NaN
+    bic = hasfield(typeof(model), :bic) ? model.bic : NaN
+    aicc = hasfield(typeof(model), :aicc) ? model.aicc : NaN
+    mse = hasfield(typeof(model), :mse) ? model.mse : NaN
+    amse = hasfield(typeof(model), :amse) ? model.amse : NaN
+    fit = hasfield(typeof(model), :fit) ? model.fit : Float64[]
+
     return Holt(
         model.fitted,
         model.residuals,
         model.components,
         model.x,
         model.par,
-        model.loglik,
+        loglik,
         model.initstate,
         model.states,
         model.state_names,
@@ -311,12 +325,12 @@ function holt(
         model.m,
         model.lambda,
         model.biasadj,
-        model.aic,
-        model.bic,
-        model.aicc,
-        model.mse,
-        model.amse,
-        model.fit,
+        aic,
+        bic,
+        aicc,
+        mse,
+        amse,
+        fit,
         method,
     )
 end

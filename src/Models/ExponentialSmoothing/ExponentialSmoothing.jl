@@ -10,7 +10,7 @@ using Distributions
 import DataStructures: OrderedDict
 
 # Internal modules
-import ..Utils: is_constant, match_arg, na_action, na_omit
+import ..Utils: is_constant, match_arg, na_action, na_omit, check_component
 import ..Stats: box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, fourier
 import ..Generics: Forecast, forecast, plot
 import ..Optimize: nmmin, NelderMeadOptions

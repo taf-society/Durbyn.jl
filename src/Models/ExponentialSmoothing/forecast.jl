@@ -485,7 +485,6 @@ end
 function simulate_ets(
     object::Union{Holt, SES},
     nsim::Union{Int,Nothing} = nothing;
-    seed::Union{Int,Nothing} = 42,
     future::Bool = true,
     bootstrap::Bool = false,
     innov::Union{Vector{Float64},Nothing} = nothing,
@@ -502,11 +501,7 @@ function simulate_ets(
 
     nsim = isnothing(nsim) ? length(x) : nsim
 
-    if isnothing(innov)
-        if !isnothing(seed)
-            seed!(seed)
-        end
-    else
+    if !isnothing(innov)
         nsim = length(innov)
     end
 

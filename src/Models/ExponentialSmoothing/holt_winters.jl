@@ -104,13 +104,22 @@ function holt_winters(
         @warn "Damped Holt-Winters' method requires optimal initialization"
     end
 
+    # Handle fields that don't exist in HoltWintersConventional
+    loglik = hasfield(typeof(model), :loglik) ? model.loglik : NaN
+    aic = hasfield(typeof(model), :aic) ? model.aic : NaN
+    bic = hasfield(typeof(model), :bic) ? model.bic : NaN
+    aicc = hasfield(typeof(model), :aicc) ? model.aicc : NaN
+    mse = hasfield(typeof(model), :mse) ? model.mse : NaN
+    amse = hasfield(typeof(model), :amse) ? model.amse : NaN
+    fit = hasfield(typeof(model), :fit) ? model.fit : Float64[]
+
     return HoltWinters(
         model.fitted,
         model.residuals,
         model.components,
         model.x,
         model.par,
-        model.loglik,
+        loglik,
         model.initstate,
         model.states,
         model.state_names,
@@ -119,12 +128,12 @@ function holt_winters(
         model.m,
         model.lambda,
         model.biasadj,
-        model.aic,
-        model.bic,
-        model.aicc,
-        model.mse,
-        model.amse,
-        model.fit,
+        aic,
+        bic,
+        aicc,
+        mse,
+        amse,
+        fit,
         method,
     )
 end

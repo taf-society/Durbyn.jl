@@ -1196,35 +1196,27 @@ function holt_winters_conventional(
         starting_points = Float64[]
 
         if select[1] > 0
-            alpha2 = optim_start["alpha"]
-            push!(starting_points, alpha2)
-        else
-            alpha2 = alpha
+            push!(starting_points, optim_start["alpha"])
         end
 
         if select[2] > 0
-            beta2 = optim_start["beta"]
-            push!(starting_points, beta2)
-        else
-            beta2 = beta
+            push!(starting_points, optim_start["beta"])
         end
 
         if select[3] > 0
-            gamma2 = optim_start["gamma"]
-            push!(starting_points, gamma2)
-        else
-            gamma2 = gamma
+            push!(starting_points, optim_start["gamma"])
         end
 
+        # Pass the fixed (non-optimized) values to the closure
         cal_opt_sse_closure =
             p -> calculate_opt_sse(
                 p,
                 select,
                 x,
                 lenx,
-                alpha2,
-                beta2,
-                gamma2,
+                alpha,  # If select[1] > 0, this will be replaced by p[1] in calculate_opt_sse
+                beta,   # If select[2] > 0, this will be replaced by p[...] in calculate_opt_sse
+                gamma,  # If select[3] > 0, this will be replaced by p[...] in calculate_opt_sse
                 seasonal,
                 m,
                 exponential,
@@ -1238,16 +1230,17 @@ function holt_winters_conventional(
 
         is_convergence = sol.fail == 0
         minimizers = sol.x_opt
-        iterations = sol.evals
-        
 
-        if !is_convergence | any((minimizers .< 0) .| (minimizers .> 1))
-            if iterations > 50
+
+        if !is_convergence || any((minimizers .< 0) .| (minimizers .> 1))
+            if sol.fail > 50
                 if warnings
-                    @warn "Optimization difficulties!"
+                    @warn "Optimization difficulties: convergence code $(sol.fail)"
                 end
             else
-                error("Optimization failure")
+                if warnings
+                    @warn "Optimization failure: convergence code $(sol.fail), using best parameters found"
+                end
             end
         end
 

@@ -1,29 +1,39 @@
 export ses, SES
 
 """
-SES model output
+    SES
+
+Simple Exponential Smoothing model output structure.
+
+SES is the simplest form of exponential smoothing (equivalent to ETS(A,N,N)),
+with no trend or seasonality components. It is suitable for forecasting data
+with no clear trend or seasonal pattern.
 
 # Fields
-- `fitted::Vector{Float64}`: The fitted values from the ETS model, representing the predicted values at each time point.
-- `residuals::Vector{Float64}`: The residuals, which are the differences between the observed values and the fitted values.
-- `components::Vector{Any}`: A collection of the model components such as level, trend, and seasonality.
-- `x::Vector{Float64}`: The original time series data on which the ETS model was fitted.
-- `par::Dict{String, Any}`: A dictionary containing the parameters of the ETS model, where the keys are parameter names and the values are the parameter values.
-- `initstate::DataFrame`: A DataFrame containing the initial state estimates of the model.
-- `states::DataFrame`: A DataFrame containing the state estimates of the model over time.
-- `SSE::Float64`: The sum of squared errors (SSE) of the model, a measure of the model's fit to the data.
-- `sigma2::Float64`: The variance of the residuals, indicating the spread of the residuals around zero.
-- `m::Int`: The frequency of the seasonal component, e.g., 12 for monthly data with yearly seasonality.
-- `lambda::Float64`: The Box-Cox transformation parameter, used if the data were transformed before fitting the model.
-- `biasadj::Bool`: A boolean flag indicating whether bias adjustment was applied to the model.
-- `loglik::Float64`: Log-likelihood of the model.
-- `aic::Float64`: Akaike Information Criterion (AIC) for model selection.
-- bic::Float64: Bayesian Information Criterion (BIC) for model selection.
-- aicc::Float64: Corrected Akaike Information Criterion (AICc) for small sample sizes.
-- mse::Float64:  Mean Squared Error of the model fit.
-- amse::Float64:  Average Mean Squared Error, typically used for forecasting accuracy.
-- fit::Vector{Float64}: The fitted model.
-- `method::String`: The method used for model fitting.
+- `fitted::AbstractArray`: The fitted values (one-step ahead predictions) at each time point.
+- `residuals::AbstractArray`: The residuals (observed - fitted values).
+- `components::Union{Vector{Any}, Any}`: Model components (level only for SES).
+- `x::AbstractArray`: The original time series data.
+- `par::Any`: Dictionary containing model parameters (alpha).
+- `loglik::Union{Float64,Int}`: Log-likelihood of the model.
+- `initstate::AbstractArray`: Initial state estimate (initial level).
+- `states::AbstractArray`: Level estimates over time.
+- `state_names::Any`: Names of the state variables.
+- `SSE::Union{Float64,Int}`: Sum of squared errors, a measure of model fit.
+- `sigma2::Union{Float64,Int}`: Residual variance (σ²).
+- `m::Int`: Seasonal period (e.g., 12 for monthly data, 1 for non-seasonal).
+- `lambda::Union{Float64,Bool,Nothing}`: Box-Cox transformation parameter (nothing if not used).
+- `biasadj::Bool`: Boolean flag indicating whether bias adjustment was applied.
+- `aic::Union{Float64,Int}`: Akaike Information Criterion for model selection.
+- `bic::Union{Float64,Int}`: Bayesian Information Criterion for model selection.
+- `aicc::Union{Float64,Int}`: Corrected AIC for small sample sizes.
+- `mse::Union{Float64,Int}`: Mean Squared Error of the model fit.
+- `amse::Union{Float64,Int}`: Average Mean Squared Error.
+- `fit::Any`: The fitted model object.
+- `method::String`: The method used for model fitting ("Simple Exponential Smoothing").
+
+# See also
+[`ses`](@ref), [`ets`](@ref), [`forecast`](@ref)
 
 """
 struct SES
@@ -48,6 +58,88 @@ struct SES
     amse::Union{Float64,Int}
     fit::Any
     method::String
+end
+
+"""
+    ses(y; initial="optimal", alpha=nothing, lambda=nothing, biasadj=false, options=NelderMeadOptions())
+    ses(y, m; initial="optimal", alpha=nothing, lambda=nothing, biasadj=false, options=NelderMeadOptions())
+
+Fit a Simple Exponential Smoothing (SES) model to a time series.
+
+SES is the simplest form of exponential smoothing (equivalent to ETS(A,N,N)),
+suitable for data with no trend or seasonal pattern. The model uses a single
+smoothing parameter α to exponentially weight past observations.
+
+# Arguments
+- `y::AbstractArray`: Time series data to fit.
+- `m::Int`: Seasonal period (optional, defaults to 1 for non-seasonal data).
+             Use 12 for monthly data, 4 for quarterly, etc.
+
+# Keyword Arguments
+- `initial::String="optimal"`: Initialization method:
+  - `"optimal"`: Uses state-space optimization via ETS framework (default).
+  - `"simple"`: Uses conventional Holt-Winters initialization.
+- `alpha::Union{Float64,Nothing}=nothing`: Smoothing parameter (0 < α < 1).
+  If `nothing`, α is estimated from the data.
+- `lambda::Union{Float64,Bool,Nothing}=nothing`: Box-Cox transformation parameter.
+  - `nothing`: No transformation (default).
+  - `"auto"` or `true`: Automatically select optimal λ.
+  - `Float64`: Use specified λ value.
+- `biasadj::Bool=false`: Apply bias adjustment for Box-Cox back-transformation.
+- `options::NelderMeadOptions`: Optimization options for parameter estimation.
+
+# Returns
+- `SES`: Fitted SES model object containing fitted values, residuals, parameters,
+  states, and information criteria (AIC, BIC, AICc when `initial="optimal"`).
+
+# Model Formulation
+The SES model in state-space form:
+```
+yₜ = ℓₜ₋₁ + εₜ
+ℓₜ = ℓₜ₋₁ + α·εₜ
+```
+where ℓₜ is the level at time t, and εₜ ~ N(0, σ²).
+
+The h-step ahead forecast is constant: ŷₜ₊ₕ = ℓₜ for all h ≥ 1.
+
+# Examples
+```julia
+using Durbyn.ExponentialSmoothing
+
+# Simple data
+y = [10.5, 12.3, 11.8, 13.1, 12.9, 14.2, 13.8, 15.1, 14.7, 16.0]
+
+# Fit with optimal initialization (default)
+fit = ses(y)
+println(fit)  # Display model summary
+
+# Fit with specified alpha
+fit_fixed = ses(y, alpha=0.3)
+
+# Fit with Box-Cox transformation
+fit_bc = ses(y, lambda=0.5, biasadj=true)
+
+# Generate forecasts
+fc = forecast(fit, h=6)
+
+# For monthly seasonal data
+monthly_data = randn(60) .+ 100
+fit_monthly = ses(monthly_data, 12)  # m=12 for monthly frequency
+fc_monthly = forecast(fit_monthly, h=12)
+```
+
+# See also
+[`SES`](@ref), [`ets`](@ref), [`forecast`](@ref), [`holt`](@ref), [`hw`](@ref)
+"""
+function ses(
+    y::AbstractArray;
+    initial::String = "optimal",
+    alpha::Union{Float64,Bool,Nothing} = nothing,
+    lambda::Union{Float64,Bool,Nothing} = nothing,
+    biasadj::Bool = false,
+    options::NelderMeadOptions = NelderMeadOptions(),)
+
+    ses(y, 1, initial = initial, alpha = alpha, lambda = lambda, biasadj = biasadj, options = options)
 end
 
 function ses(

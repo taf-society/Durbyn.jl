@@ -174,3 +174,94 @@ function Base.show(io::IO, model::HoltWintersConventional)
     sigma = sqrt(model.sigma2)
     println(io, "  sigma:  ", round(sigma, digits=4))
 end
+
+function Base.show(io::IO, model::SES)
+    println(io, "Simple Exponential Smoothing")
+    println(io)
+
+    # Box-Cox transformation
+    if model.lambda !== nothing && model.lambda !== false
+        println(io, "  Box-Cox transformation: lambda= ", round(model.lambda, digits=4))
+        println(io)
+    end
+
+    # Smoothing parameters
+    println(io, "  Smoothing parameters:")
+    if haskey(model.par, "alpha")
+        println(io, "    alpha = ", round(model.par["alpha"], digits=4))
+    end
+    println(io)
+
+    # Initial states
+    println(io, "  Initial states:")
+    state_vals = model.initstate
+
+    # Level
+    if length(state_vals) >= 1
+        println(io, "    l = ", round(state_vals[1], digits=4))
+    end
+    println(io)
+
+    # Sigma
+    sigma = sqrt(model.sigma2)
+    println(io, "  sigma:  ", round(sigma, digits=4))
+    println(io)
+
+    # Information criteria
+    println(io, "      AIC      AICc       BIC")
+    aic_str = lpad(round(model.aic, digits=4), 9)
+    aicc_str = lpad(round(model.aicc, digits=4), 10)
+    bic_str = lpad(round(model.bic, digits=4), 11)
+    println(io, aic_str, aicc_str, bic_str)
+end
+
+function Base.show(io::IO, model::Holt)
+    println(io, model.method)
+    println(io)
+
+    # Box-Cox transformation
+    if model.lambda !== nothing && model.lambda !== false
+        println(io, "  Box-Cox transformation: lambda= ", round(model.lambda, digits=4))
+        println(io)
+    end
+
+    # Smoothing parameters
+    println(io, "  Smoothing parameters:")
+    if haskey(model.par, "alpha")
+        println(io, "    alpha = ", round(model.par["alpha"], digits=4))
+    end
+    if haskey(model.par, "beta")
+        println(io, "    beta  = ", round(model.par["beta"], digits=4))
+    end
+    if haskey(model.par, "phi")
+        println(io, "    phi   = ", round(model.par["phi"], digits=4))
+    end
+    println(io)
+
+    # Initial states
+    println(io, "  Initial states:")
+    state_vals = model.initstate
+
+    # Level
+    if length(state_vals) >= 1
+        println(io, "    l = ", round(state_vals[1], digits=4))
+    end
+
+    # Trend
+    if length(state_vals) >= 2
+        println(io, "    b = ", round(state_vals[2], digits=4))
+    end
+    println(io)
+
+    # Sigma
+    sigma = sqrt(model.sigma2)
+    println(io, "  sigma:  ", round(sigma, digits=4))
+    println(io)
+
+    # Information criteria
+    println(io, "      AIC      AICc       BIC")
+    aic_str = lpad(round(model.aic, digits=4), 9)
+    aicc_str = lpad(round(model.aicc, digits=4), 10)
+    bic_str = lpad(round(model.bic, digits=4), 11)
+    println(io, aic_str, aicc_str, bic_str)
+end

@@ -265,3 +265,81 @@ function Base.show(io::IO, model::Holt)
     bic_str = lpad(round(model.bic, digits=4), 11)
     println(io, aic_str, aicc_str, bic_str)
 end
+
+function Base.show(io::IO, model::HoltWinters)
+    println(io, model.method)
+    println(io)
+
+    # Box-Cox transformation
+    if model.lambda !== nothing && model.lambda !== false
+        println(io, "  Box-Cox transformation: lambda= ", round(model.lambda, digits=4))
+        println(io)
+    end
+
+    # Smoothing parameters
+    println(io, "  Smoothing parameters:")
+    if haskey(model.par, "alpha")
+        println(io, "    alpha = ", round(model.par["alpha"], digits=4))
+    end
+    if haskey(model.par, "beta")
+        println(io, "    beta  = ", round(model.par["beta"], digits=4))
+    end
+    if haskey(model.par, "gamma")
+        println(io, "    gamma = ", round(model.par["gamma"], digits=4))
+    end
+    if haskey(model.par, "phi")
+        println(io, "    phi   = ", round(model.par["phi"], digits=4))
+    end
+    println(io)
+
+    # Initial states
+    println(io, "  Initial states:")
+    state_vals = model.initstate
+    idx = 1
+
+    # Level
+    if idx <= length(state_vals)
+        println(io, "    l = ", round(state_vals[idx], digits=4))
+        idx += 1
+    end
+
+    # Trend
+    if idx <= length(state_vals) && haskey(model.par, "beta")
+        println(io, "    b = ", round(state_vals[idx], digits=4))
+        idx += 1
+    end
+
+    # Seasonal components
+    if idx <= length(state_vals) && haskey(model.par, "gamma")
+        seasonal = state_vals[idx:end]
+        print(io, "    s = ")
+        # Print first 6 seasonal values on first line
+        n_print = min(6, length(seasonal))
+        for i in 1:n_print
+            print(io, round(seasonal[i], digits=4), " ")
+        end
+        println(io)
+
+        # Print remaining seasonal values on second line (if any)
+        if length(seasonal) > 6
+            print(io, "           ")
+            for i in 7:length(seasonal)
+                print(io, round(seasonal[i], digits=4), " ")
+            end
+            println(io)
+        end
+    end
+    println(io)
+
+    # Sigma
+    sigma = sqrt(model.sigma2)
+    println(io, "  sigma:  ", round(sigma, digits=4))
+    println(io)
+
+    # Information criteria
+    println(io, "      AIC      AICc       BIC")
+    aic_str = lpad(round(model.aic, digits=4), 9)
+    aicc_str = lpad(round(model.aicc, digits=4), 10)
+    bic_str = lpad(round(model.bic, digits=4), 11)
+    println(io, aic_str, aicc_str, bic_str)
+end

@@ -238,26 +238,27 @@ function holt_winters(
     end
 
     if length(y) <= m + 3
-        throw(ArgumentError("I need at least $(m + 3) observations to estimate seasonality."))
+        throw(
+            ArgumentError("I need at least $(m + 3) observations to estimate seasonality."),
+        )
     end
-
-    if seasonal == "additive" && exponential
-        throw(ArgumentError("Forbidden model combination: additive seasonality with exponential trend."))
-    end
-
-    model_code = ""
 
     if initial == "optimal" || damped
-        if seasonal == "additive"
-            model_code = exponential ? "ANA" : "AAA"
+        if seasonal == "additive" && exponential
+            error("Forbidden model combination")
+        end
+        model_type = if seasonal == "additive"
+            "AAA"
+        elseif exponential
+            "MMM"
         else
-            model_code = exponential ? "MMM" : "MAM"
+            "MAM"
         end
 
         model = ets_base_model(
             y,
             m,
-            model_code,
+            model_type,
             alpha = alpha,
             beta = beta,
             gamma = gamma,
@@ -268,6 +269,7 @@ function holt_winters(
             biasadj = biasadj,
             options = options,
         )
+
     else
         model = holt_winters_conventional(
             y,

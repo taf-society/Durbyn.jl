@@ -2008,7 +2008,7 @@ function fit_small_dataset(
                 beta = beta,
                 gamma = gamma,
                 seasonal = (seasontype == "M" ? "multiplicative" : "additive"),
-                exponential = (trendtype == 'M'),
+                exponential = (trendtype == "M"),
                 phi = phi,
                 lambda = lambda,
                 biasadj = biasadj,
@@ -2030,7 +2030,7 @@ function fit_small_dataset(
                 beta = beta,
                 gamma = false,
                 seasonal = "additive",
-                exponential = (trendtype == 'M'),
+                exponential = (trendtype == "M"),
                 phi = phi,
                 lambda = lambda,
                 biasadj = biasadj,
@@ -2401,7 +2401,7 @@ function ets_base_model(
     end
 
     model = fit_best_ets_model(
-        y,
+        Float64.(y),
         m,
         errortype,
         trendtype,
@@ -2418,7 +2418,7 @@ function ets_base_model(
         bounds,
         ic,
         data_positive,
-        restrict = additive_only,
+        restrict = restrict,
         additive_only = additive_only,
         allow_multiplicative_trend = allow_multiplicative_trend,
         options = options)

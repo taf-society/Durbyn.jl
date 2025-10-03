@@ -57,6 +57,22 @@ struct ArarmaModel
     loglik::Float64
 end
 
+function Base.show(io::IO, model::ArarmaModel)
+    println(io, "ARARMA Model Summary")
+    println(io, "--------------------")
+    println(io, "Number of observations: ", length(model.y_original))
+    println(io, "Model order: ARARMA($(model.ar_order), $(model.ma_order))")
+    println(io, "Selected AR lags: ", model.best_lag)
+    println(io, "ARMA-stage AR coefficients (ϕ): ", round.(model.best_phi, digits=4))
+    println(io, "ARMA-stage MA coefficients (θ): ", round.(model.best_theta, digits=4))
+    println(io, "Innovation variance (σ²): ", round(model.sigma2, digits=4))
+    println(io, "Mean of shortened series (S̄): ", round(model.Sbar, digits=4))
+    println(io, "Length of memory-shortening filter (Ψ): ", length(model.psi))
+    println(io, "Log-likelihood: ", round(model.loglik, digits=2))
+    println(io, "AIC: ", round(model.aic, digits=2))
+    println(io, "BIC: ", round(model.bic, digits=2))
+end
+
 
 
 function safe_slice(x::Vector{T}, idxs::AbstractVector{Int}) where T

@@ -11,6 +11,10 @@ The Croston family of methods addresses intermittent demand by decomposing the f
 
 Croston's method models intermittent demand by maintaining two exponentially smoothed states: demand size ``z_t`` when demand occurs, and inter-demand intervals ``x_t``.
 
+**References:**
+- Croston, J. (1972). "Forecasting and stock control for intermittent demands". *Operational Research Quarterly*, 23(3), 289-303.
+- Shenstone, L., and Hyndman, R.J. (2005). "Stochastic models underlying Croston's method for intermittent demand forecasting". *Journal of Forecasting*, 24, 389-402.
+
 ### Notation
 
 - ``y_t``: observed demand at time ``t`` (often zero)
@@ -43,6 +47,121 @@ The Croston forecast represents the expected demand rate per period:
 ```
 
 This forecast is constant for all future periods (flat forecast profile).
+
+### Implementation Types
+
+The implementation handles four distinct cases based on the data characteristics:
+
+1. **CrostonOne**: All demands are zero - returns zero forecast
+2. **CrostonTwo**: Only one non-zero demand and one interval - returns constant forecast
+3. **CrostonThree**: Insufficient data (≤1 demand or ≤1 interval) - returns NaN
+4. **CrostonFour**: Standard case with multiple demands - applies full Croston method
+
+### Data Structures
+
+#### `CrostonFit`
+
+Stores the fitted Croston model containing:
+- `modely`: Simple exponential smoothing model for demand sizes
+- `modelp`: Simple exponential smoothing model for inter-demand intervals
+- `type`: One of four CrostonType enum values indicating the fitting approach
+- `x`: Original demand series
+- `y`: Non-zero demands only
+- `tt`: Inter-demand intervals
+- `m`: Seasonal period (typically 1 for non-seasonal intermittent demand)
+
+#### `CrostonForecast`
+
+Stores forecast output containing:
+- `mean`: Forecast values (demand rate per period)
+- `model`: The underlying `CrostonFit` object
+- `method`: Description string ("Croston's Method")
+- `m`: Seasonal period
+
+### Functions
+
+#### `croston(y, m; alpha, options)`
+
+Fits a Croston model to intermittent demand data.
+
+**Arguments:**
+- `y::AbstractArray`: Demand time series (may contain zeros)
+- `m::Int`: Seasonal period (default: 1)
+- `alpha::Union{Float64,Bool,Nothing}`: Smoothing parameter (nothing for automatic optimization)
+- `options::NelderMeadOptions`: Optimization settings for parameter estimation
+
+**Returns:**
+- `CrostonFit`: Fitted model object
+
+**Example:**
+```julia
+using Durbyn.ExponentialSmoothing
+
+# Intermittent demand data
+demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
+
+# Fit Croston model with automatic parameter optimization
+fit = croston(demand)
+
+# Fit with fixed smoothing parameter
+fit_fixed = croston(demand, alpha=0.1)
+```
+
+#### `forecast(object::CrostonFit, h::Int)`
+
+Generates forecasts from a fitted Croston model.
+
+**Arguments:**
+- `object::CrostonFit`: Fitted Croston model
+- `h::Int`: Forecast horizon (number of periods ahead)
+
+**Returns:**
+- `CrostonForecast`: Forecast object containing mean forecasts
+
+**Example:**
+```julia
+# Generate 12-period-ahead forecast
+fc = forecast(fit, 12)
+println(fc.mean)  # Access forecast values
+```
+
+#### `fitted(object::CrostonFit)`
+
+Computes in-sample fitted values using one-step-ahead forecasts.
+
+**Arguments:**
+- `object::CrostonFit`: Fitted Croston model
+
+**Returns:**
+- `Vector`: Fitted values (same length as original series)
+
+**Note:** The first value is NaN as no forecast is available for the first observation.
+
+**Example:**
+```julia
+fitted_vals = fitted(fit)
+residuals = demand .- fitted_vals
+```
+
+#### `plot(forecast::CrostonForecast; show_fitted=false)`
+
+Visualizes the forecast with optional fitted values.
+
+**Arguments:**
+- `forecast::CrostonForecast`: Forecast object to plot
+- `show_fitted::Bool`: Whether to display in-sample fitted values (default: false)
+
+**Returns:**
+- Plots.jl plot object
+
+**Example:**
+```julia
+# Plot forecast only
+plot(fc)
+
+# Plot forecast with fitted values
+plot(fc, show_fitted=true)
+```
 
 ## Syntetos-Boylan Approximation (SBA)
 

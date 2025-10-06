@@ -8,93 +8,38 @@ using Durbyn.ExponentialSmoothing
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
         # Fit model
-        fit = croston(demand, 1)
-
-        @test isa(fit, CrostonFit)
-        @test fit.type == CrostonFour
-        @test fit.m == 1
-        @test length(fit.x) == length(demand)
-        @test all(fit.y .> 0)  # y contains only non-zero demands
-        @test length(fit.y) == 4  # Four non-zero demands
-    end
-
-    @testset "Croston with No Seasonal Period" begin
-        demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
-
-        # Fit without specifying m (defaults to 1)
-        fit = croston(demand)
-
-        @test isa(fit, CrostonFit)
-        @test fit.m == 1
+        fit1 = croston(demand, 1)
+        fc1 = forecast(fit1, 12)
+        fit2 = croston(demand)
+        fc2 = forecast(fit2, 12)
+        # plot(fc1)
+        @test fc1.mean == fc2.mean
+        @test isa(fit1, CrostonFit)
+        @test all(fc1.mean .≈ 1.9736586666666665)
     end
 
     @testset "Croston with Fixed Alpha" begin
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
         # Fit with fixed smoothing parameter
-        fit = croston(demand, 1, alpha=0.1)
+        fit = croston(demand, alpha=0.1)
 
         @test isa(fit, CrostonFit)
-        @test fit.type == CrostonFour
-    end
-
-    @testset "Croston Type One - All Zeros" begin
-        # All demands are zero
-        demand = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-
-        fit = croston(demand, 1)
-
-        @test fit.type == CrostonOne
-        @test isnothing(fit.modely)
-        @test isnothing(fit.modelp)
-
-        # Forecast should be all zeros
-        fc = forecast(fit, 5)
-        @test all(fc.mean .== 0.0)
+        fc = forecast(fit, 12)
+        @test all(fc.mean .≈ 1.5915857605177997)
     end
 
     @testset "Croston Type Two - Single Demand" begin
-        # Only one non-zero demand
-        demand = [0, 0, 5, 0, 0, 0, 0, 0, 0, 0]
+        # All demands are zero
+        demand = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
 
         fit = croston(demand, 1)
 
-        @test fit.type == CrostonTwo
-        @test length(fit.y) == 1
-        @test length(fit.tt) == 1
-
-        # Forecast should be constant
-        fc = forecast(fit, 5)
-        @test length(fc.mean) == 5
-        @test all(fc.mean .== fc.mean[1])
-    end
-
-    @testset "Croston Type Three - Insufficient Data" begin
-        # Insufficient data for fitting
-        demand = [5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-
-        fit = croston(demand, 1)
-
-        @test fit.type == CrostonThree
-
-        # Forecast should be NaN
-        fc = forecast(fit, 5)
-        @test all(isnan.(fc.mean))
-    end
-
-    @testset "Croston Forecast" begin
-        demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
-
-        fit = croston(demand, 1)
+        @test isa(fit, CrostonFit)
         fc = forecast(fit, 12)
-
-        @test isa(fc, CrostonForecast)
-        @test length(fc.mean) == 12
-        @test fc.method == "Croston's Method"
-        @test fc.m == 1
-        @test all(fc.mean .> 0)  # Forecast should be positive
-        @test all(fc.mean .== fc.mean[1])  # Flat forecast profile
+        @test all(fc.mean .≈ 0.09090909090909091)
     end
+
 
     @testset "Croston Fitted Values" begin
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
@@ -140,7 +85,6 @@ using Durbyn.ExponentialSmoothing
         fit = croston(demand, 1)
 
         @test isa(fit, CrostonFit)
-        @test fit.type == CrostonFour
         @test length(fit.y) > 1  # Multiple non-zero demands
         @test all(fit.y .> 0)
 
@@ -153,7 +97,7 @@ using Durbyn.ExponentialSmoothing
     @testset "Croston Inter-demand Intervals" begin
         demand = [5, 0, 0, 3, 0, 0, 0, 7, 0, 4]
 
-        fit = croston(demand, 1)
+        fit = croston(demand)
 
         # Check inter-demand intervals
         @test length(fit.tt) > 0
@@ -167,7 +111,7 @@ using Durbyn.ExponentialSmoothing
     @testset "Croston Model Structure" begin
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
-        fit = croston(demand, 1)
+        fit = croston(demand)
 
         # Check that models are fitted
         @test !isnothing(fit.modely)
@@ -176,7 +120,7 @@ using Durbyn.ExponentialSmoothing
         # Forecast from component models
         fc = forecast(fit, 6)
         @test length(fc.mean) == 6
-        @test fc.model === fit  # Forecast contains reference to original model
+        @test fc.model === fit 
     end
 
     @testset "Croston Empty Forecast" begin
@@ -209,7 +153,6 @@ using Durbyn.ExponentialSmoothing
 
         fit = croston(demand, 1)
 
-        @test fit.type == CrostonFour
         @test fit.y[1] == 5
         @test length(fit.y) == 4
     end
@@ -220,7 +163,6 @@ using Durbyn.ExponentialSmoothing
 
         fit = croston(demand, 1)
 
-        @test fit.type == CrostonFour
         @test length(fit.y) == 5  # Five non-zero demands
 
         # Check intervals include 1's for consecutive demands

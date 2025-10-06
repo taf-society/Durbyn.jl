@@ -268,6 +268,7 @@ function ets_base(y, n, x, m, error, trend, season, alpha, beta, gamma, phi, e, 
 end
 
 function forecast_ets_base(l, b, s, m, trend, season, phi, f, h)
+    TOL = 1.0e-10
     phistar = phi
     for i = 1:h
         if trend == 0
@@ -277,21 +278,23 @@ function forecast_ets_base(l, b, s, m, trend, season, phi, f, h)
         elseif b < 0
             f[i] = -99999.0
         else
-            f[i] = l * (b^phistar)
+            f[i] = l * (b ^ phistar)
         end
 
-        j = (m - 1 - (i - 1)) % m
-
+        j = mod1(m - i + 1, m)
+        
         if season == 1
-            #f[i] = f[i] + s[j+1]
-            f[i] += s[j+1]
+            f[i] += s[j]
         elseif season == 2
-            #f[i] = f[i] * s[j+1]
-            f[i] *= s[j+1]
+            f[i] *= s[j]
         end
 
         if i < h
-            phistar += phi == 1.0 ? 1.0 : phi^(i + 1)
+            if abs(phi - 1.0) < TOL
+                phistar += 1.0
+            else
+                phistar += phi ^ i
+            end
         end
     end
 end
@@ -389,6 +392,7 @@ function simulate_ets_base(x, m, error, trend, season, alpha, beta, gamma, phi, 
     end
 
     l = x[1]
+    b = 0.0
     if trend > 0
         b = x[2]
     end
@@ -444,13 +448,13 @@ function simulate_ets_base(x, m, error, trend, season, alpha, beta, gamma, phi, 
 end
 
 function forecast(
-    x::AbstractArray,
+    x::AbstractVector,
     m::Int,
     trend::Int,
     season::Int,
     phi::Float64,
     h::Int,
-    f::Vector{Float64},
+    f::AbstractVector,
 )
 
     if (m > 24) && (season > 0)
@@ -459,14 +463,14 @@ function forecast(
         m = 1
     end
 
-    l = x[1]
-    b = ifelse(trend > 0, x[2], 0.0)
+    l = Float64(x[1])
+    b = trend > 0 ? Float64(x[2]) : 0.0
     s = zeros(Float64, 24)
 
     if season > 0
-        offset = ifelse(trend > 0, 2, 1)
+        offset = trend > 0 ? 2 : 1
         for j = 1:m
-            s[j] = x[offset+j]
+            s[j] = Float64(x[offset+j])
         end
     end
 
@@ -485,13 +489,12 @@ function initparam(
     upper::Vector{Float64},
     m::Int,
     bounds::String;
-    nothing_as_nan::Bool = false,
-)
+    nothing_as_nan::Bool = false,)
 
 
     if bounds == "admissible"
-        lower[1:3] .= 0
-        upper[1:3] .= 1e-3
+        lower[1] = 0.0; lower[2] = 0.0; lower[3] = 0.0
+        upper[1] = 1e-3; upper[2] = 1e-3; upper[3] = 1e-3
     elseif any(lower .> upper)
         throw(ArgumentError("Inconsistent parameter boundaries"))
     end
@@ -502,8 +505,6 @@ function initparam(
         if alpha > 1 || alpha < 0
             alpha = lower[1] + 2e-3
         end
-    else
-        apha = 0.0
     end
     # Select beta
     if trendtype != "N" && (isnothing(beta))
@@ -814,8 +815,7 @@ function calculate_residuals(
     beta::Union{Float64,Nothing,Bool},
     gamma::Union{Float64,Nothing,Bool},
     phi::Union{Float64,Nothing,Bool},
-    nmse::Int,
-)
+    nmse::Int, )
 
     n = length(y)
     p = length(init_state)

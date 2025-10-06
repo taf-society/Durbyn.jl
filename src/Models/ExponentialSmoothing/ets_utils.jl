@@ -828,9 +828,17 @@ function calculate_residuals(
     errortype, trendtype, seasontype =
         switch_dict[errortype], switch_dict[trendtype], switch_dict[seasontype]
 
-    phi = ifelse(damped, phi, 1.0)
-    beta = ifelse(trendtype == 0, 0.0, beta)
-    gamma = ifelse(seasontype == 0, 0.0, gamma)
+    if !damped
+        phi = 1.0
+    end
+
+     if trendtype == 0
+        beta = 0.0
+    end
+
+    if seasontype == 0
+        gamma = 0.0
+    end
 
     alpha, beta, gamma, phi = Float64(alpha), Float64(beta), Float64(gamma), Float64(phi)
 

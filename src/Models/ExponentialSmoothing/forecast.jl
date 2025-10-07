@@ -3,7 +3,7 @@ function get_biasadj(object, default = false)
 end
 
 function initialize_horizon(h, m)
-    return h === nothing ? (m > 1 ? 2 * m : 10) : h
+    return isnothing(h) ? (m > 1 ? 2 * m : 10) : h
 end
 
 function validate_horizon(h)
@@ -11,10 +11,10 @@ function validate_horizon(h)
 end
 
 function initialize_biasadj(biasadj, lambda, object_biasadj)
-    if lambda === nothing
+    if isnothing(lambda)
         return false
     else
-        return biasadj === nothing ? object_biasadj :
+        return isnothing(biasadj) ? object_biasadj :
                (isa(biasadj, Bool) ? biasadj : warn_biasadj())
     end
 end
@@ -415,7 +415,7 @@ function forecast_ets_base(
     validate_horizon(h)
 
     # Use object's lambda if not specified
-    if lambda === nothing && hasfield(typeof(object), :lambda)
+    if isnothing(lambda) && hasfield(typeof(object), :lambda)
         lambda = object.lambda
     end
 

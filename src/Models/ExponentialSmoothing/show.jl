@@ -20,7 +20,7 @@ function Base.show(io::IO, model::EtsModel)
     println(io)
 
     # Box-Cox transformation
-    if model.lambda !== nothing && model.lambda !== false
+    if !isnothing(model.lambda) && model.lambda !== false
         println(io, "  Box-Cox transformation: lambda= ", round(model.lambda, digits=4))
         println(io)
     end
@@ -110,7 +110,7 @@ function Base.show(io::IO, model::HoltWintersConventional)
     println(io)
 
     # Box-Cox transformation
-    if model.lambda !== nothing && model.lambda !== false
+    if !isnothing(model.lambda) && model.lambda !== false
         println(io, "  Box-Cox transformation: lambda= ", round(model.lambda, digits=4))
         println(io)
     end
@@ -180,7 +180,7 @@ function Base.show(io::IO, model::SES)
     println(io)
 
     # Box-Cox transformation
-    if model.lambda !== nothing && model.lambda !== false
+    if !isnothing(model.lambda) && model.lambda !== false
         println(io, "  Box-Cox transformation: lambda= ", round(model.lambda, digits=4))
         println(io)
     end
@@ -220,7 +220,7 @@ function Base.show(io::IO, model::Holt)
     println(io)
 
     # Box-Cox transformation
-    if model.lambda !== nothing && model.lambda !== false
+    if !isnothing(model.lambda) && model.lambda !== false
         println(io, "  Box-Cox transformation: lambda= ", round(model.lambda, digits=4))
         println(io)
     end
@@ -271,7 +271,7 @@ function Base.show(io::IO, model::HoltWinters)
     println(io)
 
     # Box-Cox transformation
-    if model.lambda !== nothing && model.lambda !== false
+    if !isnothing(model.lambda) && model.lambda !== false
         println(io, "  Box-Cox transformation: lambda= ", round(model.lambda, digits=4))
         println(io)
     end

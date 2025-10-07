@@ -94,7 +94,7 @@ end
 
 
 function normalize_parameter(param)
-    if param === nothing
+    if isnothing(param)
         return nothing
     elseif param isa Bool
         return param ? 1.0 : 0.0
@@ -1108,7 +1108,7 @@ function holt_winters_conventional(
 
 
     if !all(isnothing.([alpha, beta, gamma])) &&
-       any(x -> (x !== nothing && (x < 0 || x > 1)), [alpha, beta, gamma])
+       any(x -> (!isnothing(x) && (x < 0 || x > 1)), [alpha, beta, gamma])
         throw(
             ArgumentError(
                 "'alpha', 'beta', and 'gamma' must be within the unit interval (0, 1).",
@@ -1433,11 +1433,11 @@ function objective_fun(
 
     if isnan(alpha)
         throw(ArgumentError("alpha must be numeric"))
-    elseif beta !== nothing && isnan(beta)
+    elseif !isnothing(beta) && isnan(beta)
         throw(ArgumentError("beta must be numeric"))
-    elseif gamma !== nothing && isnan(gamma)
+    elseif !isnothing(gamma) && isnan(gamma)
         throw(ArgumentError("gamma must be numeric"))
-    elseif phi !== nothing && isnan(phi)
+    elseif !isnothing(phi) && isnan(phi)
         throw(ArgumentError("phi must be numeric"))
     end
 
@@ -1612,17 +1612,17 @@ function etsmodel(
         end
     end
 
-    if !(isnothing(alpha) || (alpha !== nothing && isnan(alpha)))
+    if !(isnothing(alpha) || (!isnothing(alpha) && isnan(alpha)))
         upper[2] = min(alpha, upper[2])
         upper[3] = min(1 - alpha, upper[3])
     end
 
 
-    if !(isnothing(beta) || (beta !== nothing && isnan(beta)))
+    if !(isnothing(beta) || (!isnothing(beta) && isnan(beta)))
         lower[1] = max(beta, lower[1])
     end
 
-    if !(isnothing(gamma) || (gamma !== nothing && isnan(gamma)))
+    if !(isnothing(gamma) || (!isnothing(gamma) && isnan(gamma)))
         upper[1] = min(1 - gamma, upper[1])
     end
 

@@ -1449,14 +1449,15 @@ function objective_fun(
 
     if seasontype != "N"
         trend_slots = (trendtype != "N") ? 1 : 0
-        seasonal_sum = sum(init_state[(2+trend_slots):nstate])
+        nstate = length(init_state)
+        seasonal_sum = sum(view(init_state, (2+trend_slots):nstate))
         extra = (seasontype == "M" ? m : 0.0) - seasonal_sum
         init_state = vcat(init_state, extra)
     end
 
     if seasontype == "M"
         trend_slots = (trendtype != "N") ? 1 : 0
-        if minimum(init_state[(2+trend_slots):end]) <= 0.0
+        if minimum(init_state[(2+trend_slots):end]) < 0.0
             return Inf
         end
     end

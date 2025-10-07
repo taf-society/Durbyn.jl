@@ -4,11 +4,11 @@
 A structure representing a decomposed time series, which includes the original time series, seasonal, trend, random components, and associated metadata.
 
 # Fields
-- `x::Vector`: The original time series data.
-- `seasonal::Vector`: The seasonal component of the time series.
-- `trend::Vector`: The trend component of the time series.
-- `random::Vector`: The random or residual component of the time series.
-- `figure::Vector`: The estimated seasonal figure only.
+- `x::AbstractVector`: The original time series data.
+- `seasonal::AbstractVector`: The seasonal component of the time series.
+- `trend::AbstractVector`: The trend component of the time series.
+- `random::AbstractVector`: The random or residual component of the time series.
+- `figure::AbstractVector`: The estimated seasonal figure only.
 - `type::String`: A string indicating the type of decomposition or any other relevant type information.
 - `m::Int`: The frequency of the x.
 
@@ -25,14 +25,104 @@ m = 2
 ```
 """
 struct DecomposedTimeSeries
-    x::Vector
-    seasonal::Vector
-    trend::Vector
-    random::Vector
-    figure::Vector
+    x::AbstractVector
+    seasonal::AbstractVector
+    trend::AbstractVector
+    random::AbstractVector
+    figure::AbstractVector
     type::String
     m::Int
 end
+
+isbad(v) = (ismissing(v) || (v isa AbstractFloat && isnan(v)))
+
+mean_skip(a) = begin
+    if isempty(a)
+        NaN
+    else
+        if eltype(a) <: Union{Missing,Number}
+            xs = collect(skipmissing(a))
+            xs = xs[.!isnan.(Float64.(xs))]
+            isempty(xs) ? NaN : mean(Float64.(xs))
+        else
+            xs = Float64.(a)
+            xs = xs[.!isnan.(xs)]
+            isempty(xs) ? NaN : mean(xs)
+        end
+    end
+end
+
+
+function filter2sided_non_circular(
+    x::AbstractVector{<:Number},
+    w::AbstractVector{<:Number},
+)::Vector{Float64}
+    nx = length(x)
+    nf = length(w)
+    out = fill(NaN, nx)
+    shift = nf ÷ 2
+
+    xf = Float64.(x)
+    wf = Float64.(w)
+
+    for i = 1:nx
+        i1 = i + shift - (nf - 1)
+        i2 = i + shift
+        if i1 < 1 || i2 > nx
+            out[i] = NaN
+            continue
+        end
+
+        s = 0.0
+        valid = true
+        @inbounds for j = 1:nf
+            idx = i + shift - j + 1
+            xv = xf[idx]
+            if isbad(xv)
+                valid = false
+                break
+            end
+            s += wf[j] * xv
+        end
+        out[i] = valid ? s : NaN
+    end
+    return out
+end
+
+function filter2sided_circular(
+    x::AbstractVector{<:Number},
+    w::AbstractVector{<:Number},
+)::Vector{Float64}
+    nx = length(x)
+    nf = length(w)
+    out = fill(NaN, nx)
+    shift = nf ÷ 2
+    xf = Float64.(x)
+    wf = Float64.(w)
+
+    for i = 1:nx
+        s = 0.0
+        valid = true
+        @inbounds for j = 1:nf
+            idx = i + shift - j + 1
+            while idx < 1
+                idx += nx
+            end
+            while idx > nx
+                idx -= nx
+            end
+            xv = xf[idx]
+            if isbad(xv)
+                valid = false
+                break
+            end
+            s += wf[j] * xv
+        end
+        out[i] = valid ? s : NaN
+    end
+    return out
+end
+
 
 """
  decompose(;x::Vector, m::Int, type::String, filter)
@@ -51,10 +141,10 @@ end
  type: The value of type.
  
  # Arguments
- - `x::Vector`: A vector of one time series.
+ - `x::AbstractVector`: A AbstractVector of one time series.
  - `m::Int`: The frequency of the time serie
  - `type::String`: The type of seasonal component. Can be either additive or multiplicative.
- - `filter`: A vector of filter coefficients in reverse time order 
+ - `filter`: A AbstractVector of filter coefficients in reverse time order 
  (as for AR or MA coefficients), used for filtering out the seasonal component.
   If NULL, a moving average with symmetric window is performed.
  
@@ -66,194 +156,83 @@ end
  
  ```
  """
-function decompose(; x::Vector, m::Int, type::String,
-    filter::Union{Nothing,AbstractVector{<:Number},AbstractMatrix{<:Number}}=nothing)
-    len = length(x)
-    if m <= 1 | length(na_omit(x)) < 2 * m
-        @error "time series has no or less than 2 periods"
+function decompose(;
+    x::AbstractVector,
+    m::Int,
+    type::String = "additive",
+    filter::Union{Nothing,AbstractVector} = nothing,
+)
+
+    n = length(x)
+    
+    if m <= 1 || length([v for v in x if !isbad(v)]) < 2 * m
+        error("time series has no or less than 2 periods")
     end
-    if isnothing(filter)
-        if m % 2 == 0
-            filter = append!([0.5], repeat([1], m - 1), [0.5]) ./ m
-        else
-            filter = repeat([1], m - 1) ./ m
+    t = lowercase(type)
+    if t != "additive" && t != "multiplicative"
+        error("type must be \"additive\" or \"multiplicative\"")
+    end
+
+    w = if filter === nothing
+        (m % 2 == 0) ? vcat([0.5], ones(m - 1), [0.5]) ./ m : ones(m) ./ m
+    else
+        Float64.(filter)
+    end
+
+    trend = filter2sided_non_circular(x, w)
+
+    xf = Float64.(x)
+    season_pre = similar(trend)
+    if t == "additive"
+        @inbounds for i = 1:n
+            xv = xf[i]
+            tv = trend[i]
+            season_pre[i] = (isbad(xv) || isbad(tv)) ? NaN : (xv - tv)
+        end
+    else
+        @inbounds for i = 1:n
+            xv = xf[i]
+            tv = trend[i]
+            season_pre[i] = (isbad(xv) || isbad(tv) || tv == 0.0) ? NaN : (xv / tv)
         end
     end
-    trend = cfilter_non_circular(x, filter, 2)
-    if type == "additive"
-        season = x .- trend
-    else
-        season = x ./ trend
-    end
-    periods = floor(len ./ m)
-    index = range(start=1, stop=len, step=m) .- 1
-    figure = zeros(m)
-    for i in range(start=1, stop=m, step=1)
-        figure[i] = mean2(season[index.+i], omit_na=true)
-    end
-    if type == "additive"
-        figure = figure .- mean(figure)
-    else
-        figure = figure ./ mean(figure)
-    end
-    season = repeat(figure, as_integer(periods + 1))
-    season = season[range(start=1, stop=len, step=1)]
 
-    if type == "additive"
-        random = x .- season .- trend
-    else
-        random = x ./ season ./ trend
+    figure = fill(NaN, m)
+    for i = 1:m
+        vals = season_pre[i:m:n]
+        μ = mean_skip(vals)
+        figure[i] = μ
     end
-    out = DecomposedTimeSeries(x, season, trend, random, figure, type, m)
+ 
+    μfig = mean_skip(figure)
+    if t == "additive"
+        figure .= figure .- μfig
+    else
+        figure .= figure ./ μfig
+    end
+
+    rep = ceil(Int, n / m)
+    seasonal = repeat(figure, rep)[1:n]
+
+    random = similar(trend)
+    if t == "additive"
+        @inbounds for i = 1:n
+            xv = xf[i]
+            sv = seasonal[i]
+            tv = trend[i]
+            random[i] = (isbad(xv) || isbad(sv) || isbad(tv)) ? NaN : (xv - sv - tv)
+        end
+    else
+        @inbounds for i = 1:n
+            xv = xf[i]
+            sv = seasonal[i]
+            tv = trend[i]
+            random[i] =
+                (isbad(xv) || isbad(sv) || isbad(tv) || sv == 0.0 || tv == 0.0) ? NaN :
+                (xv / (sv * tv))
+        end
+    end
+
+    out = DecomposedTimeSeries(x, seasonal, trend, random, figure, type, m)
     return (out)
-end
-
-function cfilter_circular(x, filter, sides)
-    nx = length(x)
-    nf = length(filter)
-    out = zeros(nx)
-    if sides == 2
-        nshift = nf / 2
-    else
-        nshift = 0
-    end
-
-    nshift = as_integer(nshift)
-
-    for i in range(start=1, stop=nx, step=1)
-        z = 0.0
-        valid = true
-
-        for j in range(start=1, stop=nf, step=1)
-            ii = i + nshift - j
-
-            if ii < 1
-                ii += nx
-            end
-
-            if ii >= nx
-                ii -= nx
-            end
-            ii = as_integer(ii)
-
-            if ii < 1
-                tmp = NaN
-            else
-                tmp = x[ii]
-            end
-
-            if isnan(tmp)
-                z += filter[j] * tmp
-            else
-                out[i] = NaN
-                valid = false
-                break
-            end
-
-        end
-        if valid
-            out[i] = z
-        end
-
-    end
-    return (out)
-end
-
-function cfilter_non_circular(x, filter, sides)
-    nx = length(x)
-    nf = length(filter)
-    out = zeros(nx)
-    if sides == 2
-        nshift = nf / 2
-    else
-        nshift = 0
-    end
-    nshift = as_integer(ceil(nshift))
-
-    for i in range(start=1, stop=nx, step=1)
-        z = zero(1)
-        valid = true
-
-        if i + nshift - (nf - 1) < 0 | i + nshift - 2 >= nx
-            out[i] = NaN
-            continue
-        end
-
-        for j in range(start=max(1, nshift + i - nx), stop=min(nf, i + nshift + 1), step=1)
-
-            tmp_indx = i + nshift - j
-
-            if tmp_indx >= 1
-                tmp = x[tmp_indx]
-            else
-                tmp = NaN
-            end
-
-            if !isnan(tmp)
-                z += filter[j] * tmp
-            else
-                out[i] = NaN
-                valid = false
-                break
-            end
-        end
-
-        if valid
-            out[i] = z
-        end
-    end
-    return (out)
-end
-
-function cfilter(x::Vector{}, filter::Vector{}, sides::Int, circular::Bool)
-    nx = length(x)
-    nf = length(filter)
-    out = zeros(nx)
-    if sides == 2
-        nshift = nf / 2
-    else
-        nshift = 0
-    end
-
-    if !circular
-        for i in range(start=1, stop=nx, step=1)
-            z = 0
-            if i + nshift - (nf - 1) < 0 | i + nshift >= nx
-                out[i] = NaN
-                continue
-            end
-
-            for j in range(start=max(0, nshift + i - nx), stop=min(nf, i + nshift + 1), step=1)
-                tmp = x[i+nshift-j]
-                if ismissing(tmp)
-                    z += filter[j] * tmp
-                else
-                    out[i] = NaN
-                end
-            end
-            out[i] = z
-        end
-    else
-        for i in range(start=1, stop=nx, step=1)
-            z = 0
-            for j in range(start=1, stop=nf, step=1)
-                ii = i + nshift - j
-                if ii < 0
-                    ii += nx
-                end
-                if ii >= nx
-                    ii -= nx
-                end
-                tmp = x[ii]
-                if ismissing(tmp)
-                    z += filter[j] * tmp
-                else
-                    out[i] = NaN
-                end
-            end
-            out[i] = z
-        end
-    end
-
-    return (ans)
 end

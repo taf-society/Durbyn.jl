@@ -233,6 +233,12 @@ function holt_winters(
     initial = match_arg(initial, ["optimal", "simple"])
     seasonal = match_arg(seasonal, ["additive", "multiplicative"])
 
+    if seasonal == "additive" && exponential
+        throw(
+            ArgumentError("Additive seasonality cannot be combined with exponential trend"),
+        )
+    end
+
     if m <= 1
         throw(ArgumentError("The time series should have frequency greater than 1."))
     end

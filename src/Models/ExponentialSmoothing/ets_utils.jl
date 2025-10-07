@@ -1243,11 +1243,11 @@ function holt_winters_conventional(
         if !is_convergence || any((minimizers .< 0) .| (minimizers .> 1))
             if sol.fail > 50
                 if warnings
-                    @warn "Optimization difficulties: convergence code $(sol.fail)"
+                    @info "Optimization difficulties: convergence code $(sol.fail)"
                 end
             else
                 if warnings
-                    @warn "Optimization failure: convergence code $(sol.fail), using best parameters found"
+                    @info "Optimization failure: convergence code $(sol.fail), using best parameters found"
                 end
             end
         end

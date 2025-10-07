@@ -292,8 +292,8 @@ function forecast_ets_base(l, b, s, m, trend, season, phi, f, h)
         if i < h
             if abs(phi - 1.0) < TOL
                 phistar += 1.0
-            else
-                phistar += phi ^ i
+            else 
+                phistar += phi^(i + 1)
             end
         end
     end
@@ -715,8 +715,8 @@ function initialize_seasonal_components(y_d, m, seasontype)
     if seasontype != "A"
         init_seas = [max(val, 0.01) for val in init_seas]
         if sum(init_seas) > m
-            factor = sum(init_seas) + 0.01
-            init_seas = [val / factor for val in init_seas]
+            factor = sum(init_seas .+ 0.01)
+            init_seas .= init_seas ./ factor
         end
     end
 
@@ -1445,14 +1445,26 @@ function objective_fun(
         return Inf
     end
 
-    p = nstate + (seasontype != "N" ? 1 : 0)
-    states = zeros(p * (length(y) + 1))
-    states[1:nstate] = par[end-nstate+1:end]
+    init_state = par[end-nstate+1:end]
+
+    if seasontype != "N"
+        trend_slots = (trendtype != "N") ? 1 : 0
+        seasonal_sum = sum(init_state[(2+trend_slots):nstate])
+        extra = (seasontype == "M" ? m : 0.0) - seasonal_sum
+        init_state = vcat(init_state, extra)
+    end
+
+    if seasontype == "M"
+        trend_slots = (trendtype != "N") ? 1 : 0
+        if minimum(init_state[(2+trend_slots):end]) <= 0.0
+            return Inf
+        end
+    end
 
     lik, amse, e, _ = calculate_residuals(
         y,
         m,
-        states,
+        init_state,
         errortype,
         trendtype,
         seasontype,
@@ -2530,10 +2542,12 @@ function simulate_ets(
     trend = ets_model_type_code(components[2])
     season = ets_model_type_code(components[3])
     alpha = check_component(par, "alpha")
-    beta = ifelse(trend == "N", 0.0, check_component(par, "beta"))
-    gamma = ifelse(season == "N", 0.0, check_component(par, "gamma"))
-    phi = ifelse(!components[4], 1.0, check_component(par, "phi"))
-
+    # beta = ifelse(trend == "N", 0.0, check_component(par, "beta"))
+    # gamma = ifelse(season == "N", 0.0, check_component(par, "gamma"))
+    # phi = ifelse(!components[4], 1.0, check_component(par, "phi"))
+    beta = (trend == 0) ? 0.0 : check_component(par, "beta")
+    gamma = (season == 0) ? 0.0 : check_component(par, "gamma")
+    phi = components[4] ? check_component(par, "phi") : 1.0
     simulate_ets_base(
         initstate,
         m,
@@ -2549,7 +2563,7 @@ function simulate_ets(
         e,
     )
 
-    if isnan(y[1])
+    if abs(y[1] - (-99999.0)) < 1e-7
         error("Problem with multiplicative damped trend")
     end
 

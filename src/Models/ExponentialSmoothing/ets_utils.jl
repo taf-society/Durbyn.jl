@@ -124,7 +124,7 @@ function construct_states(
 
     if seasontype != "N"
         nr = size(states, 1)
-        for i = 1:m
+        @inbounds for i = 1:m
 
             seasonal_column = season[(m-i).+(1:nr)]
             states = hcat(states, seasonal_column)
@@ -165,19 +165,19 @@ function ets_base(y, n, x, m, error, trend, season, alpha, beta, gamma, phi, e, 
     end
 
     if season > 0
-        for j = 1:m
+        @inbounds for j = 1:m
             s[j] = x[(trend>0)+j+1]
         end
     end
 
     lik = 0.0
     lik2 = 0.0
-    for j = 1:nmse
+    @inbounds for j = 1:nmse
         amse[j] = 0.0
         denom[j] = 0.0
     end
 
-    for i = 1:n
+    @inbounds for i = 1:n
         # Copy previous state
         oldl = l
         if trend > 0
@@ -270,7 +270,7 @@ end
 function forecast_ets_base(l, b, s, m, trend, season, phi, f, h)
     TOL = 1.0e-10
     phistar = phi
-    for i = 1:h
+    @inbounds for i = 1:h
         if trend == 0
             f[i] = l
         elseif trend == 1
@@ -282,7 +282,7 @@ function forecast_ets_base(l, b, s, m, trend, season, phi, f, h)
         end
 
         j = mod1(m - i + 1, m)
-        
+
         if season == 1
             f[i] += s[j]
         elseif season == 2
@@ -292,7 +292,7 @@ function forecast_ets_base(l, b, s, m, trend, season, phi, f, h)
         if i < h
             if abs(phi - 1.0) < TOL
                 phistar += 1.0
-            else 
+            else
                 phistar += phi^(i + 1)
             end
         end
@@ -370,8 +370,8 @@ function update_ets_base(
                 t = y / q
             end
         end
-        s[1] = olds[m] + gamma * (t - olds[m]) # s[t] = s[t - m] + gamma * (t - s[t - m])
-        for j = 2:m
+        @inbounds s[1] = olds[m] + gamma * (t - olds[m]) # s[t] = s[t - m] + gamma * (t - s[t - m])
+        @inbounds for j = 2:m
             s[j] = olds[j-1] # s[t] = s[t]
         end
     end
@@ -398,12 +398,12 @@ function simulate_ets_base(x, m, error, trend, season, alpha, beta, gamma, phi, 
     end
 
     if season > 0
-        for j = 1:m
+        @inbounds for j = 1:m
             s[j] = x[(trend>0)+j+1]
         end
     end
 
-    for i = 1:h
+    @inbounds for i = 1:h
         oldl = l
         if trend > 0
             oldb = b
@@ -469,7 +469,7 @@ function forecast(
 
     if season > 0
         offset = trend > 0 ? 2 : 1
-        for j = 1:m
+        @inbounds for j = 1:m
             s[j] = Float64(x[offset+j])
         end
     end
@@ -917,15 +917,15 @@ function simple_holt_winters(
     trend0 = copy(b_start)
     season0 = copy(s_start)
 
-    for i = 1:lenx
+    @inbounds for i = 1:lenx
         if i > 1
             lastlevel = level[i-1]
         end
-        
+
         if i > 1
             lasttrend = trend[i-1]
         end
-        
+
         if i > m
             lastseason = season[i-m]
         else

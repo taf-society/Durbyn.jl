@@ -1215,16 +1215,15 @@ function holt_winters_conventional(
             push!(starting_points, optim_start["gamma"])
         end
 
-        # Pass the fixed (non-optimized) values to the closure
         cal_opt_sse_closure =
             p -> calculate_opt_sse(
                 p,
                 select,
                 x,
                 lenx,
-                alpha,  # If select[1] > 0, this will be replaced by p[1] in calculate_opt_sse
-                beta,   # If select[2] > 0, this will be replaced by p[...] in calculate_opt_sse
-                gamma,  # If select[3] > 0, this will be replaced by p[...] in calculate_opt_sse
+                alpha, 
+                beta,
+                gamma,
                 seasonal,
                 m,
                 exponential,
@@ -1251,7 +1250,6 @@ function holt_winters_conventional(
                 end
             end
         end
-
 
         if select[1] > 0
             alpha = minimizers[1]
@@ -1547,7 +1545,7 @@ function optim_ets_base(
 
     optimized_params = result.x_opt
     optimized_value = result.f_opt
-    number_of_iterations = result.evals
+    number_of_iterations = result.fncount
 
     optimized_params =
         create_params(optimized_params, opt_alpha, opt_beta, opt_gamma, opt_phi)

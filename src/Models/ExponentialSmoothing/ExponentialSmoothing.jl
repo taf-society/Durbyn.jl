@@ -13,7 +13,7 @@ import DataStructures: OrderedDict
 import ..Utils: is_constant, match_arg, na_action, na_omit, check_component
 import ..Stats: box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, fourier
 import ..Generics: Forecast, forecast, plot, fitted
-import ..Optimize: nmmin, NelderMeadOptions
+import ..Optimize: nmmin, NelderMeadOptions, scaler, descaler
 
 include("ets_utils.jl")
 include("ets.jl")

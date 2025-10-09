@@ -1215,13 +1215,15 @@ function holt_winters_conventional(
             push!(starting_points, optim_start["gamma"])
         end
 
+        parscale = max.(abs.(starting_points), 0.1)
+        
         cal_opt_sse_closure =
             p -> calculate_opt_sse(
-                p,
+                descaler(p, parscale),
                 select,
                 x,
                 lenx,
-                alpha, 
+                alpha,
                 beta,
                 gamma,
                 seasonal,
@@ -1233,10 +1235,10 @@ function holt_winters_conventional(
                 s_start,
             )
 
-        sol = nmmin(cal_opt_sse_closure, starting_points,  options)
+        sol = nmmin(cal_opt_sse_closure, scaler(starting_points, parscale), options)
 
         is_convergence = sol.fail == 0
-        minimizers = sol.x_opt
+        minimizers = descaler(sol.x_opt, parscale)
 
 
         if !is_convergence || any((minimizers .< 0) .| (minimizers .> 1))
@@ -1518,8 +1520,10 @@ function optim_ets_base(
     opt_gamma = !isnan(init_gamma)
     opt_phi = !isnan(init_phi)
 
+    parscale = max.(abs.(opt_params), 0.1)
+
     result = nmmin(par -> objective_fun(
-            par,
+            descaler(par, parscale),
             y,
             nstate,
             errortype,
@@ -1540,10 +1544,10 @@ function optim_ets_base(
             opt_beta,
             opt_gamma,
             opt_phi,
-        ), opt_params, 
+        ), scaler(opt_params, parscale),
         options)
 
-    optimized_params = result.x_opt
+    optimized_params = descaler(result.x_opt, parscale)
     optimized_value = result.f_opt
     number_of_iterations = result.fncount
 

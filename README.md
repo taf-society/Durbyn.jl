@@ -54,12 +54,12 @@ fc_ets = forecast(fit_ets, h = 12)
 plot(fc_ets)
 
 
-ses_fit = ses(ap, 12)
+ses_fit = ses(ap)
 ses_fc = forecast(ses_fit, h = 12)
 plot(ses_fc)
 
 
-holt_fit = holt(ap, 12)
+holt_fit = holt(ap)
 holt_fc = forecast(holt_fit, h = 12)
 plot(holt_fc)
 
@@ -79,8 +79,8 @@ data = [6, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 0, 0, 0, 0, 0];
 
 # Based on Shenstone, L., and Hyndman, R.J. (2005)
-m = 1
-fit_crst =croston(data, m)
+
+fit_crst =croston(data)
 fc_crst = forecast(fit_crst, 12)
 plot(fc_crst)
 
@@ -133,6 +133,8 @@ fit = arima(ap, 12, order = PDQ(2,1,1), seasonal=PDQ(0,1,0))
 
 ## Generate a forecast
 fc = forecast(fit, h = 12)
+# Plot the forecast
+plot(fc)
 
 # Fit an auto arima model
 fit = auto_arima(ap, 12)

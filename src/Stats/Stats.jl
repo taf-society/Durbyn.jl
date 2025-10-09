@@ -5,7 +5,7 @@ using Plots
 import LinearAlgebra: diag, dot
 
 using ..Optimize
-import ..Utils: na_omit, as_integer, mean2, is_constant, match_arg, NamedMatrix, isna
+import ..Utils: na_omit, as_integer, mean2, is_constant, match_arg, NamedMatrix, isna, duplicated
 import ..Generics: plot, summary, fitted, residuals, predict
 
 include("box_cox.jl")

@@ -85,6 +85,7 @@ struct HoltWintersConventional <: ETS
     m::Int
     lambda::Union{Nothing,Float64}
     biasadj::Bool
+    method::String
 end
 
 function ets_model_type_code(x::String)
@@ -1325,6 +1326,27 @@ function holt_winters_conventional(
         sigma2 = mean((res ./ fitted) .^ 2)
     end
 
+    method_parts = []
+    if exponential && trendtype != "N"
+        push!(method_parts, "Holt's method with exponential trend")
+    elseif trendtype != "N"
+        push!(method_parts, "Holt's method")
+    else
+        push!(method_parts, "Simple exponential smoothing")
+    end
+
+    if damped
+        push!(method_parts, "Damped")
+    end
+
+    if seasonal == "additive"
+        push!(method_parts, "additive seasonality")
+    elseif seasonal == "multiplicative"
+        push!(method_parts, "multiplicative seasonality")
+    end
+
+    method = join(method_parts, " with ")
+
     out = HoltWintersConventional(
         fitted,
         res,
@@ -1339,6 +1361,7 @@ function holt_winters_conventional(
         m,
         lambda,
         biasadj,
+        method,
     )
 
     return (out)

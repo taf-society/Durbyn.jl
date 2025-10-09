@@ -5,7 +5,7 @@ using LinearAlgebra
 import Base: show
 import ..Generics: Forecast
 import ..Generics: forecast, fitted, residuals
-import ..Optimize: NelderMeadOptions, nmmin
+import ..Optimize: NelderMeadOptions, nmmin, scaler, descaler
 
 include("setup_params.jl")
 include("arar.jl")

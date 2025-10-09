@@ -251,10 +251,10 @@ function approx(x::AbstractVector, y::AbstractVector;
     nx = noNA ? length(x) : sum(r.notNA)
     isnan(float(nx)) && error("invalid length(x)")
 
-    if yleft === nothing
+    if isnothing(yleft)
         yleft = (rule_t[1] == 1) ? NaN : float(y[1])
     end
-    if yright === nothing
+    if isnothing(yright)
         yright = (rule_t[2] == 1) ? NaN : float(y[end])
     end
 
@@ -266,7 +266,7 @@ function approx(x::AbstractVector, y::AbstractVector;
     yv = collect(float.(y))
     _approxtest(xv, yv, method, f; na_rm=na_rm)
 
-    if xout === nothing
+    if isnothing(xout)
         n > 0 || error("approx requires n >= 1")
         if noNA
             xout = range(xv[1], xv[end], length=n)
@@ -426,10 +426,10 @@ function approxfun(x::AbstractVector, y::AbstractVector;
     nx = (na_rm || !r.keptNA) ? length(x) : sum(r.notNA)
     isnan(float(nx)) && error("invalid length(x)")
 
-    if yleft === nothing
+    if isnothing(yleft)
         yleft = (rule_t[1] == 1) ? NaN : float(y[1])
     end
-    if yright === nothing
+    if isnothing(yright)
         yright = (rule_t[2] == 1) ? NaN : float(y[end])
     end
 

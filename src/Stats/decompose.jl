@@ -173,7 +173,7 @@ function decompose(;
         error("type must be \"additive\" or \"multiplicative\"")
     end
 
-    w = if filter === nothing
+    w = if isnothing(filter)
         (m % 2 == 0) ? vcat([0.5], ones(m - 1), [0.5]) ./ m : ones(m) ./ m
     else
         Float64.(filter)

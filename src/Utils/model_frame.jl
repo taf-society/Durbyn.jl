@@ -60,7 +60,7 @@ pivoted_qr(X::StridedMatrix) =
 
 function _getcol(nm::NamedMatrix{T}, name::AbstractString) where {T}
     idx = findfirst(==(String(name)), nm.colnames)
-    idx === nothing && error("Column '$name' not found in NamedMatrix.")
+    isnothing(idx) && error("Column '$name' not found in NamedMatrix.")
     return nm.data[:, idx]
 end
 
@@ -205,8 +205,8 @@ julia> cf.rhs_idxs
 function compile(f::Formula, colnames::Vector{String})::CompiledFormula
     ix = Dict{Symbol,Int}(Symbol(c) => i for (i, c) in pairs(colnames))
 
-    yidx = f.lhs === nothing ? nothing :
-           get(ix, f.lhs::Symbol, nothing) === nothing ?
+    yidx = isnothing(f.lhs) ? nothing :
+           isnothing(get(ix, f.lhs::Symbol, nothing)) ?
            throw(ArgumentError("Response $(f.lhs) not found in data columns")) :
            ix[f.lhs::Symbol]
 
@@ -385,7 +385,7 @@ julia> mf5 = model_frame(y, Xs; intercept=false); # no intercept
 """
 function model_frame(f::Formula, nm::NamedMatrix{T}; kwargs...) where {T<:Number}
     cf = compile(f, nm.colnames)
-    y = cf.yidx === nothing ? nothing : Vector{T}(nm.data[:, cf.yidx])
+    y = isnothing(cf.yidx) ? nothing : Vector{T}(nm.data[:, cf.yidx])
     X = model_matrix(cf, nm; kwargs...)
     return (y=y, X=X)
 end
@@ -395,7 +395,7 @@ model_frame(s::AbstractString, nm::NamedMatrix{T}; kwargs...) where {T<:Number} 
 
 
 model_frame(cf::CompiledFormula, nm::NamedMatrix{T}; kwargs...) where {T<:Number} =
-    (y = cf.yidx === nothing ? nothing : Vector{T}(nm.data[:, cf.yidx]);
+    (y = isnothing(cf.yidx) ? nothing : Vector{T}(nm.data[:, cf.yidx]);
     (y=y, X=model_matrix(cf, nm; kwargs...)))
 
 function model_frame(y::AbstractVector, X::NamedMatrix{T};

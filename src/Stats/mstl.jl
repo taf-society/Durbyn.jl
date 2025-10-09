@@ -128,7 +128,7 @@ function mstl(
     end
 
     λ = lambda
-    if lambda !== nothing
+    if !isnothing(lambda)
         xu , λ = box_cox(xu, m; lambda = λ)
     end
 
@@ -144,7 +144,7 @@ function mstl(
     end
 
     default_windows = collect(11:4:31)  # R: 7 + 4*seq(6) -> 11,15,19,23,27,31
-    swin = if s_window === nothing
+    swin = if isnothing(s_window)
         [default_windows[mod1(i, length(default_windows))] for i in 1:length(pers)]
     elseif isa(s_window, Integer)
         fill(Int(s_window), length(pers))
@@ -297,7 +297,7 @@ function plot(res::MSTLResult; labels=nothing,
               range_bars::Bool=true,
               kwargs...)
 
-    @assert Base.find_package("Plots") !== nothing "Plots.jl is required for plot(::MSTLResult)."
+    @assert !isnothing(Base.find_package("Plots")) "Plots.jl is required for plot(::MSTLResult)."
     @eval using Plots
 
     S = isempty(res.seasonals) ? zeros(eltype(res.data), length(res.data)) :
@@ -318,7 +318,7 @@ function plot(res::MSTLResult; labels=nothing,
     series[end]   = res.remainder
     names[end]    = "Remainder"
 
-    if labels !== nothing
+    if !isnothing(labels)
         @assert length(labels) == length(series) "labels length must match number of panels ($(length(series)))."
         names = labels
     end
@@ -347,7 +347,7 @@ function plot(res::MSTLResult; labels=nothing,
             Plots.hline!(plt[i], [0.0], color=:black, linestyle=:dash)
         end
 
-        if i == 1 && main !== nothing
+        if i == 1 && !isnothing(main)
             Plots.plot!(plt[i], title=main)
         end
 

@@ -569,40 +569,40 @@ function stl(
     t_degree = check_degree(t_degree, "t_degree")
     l_degree = check_degree(l_degree, "l_degree")
 
-    if t_window === nothing
+    if isnothing(t_window)
         t_window_val = nextodd(ceil(Int, 1.5 * m / (1.0 - 1.5 / s_window_val)))
     else
         t_window_val = nextodd(t_window)
     end
 
-    if l_window === nothing
+    if isnothing(l_window)
         l_window_val = nextodd(m)
     else
         l_window_val = nextodd(l_window)
     end
 
-    if s_jump === nothing
+    if isnothing(s_jump)
         s_jump_val = max(1, Int(ceil(s_window_val / 10)))
     else
         s_jump_val = s_jump
     end
-    if t_jump === nothing
+    if isnothing(t_jump)
         t_jump_val = max(1, Int(ceil(t_window_val / 10)))
     else
         t_jump_val = t_jump
     end
-    if l_jump === nothing
+    if isnothing(l_jump)
         l_jump_val = max(1, Int(ceil(l_window_val / 10)))
     else
         l_jump_val = l_jump
     end
 
-    if inner === nothing
+    if isnothing(inner)
         inner_val = robust ? 1 : 2
     else
         inner_val = inner
     end
-    if outer === nothing
+    if isnothing(outer)
         outer_val = robust ? 15 : 0
     else
         outer_val = outer
@@ -797,7 +797,7 @@ function plot(result::STLResult; labels::Vector{String}=["data","seasonal","tren
             yb = [ymid - barhalf, ymid + barhalf, ymid + barhalf, ymid - barhalf]
             Plots.plot!(plt[i], xb, yb, fill=(col_range, 0.5), linecolor=:transparent)
         end
-        if i == 1 && main !== nothing
+        if i == 1 && !isnothing(main)
             Plots.plot!(plt[i], title=main)
         end
         if i == nplot

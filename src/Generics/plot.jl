@@ -55,7 +55,7 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
         )
     end
 
-    if forecast.upper !== nothing && forecast.lower !== nothing
+    if !isnothing(forecast.upper) && !isnothing(forecast.lower)
         num_levels = size(forecast.upper, 2)
 
         function get_ci_color_alpha(i, num_levels)
@@ -85,7 +85,7 @@ function plot(forecast::Forecast; show_fitted=true, show_residuals=false)
 
             fill_color, fill_alpha = get_ci_color_alpha(i, num_levels)
 
-            level_label = forecast.level !== nothing ? "$(Int(forecast.level[i]))%" : "CI"
+            level_label = !isnothing(forecast.level) ? "$(Int(forecast.level[i]))%" : "CI"
 
             Plots.plot!(
                 p,

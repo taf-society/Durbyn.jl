@@ -2,7 +2,7 @@ function compute_gradient(p, fn, gr, fnscale, parscale, ndeps; kwargs...)
     n = length(p)
     df = zeros(n)
 
-    if gr !== nothing
+    if !isnothing(gr)
         x = p .* parscale
         df = gr(x; kwargs...) .* parscale ./ fnscale
         return df
@@ -162,8 +162,8 @@ function optim_hessian(fn, par, gr = nothing; fnscale = 1.0, parscale = nothing,
     npar = length(par)
     fn1(par) = fn(par; kwargs...)
 
-    parscale = parscale === nothing ? ones(npar) : parscale
-    ndeps    = ndeps === nothing    ? fill(0.001, npar) : ndeps
+    parscale = isnothing(parscale) ? ones(npar) : parscale
+    ndeps    = isnothing(ndeps)    ? fill(0.001, npar) : ndeps
 
     hessian = zeros(npar, npar)
     dpar = par ./ parscale

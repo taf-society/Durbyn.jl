@@ -209,14 +209,14 @@ function inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing
         out .= sign.(xx) .* abs.(xx).^(1 / lambda)
     end
 
-    if biasadj === nothing || !(biasadj isa Bool)
+    if isnothing(biasadj) || !(biasadj isa Bool)
         @warn "biasadj information not found, defaulting to false."
         biasadj = false
     end
 
     if biasadj
         fvar_local = fvar
-        fvar_local === nothing && error("fvar must be provided when biasadj=true")
+        isnothing(fvar_local) && error("fvar must be provided when biasadj=true")
 
         if (fvar_local isa Dict) || (fvar_local isa NamedTuple)
             level = maximum(fvar_local[:level])
@@ -226,7 +226,7 @@ function inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing
             if ndims(upper) == 2 && ndims(lower) == 2 && size(upper,2) > 1 && size(lower,2) > 1
                 lvlvec = fvar_local[:level]
                 idx = findfirst(==(level), lvlvec)
-                idx === nothing && error("Requested level $level not found in fvar[:level]")
+                isnothing(idx) && error("Requested level $level not found in fvar[:level]")
                 upper = upper[:, idx]
                 lower = lower[:, idx]
             end

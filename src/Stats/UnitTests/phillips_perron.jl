@@ -125,7 +125,7 @@ function phillips_perron(
     model in (:constant, :trend) || error("model must be :constant or :trend")
     type in (:Z_alpha, :Z_tau) || error("type must be :Z_alpha or :Z_tau")
 
-    lmax = if use_lag !== nothing
+    lmax = if !isnothing(use_lag)
         L = Int(use_lag)
         if L < 0
             @warn "use_lag must be a nonnegative integer; using lags=:short default."

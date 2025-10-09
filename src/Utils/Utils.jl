@@ -122,11 +122,11 @@ function is_constant(data::AbstractVector)
     isempty(data) && return true
     it = skipmissing(data)
     first_pair = iterate(it)
-    first_pair === nothing && return true  # all values were missing
+    isnothing(first_pair) && return true  # all values were missing
     v, st = first_pair
     while true
         nxt = iterate(it, st)
-        nxt === nothing && return true
+        isnothing(nxt) && return true
         x, st = nxt
         if !isequal(x, v)
             return false
@@ -264,7 +264,7 @@ function duplicated(arr::Vector{T})::Vector{Bool} where {T}
 end
 
 function match_arg(arg, choices)
-    return findfirst(x -> x == arg, choices) !== nothing ? arg : error("Invalid argument")
+    return !isnothing(findfirst(x -> x == arg, choices)) ? arg : error("Invalid argument")
 end
 
 function complete_cases(x::AbstractArray)

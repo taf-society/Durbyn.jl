@@ -354,7 +354,7 @@ function show(io::IO, ::MIME"text/plain", x::ADF)
         end
     end
 
-    if hasproperty(x, :testreg) && x.testreg !== nothing
+    if hasproperty(x, :testreg) && !isnothing(x.testreg)
         
         println(io, "\nRegression fields available in `x.testreg` (not shown).")
     end

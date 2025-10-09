@@ -30,7 +30,7 @@ function _kpss(y, type::Symbol=:mu, lags::Symbol=:short, use_lag::Union{Nothing,
 
     # lmax
     lmax =
-        if use_lag !== nothing
+        if !isnothing(use_lag)
             L = Int(use_lag)
             if L < 0
                 @warn "use_lag must be a nonnegative integer; using lags=:short default."

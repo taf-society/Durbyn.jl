@@ -79,7 +79,7 @@ function nsdiffs(x::AbstractVector,
     α, notes = normalize_alpha(alpha, test)
     foreach(msg -> @warn(msg), notes)
     outcome = precheck(x, m)
-    outcome !== nothing && return outcome::Int
+    !isnothing(outcome) && return outcome::Int
     return compute_D(x, m, Val(test), α, maxD; kwargs...)
 end
 

@@ -107,7 +107,7 @@ function head(N::NamedMatrix, n::Integer=6; dims::Integer=1)
         keep = _keepcount(len, n)
         rrng = keep == 0 ? (1:0) : (1:keep)
         sub  = @view N.data[rrng, :]
-        rns  = N.rownames === nothing ? nothing : N.rownames[rrng]
+        rns  = isnothing(N.rownames) ? nothing : N.rownames[rrng]
         cns  = N.colnames
         return NamedMatrix{T}(Matrix{T}(sub), rns, cns)
     else

@@ -207,7 +207,7 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
         return x
     end
 
-    if project_to_bounds && lower !== nothing && upper !== nothing
+    if project_to_bounds && !isnothing(lower) && !isnothing(upper)
         clamp_inplace!(B, lower, upper)
     end
     fB = f(B)
@@ -245,12 +245,12 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
             
             P[j-1, j] = B[j-1] + trystep
             
-            if init_step_cap !== nothing && abs(trystep) > init_step_cap
+            if !isnothing(init_step_cap) && abs(trystep) > init_step_cap
                 trystep = init_step_cap
                 P[j-1, j] = B[j-1] + trystep
             end
             
-            if project_to_bounds && lower !== nothing && upper !== nothing
+            if project_to_bounds && !isnothing(lower) && !isnothing(upper)
                 lj = Float64(lower[j-1])
                 uj = Float64(upper[j-1])
                 v = P[j-1, j]
@@ -266,7 +266,7 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
             end
             trystep *= 10.0
             
-            if init_step_cap !== nothing && trystep > init_step_cap
+            if !isnothing(init_step_cap) && trystep > init_step_cap
                 P[j-1, j] = nextfloat(B[j-1])
                 break
             end
@@ -284,7 +284,7 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
             @inbounds for j = 1:n1
                 if j != L
                     B .= P[1:n, j]
-                    if project_to_bounds && lower !== nothing && upper !== nothing
+                    if project_to_bounds && !isnothing(lower) && !isnothing(upper)
                         clamp_inplace!(B, lower, upper)
                     end
                     fval = f(B)
@@ -331,7 +331,7 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
         @inbounds for i = 1:n
             B[i] = (1 + alpha) * P[i, C] - alpha * P[i, H]
         end
-        if project_to_bounds && lower !== nothing && upper !== nothing
+        if project_to_bounds && !isnothing(lower) && !isnothing(upper)
             clamp_inplace!(B, lower, upper)
         end
         fR = f(B)
@@ -345,7 +345,7 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
                 P[i, C] = B[i]
                 B[i] = tmp
             end
-            if project_to_bounds && lower !== nothing && upper !== nothing
+            if project_to_bounds && !isnothing(lower) && !isnothing(upper)
                 clamp_inplace!(B, lower, upper)
             end
             fE = f(B)
@@ -373,7 +373,7 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
             @inbounds for i = 1:n
                 B[i] = (1 - beta) * P[i, H] + beta * P[i, C]
             end
-            if project_to_bounds && lower !== nothing && upper !== nothing
+            if project_to_bounds && !isnothing(lower) && !isnothing(upper)
                 clamp_inplace!(B, lower, upper)
             end
             fC = f(B)

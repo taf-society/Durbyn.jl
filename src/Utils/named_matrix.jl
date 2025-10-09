@@ -25,7 +25,7 @@ struct NamedMatrix{T}
     function NamedMatrix{T}(data::Matrix{T},
                             rownames::Union{Vector{String},Nothing},
                             colnames::Vector{String}) where {T}
-        if rownames !== nothing && size(data,1) != length(rownames)
+        if !isnothing(rownames) && size(data,1) != length(rownames)
             error("Row names do not match number of rows")
         end
         if size(data,2) != length(colnames)
@@ -53,7 +53,7 @@ end
 function Base.show(io::IO, nm::NamedMatrix)
     nrow, ncol = size(nm.data)
     
-    rnames = nm.rownames === nothing || isempty(nm.rownames) ? [string(i) for i = 1:nrow] : nm.rownames
+    rnames = isnothing(nm.rownames) || isempty(nm.rownames) ? [string(i) for i = 1:nrow] : nm.rownames
 
     data_str = [string(nm.data[i, j]) for i in 1:nrow, j in 1:ncol]
     
@@ -204,24 +204,24 @@ function get_elements(
     col::Union{Nothing, Int, AbstractVector{Int}, String, AbstractVector{String}}=nothing
 )
     # Row indices
-    if row === nothing
+    if isnothing(row)
         rowinds = 1:size(nm.data, 1)
     elseif isa(row, Int)
         rowinds = [row]
     elseif isa(row, AbstractVector{Int})
         rowinds = row
     elseif isa(row, String)
-        rns = nm.rownames === nothing ? string.(1:size(nm.data,1)) : nm.rownames
+        rns = isnothing(nm.rownames) ? string.(1:size(nm.data,1)) : nm.rownames
         rowinds = [findfirst(==(row), rns)]
     elseif isa(row, AbstractVector{String})
-        rns = nm.rownames === nothing ? string.(1:size(nm.data,1)) : nm.rownames
+        rns = isnothing(nm.rownames) ? string.(1:size(nm.data,1)) : nm.rownames
         rowinds = [findfirst(==(r), rns) for r in row]
     else
         error("Unsupported type for row")
     end
 
     # Col indices
-    if col === nothing
+    if isnothing(col)
         colinds = 1:size(nm.data, 2)
     elseif isa(col, Int)
         colinds = [col]
@@ -236,7 +236,7 @@ function get_elements(
     end
 
     # Check for any not found
-    if any(x -> x === nothing, rowinds) || any(x -> x === nothing, colinds)
+    if any(isnothing, rowinds) || any(isnothing, colinds)
         error("One or more row/column names not found in NamedMatrix.")
     end
 

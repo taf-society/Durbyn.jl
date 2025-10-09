@@ -3,7 +3,7 @@ function analyze_series(x::AbstractVector)
     first = findfirst(!, miss)
     last = findlast(!, miss)
 
-    if first === nothing
+    if isnothing(first)
         return (firstnonmiss = nothing, serieslength = 0, x_trim = x)
     end
 
@@ -35,11 +35,11 @@ function compute_approx_offset(;
     N0 = length(xx)
 
     # truncate tail of x (and xreg if it aligns with x)
-    if truncate !== nothing && N0 > truncate
+    if !isnothing(truncate) && N0 > truncate
         start_idx = N0 - truncate + 1
         xx = collect(@view xx[start_idx:end])
 
-        if Xreg !== nothing
+        if !isnothing(Xreg)
             # row count of xreg
             nrows = size(Xreg.data, 1)
             if nrows == N0
@@ -126,7 +126,7 @@ function fit_custom_arima(
     first = findfirst(notmiss)
     last = findlast(notmiss)
 
-    if first === nothing || last === nothing
+    if isnothing(first) || isnothing(last)
         n = 0
     else
         n = 0
@@ -140,7 +140,7 @@ function fit_custom_arima(
     use_season = (seasonal.p + seasonal.d + seasonal.q) > 0 && m > 0
     diffs = order.d + seasonal.d
 
-    if method === nothing
+    if isnothing(method)
         if approximation
             method = "CSS"
         else
@@ -152,7 +152,7 @@ function fit_custom_arima(
 
     if drift_case
         drift = collect(1:length(x))
-        if xreg === nothing
+        if isnothing(xreg)
             xreg = NamedMatrix(reshape(drift, :, 1), ["drift"])
         else
             xreg = add_dift_term(xreg, drift, "drift")
@@ -414,7 +414,7 @@ function search_arima(
         end
     end
 
-    if bestfit !== nothing
+    if !isnothing(bestfit)
 
         if approximation
             if trace

@@ -121,7 +121,7 @@ function forecast(model::ArimaFit;
     origxreg = nothing 
     xreg_pred = nothing 
 
-    if xreg === nothing
+    if isnothing(xreg)
         if need_xreg
             
             if has_drift && (isempty(train_xcols) || (length(train_xcols) == 1 && train_xcols[1] == "drift"))
@@ -178,7 +178,7 @@ function forecast(model::ArimaFit;
         end
     end
 
-    if !(lambda === nothing)
+    if !isnothing(lambda)
         mean = inv_box_cox(mean; lambda=lambda, biasadj=biasadj, fvar=se.^2)
         if !bootstrap
             lower = inv_box_cox(lower; lambda=lambda, biasadj=false)
@@ -199,7 +199,7 @@ function forecast(model::ArimaFit;
     )
 end
 
-coef_names(m::NamedMatrix) = (m.colnames === nothing ? String[] : m.colnames)
+coef_names(m::NamedMatrix) = (isnothing(m.colnames) ? String[] : m.colnames)
 
 function drift_only_named(n::Int, h::Int)
     drift = reshape(collect(n .+ (1:h)), h, 1)

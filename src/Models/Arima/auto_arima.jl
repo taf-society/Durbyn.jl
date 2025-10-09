@@ -123,7 +123,7 @@ function auto_arima(
     x = copy(y)
     firstnm, serieslength, x = analyze_series(x)
 
-    if xreg !== nothing
+    if !isnothing(xreg)
         indx = firstnm:size(xreg.data, 1)
         xreg = get_elements(xreg, row = indx)
     end
@@ -167,14 +167,14 @@ function auto_arima(
     end
 
     # Box-Cox transform
-    if lambda !== nothing
+    if !isnothing(lambda)
         x, lambda = box_cox(x, m, lambda = lambda)
     end
 
     xx = copy(x)
     xregg = xreg
 
-    if xregg !== nothing
+    if !isnothing(xregg)
         if is_constant_all(xregg)
             xregg = nothing
         else
@@ -202,12 +202,12 @@ function auto_arima(
         D = 0
         max_P = 0
         max_Q = 0
-    elseif D === nothing && length(xx) <= 2 * m
+    elseif isnothing(D) && length(xx) <= 2 * m
         D = 0
-    elseif D === nothing
+    elseif isnothing(D)
         D = nsdiffs(x = xx, m = m, test = seasonal_test, maxD = max_D, seasonal_test_args...)
         # Ensure xreg not null after seasonal differencing
-        if D > 0 && xregg !== nothing
+        if D > 0 && !isnothing(xregg)
             diffxreg = diff(xregg; differences = D, lag = m)
             if any(is_constant(xregg))
                 D -= 1
@@ -232,7 +232,7 @@ function auto_arima(
     # Prepare differenced xreg (seasonal part)
     diffxreg = nothing
 
-    if xregg !== nothing
+    if !isnothing(xregg)
         if D > 0
             diffxreg = diff(xregg; differences = D, lag = m)
         else
@@ -242,10 +242,10 @@ function auto_arima(
 
 
     # non-seasonal differencing choice
-    if d === nothing
+    if isnothing(d)
         d = ndiffs(x = dx, test = test, max_d = max_d, test_args...)
         # Ensure xreg not null after additional (non-seasonal) differencing
-        if d > 0 && xregg !== nothing
+        if d > 0 && !isnothing(xregg)
             diffxreg = diff(diffxreg; differences = d, lag = 1)
             if any(is_constant(diffxreg))
                 d -= 1
@@ -277,7 +277,7 @@ function auto_arima(
         error("Not enough data to proceed")
     elseif is_constant(dx)
         # constant process (after differencing)
-        if xreg === nothing
+        if isnothing(xreg)
             if D > 0 && d == 0
                 fit = arima_rjh(
                     x,

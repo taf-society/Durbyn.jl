@@ -1398,7 +1398,7 @@ Returns:
 - `ArgumentError` if the number of rows in `xreg` does not match `n`
 """
 function process_xreg(xreg::Union{NamedMatrix,Nothing}, n::Int)
-    if xreg === nothing
+    if isnothing(xreg)
         xreg_mat = Matrix{Float64}(undef, n, 0)
         ncxreg = 0
         nmxreg = String[]
@@ -1606,7 +1606,7 @@ end
 function ar_check(ar)
     v = vcat(1.0, -ar...)
     last_nz = findlast(x -> x != 0.0, v)
-    p = last_nz === nothing ? 0 : last_nz - 1
+    p = isnothing(last_nz) ? 0 : last_nz - 1
     if p == 0
         return true
     end
@@ -1737,7 +1737,7 @@ function arima(
     xreg_original = xreg
 
     if include_mean && (nd == 0)
-        if xreg === nothing
+        if isnothing(xreg)
             xreg = NamedMatrix(zeros(n, 0), String[])
         end
         xreg = add_dift_term(xreg, ones(n), "intercept")
@@ -1855,7 +1855,7 @@ function arima(
         end
 
         if !res.converged
-            @warn "CSS optimization convergence issue."
+            @warn "CSS optimization convergence issue: convergence code $(opt.fail)"
         end
 
         coef[mask] .= res.minimizer
@@ -1966,9 +1966,8 @@ function arima(
             )
         end
 
-
         if !res.converged
-            @warn "Possible convergence problem."
+            @warn "Possible convergence problem: convergence code $(opt.fail)"
         end
 
         coef[mask] .= res.minimizer
@@ -2272,7 +2271,7 @@ end
 function predict_arima(model::ArimaFit, n_ahead::Int=1; 
     newxreg::Union{Nothing, NamedMatrix}= nothing, se_fit::Bool=true)
 
-    myncol(x) = x === nothing ? 0 : size(x, 2)
+    myncol(x) = isnothing(x) ? 0 : size(x, 2)
 
     if newxreg isa NamedMatrix
         newxreg = align_columns(newxreg, model.xreg.colnames)
@@ -2288,7 +2287,7 @@ function predict_arima(model::ArimaFit, n_ahead::Int=1;
     xreg_names = filter(n -> !(startswith(n, "ar") || startswith(n, "ma") ||
                                startswith(n, "sar") || startswith(n, "sma")), coef_names)
     intercept_idx = findfirst(==("intercept"), coef_names)
-    has_intercept = intercept_idx !== nothing
+    has_intercept = !isnothing(intercept_idx)
 
     ncxreg = length(xreg_names) - (has_intercept ? 1 : 0)
     if myncol(newxreg) != ncxreg
@@ -2298,7 +2297,7 @@ function predict_arima(model::ArimaFit, n_ahead::Int=1;
     if ncoefs > narma
         if has_intercept && coef_names[narma+1] == "intercept"
             intercept_col = ones(n_ahead, 1)
-            usexreg = newxreg === nothing ? intercept_col : hcat(intercept_col, newxreg)
+            usexreg = isnothing(newxreg) ? intercept_col : hcat(intercept_col, newxreg)
             reg_coef_inds = (narma+1):ncoefs
         else
             usexreg = newxreg

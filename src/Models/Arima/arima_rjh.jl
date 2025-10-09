@@ -15,7 +15,7 @@ end
 
 function prepend_drift(xreg::Union{Nothing,NamedMatrix}, drift::AbstractVector{<:Real})
     driftcol = reshape(Float64.(drift), :, 1)
-    return xreg === nothing ? NamedMatrix(driftcol, ["drift"]) :
+    return isnothing(xreg) ? NamedMatrix(driftcol, ["drift"]) :
            add_drift_term(xreg, driftcol, "drift")
 end
 
@@ -74,7 +74,7 @@ function refit_arima_model(
     k = size(fit.coef.data, 2)
     fit.var_coef .= 0.0
     fit.sigma2 = model.sigma2
-    if xreg !== nothing
+    if !isnothing(xreg)
         fit.xreg = xreg
     end
     return fit
@@ -207,7 +207,7 @@ function arima_rjh(
     x2 = copy(y)
     method = match_arg(method, ["CSS-ML", "ML", "CSS"])
 
-    if lambda !== nothing
+    if !isnothing(lambda)
         x2, lambda = box_cox(x2, m; lambda = lambda)
     end
 
@@ -218,7 +218,7 @@ function arima_rjh(
         error("Not enough data to fit the model")
     end
 
-    if include_constant !== nothing
+    if !isnothing(include_constant)
         if include_constant === true
             include_mean = true
             if (order.d + seasonal2.d) == 1
@@ -235,11 +235,11 @@ function arima_rjh(
     end
 
     fit = nothing
-    if model !== nothing
+    if !isnothing(model)
         had_xreg = (model.xreg isa NamedMatrix)
         use_drift = had_xreg && any(==("drift"), model.xreg.colnames)
 
-        if had_xreg && xreg === nothing
+        if had_xreg && isnothing(xreg)
             error("No regressors provided")
         end
 
@@ -265,16 +265,16 @@ function arima_rjh(
     n, nstar = n_and_nstar(fit)
     np = npar(fit)
 
-    if fit.aic !== nothing
+    if !isnothing(fit.aic)
         fit.aicc = fit.aic + 2 * np * (nstar / (nstar - np - 1) - 1)
         fit.bic = fit.aic + np * (log(nstar) - 2)
     end
 
-    if model === nothing
+    if isnothing(model)
         ss = sum(v -> v * v, fit.residuals[(fit.n_cond+1):end])
         fit.sigma2 = ss / (nstar - np + 1)
     end
-    if model === nothing && xreg2 !== nothing
+    if isnothing(model) && !isnothing(xreg2)
         fit.xreg = xreg2
     end
     

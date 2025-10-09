@@ -123,7 +123,12 @@ function fit_arma(p::Int, q::Int, y::Vector{Float64}, options::NelderMeadOptions
     end
     init = [zeros(p + q); log(var(y))]
 
-    est_params = nmmin(arma_loss, init, options).x_opt
+    parscale = max.(abs.(init), 0.1)
+
+    est_params = descaler(
+        nmmin(θ -> arma_loss(descaler(θ, parscale)), scaler(init, parscale), options).x_opt,
+        parscale
+    )
 
     return (est_params[1:p], est_params[p+1:p+q], exp(est_params[end]))
 end

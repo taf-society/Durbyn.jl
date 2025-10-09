@@ -75,7 +75,9 @@ function Base.show(io::IO, fc::Forecast)
     println(io, round.(fc.mean[1:min(end, 5)], digits=4))
 
     println(io, "\nLast 5 observations:")
-    println(io, round.(fc.x[end-4:end], digits=4))
+    num_obs_to_show = min(5, length(fc.x))
+    start_idx = max(1, length(fc.x) - num_obs_to_show + 1)
+    println(io, round.(fc.x[start_idx:end], digits=4))
 
     fitted_vals = collect(skipmissing(fc.fitted))
     if length(fitted_vals) >= 5

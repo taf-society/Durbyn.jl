@@ -502,7 +502,8 @@ function initparam(
 
     # Select alpha
     if isnothing(alpha)
-        alpha = lower[1] + 0.2 * (upper[1] - lower[1]) / m
+        m_eff = (seasontype == "N") ? 1 : m
+        alpha = lower[1] + 0.2 * (upper[1] - lower[1]) / m_eff
         if alpha > 1 || alpha < 0
             alpha = lower[1] + 2e-3
         end

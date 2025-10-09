@@ -134,7 +134,7 @@ using Durbyn.ExponentialSmoothing
         @testset "Simple initialization" begin
             fit_simple = ses(ap, 12; initial="simple")
             fc_simple = forecast(fit_simple, h = 4)
-            @test fc_simple.mean ≈ [459.88561619499785, 459.88561619499785, 459.88561619499785, 459.88561619499785]
+            @test fc_simple.mean ≈ [459.8755335582515, 459.8755335582515, 459.8755335582515, 459.8755335582515]
             @test fit_simple isa SES
             @test isnan(fit_simple.aic)  # Simple init doesn't compute IC
         end
@@ -199,17 +199,17 @@ using Durbyn.ExponentialSmoothing
             @test occursin("exponential trend", fit_exp1.method)
         end
 
-        # @testset "Simple initialization" begin
-        #     fit_simple1 = holt(ap, 12; initial="simple")
-        #     fit_simple2 = holt(ap; initial="simple")
-        #     fc1 = forecast(fit_simple1, h = 12)
-        #     fc2 = forecast(fit_simple2, h = 12)
-        #     plot(fc1)
-        #     plot(fc2)
-        #     @test all(fc1.mean - fc2.mean .< 1)
-        #     @test fit_simple1 isa Holt
-        #     @test fit_simple2 isa Holt
-        # end
+        @testset "Simple initialization" begin
+            fit_simple1 = holt(ap, 12; initial="simple")
+            fit_simple2 = holt(ap; initial="simple")
+            fc1 = forecast(fit_simple1, h = 12)
+            fc2 = forecast(fit_simple2, h = 12)
+            plot(fc1)
+            plot(fc2)
+            @test all(fc1.mean - fc2.mean .< 1)
+            @test fit_simple1 isa Holt
+            @test fit_simple2 isa Holt
+        end
 
         @testset "Fixed parameters" begin
             fit_fixed = holt(ap, 1; alpha=0.3, beta=0.1)

@@ -1240,16 +1240,11 @@ function holt_winters_conventional(
         is_convergence = sol.fail == 0
         minimizers = descaler(sol.x_opt, parscale)
 
-
-        if !is_convergence || any((minimizers .< 0) .| (minimizers .> 1))
-            if sol.fail > 50
-                if warnings
-                    @info "Optimization difficulties: convergence code $(sol.fail)"
-                end
-            else
-                if warnings
-                    @info "Optimization failure: convergence code $(sol.fail), using best parameters found"
-                end
+        if (!is_convergence || any((minimizers .< 0) .| (minimizers .> 1))) && warnings
+            if sol.fail in [1, 10]
+                @warn "Optimization difficulties: convergence code $(sol.fail)"
+            elseif sol.fail ∉ [0, 1, 10]
+                @warn "Optimization failure: convergence code $(sol.fail), using best parameters found"
             end
         end
 

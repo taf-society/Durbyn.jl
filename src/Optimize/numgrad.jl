@@ -1,7 +1,7 @@
 """
     numgrad(f, n, x, ex, ndeps; usebounds=false, lower=nothing, upper=nothing)
 
-Compute numerical gradient using central differences, matching R's implementation.
+Compute numerical gradient using central differences.
 
 # Arguments
 - `f::Function`: Objective function, called as `f(n, x, ex)`
@@ -22,7 +22,6 @@ Compute numerical gradient using central differences, matching R's implementatio
 This function uses central differences: df[i] = (f(x+h) - f(x-h)) / (2h)
 When bounds are active, it adjusts step sizes to stay within bounds.
 
-This implementation matches R's `fmingr` function in src/library/stats/src/optim.c:90-196.
 """
 function numgrad(f::Function, n::Int, x::Vector{Float64}, ex,
                  ndeps::Vector{Float64};
@@ -34,34 +33,27 @@ function numgrad(f::Function, n::Int, x::Vector{Float64}, ex,
     xtrial = copy(x)
 
     if !usebounds
-        # No bounds - standard central differences
         for i in 1:n
             eps = ndeps[i]
 
-            # f(x + eps*e_i)
             xtrial[i] = x[i] + eps
             val1 = f(n, xtrial, ex)
 
-            # f(x - eps*e_i)
             xtrial[i] = x[i] - eps
             val2 = f(n, xtrial, ex)
 
-            # Central difference
             df[i] = (val1 - val2) / (2.0 * eps)
 
             if !isfinite(df[i])
                 error("non-finite finite-difference value [$i]")
             end
 
-            # Restore original value
             xtrial[i] = x[i]
         end
     else
-        # With bounds - adjust step sizes if needed
         for i in 1:n
             epsused = eps = ndeps[i]
 
-            # Forward step
             tmp = x[i] + eps
             if !isnothing(upper) && tmp > upper[i]
                 tmp = upper[i]
@@ -70,7 +62,6 @@ function numgrad(f::Function, n::Int, x::Vector{Float64}, ex,
             xtrial[i] = tmp
             val1 = f(n, xtrial, ex)
 
-            # Backward step
             tmp = x[i] - eps
             if !isnothing(lower) && tmp < lower[i]
                 tmp = lower[i]
@@ -79,14 +70,12 @@ function numgrad(f::Function, n::Int, x::Vector{Float64}, ex,
             xtrial[i] = tmp
             val2 = f(n, xtrial, ex)
 
-            # Central difference with adjusted step sizes
             df[i] = (val1 - val2) / (epsused + eps)
 
             if !isfinite(df[i])
                 error("non-finite finite-difference value [$i]")
             end
 
-            # Restore original value
             xtrial[i] = x[i]
         end
     end

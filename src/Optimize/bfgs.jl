@@ -53,7 +53,7 @@ Minimizes a multivariate function using the BFGS (Broyden-Fletcher-Goldfarb-Shan
 # Arguments
 
 - `f::Function`: Objective function to minimize, called as `f(n, x, ex)`, where `n` is the dimension, `x` the parameter vector, and `ex` an (optional) extra argument.
-- `g::Function`: Gradient function, called as `g(n, x, ex)`, returning a vector.
+- `g::Union{Function,Nothing}`: Gradient function, called as `g(n, x, ex)`, returning a vector. If `nothing`, numerical gradients will be computed using central differences.
 - `x0::Vector{Float64}`: Initial guess for the variables.
 
 # Keyword Arguments
@@ -149,14 +149,32 @@ result = bfgsmin(
 println("Optimal x: ", result.x_opt)  # x[2] will remain at 0
 ```
 
+## Numerical Gradients (No Gradient Function)
+
+```julia
+# When gradient is not available, pass nothing and numerical gradients will be computed
+rosenbrock(n, x, ex) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
+x0 = [-1.2, 1.0]
+
+# Use numerical gradients (central differences with default step size 1e-3)
+result = bfgsmin(rosenbrock, nothing, x0)
+
+# Or specify custom step sizes for each parameter
+result = bfgsmin(rosenbrock, nothing, x0; ndeps=[1e-4, 1e-4])
+
+println("Optimal x: ", result.x_opt)
+```
+
 # See Also
 
 * [`BFGSOptions`](@ref): Options struct for configuring the optimizer.
+* [`numgrad`](@ref): Numerical gradient computation function.
 """
 function bfgsmin(
-    f::Function, g::Function, x0::Vector{Float64};
+    f::Function, g::Union{Function,Nothing}, x0::Vector{Float64};
     mask=trues(length(x0)),
-    options::BFGSOptions=BFGSOptions()
+    options::BFGSOptions=BFGSOptions(),
+    ndeps::Union{Nothing,Vector{Float64}}=nothing
 )
     # Extract options to locals for clarity
     abstol  = options.abstol
@@ -175,6 +193,19 @@ function bfgsmin(
     c = zeros(n)
     B = [i == j ? 1.0 : 0.0 for i in 1:n, j in 1:n] # Hessian approx
 
+    # Setup gradient function (analytical or numerical)
+    if isnothing(g)
+        # Use numerical gradients with central differences
+        ndeps_actual = isnothing(ndeps) ? fill(1e-3, n0) : ndeps
+        if length(ndeps_actual) != n0
+            error("ndeps must have length $n0")
+        end
+        # numgrad is already loaded at module level in Optimize.jl
+        gfunc = (n, x, ex) -> numgrad(f, n, x, ex, ndeps_actual)
+    else
+        gfunc = g
+    end
+
     fval = f(n0, b, nothing)
     if !isfinite(fval)
         error("Initial value in 'bfgsmin' is not finite")
@@ -186,7 +217,7 @@ function bfgsmin(
     Fmin = fval
     funcount = 1
     gradcount = 1
-    gvec .= g(n0, b, nothing)
+    gvec .= gfunc(n0, b, nothing)
     iter = 1
     ilast = gradcount
     fail = 1
@@ -251,7 +282,7 @@ function bfgsmin(
             end
             if count < n
                 Fmin = fval
-                gnew = g(n0, b, nothing)
+                gnew = gfunc(n0, b, nothing)
                 gradcount += 1
                 iter += 1
                 D1 = 0.0

@@ -200,20 +200,20 @@ end
 
 # helper for compute_arima_likelihood
 function state_prediction!(anew::AbstractArray, a::AbstractArray, p::Int, r::Int, d::Int, rd::Int, phi::AbstractArray, delta::AbstractArray)
-     for i in 1:r
+     @inbounds for i in 1:r
         tmp = (i < r) ? a[i + 1] : 0.0
         if i <= p
             tmp += phi[i] * a[1]
         end
         anew[i] = tmp
     end
-    
+
     if d > 0
-        for i in (r + 2):(rd)
+        @inbounds for i in (r + 2):(rd)
             anew[i] = a[i - 1]
         end
         tmp = a[1]
-        for i in 1:d
+        @inbounds for i in 1:d
             tmp += delta[i] * a[r + i]
         end
         anew[r + 1] = tmp
@@ -223,7 +223,7 @@ end
 function predict_covariance_nodiff!(Pnew::Matrix{Float64}, P::Matrix{Float64},
     r::Int, p::Int, q::Int,
     phi::Vector{Float64}, theta::Vector{Float64})
-    for i in 1:r
+    @inbounds for i in 1:r
 
         if i == 1
             vi = 1.0
@@ -269,7 +269,7 @@ function predict_covariance_with_diff!(Pnew::Matrix{Float64}, P::Matrix{Float64}
     phi::Vector{Float64}, delta::Vector{Float64},
     theta::Vector{Float64}, mm::Matrix{Float64})
     # Step 1: mm = T * P
-    for i in 1:r
+    @inbounds for i in 1:r
         for j in 1:rd
             tmp = 0.0
             if i <= p
@@ -281,8 +281,8 @@ function predict_covariance_with_diff!(Pnew::Matrix{Float64}, P::Matrix{Float64}
             mm[i, j] = tmp
         end
     end
-    
-    for j in 1:rd
+
+    @inbounds for j in 1:rd
         tmp = P[1, j]
         for k in 1:d
             tmp = tmp + delta[k] * P[r+k, j]
@@ -290,14 +290,14 @@ function predict_covariance_with_diff!(Pnew::Matrix{Float64}, P::Matrix{Float64}
         mm[r+1, j] = tmp
     end
 
-    for i in 2:d
+    @inbounds for i in 2:d
         for j in 1:rd
             mm[r+i, j] = P[r+i-1, j]
         end
     end
 
     # Step 2: Pnew = mm * Tᵀ
-    for i in 1:r
+    @inbounds for i in 1:r
         for j in 1:rd
             tmp = 0.0
             if i <= p
@@ -310,7 +310,7 @@ function predict_covariance_with_diff!(Pnew::Matrix{Float64}, P::Matrix{Float64}
         end
     end
 
-    for j in 1:rd
+    @inbounds for j in 1:rd
         tmp = mm[1, j]
         for k in 1:d
             tmp = tmp + delta[k] * mm[r+k, j]
@@ -318,14 +318,14 @@ function predict_covariance_with_diff!(Pnew::Matrix{Float64}, P::Matrix{Float64}
         Pnew[r+1, j] = tmp
     end
 
-    for i in 2:d
+    @inbounds for i in 2:d
         for j in 1:rd
             Pnew[r+i, j] = mm[r+i-1, j]
         end
     end
 
     # Step 3: Add noise (MA(q))
-    for i in 1:(q+1)
+    @inbounds for i in 1:(q+1)
         if i == 1
             vi = 1.0
         else
@@ -348,12 +348,12 @@ function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, useResid, r
 
     # 1) residual
     resid = y_obs - anew[1]
-    for i in 1:d
+    @inbounds for i in 1:d
         resid = resid - delta[i] * anew[r+i]
     end
 
     # 2) build M = Pnew * [1; delta]
-    for i in 1:rd
+    @inbounds for i in 1:rd
         tmp = Pnew[i, 1]
         for j in 1:d
             tmp += Pnew[i, r+j] * delta[j]
@@ -363,7 +363,7 @@ function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, useResid, r
 
     # 3) compute gain = H* M
     gain = M[1]
-    for j in 1:d
+    @inbounds for j in 1:d
         gain += delta[j] * M[r+j]
     end
 
@@ -380,12 +380,12 @@ function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, useResid, r
     end
 
     # 6) state update: a = anew + (M * resid)/gain
-    for i in 1:rd
+    @inbounds for i in 1:rd
         a[i] = anew[i] + M[i] * resid / gain
     end
 
     # 7) covariance update: P = Pnew - (M Mᵀ)/gain
-    for i = 1:rd
+    @inbounds for i = 1:rd
         for j = 1:rd
             P[i, j] = Pnew[i, j] - (M[i] * M[j]) / gain
         end
@@ -460,7 +460,7 @@ function compute_arima_likelihood( y::Vector{Float64}, model::ArimaStateSpace, u
     else
         rsResid = nothing
     end
-    for l = 1:n
+    @inbounds for l = 1:n
         state_prediction!(anew, a, p, r, d, rd, phi, delta)
 
         if !isnan(y[l])
@@ -531,10 +531,10 @@ function transform_unconstrained_to_ar_params!(
         throw(ArgumentError("The function can only transform 100 parameters in arima0"))
     end
 
-    new[1:p] .= tanh.(raw[1:p])
+    @inbounds new[1:p] .= tanh.(raw[1:p])
     work = copy(new[1:p])
 
-    for j = 2:p
+    @inbounds for j = 2:p
         a = new[j]
         for k = 1:(j-1)
             work[k] -= a * new[j-k]
@@ -1172,25 +1172,25 @@ mp, mq, msp, msq, ns = arma
     end
 
     if ns > 0
-        phi[1:mp] .= params[1:mp]
-        theta[1:mq] .= params[mp+1:mp+mq]
+        @inbounds phi[1:mp] .= params[1:mp]
+        @inbounds theta[1:mq] .= params[mp+1:mp+mq]
 
-        for j = 0:(msp-1)
+        @inbounds for j = 0:(msp-1)
             phi[(j+1)*ns] += params[mp+mq+j+1]
             for i = 0:(mp-1)
                 phi[((j+1)*ns)+(i+1)] -= params[i+1] * params[mp+mq+j+1]
             end
         end
 
-        for j = 0:(msq-1)
+        @inbounds for j = 0:(msq-1)
             theta[(j+1)*ns] += params[mp+mq+msp+j+1]
             for i = 0:(mq-1)
                 theta[((j+1)*ns)+(i+1)] += params[mp+i+1] * params[mp+mq+msp+j+1]
             end
         end
     else
-        phi[1:mp] .= params[1:mp]
-        theta[1:mq] .= params[mp+1:mp+mq]
+        @inbounds phi[1:mp] .= params[1:mp]
+        @inbounds theta[1:mq] .= params[mp+1:mp+mq]
     end
 
     return (phi, theta)

@@ -153,7 +153,7 @@ function forecast(model::ArimaFit;
 
     if bootstrap
         sim = Matrix{Float64}(undef, npaths, h)
-        for i in 1:npaths
+        @inbounds for i in 1:npaths
             sim[i, :] = simulate(model, h; xreg=origxreg, lambda=lambda, bootstrap=true)
         end
         qlow  = (0.5 .- levels ./ 200)

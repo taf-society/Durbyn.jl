@@ -73,7 +73,7 @@ end
 
 function newmodel(p::Int, d::Int, q::Int, P::Int, D::Int, Q::Int, constant::Bool, results::Matrix)
     n = size(results, 1)
-    for i in 1:n
+    @inbounds for i in 1:n
         row = results[i, 1:7]
         if !all(ismissing.(row))
             if (p, d, q, P, D, Q, constant) == Tuple(row)
@@ -130,7 +130,7 @@ function fit_custom_arima(
         n = 0
     else
         n = 0
-        for xi in @view x[first:last]
+        @inbounds for xi in @view x[first:last]
             if !(ismissing(xi) || isnan(xi))
                 n += 1
             end
@@ -380,7 +380,7 @@ function search_arima(
     bestfit = nothing
     constant = nothing
 
-    for i = 0:max_p
+    @inbounds for i = 0:max_p
         for j = 0:max_q
             for I = 0:max_P
                 for J = 0:max_Q

@@ -121,6 +121,7 @@ function auto_arima(
 
     # Trim leading/trailing missings and count non-missing in the trimmed span
     x = copy(y)
+    orig_x = copy(y)  # Save original for final result
     firstnm, serieslength, x = analyze_series(x)
 
     if !isnothing(xreg)
@@ -138,7 +139,7 @@ function auto_arima(
                 x,
                 m,
                 order = PDQ(0, 0, 0),
-                fixde = mean2(x, omit_na = true),
+                fixed = mean2(x, omit_na = true),
                 kwargs...,
             )
         else
@@ -184,7 +185,7 @@ function auto_arima(
                 error("xreg is rank deficient")
             end
             j = .!ismissing.(x) .& .!ismissing.(row_sums(xregg))
-            fitt = ols(copy(x), copy(xregg.Data))
+            fitt = ols(copy(x), copy(xregg.data))
             res = residuals(fitt)
             xx[j] .= res
         end
@@ -339,7 +340,7 @@ function auto_arima(
             end
         end
 
-        fit.model.x = orig_x
+        fit.y = orig_x
         return fit
     end
 
@@ -396,8 +397,8 @@ function auto_arima(
             kwargs...,
         )
         bestfit.lambda = lambda
-        bestfit.x = orig_x
-        bestfit.fitted < -fitted(bestfit)
+        bestfit.y = orig_x
+        bestfit.fitted = fitted(bestfit)
 
         return bestfit
     end
@@ -410,9 +411,9 @@ function auto_arima(
     end
 
     p, start_p = min(start_p, max_p), min(start_p, max_p)
-    q, start_q = min(start_p, max_q), min(start_p, max_q)
-    P, start_P = min(start_p, max_P), min(start_p, max_P)
-    Q, start_Q = min(start_p, max_Q), min(start_p, max_Q)
+    q, start_q = min(start_q, max_q), min(start_q, max_q)
+    P, start_P = min(start_P, max_P), min(start_P, max_P)
+    Q, start_Q = min(start_Q, max_Q), min(start_Q, max_Q)
     
     result_cols = ["p", "d", "q", "P", "D", "Q", "constant", "ic"]
 
@@ -555,7 +556,8 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
         if P > 0 && newm
             k += 1
@@ -594,7 +596,8 @@ function auto_arima(
             D,
             Q - 1,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if Q > 0 && newm
@@ -634,7 +637,8 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if P < max_P && newm
@@ -674,7 +678,8 @@ function auto_arima(
             D,
             Q + 1,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if Q < max_Q && newm
@@ -714,7 +719,8 @@ function auto_arima(
             D,
             Q - 1,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if Q > 0 && P > 0 && newm
@@ -755,7 +761,8 @@ function auto_arima(
             D,
             Q + 1,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if Q < max_Q && P > 0 && newm
@@ -797,7 +804,8 @@ function auto_arima(
             D,
             Q - 1,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if Q > 0 && P < max_P && newm
@@ -840,7 +848,8 @@ function auto_arima(
             D,
             Q + 1,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if Q < max_Q && P < max_P && newm
@@ -882,7 +891,8 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if p > 0 && newm
@@ -922,7 +932,8 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if q > 0 && newm
@@ -963,7 +974,8 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if p < max_p && newm
@@ -1003,7 +1015,8 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if q < max_q && newm
@@ -1044,7 +1057,8 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if q > 0 && p > 0 && newm
@@ -1087,10 +1101,11 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
-        if q > max_q && p > 0 && newm
+        if q < max_q && p > 0 && newm
 
             k += 1
             if k > nmodels
@@ -1130,10 +1145,11 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
-        if q > 0 && p > max_p && newm
+        if q > 0 && p < max_p && newm
 
             k += 1
             if k > nmodels
@@ -1173,7 +1189,8 @@ function auto_arima(
             D,
             Q,
             constant,
-            get_elements(result, row = collect(1:k), col = result_cols)
+            result.data,
+            k
         )
 
         if q < max_q && p < max_p && newm
@@ -1218,7 +1235,8 @@ function auto_arima(
                 D,
                 Q,
                 constant,
-                get_elements(result, row = collect(1:k), col = result_cols)
+                result.data,
+                k
             )
 
             if newm
@@ -1262,38 +1280,43 @@ function auto_arima(
         if trace
             println("Now re-fitting the best model(s) without approximations...")
         end
-    end
 
-    icorder = as_vector(get_elements(result, col = 8))
-    nmodels = count(v -> !(ismissing(v) || isnan(v)), icorder)
-    icorder = sortperm(icorder)
+        icorder = as_vector(get_elements(result, col = 8))
+        nmodels = count(v -> !(ismissing(v) || isnan(v)), icorder)
+        icorder = sortperm(icorder)
 
-    for i = 1:nmodels
-        mod = get_elements(result, row = i)
+        for i = 1:nmodels
+            mod = get_elements(result, row = i)
 
-        fit = fit_custom_arima(
-            x,
-            m,
-            order = PDQ(as_integer(mod[1]), d, as_integer(mod[3])),
-            seasonal = PDQ(as_integer(mod[4]), D, as_integer(mod[6])),
-            constant = mod[7] > 0 ? true : false,
-            ic = ic,
-            trace = trace,
-            approximation = false,
-            xreg = xreg,
-            method = method,
-            kwargs...,
-        )
+            fit = fit_custom_arima(
+                x,
+                m,
+                order = PDQ(as_integer(mod[1]), d, as_integer(mod[3])),
+                seasonal = PDQ(as_integer(mod[4]), D, as_integer(mod[6])),
+                constant = mod[7] > 0 ? true : false,
+                ic = ic,
+                trace = trace,
+                approximation = false,
+                xreg = xreg,
+                method = method,
+                nstar = serieslength,
+                kwargs...,
+            )
 
-        if fit.ic < Inf
-            bestfit = fit
-            break
+            if fit.ic < Inf
+                bestfit = fit
+                break
+            end
         end
     end
 
     if trace
         println("Best model found!")
     end
+
+    bestfit.lambda = lambda
+    bestfit.y = orig_x
+    bestfit.fitted = fitted(bestfit)
 
     return bestfit
 end

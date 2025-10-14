@@ -71,14 +71,18 @@ function compute_approx_offset(;
 end
 
 
-function newmodel(p::Int, d::Int, q::Int, P::Int, D::Int, Q::Int, constant::Bool, results::Matrix)
-    n = size(results, 1)
-    @inbounds for i in 1:n
-        row = results[i, 1:7]
-        if !all(ismissing.(row))
-            if (p, d, q, P, D, Q, constant) == Tuple(row)
-                return false
-            end
+function newmodel(p::Int, d::Int, q::Int, P::Int, D::Int, Q::Int, constant::Bool, results::Matrix, k::Int)
+    c_int = constant ? 1 : 0
+    @inbounds for i in 1:k
+        # Quick check: if any component is missing, skip
+        if ismissing(results[i, 1])
+            continue
+        end
+        # Direct comparison without allocating Tuple or array
+        if results[i, 1] == p && results[i, 2] == d && results[i, 3] == q &&
+           results[i, 4] == P && results[i, 5] == D && results[i, 6] == Q &&
+           results[i, 7] == c_int
+            return false
         end
     end
     return true
@@ -118,23 +122,22 @@ function fit_custom_arima(
     offset::Float64 = 0.0,
     xreg::Union{Nothing,NamedMatrix} = nothing,
     method::Union{Nothing,AbstractString} = nothing,
+    nstar::Union{Nothing,Int} = nothing,  # Pre-computed series length
     kwargs...,
 )
 
-    miss = ismissing.(x) .| isnan.(x)
-    notmiss = .!miss
-    first = findfirst(notmiss)
-    last = findlast(notmiss)
+    # Use pre-computed nstar if available, otherwise compute
+    if isnothing(nstar)
+        first = findfirst(xi -> !(ismissing(xi) || isnan(xi)), x)
+        last = findlast(xi -> !(ismissing(xi) || isnan(xi)), x)
 
-    if isnothing(first) || isnothing(last)
-        n = 0
-    else
-        n = 0
-        @inbounds for xi in @view x[first:last]
-            if !(ismissing(xi) || isnan(xi))
-                n += 1
-            end
+        if isnothing(first) || isnothing(last)
+            n = 0
+        else
+            n = count(xi -> !(ismissing(xi) || isnan(xi)), @view x[first:last])
         end
+    else
+        n = nstar + order.d + seasonal.d * m
     end
 
     use_season = (seasonal.p + seasonal.d + seasonal.q) > 0 && m > 0
@@ -155,7 +158,7 @@ function fit_custom_arima(
         if isnothing(xreg)
             xreg = NamedMatrix(reshape(drift, :, 1), ["drift"])
         else
-            xreg = add_dift_term(xreg, drift, "drift")
+            xreg = add_drift_term(xreg, drift, "drift")
         end
 
         fit = try
@@ -180,7 +183,8 @@ function fit_custom_arima(
                     kwargs...,
                 )
             end
-        catch
+        catch err
+            err  # Store error, handle below
         end
     else
         fit = try
@@ -208,7 +212,7 @@ function fit_custom_arima(
                 )
             end
         catch err
-            return err
+            err  # Store error, handle below
         end
     end
 
@@ -231,15 +235,8 @@ function fit_custom_arima(
         if !(isnan(fit.aic))
             fit.bic = fit.aic + npar * (log(nstar) - 2)
             fit.aicc = fit.aic + 2 * npar * (npar + 1) / (nstar - npar - 1)
-            if ic == "bic"
-                fit.ic = fit.bic
-            elseif ic == "aic"
-                fit.ic = fit.aic
-            elseif ic == "aicc"
-                fit.ic = fit.aicc
-            else
-                error("Unknown ic: $ic")
-            end
+            # Use direct field access instead of string comparison
+            fit.ic = ic == "bic" ? fit.bic : (ic == "aicc" ? fit.aicc : fit.aic)
         else
             fit.aic, fit.bic, fit.aicc, fit.ic = Inf, Inf, Inf, Inf
         end
@@ -250,37 +247,45 @@ function fit_custom_arima(
 
         # AR roots
         if (order.p + seasonal.p) > 0
-
             testvec = fit.model.phi
-            k = abs.(testvec) .> 1e-8
-            lastnz = any(k) ? findlast(k) : 0
-            if lastnz > 0
-                testvec = testvec[1:lastnz]
-                proots = try
-                    roots(Polynomial([1.0; -testvec]))
-                catch err
-                    return err
+            # Find last non-zero element more efficiently
+            lastnz = 0
+            @inbounds for i in length(testvec):-1:1
+                if abs(testvec[i]) > 1e-8
+                    lastnz = i
+                    break
                 end
-                if !(proots isa Exception)
+            end
+            if lastnz > 0
+                proots = try
+                    roots(Polynomial([1.0; -@view(testvec[1:lastnz])]))
+                catch err
+                    nothing  # Flag error, handled below
+                end
+                if !isnothing(proots) && !(proots isa Exception)
                     minroot = min(minroot, minimum(abs.(proots)))
                 else
-                    fit.ic < -Inf
+                    fit.ic = Inf
                 end
-
             end
         end
         if (order.q + seasonal.q) > 0 && fit.ic < Inf
             testvec = fit.model.theta
-            k = abs.(testvec) .> 1e-8
-            lastnz = any(k) ? findlast(k) : 0
-            if lastnz > 0
-                testvec = testvec[1:lastnz]
-                proots = try
-                    roots(Polynomial([1.0; testvec]))
-                catch err
-                    return err
+            # Find last non-zero element more efficiently
+            lastnz = 0
+            @inbounds for i in length(testvec):-1:1
+                if abs(testvec[i]) > 1e-8
+                    lastnz = i
+                    break
                 end
-                if !(proots isa Exception)
+            end
+            if lastnz > 0
+                proots = try
+                    roots(Polynomial([1.0; @view(testvec[1:lastnz])]))
+                catch err
+                    nothing  # Flag error, handled below
+                end
+                if !isnothing(proots) && !(proots isa Exception)
                     minroot = min(minroot, minimum(abs.(proots)))
                 else
                     fit.ic = Inf
@@ -344,6 +349,9 @@ function fit_custom_arima(
             ),
             nothing,
             "Error model",
+            nothing,
+            nothing,
+            nothing,
         )
 
     end
@@ -432,7 +440,7 @@ function search_arima(
             newbestfit = fit_custom_arima(
                 x,
                 m;
-                order = PDQ(p, d_, q_),
+                order = PDQ(p, d_, q),
                 seasonal = PDQ(P, D_, Q),
                 constant = constant,
                 ic = ic,
@@ -463,15 +471,6 @@ function search_arima(
                     allowmean = allowmean,
                     kwargs...,
                 )
-                if ic == "bic"
-                    bestfit_ic = bestfit.bic
-                elseif ic == "aic"
-                    bestfit_ic = bestfit.aic
-                elseif ic == "aicc"
-                    bestfit_ic = bestfit.aicc
-                else
-                    error("Unknown ic: $ic")
-                end
             else
                 bestfit = newbestfit
             end

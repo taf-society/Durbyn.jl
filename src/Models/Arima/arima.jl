@@ -1740,7 +1740,7 @@ function arima(
         if isnothing(xreg)
             xreg = NamedMatrix(zeros(n, 0), String[])
         end
-        xreg = add_dift_term(xreg, ones(n), "intercept")
+        xreg = add_drift_term(xreg, ones(n), "intercept")
     end
 
     xreg, ncxreg, nmxreg = process_xreg(xreg, n)

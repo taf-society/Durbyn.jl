@@ -11,6 +11,26 @@ This implementation supports both analytical and numerical gradients (via
 optimizers and model fitting workflows.
 """
 
+"""
+    BFGSOptions
+
+Options for BFGS quasi-Newton optimization.
+
+# Fields
+- `abstol::Float64` — Absolute convergence tolerance (default: -Inf, disabled)
+- `reltol::Float64` — Relative convergence tolerance (default: √eps)
+- `trace::Bool` — Print iteration progress (default: false)
+- `maxit::Int` — Maximum iterations (default: 100)
+- `nREPORT::Int` — Reporting frequency when trace=true (default: 10)
+"""
+Base.@kwdef struct BFGSOptions
+    abstol::Float64 = -Inf
+    reltol::Float64 = sqrt(eps(Float64))
+    trace::Bool = false
+    maxit::Int = 100
+    nREPORT::Int = 10
+end
+
 
 """
     BFGSWorkspace

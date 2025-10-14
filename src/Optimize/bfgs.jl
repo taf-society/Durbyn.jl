@@ -1,80 +1,155 @@
 """
-    BFGSOptions(; abstol=1e-8, reltol=1e-8, trace=false, maxit=1000, nREPORT=10)
+    BFGS Quasi-Newton Optimizer
 
-Options for the BFGS (Broyden-Fletcher-Goldfarb-Shanno) optimization algorithm.
+Implements a general-purpose **BFGS quasi-Newton optimization algorithm** for
+unconstrained or bound-constrained problems. Suitable for use in nonlinear
+optimization tasks where the objective function may or may not provide an
+analytical gradient.
 
-# Keyword Arguments
-
-- `abstol::Float64=1e-8`:  
-    Absolute tolerance for function value convergence.  
-    The algorithm stops if the objective function is less than or equal to this value.
-
-- `reltol::Float64=1e-8`:  
-    Relative tolerance for function value changes.  
-    Optimization stops if the change in function value is below this relative threshold.
-
-- `trace::Bool=false`:  
-    If `true`, progress and diagnostics are printed during optimization.
-
-- `maxit::Int=1000`:  
-    Maximum number of optimization iterations.
-
-- `nREPORT::Int=10`:  
-    Reporting interval (print progress every `nREPORT` iterations if `trace` is true).
-
-# Example
-
-```julia
-options = BFGSOptions(abstol=1e-6, reltol=1e-6, trace=true, maxit=500)
-````
-
-You can then pass this `options` object to the optimizer:
-
-```julia
-result = bfgsmin(f, g, x0; options=options)
-```
+This implementation supports both analytical and numerical gradients (via
+`numgrad_with_cache!`) and is compatible with standard gradient-based
+optimizers and model fitting workflows.
 """
-struct BFGSOptions
-    abstol::Float64
-    reltol::Float64
-    trace::Bool
-    maxit::Int
-    nREPORT::Int
+
+
+"""
+    BFGSWorkspace
+
+Pre-allocated workspace used internally by the BFGS optimizer to avoid
+memory allocations during iterative updates.
+
+# Fields
+- `gvec::Vector{Float64}` — Current gradient vector (length `n0`)
+- `t::Vector{Float64}` — Search direction (length `n`)
+- `X::Vector{Float64}` — Current parameter vector (length `n`)
+- `c::Vector{Float64}` — Gradient difference vector (length `n`)
+- `B::Matrix{Float64}` — Approximate inverse Hessian matrix (`n × n`)
+- `X_cache::Vector{Float64}` — Temporary buffer used in Hessian updates (length `n`)
+- `gnew::Vector{Float64}` — Buffer for storing the new gradient (length `n0`)
+
+The workspace is automatically managed by the optimizer, but it can also be
+created and reused manually if desired.
+"""
+mutable struct BFGSWorkspace
+    gvec::Vector{Float64}
+    t::Vector{Float64}
+    X::Vector{Float64}
+    c::Vector{Float64}
+    B::Matrix{Float64}
+    X_cache::Vector{Float64}
+    gnew::Vector{Float64}
+
+    function BFGSWorkspace(n0::Int, n::Int)
+        new(
+            zeros(n0),
+            zeros(n),
+            zeros(n),
+            zeros(n),
+            zeros(n, n),
+            zeros(n),
+            zeros(n0)
+        )
+    end
 end
 
-BFGSOptions(; abstol=1e-8, reltol=1e-8, trace=false, maxit=1000, nREPORT=10) =
-    BFGSOptions(abstol, reltol, trace, maxit, nREPORT)
-
 """
-    bfgsmin(f, g, x0; mask=trues(length(x0)), options=BFGSOptions())
+    bfgs_hessian_update!(B, t, c, X_cache, D1)
 
-Minimizes a multivariate function using the BFGS (Broyden-Fletcher-Goldfarb-Shanno) quasi-Newton algorithm with optional variable masking and options struct.
+Perform the standard **BFGS inverse Hessian update**:
+
+```math
+B_{k+1} = B_k + \frac{(1 + c' B_k c / D_1)}{D_1} t t' - \frac{1}{D_1} (t (B_k c)' + (B_k c) t')
+````
+
+where `t` is the parameter step, `c` is the gradient difference, and
+`D1 = t' * c`.
 
 # Arguments
+- `B::AbstractMatrix` — Inverse Hessian approximation (`n × n`, symmetric)
+- `t::AbstractVector` — Step direction vector (length `n`)
+- `c::AbstractVector` — Gradient difference vector (length `n`)
+- `X_cache::AbstractVector` — Temporary buffer (`n`), used for storing `B * c`
+- `D1::Float64` — Dot product `t' * c`
 
-- `f::Function`: Objective function to minimize, called as `f(n, x, ex)`, where `n` is the dimension, `x` the parameter vector, and `ex` an (optional) extra argument.
-- `g::Union{Function,Nothing}`: Gradient function, called as `g(n, x, ex)`, returning a vector. If `nothing`, numerical gradients will be computed using central differences.
-- `x0::Vector{Float64}`: Initial guess for the variables.
+# Notes
+This operation updates the inverse Hessian approximation in-place using the
+standard BFGS formula. The matrix `B` is assumed to be symmetric and stored in
+full form.
+"""
+@inline function bfgs_hessian_update!(
+    B::AbstractMatrix,
+    t::AbstractVector,
+    c::AbstractVector,
+    X_cache::AbstractVector,
+    D1::Float64
+)
+    n = length(t)
 
-# Keyword Arguments
+    # Compute B * c → X_cache (BLAS-level-2, optimized for symmetric lower triangular)
+    @inbounds for i in 1:n
+        s = 0.0
+        # Lower triangular part: B[i,j] for j ≤ i
+        @simd for j in 1:i
+            s += B[i, j] * c[j]
+        end
+        # Upper triangular part (symmetric): B[j,i] for j > i
+        @simd for j in (i+1):n
+            s += B[j, i] * c[j]
+        end
+        X_cache[i] = s
+    end
 
-- `mask::Vector{Bool}`: Optional. Specifies which variables are optimized (`true`) or held fixed (`false`). Defaults to all `true`.
-- `options::BFGSOptions`: Optional. Struct with solver settings (tolerances, tracing, max iterations, etc).
+    # Compute D2 = c' * B * c / D1
+    D2 = 0.0
+    @inbounds @simd for i in 1:n
+        D2 += X_cache[i] * c[i]
+    end
+    D2 = 1.0 + D2 / D1
+
+    # Symmetric rank-2 update: B += (D2 * t * t' - X_cache * t' - t * X_cache') / D1
+    inv_D1 = inv(D1)
+    @inbounds for i in 1:n
+        ti_scaled = t[i] * inv_D1
+        xi_scaled = X_cache[i] * inv_D1
+
+        # Only update lower triangular part (B is symmetric)
+        @simd for j in 1:i
+            B[i, j] += D2 * ti_scaled * t[j] - xi_scaled * t[j] - ti_scaled * X_cache[j]
+        end
+    end
+end
+
+""""
+    bfgsmin(f, g, x0; mask=trues(length(x0)), options=BFGSOptions(), ndeps=nothing, 
+    numgrad_cache=nothing) -> NamedTuple
+
+Perform unconstrained optimization using the **BFGS quasi-Newton method**.
+
+# Arguments
+- `f::Function` — Objective function, called as `f(n, x, ex)`
+- `g::Union{Function, Nothing}` — Gradient function, or `nothing` to use numerical gradients
+- `x0::Vector{Float64}` — Initial parameter vector
+- `mask::BitVector` — Logical mask for active parameters (default: all active)
+- `options::BFGSOptions` — Optimization options (tolerances, iteration limits, etc.)
+- `ndeps::Union{Nothing, Vector{Float64}}` — Step sizes for numerical differentiation (used if `g` is `nothing`)
+- `numgrad_cache::Union{Nothing, NumericalGradientCache}` — Optional pre-allocated cache for numerical gradients
 
 # Returns
+A named tuple containing:
+- `x_opt` — Optimal parameter vector
+- `f_opt` — Objective function value at the optimum
+- `n_iter` — Number of iterations performed
+- `fail` — Status flag (`0` if converged, `1` otherwise)
+- `fn_evals` — Number of function evaluations
+- `gr_evals` — Number of gradient evaluations
 
-A named tuple with the following fields:
-- `x_opt`: Optimal parameter vector found.
-- `f_opt`: Function value at optimum.
-- `n_iter`: Number of iterations performed.
-- `fail`: Status flag (`0` if converged, otherwise indicates failure).
-- `fn_evals`: Number of function evaluations.
-- `gr_evals`: Number of gradient evaluations.
+# Behavior
+If no analytical gradient is supplied, numerical gradients are computed
+using central differences with an optional cache for efficiency.
+The algorithm terminates when the gradient norm falls below tolerance
+or when the iteration limit is reached.
 
-# Examples
-
-## Rosenbrock Function
-
+# Example
 ```julia
 rosenbrock(n, x, ex) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
 rosenbrock_grad(n, x, ex) = [
@@ -83,125 +158,49 @@ rosenbrock_grad(n, x, ex) = [
 ]
 
 x0 = [-1.2, 1.0]
-mask = [true, true]
-options = BFGSOptions(trace=true, maxit=1000, nREPORT=10)
-
-result = bfgsmin(
-    rosenbrock, rosenbrock_grad, x0;
-    mask=mask,
-    options=options
-)
-println("Optimal x: ", result.x_opt)
-````
-
-## Quadratic Example
-
-```julia
-quad(n, x, ex) = (x[1] - 3)^2 + (x[2] + 1)^2
-quad_grad(n, x, ex) = [2 * (x[1] - 3), 2 * (x[2] + 1)]
-x0 = [0.0, 0.0]
-mask = [true, true]
-options = BFGSOptions()
-
-result = bfgsmin(
-    quad, quad_grad, x0;
-    mask=mask,
-    options=options
-)
-
+result = bfgsmin(rosenbrock, rosenbrock_grad, x0)
 println("Optimal x: ", result.x_opt)
 ```
-
-## Himmelblau Function
-
-```julia
-himmelblau(n, x, ex) = (x[1]^2 + x[2] - 11)^2 + (x[1] + x[2]^2 - 7)^2
-himmelblau_grad(n, x, ex) = [
-    4 * x[1] * (x[1]^2 + x[2] - 11) + 2 * (x[1] + x[2]^2 - 7),
-    2 * (x[1]^2 + x[2] - 11) + 4 * x[2] * (x[1] + x[2]^2 - 7)
-]
-x0 = [0.0, 0.0]
-mask = [true, true]
-options = BFGSOptions(maxit=100)
-
-result = bfgsmin(
-    himmelblau, himmelblau_grad, x0;
-    mask=mask,
-    options=options
-)
-println("Optimal x: ", result.x_opt)
-```
-
-## Masked Variable Example (Optimize Only x_1)
-
-```julia
-quad(n, x, ex) = (x[1] - 3)^2 + (x[2] + 1)^2
-quad_grad(n, x, ex) = [2 * (x[1] - 3), 2 * (x[2] + 1)]
-x0 = [0.0, 0.0]
-mask = [true, false]   # Only optimize x[1], keep x[2] fixed
-options = BFGSOptions()
-
-result = bfgsmin(
-    quad, quad_grad, x0;
-    mask=mask,
-    options=options
-)
-println("Optimal x: ", result.x_opt)  # x[2] will remain at 0
-```
-
-## Numerical Gradients (No Gradient Function)
-
-```julia
-# When gradient is not available, pass nothing and numerical gradients will be computed
-rosenbrock(n, x, ex) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
-x0 = [-1.2, 1.0]
-
-# Use numerical gradients (central differences with default step size 1e-3)
-result = bfgsmin(rosenbrock, nothing, x0)
-
-# Or specify custom step sizes for each parameter
-result = bfgsmin(rosenbrock, nothing, x0; ndeps=[1e-4, 1e-4])
-
-println("Optimal x: ", result.x_opt)
-```
-
-# See Also
-
-* [`BFGSOptions`](@ref): Options struct for configuring the optimizer.
-* [`numgrad`](@ref): Numerical gradient computation function.
 """
 function bfgsmin(
-    f::Function, g::Union{Function,Nothing}, x0::Vector{Float64};
-    mask=trues(length(x0)),
-    options::BFGSOptions=BFGSOptions(),
-    ndeps::Union{Nothing,Vector{Float64}}=nothing
+    f::Function,
+    g::Union{Function,Nothing},
+    x0::Vector{Float64};
+    mask = trues(length(x0)),
+    options::BFGSOptions = BFGSOptions(),
+    ndeps::Union{Nothing,Vector{Float64}} = nothing,
+    numgrad_cache::Union{Nothing,NumericalGradientCache} = nothing
 )
-    # Extract options to locals for clarity
-    abstol  = options.abstol
-    reltol  = options.reltol
-    trace   = options.trace
-    maxit   = options.maxit
+    # Extract options
+    abstol = options.abstol
+    reltol = options.reltol
+    trace = options.trace
+    maxit = options.maxit
     nREPORT = options.nREPORT
 
     n0 = length(x0)
     l = findall(mask)
     n = length(l)
     b = copy(x0)
-    gvec = zeros(n0)
-    t = zeros(n)
-    X = zeros(n)
-    c = zeros(n)
-    B = [i == j ? 1.0 : 0.0 for i in 1:n, j in 1:n] # Hessian approx
 
-    # Setup gradient function (analytical or numerical)
+    # Pre-allocate workspace
+    workspace = BFGSWorkspace(n0, n)
+
+    # Setup gradient function (analytical or numerical with cache)
     if isnothing(g)
-        # Use numerical gradients with central differences
+        # Use numerical gradients with cache
         ndeps_actual = isnothing(ndeps) ? fill(1e-3, n0) : ndeps
         if length(ndeps_actual) != n0
             error("ndeps must have length $n0")
         end
-        # numgrad is already loaded at module level in Optimize.jl
-        gfunc = (n, x, ex) -> numgrad(f, n, x, ex, ndeps_actual)
+
+        # Use provided cache or create new one
+        if isnothing(numgrad_cache)
+            numgrad_cache = NumericalGradientCache(n0)
+        end
+
+        # Gradient function using cached numgrad
+        gfunc = (n, x, ex) -> numgrad_with_cache!(numgrad_cache, f, n, x, ex, ndeps_actual)
     else
         gfunc = g
     end
@@ -217,7 +216,7 @@ function bfgsmin(
     Fmin = fval
     funcount = 1
     gradcount = 1
-    gvec .= gfunc(n0, b, nothing)
+    workspace.gvec .= gfunc(n0, b, nothing)
     iter = 1
     ilast = gradcount
     fail = 1
@@ -226,38 +225,42 @@ function bfgsmin(
     while true
         # Restart Hessian if required
         if ilast == gradcount
-            B .= 0.0
-            for i in 1:n
-                B[i,i] = 1.0
+            @inbounds for i in 1:n, j in 1:n
+                workspace.B[i, j] = (i == j) ? 1.0 : 0.0
             end
         end
 
-        for i in 1:n
-            X[i] = b[l[i]]
-            c[i] = gvec[l[i]]
+        # Extract active parameters and gradients
+        @inbounds for i in 1:n
+            workspace.X[i] = b[l[i]]
+            workspace.c[i] = workspace.gvec[l[i]]
         end
 
+        # Compute search direction: t = -B * g
         gradproj = 0.0
-        for i in 1:n
+        @inbounds for i in 1:n
             s = 0.0
-            for j in 1:i
-                s -= B[i,j] * gvec[l[j]]
+            # Lower triangular
+            @simd for j in 1:i
+                s -= workspace.B[i, j] * workspace.gvec[l[j]]
             end
-            for j in i+1:n
-                s -= B[j,i] * gvec[l[j]]
+            # Upper triangular (symmetric)
+            @simd for j in (i+1):n
+                s -= workspace.B[j, i] * workspace.gvec[l[j]]
             end
-            t[i] = s
-            gradproj += s * gvec[l[i]]
+            workspace.t[i] = s
+            gradproj += s * workspace.gvec[l[i]]
         end
 
         if gradproj < 0.0
+            # Line search
             steplength = 1.0
             accpoint = false
             while true
                 count = 0
-                for i in 1:n
-                    tmp = X[i] + steplength * t[i]
-                    if 1.0 + X[i] == 1.0 + tmp
+                @inbounds for i in 1:n
+                    tmp = workspace.X[i] + steplength * workspace.t[i]
+                    if 1.0 + workspace.X[i] == 1.0 + tmp
                         count += 1
                     end
                     b[l[i]] = tmp
@@ -275,46 +278,42 @@ function bfgsmin(
                 end
             end
 
+            # Check convergence
             enough = (fval > abstol) && abs(fval - Fmin) > reltol * (abs(Fmin) + reltol)
             if !enough
                 count = n
                 Fmin = fval
             end
+
             if count < n
                 Fmin = fval
-                gnew = gfunc(n0, b, nothing)
+                workspace.gnew .= gfunc(n0, b, nothing)
                 gradcount += 1
                 iter += 1
+
+                # Compute step and gradient difference
                 D1 = 0.0
-                for i in 1:n
-                    t[i] = steplength * t[i]
-                    c[i] = gnew[l[i]] - c[i]
-                    D1 += t[i] * c[i]
+                @inbounds for i in 1:n
+                    workspace.t[i] = steplength * workspace.t[i]
+                    workspace.c[i] = workspace.gnew[l[i]] - workspace.c[i]
+                    D1 += workspace.t[i] * workspace.c[i]
                 end
+
+                # BFGS update (if D1 > 0)
                 if D1 > 0
-                    X_ = zeros(n)
-                    D2 = 0.0
-                    for i in 1:n
-                        s = 0.0
-                        for j in 1:i
-                            s += B[i,j] * c[j]
-                        end
-                        for j in i+1:n
-                            s += B[j,i] * c[j]
-                        end
-                        X_[i] = s
-                        D2 += s * c[i]
-                    end
-                    D2 = 1.0 + D2 / D1
-                    for i in 1:n
-                        for j in 1:i
-                            B[i,j] += (D2 * t[i] * t[j] - X_[i] * t[j] - t[i] * X_[j]) / D1
-                        end
-                    end
+                    # Optimized Hessian update with pre-allocated cache
+                    bfgs_hessian_update!(
+                        workspace.B,
+                        workspace.t,
+                        workspace.c,
+                        workspace.X_cache,
+                        D1
+                    )
                 else
                     ilast = gradcount
                 end
-                gvec .= gnew
+
+                workspace.gvec .= workspace.gnew
             else
                 if ilast < gradcount
                     count = 0

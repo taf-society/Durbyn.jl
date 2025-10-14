@@ -1,107 +1,267 @@
 """
-    numgrad(f, n, x, ex, ndeps; usebounds=false, lower=nothing, upper=nothing)
+    NumericalGradientCache
 
-Compute numerical gradient using central differences.
+Pre-allocated workspace for efficient numerical gradient computation.
+By reusing buffers between iterations, it avoids dynamic memory allocations and
+reduces runtime overhead in repeated evaluations.
 
-# Arguments
-- `f::Function`: Objective function, called as `f(n, x, ex)`
-- `n::Int`: Dimension of the problem
-- `x::Vector{Float64}`: Point at which to evaluate gradient
-- `ex`: Extra argument passed to f (can be `nothing`)
-- `ndeps::Vector{Float64}`: Step sizes for numerical differentiation (length n)
+# Fields
+- `xtrial::Vector{Float64}` — Working buffer for perturbed parameter vectors (length `n`)
+- `df::Vector{Float64}` — Output buffer for computed gradient (length `n`)
 
-# Keyword Arguments
-- `usebounds::Bool=false`: Whether to respect bounds
-- `lower::Union{Nothing,Vector{Float64}}=nothing`: Lower bounds
-- `upper::Union{Nothing,Vector{Float64}}=nothing`: Upper bounds
+# Example
+```julia
+cache = NumericalGradientCache(5)
+```
+"""
+mutable struct NumericalGradientCache
+    xtrial::Vector{Float64}
+    df::Vector{Float64}
 
-# Returns
-- `Vector{Float64}`: Numerical gradient approximation
-
-# Notes
-This function uses central differences: df[i] = (f(x+h) - f(x-h)) / (2h)
-When bounds are active, it adjusts step sizes to stay within bounds.
+    function NumericalGradientCache(n::Int)
+        new(Vector{Float64}(undef, n), Vector{Float64}(undef, n))
+    end
+end
 
 """
-function numgrad(f::Function, n::Int, x::Vector{Float64}, ex,
-                 ndeps::Vector{Float64};
-                 usebounds::Bool=false,
-                 lower::Union{Nothing,Vector{Float64}}=nothing,
-                 upper::Union{Nothing,Vector{Float64}}=nothing)
+    numgrad!(df, xtrial, f, n, x, ex, ndeps) -> Vector{Float64}
 
-    df = Vector{Float64}(undef, n)
-    xtrial = copy(x)
+Compute the numerical gradient of a scalar-valued function `f` using
+**central finite differences**, with pre-allocated buffers for maximum efficiency.
 
-    if !usebounds
-        for i in 1:n
-            eps = ndeps[i]
+# Arguments
+- `df::AbstractVector{Float64}` — Pre-allocated output buffer for the gradient (length `n`)
+- `xtrial::AbstractVector{Float64}` — Pre-allocated trial vector buffer (length `n`)
+- `f::Function` — Objective function, called as `f(n, x, ex)`
+- `n::Int` — Problem dimension
+- `x::AbstractVector{Float64}` — Point at which to evaluate the gradient
+- `ex` — Extra argument passed to `f` (may be `nothing`)
+- `ndeps::AbstractVector{Float64}` — Step sizes for numerical differentiation
 
-            xtrial[i] = x[i] + eps
-            val1 = f(n, xtrial, ex)
+# Returns
+- `Vector{Float64}` — Numerical gradient approximation (same object as `df`)
 
-            xtrial[i] = x[i] - eps
-            val2 = f(n, xtrial, ex)
+"""
+@inline function numgrad!(
+    df::AbstractVector{Float64},
+    xtrial::AbstractVector{Float64},
+    f::Function,
+    n::Int,
+    x::AbstractVector{Float64},
+    ex,
+    ndeps::AbstractVector{Float64},
+)
+    # Use pre-allocated buffers (NO allocations)
+    # Copy x to xtrial initially
+    @inbounds for i in 1:n
+        xtrial[i] = x[i]
+    end
 
-            df[i] = (val1 - val2) / (2.0 * eps)
+    @inbounds for i in 1:n
+        eps = ndeps[i]
 
-            if !isfinite(df[i])
-                error("non-finite finite-difference value [$i]")
-            end
+        # Forward perturbation
+        xtrial[i] = x[i] + eps
+        val1 = f(n, xtrial, ex)
 
-            xtrial[i] = x[i]
+        # Backward perturbation
+        xtrial[i] = x[i] - eps
+        val2 = f(n, xtrial, ex)
+
+        # Central difference (SIMD-friendly)
+        df[i] = (val1 - val2) * inv(2.0 * eps)
+
+        if !isfinite(df[i])
+            error("non-finite finite-difference value [$i]")
         end
-    else
-        for i in 1:n
-            epsused = eps = ndeps[i]
 
-            tmp = x[i] + eps
-            if !isnothing(upper) && tmp > upper[i]
-                tmp = upper[i]
-                epsused = tmp - x[i]
-            end
-            xtrial[i] = tmp
-            val1 = f(n, xtrial, ex)
+        # Reset (efficient)
+        xtrial[i] = x[i]
+    end
 
-            tmp = x[i] - eps
-            if !isnothing(lower) && tmp < lower[i]
-                tmp = lower[i]
-                eps = x[i] - tmp
-            end
-            xtrial[i] = tmp
-            val2 = f(n, xtrial, ex)
+    return df
+end
+"""
+    numgrad_bounded!(df, xtrial, f, n, x, ex, ndeps, lower, upper) -> Vector{Float64}
 
-            df[i] = (val1 - val2) / (epsused + eps)
+Compute the numerical gradient with **bound constraints**, using pre-allocated
+buffers and central finite differences. Ensures perturbations stay within
+specified lower and upper bounds.
 
-            if !isfinite(df[i])
-                error("non-finite finite-difference value [$i]")
-            end
+# Arguments
+- `df::AbstractVector{Float64}` — Pre-allocated gradient output buffer (length `n`)
+- `xtrial::AbstractVector{Float64}` — Pre-allocated trial vector buffer (length `n`)
+- `f::Function` — Objective function
+- `n::Int` — Problem dimension
+- `x::AbstractVector{Float64}` — Current evaluation point
+- `ex` — Extra argument (may be `nothing`)
+- `ndeps::AbstractVector{Float64}` — Step sizes for numerical differentiation
+- `lower::Union{Nothing,AbstractVector{Float64}}` — Lower bounds (or `nothing`)
+- `upper::Union{Nothing,AbstractVector{Float64}}` — Upper bounds (or `nothing`)
 
-            xtrial[i] = x[i]
+# Returns
+- `Vector{Float64}` — Numerical gradient (same object as `df`)
+
+# Notes
+Adjusts step sizes near boundaries to remain within feasible limits.
+"""
+@inline function numgrad_bounded!(
+    df::AbstractVector{Float64},
+    xtrial::AbstractVector{Float64},
+    f::Function,
+    n::Int,
+    x::AbstractVector{Float64},
+    ex,
+    ndeps::AbstractVector{Float64},
+    lower::Union{Nothing,AbstractVector{Float64}},
+    upper::Union{Nothing,AbstractVector{Float64}},
+)
+    # Copy x to xtrial initially
+    @inbounds for i in 1:n
+        xtrial[i] = x[i]
+    end
+
+    @inbounds for i in 1:n
+        epsused = eps = ndeps[i]
+
+        # Forward perturbation with bounds
+        tmp = x[i] + eps
+        if !isnothing(upper) && tmp > upper[i]
+            tmp = upper[i]
+            epsused = tmp - x[i]
         end
+        xtrial[i] = tmp
+        val1 = f(n, xtrial, ex)
+
+        # Backward perturbation with bounds
+        tmp = x[i] - eps
+        if !isnothing(lower) && tmp < lower[i]
+            tmp = lower[i]
+            eps = x[i] - tmp
+        end
+        xtrial[i] = tmp
+        val2 = f(n, xtrial, ex)
+
+        # Central difference (SIMD-friendly)
+        df[i] = (val1 - val2) * inv(epsused + eps)
+
+        if !isfinite(df[i])
+            error("non-finite finite-difference value [$i]")
+        end
+
+        # Reset
+        xtrial[i] = x[i]
     end
 
     return df
 end
 
-
 """
-    numgrad(f, n, x, ex; ndeps=fill(1e-3, n), kwargs...)
+    numgrad(f, n, x, ex, ndeps; usebounds=false, lower=nothing, upper=nothing) -> Vector{Float64}
 
-Convenience version with default step sizes.
+Convenient high-level wrapper for computing numerical gradients.  
+Creates a temporary cache internally (single-use).  
+
+For repeated gradient evaluations, create a `NumericalGradientCache` and use
+[`numgrad_with_cache!`](@ref) for best performance.
 
 # Example
 ```julia
 f(n, x, ex) = sum(x.^2)
 x = [1.0, 2.0, 3.0]
-g = numgrad(f, 3, x, nothing)  # Returns [2.0, 4.0, 6.0] approximately
+ndeps = fill(1e-3, 3)
+
+# One-off computation
+g = numgrad(f, 3, x, nothing, ndeps)
+
+# Cached computation for repeated optimization steps
+cache = NumericalGradientCache(3)
+for iter in 1:1000
+    g = numgrad_with_cache!(cache, f, 3, x, nothing, ndeps)
+end
 ```
 """
-function numgrad(f::Function, n::Int, x::Vector{Float64}, ex;
-                 ndeps::Vector{Float64}=fill(1e-3, n),
-                 usebounds::Bool=false,
-                 lower::Union{Nothing,Vector{Float64}}=nothing,
-                 upper::Union{Nothing,Vector{Float64}}=nothing)
+function numgrad(
+    f::Function,
+    n::Int,
+    x::Vector{Float64},
+    ex,
+    ndeps::Vector{Float64};
+    usebounds::Bool = false,
+    lower::Union{Nothing,Vector{Float64}} = nothing,
+    upper::Union{Nothing,Vector{Float64}} = nothing,
+)
+    cache = NumericalGradientCache(n)
 
+    if !usebounds
+        return numgrad!(cache.df, cache.xtrial, f, n, x, ex, ndeps)
+    else
+        return numgrad_bounded!(cache.df, cache.xtrial, f, n, x, ex, ndeps, lower, upper)
+    end
+end
+
+"""
+    numgrad_with_cache!(cache, f, n, x, ex, ndeps; usebounds=false, lower=nothing, upper=nothing) -> Vector{Float64}
+
+Compute the numerical gradient using a **pre-allocated cache**, providing the
+fastest possible implementation for repeated evaluations inside optimizers
+such as BFGS, L-BFGS.
+
+# Arguments
+- `cache::NumericalGradientCache` — Pre-allocated workspace
+- `f::Function` — Objective function
+- `n::Int` — Dimension of the problem
+- `x::AbstractVector{Float64}` — Current point
+- `ex` — Extra argument (may be `nothing`)
+- `ndeps::AbstractVector{Float64}` — Step sizes for finite differences
+- `usebounds::Bool=false` — Whether to enforce bound constraints
+- `lower`, `upper` — Optional bound vectors
+
+# Returns
+- `Vector{Float64}` — Numerical gradient (references `cache.df`)
+
+"""
+@inline function numgrad_with_cache!(
+    cache::NumericalGradientCache,
+    f::Function,
+    n::Int,
+    x::AbstractVector{Float64},
+    ex,
+    ndeps::AbstractVector{Float64};
+    usebounds::Bool = false,
+    lower::Union{Nothing,AbstractVector{Float64}} = nothing,
+    upper::Union{Nothing,AbstractVector{Float64}} = nothing,
+)
+    if !usebounds
+        return numgrad!(cache.df, cache.xtrial, f, n, x, ex, ndeps)
+    else
+        return numgrad_bounded!(cache.df, cache.xtrial, f, n, x, ex, ndeps, lower, upper)
+    end
+end
+
+"""
+    numgrad(f, n, x, ex; ndeps=fill(1e-3, n), kwargs...) -> Vector{Float64}
+
+Convenience wrapper with default step sizes.
+Equivalent to calling [`numgrad`](@ref) with `ndeps = fill(1e-3, n)`.
+
+# Example
+```julia
+f(n, x, ex) = sum(x.^2)
+x = [1.0, 2.0, 3.0]
+g = numgrad(f, 3, x, nothing)
+````
+"""
+function numgrad(
+    f::Function,
+    n::Int,
+    x::Vector{Float64},
+    ex;
+    ndeps::Vector{Float64} = fill(1e-3, n),
+    usebounds::Bool = false,
+    lower::Union{Nothing,Vector{Float64}} = nothing,
+    upper::Union{Nothing,Vector{Float64}} = nothing,
+)
     return numgrad(f, n, x, ex, ndeps;
-                   usebounds=usebounds, lower=lower, upper=upper)
+        usebounds = usebounds, lower = lower, upper = upper)
 end

@@ -121,7 +121,6 @@ function auto_arima(
 
     # Trim leading/trailing missings and count non-missing in the trimmed span
     x = copy(y)
-    orig_x = copy(y)  # Save original for final result
     firstnm, serieslength, x = analyze_series(x)
 
     if !isnothing(xreg)
@@ -340,7 +339,7 @@ function auto_arima(
             end
         end
 
-        fit.y = orig_x
+        fit.y = y
         return fit
     end
 
@@ -355,7 +354,7 @@ function auto_arima(
     end
 
     # Approximation offset via CSS ARIMA(0,d,0)[(0,D,0)]
-    offset = compute_approx_offset(
+    offset = compute_approx_offset(;
         approximation = approximation,
         x = x,
         d = d,
@@ -377,27 +376,27 @@ function auto_arima(
     if !stepwise
         bestfit = search_arima(
             x,
-            m,
-            d,
-            D,
-            max_p,
-            max_q,
-            max_P,
-            max_Q,
-            max_order,
-            stationary,
-            ic,
-            trace,
-            approximation,
-            xreg,
-            offset,
-            allowdrift,
-            allowmean,
+            m;
+            d = d,
+            D = D,
+            max_p = max_p,
+            max_q = max_q,
+            max_P = max_P,
+            max_Q = max_Q,
+            max_order = max_order,
+            stationary = stationary,
+            ic = ic,
+            trace = trace,
+            approximation = approximation,
+            xreg = xreg,
+            offset = offset,
+            allowdrift = allowdrift,
+            allowmean = allowmean,
             method = method,
             kwargs...,
         )
         bestfit.lambda = lambda
-        bestfit.y = orig_x
+        bestfit.y = y
         bestfit.fitted = fitted(bestfit)
 
         return bestfit
@@ -421,7 +420,7 @@ function auto_arima(
 
     bestfit = fit_custom_arima(
         x,
-        m,
+        m;
         order = PDQ(p, d, q),
         seasonal = PDQ(P, D, Q),
         constant = constant,
@@ -438,7 +437,7 @@ function auto_arima(
 
     fit = fit_custom_arima(
         x,
-        m,
+        m;
         order = PDQ(0, d, 0),
         seasonal = PDQ(0, D, 0),
         constant = constant,
@@ -463,7 +462,7 @@ function auto_arima(
     if max_p > 0 || max_P > 0
         fit = fit_custom_arima(
             x,
-            m,
+            m;
             order = PDQ(0, d, 0),
             seasonal = PDQ(0, D, 0),
             constant = constant,
@@ -496,7 +495,7 @@ function auto_arima(
 
         fit = fit_custom_arima(
             x,
-            m,
+            m;
             order = PDQ(0, d, qq),
             seasonal = PDQ(0, D, QQ),
             constant = constant,
@@ -523,7 +522,7 @@ function auto_arima(
     if constant
         fit = fit_custom_arima(
             x,
-            m,
+            m;
             order = PDQ(0, d, 0),
             seasonal = PDQ(0, D, 0),
             constant = false,
@@ -567,7 +566,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p, d, q),
                 seasonal = PDQ(P - 1, D, Q),
                 constant = constant,
@@ -608,7 +607,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p, d, q),
                 seasonal = PDQ(P, D, Q - 1),
                 constant = constant,
@@ -649,7 +648,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p, d, q),
                 seasonal = PDQ(P + 1, D, Q),
                 constant = constant,
@@ -690,7 +689,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p, d, q),
                 seasonal = PDQ(P, D, Q + 1),
                 constant = constant,
@@ -731,7 +730,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p, d, q),
                 seasonal = PDQ(P - 1, D, Q - 1),
                 constant = constant,
@@ -773,7 +772,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p, d, q),
                 seasonal = PDQ(P - 1, D, Q + 1),
                 constant = constant,
@@ -816,7 +815,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p, d, q),
                 seasonal = PDQ(P + 1, D, Q - 1),
                 constant = constant,
@@ -860,7 +859,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p, d, q),
                 seasonal = PDQ(P + 1, D, Q + 1),
                 constant = constant,
@@ -903,7 +902,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p - 1, d, q),
                 seasonal = PDQ(P, D, Q),
                 constant = constant,
@@ -944,7 +943,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p, d, q - 1),
                 seasonal = PDQ(P, D, Q),
                 constant = constant,
@@ -986,7 +985,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p + 1, d, q),
                 seasonal = PDQ(P, D, Q),
                 constant = constant,
@@ -1027,7 +1026,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p, d, q + 1),
                 seasonal = PDQ(P, D, Q),
                 constant = constant,
@@ -1070,7 +1069,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p - 1, d, q - 1),
                 seasonal = PDQ(P, D, Q),
                 constant = constant,
@@ -1114,7 +1113,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p - 1, d, q + 1),
                 seasonal = PDQ(P, D, Q),
                 constant = constant,
@@ -1158,7 +1157,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p + 1, d, q - 1),
                 seasonal = PDQ(P, D, Q),
                 constant = constant,
@@ -1202,7 +1201,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(p + 1, d, q + 1),
                 seasonal = PDQ(P, D, Q),
                 constant = constant,
@@ -1290,7 +1289,7 @@ function auto_arima(
 
             fit = fit_custom_arima(
                 x,
-                m,
+                m;
                 order = PDQ(as_integer(mod[1]), d, as_integer(mod[3])),
                 seasonal = PDQ(as_integer(mod[4]), D, as_integer(mod[6])),
                 constant = mod[7] > 0 ? true : false,
@@ -1315,7 +1314,7 @@ function auto_arima(
     end
 
     bestfit.lambda = lambda
-    bestfit.y = orig_x
+    bestfit.y = y
     bestfit.fitted = fitted(bestfit)
 
     return bestfit

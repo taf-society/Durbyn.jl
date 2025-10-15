@@ -833,7 +833,7 @@ function inverse_arima_parameter_transform(θ::AbstractVector, arma::AbstractVec
     @assert v + msp ≤ n "Sum mp+mq+msp exceeds length(θ)"
     raw = Array{Float64}(undef, n)
     copy!(raw, θ)
-    transformed = copy(raw)
+    transformed = raw
 
     # non‐seasonal AR
     if mp > 0
@@ -1656,7 +1656,8 @@ function arima(
     method::String = "CSS",
     n_cond::Union{Nothing, AbstractArray} = nothing,
     SSinit::String = "Gardner1980",
-    options::NelderMeadOptions = NelderMeadOptions(),
+    optim_method::String = "BFGS",
+    optim_control::Dict = Dict(),
     kappa::Real = 1e6,)
 
     SSinit = match_arg(SSinit, ["Gardner1980", "Rossignol2011"])
@@ -1842,20 +1843,24 @@ function arima(
         if no_optim
             res = (converged = true, minimizer = zeros(0), minimum = armaCSS(zeros(0)))
         else
-            opt = nmmin(
-                p -> armaCSS(descaler(p, parscale)),
-                scaler(init[mask], parscale),
-                options,
+            ctrl = copy(optim_control)
+            ctrl["parscale"] = parscale
+
+            opt = optim(
+                init[mask],
+                p -> armaCSS(p);
+                method = optim_method,
+                control = ctrl,
             )
             res = (
-                converged = opt.fail == 0,
-                minimizer = descaler(opt.x_opt, parscale),
-                minimum = opt.f_opt,
+                converged = opt.convergence == 0,
+                minimizer = opt.par,
+                minimum = opt.value,
             )
         end
 
         if !res.converged
-            @warn "CSS optimization convergence issue: convergence code $(opt.fail)"
+            @warn "CSS optimization convergence issue: convergence code $(opt.convergence)"
         end
 
         coef[mask] .= res.minimizer
@@ -1895,16 +1900,19 @@ function arima(
                     minimum = armaCSS(zeros(0)),
                 )
             else
+                ctrl = copy(optim_control)
+                ctrl["parscale"] = parscale
 
-                opt = nmmin(
-                    p -> armaCSS(descaler(p, parscale)),
-                    scaler(init[mask], parscale),
-                    options,
+                opt = optim(
+                    init[mask],
+                    p -> armaCSS(p);
+                    method = optim_method,
+                    control = ctrl,
                 )
                 res = (
-                    converged = opt.fail == 0,
-                    minimizer = descaler(opt.x_opt, parscale),
-                    minimum = opt.f_opt,
+                    converged = opt.convergence == 0,
+                    minimizer = opt.par,
+                    minimum = opt.value,
                 )
             end
 
@@ -1954,20 +1962,24 @@ function arima(
                 minimum = armafn(zeros(0), transform_pars),
             )
         else
-            opt = nmmin(
-                p -> armafn(descaler(p, parscale), transform_pars),
-                scaler(init[mask], parscale),
-                options,
+            ctrl = copy(optim_control)
+            ctrl["parscale"] = parscale
+
+            opt = optim(
+                init[mask],
+                p -> armafn(p, transform_pars);
+                method = optim_method,
+                control = ctrl,
             )
             res = (
-                converged = opt.fail == 0,
-                minimizer = descaler(opt.x_opt, parscale),
-                minimum = opt.f_opt,
+                converged = opt.convergence == 0,
+                minimizer = opt.par,
+                minimum = opt.value,
             )
         end
 
         if !res.converged
-            @warn "Possible convergence problem: convergence code $(opt.fail)"
+            @warn "Possible convergence problem: convergence code $(opt.convergence)"
         end
 
         coef[mask] .= res.minimizer
@@ -1989,29 +2001,25 @@ function arima(
 
             if any(coef[mask] .!= res.minimizer)
                 old_convergence = res.converged
-                options2 = NelderMeadOptions(
-                    options.abstol,
-                    options.intol,
-                    options.alpha,
-                    options.beta,
-                    options.gamma,
-                    options.trace,
-                    0,
-                )
 
-                opt = nmmin(
-                    p -> armafn(descaler(p, parscale), true),
-                    scaler(coef[mask], parscale),
-                    options2,
+                ctrl = copy(optim_control)
+                ctrl["parscale"] = parscale
+                ctrl["maxit"] = 0
+
+                opt = optim(
+                    coef[mask],
+                    p -> armafn(p, true);
+                    method = optim_method,
+                    control = ctrl,
                 )
                 res = (
-                    converged = opt.fail == 0,
-                    minimizer = descaler(opt.x_opt, parscale),
-                    minimum = opt.f_opt,
+                    converged = opt.convergence == 0,
+                    minimizer = opt.par,
+                    minimum = opt.value,
                 )
 
                 hessian = optim_hessian(p -> armafn(p, true), res.minimizer)
-                
+
                 coef[mask] .= res.minimizer
             else
                 hessian = optim_hessian(p -> armafn(p, true), res.minimizer)
@@ -2120,59 +2128,51 @@ Returns a NamedTuple with fields:
 If `update` is true, the updated model is also returned in the NamedTuple as `mod`.
 """
 function kalman_forecast(n_ahead::Int, mod::ArimaStateSpace; update::Bool=false)
-    # Extract state-space components
+    phi = mod.phi
+    theta = mod.theta
+    delta = mod.Delta
     Z = mod.Z
     a = copy(mod.a)
     P = copy(mod.P)
+    Pnew = copy(mod.Pn)
     Tmat = mod.T
     V = mod.V
     h = mod.h
 
-    p = length(a)
+    p = length(phi)
+    q = length(theta)
+    d = length(delta)
+    rd = length(a)
+    r = rd - d
+
+    a[1:r] .= 0.0
 
     forecasts = Vector{Float64}(undef, n_ahead)
     variances = Vector{Float64}(undef, n_ahead)
 
     anew = similar(a)
-    Pnew = similar(P)
-    mm = similar(P)
+    mm = d > 0 ? zeros(rd, rd) : nothing
 
     for l in 1:n_ahead
-        for i in 1:p
-            tmp = zero(eltype(a))
-            for k in 1:p
-                tmp += Tmat[i, k] * a[k]
-            end
-            anew[i] = tmp
-        end
+        state_prediction!(anew, a, p, r, d, rd, phi, delta)
         a .= anew
 
-        # Forecast mean
-        fc = sum(a .* Z)
+        fc = dot(Z, a)
         forecasts[l] = fc
 
-        # Compute mm = T * P
-        for i in 1:p, j in 1:p
-            mm[i, j] = sum(Tmat[i, k] * P[k, j] for k in 1:p)
-        end
-        # Compute Pnew = V + mm * T'
-        for i in 1:p, j in 1:p
-            tmp = V isa AbstractMatrix ? V[i, j] : (i == j ? V : 0.0)
-            tmp += sum(mm[i, k] * Tmat[j, k] for k in 1:p)
-            Pnew[i, j] = tmp
+        if d == 0
+            predict_covariance_nodiff!(Pnew, P, r, p, q, phi, theta)
+        else
+            predict_covariance_with_diff!(Pnew, P, r, d, p, q, rd, phi, delta, theta, mm)
         end
         P .= Pnew
-        # Choose later which one is better
-        # 
-        # Forecast variance: h + Z' * P * Z
-        #h + sum(Z[i] * Z[j] * P[i, j] for i in 1:p for j in 1:p)
-        tmpvar = h + dot(Z, P * Z)
+
+        tmpvar = h + dot(Z, P, Z)
         variances[l] = tmpvar
     end
 
     result = (pred = forecasts, var = variances)
     if update
-        # Optionally, return the updated model
         updated_mod = deepcopy(mod)
         updated_mod.a .= a
         updated_mod.P .= P

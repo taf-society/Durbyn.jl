@@ -53,9 +53,9 @@ function compute_approx_offset(;
     # quick ARIMA fit and offset
     try
         fit = if D == 0
-            arima(xx, m, order = PDQ(0, d, 0), seasonal = PDQ(0, 0, 0), xreg = Xreg, kwargs...)
+            arima(xx, m; order = PDQ(0, d, 0), seasonal = PDQ(0, 0, 0), xreg = Xreg, kwargs...)
         else
-            arima(xx, m, order = PDQ(0, d, 0), seasonal = PDQ(0, D, 0), xreg = Xreg, kwargs...)
+            arima(xx, m; order = PDQ(0, d, 0), seasonal = PDQ(0, D, 0), xreg = Xreg, kwargs...)
         end
 
         loglik = fit.loglik

@@ -242,7 +242,7 @@ function _optim_neldermead(par, fn, con, lower, upper, parscale)
     return (
         par = result.x_opt .* parscale,
         value = result.f_opt * con["fnscale"],
-        fn_evals = result.fn_evals,
+        fn_evals = result.fncount,
         gr_evals = 0,
         fail = result.fail,
         message = nothing

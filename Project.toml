@@ -1,7 +1,7 @@
 name = "Durbyn"
 uuid = "40b042de-e8ce-4d84-a20a-09ad0ba5d568"
-authors = ["Resul Akay <resul.akay@taf-society.org> and contributors"]
 version = "0.0.1"
+authors = ["Resul Akay <resul.akay@taf-society.org> and contributors"]
 
 [deps]
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
@@ -12,7 +12,7 @@ Polynomials = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
-DataStructures = "0.18.22"
+DataStructures = "0.18.22, 0.19"
 Distributions = "0.25.120"
 LinearAlgebra = "1.11.0"
 Plots = "1.40.13"

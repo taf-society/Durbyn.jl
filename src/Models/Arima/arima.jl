@@ -1653,7 +1653,7 @@ function arima(
     transform_pars::Bool = true,
     fixed::Union{Nothing, AbstractArray} = nothing,
     init::Union{Nothing, AbstractArray}= nothing,
-    method::String = "CSS",
+    method::String = "CSS-ML",
     n_cond::Union{Nothing, AbstractArray} = nothing,
     SSinit::String = "Gardner1980",
     optim_method::String = "BFGS",
@@ -1923,8 +1923,9 @@ function arima(
             if arma[1] > 0 && !ar_check(init[1:arma[1]])
                 error("Non-stationary AR part from CSS")
             end
+            
 
-            if arma[3] > 0 && !ar_check(init[sum(arma[1:2])+1:sum(arma[1:3])])
+            if arma[3] > 0 && !ar_check(init[(sum(arma[1:2]) + 1):(sum(arma[1:2]) + arma[3])])
                 error("Non-stationary seasonal AR part from CSS")
             end
 
@@ -1940,7 +1941,7 @@ function arima(
             end
 
             if arma[4] > 0
-                ind = sum(arma[1:3])+1:sum(arma[4])
+                ind = (sum(arma[1:3]) + 1) : (sum(arma[1:3]) + arma[4])
                 init[ind] .= ma_invert(init[ind])
             end
         end
@@ -1993,7 +1994,7 @@ function arima(
             end
 
             if arma[4] > 0
-                ind = sum(arma[1:3])+1:arma[4]
+                ind = (sum(arma[1:3]) + 1) : (sum(arma[1:3]) + arma[4])
                 if all(mask[ind])
                     coef[ind] .= ma_invert(coef[ind])
                 end
@@ -2076,7 +2077,7 @@ function arima(
 
     arima_coef = prep_coefs(arma, coef, nmxreg, ncxreg)
     resid = val[:residuals]
-    fitted = y + resid
+    fitted = y .- resid
 
     if ncxreg > 0
         fit_method = "Regression with ARIMA($(order.p),$(order.d),$(order.q))(" * 
@@ -2145,7 +2146,7 @@ function kalman_forecast(n_ahead::Int, mod::ArimaStateSpace; update::Bool=false)
     rd = length(a)
     r = rd - d
 
-    a[1:r] .= 0.0
+    #a[1:r] .= 0.0
 
     forecasts = Vector{Float64}(undef, n_ahead)
     variances = Vector{Float64}(undef, n_ahead)

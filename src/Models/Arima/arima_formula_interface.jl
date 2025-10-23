@@ -133,7 +133,7 @@ function auto_arima(formula::ModelFormula, data, m::Int; xreg=nothing, kwargs...
     var_terms = filter(t -> isa(t, VarTerm), formula.terms)
 
     
-    use_auto_arima = any(t -> t.min != t.max, arima_terms)
+    use_auto_arima = isempty(arima_terms) || any(t -> t.min != t.max, arima_terms)
 
     
     formula_xreg = nothing

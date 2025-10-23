@@ -87,6 +87,25 @@ struct VarTerm <: AbstractTerm
     name::Symbol
 end
 
+"""
+    AutoVarTerm <: AbstractTerm
+
+Sentinel term indicating that all eligible columns (excluding date, group, and target)
+should be treated as exogenous regressors automatically.
+
+Created when a formula uses `.` on the right-hand side, e.g. `@formula(value = .)`.
+"""
+struct AutoVarTerm <: AbstractTerm
+end
+
+"""
+    auto()
+
+Shorthand for automatic exogenous-variable selection (see [`AutoVarTerm`](@ref)).
+Use in formulas as `@formula(y = auto())` (optionally combined with ARIMA terms).
+"""
+auto() = AutoVarTerm()
+
 # ============================================================================
 # ARIMA Grammar Functions
 # ============================================================================
@@ -391,6 +410,9 @@ macro formula(expr)
     # Convert variable names to Symbols with : prefix for VarTerm
     function process_rhs(ex)
         if ex isa Symbol
+            if ex === Symbol(".")
+                return :($(esc(:AutoVarTerm))())
+            end
             # Plain symbol becomes VarTerm - must escape it
             return :($(esc(:VarTerm))($(QuoteNode(ex))))
         elseif ex isa Expr && ex.head == :call
@@ -492,6 +514,10 @@ end
 
 function Base.show(io::IO, term::VarTerm)
     print(io, ":$(term.name)")
+end
+
+function Base.show(io::IO, ::AutoVarTerm)
+    print(io, ".")
 end
 
 function Base.show(io::IO, formula::ModelFormula)

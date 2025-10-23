@@ -43,8 +43,8 @@ fit = auto_arima(formula, data, 12)
 """
 module Grammar
 
-export p, q, d, P, Q, D
-export AbstractTerm, ArimaOrderTerm, VarTerm, ModelFormula
+export p, q, d, P, Q, D, auto
+export AbstractTerm, ArimaOrderTerm, VarTerm, AutoVarTerm, ModelFormula
 export compile_arima_formula
 export @formula
 

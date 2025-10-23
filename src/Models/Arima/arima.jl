@@ -1487,7 +1487,7 @@ function regress_and_update!(
             fit_rank = 0
         end
     else
-        @warn "Not enough observations to fit OLS (length(dx) = $(length(dx)), predictors = $(size(dxreg, 2)))."
+        @debug "Not enough observations to fit OLS" length_dx=length(dx) predictors=size(dxreg, 2)
         fit = nothing
         fit_rank = 0
     end

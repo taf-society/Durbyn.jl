@@ -2,6 +2,8 @@ using Test
 using Durbyn
 import Durbyn.Generics: Forecast, forecast, fitted
 using Durbyn.ExponentialSmoothing
+using Durbyn.ModelSpecs
+using Durbyn.Grammar
 
 @testset "Durbyn.ExponentialSmoothing Tests" begin
     ap = air_passengers()
@@ -378,5 +380,47 @@ using Durbyn.ExponentialSmoothing
             @test fit_ets isa ETS
             @test fit_hw isa HoltWinters
         end
+    end
+
+    @testset "EtsSpec grammar interface" begin
+        ap_vals = Float64.(air_passengers())
+
+        spec_basic = EtsSpec(@formula(value = e("A") + t("N") + s("N")))
+        @test spec_basic.components == (error = "A", trend = "N", seasonal = "N")
+        @test spec_basic.damped === nothing
+
+        data_basic = (value = ap_vals,)
+        fit_basic = fit(spec_basic, data_basic)
+        @test fit_basic isa FittedEts
+        fc_basic = forecast(fit_basic, h = 6)
+        @test length(fc_basic.mean) == 6
+
+        spec_damped = EtsSpec(@formula(value = e("Z") + t("A") + s("N") + drift()))
+        @test spec_damped.damped === true
+        fit_damped = fit(spec_damped, data_basic; m = 12)
+        @test fit_damped isa FittedEts
+
+        spec_auto = EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto)))
+        @test spec_auto.damped === nothing
+        fit_auto = fit(spec_auto, data_basic; m = 12, ic = "aicc")
+        fc_auto = forecast(fit_auto, h = 4)
+        @test fc_auto isa Forecast
+
+        grouped_data = (
+            store = repeat(["A", "B"], inner = length(ap_vals)),
+            value = vcat(ap_vals, ap_vals)
+        )
+        grouped_spec = EtsSpec(@formula(value = e("A") + t("N") + s("N")))
+        group_fit = fit(grouped_spec, grouped_data; groupby = :store)
+        @test group_fit isa GroupedFittedModels
+        @test group_fit.successful == 2
+        group_fc = forecast(group_fit, h = 3)
+        @test group_fc isa GroupedForecasts
+        @test group_fc.successful == 2
+
+        panel = PanelData(grouped_data; groupby = :store, m = 12)
+        panel_fit = fit(grouped_spec, panel)
+        @test panel_fit isa GroupedFittedModels
+        @test panel_fit.successful == 2
     end
 end

@@ -203,6 +203,68 @@ function fit(spec::ArimaSpec, data;
 end
 
 """
+    fit(spec::EtsSpec, data; m=nothing, groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+
+Fit an ETS specification to data (single series or grouped).
+"""
+function fit(spec::EtsSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m = m,
+                           groupby = groupby,
+                           datecol = datecol,
+                           parallel = parallel,
+                           fail_fast = fail_fast,
+                           kwargs...)
+    end
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+    damped = haskey(fit_options, :damped) ? pop!(fit_options, :damped) : spec.damped
+    if !(damped === nothing || damped isa Bool)
+        throw(ArgumentError("damped option must be Bool or nothing, got $(typeof(damped))"))
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+
+    model_code = string(spec.components.error,
+                        spec.components.trend,
+                        spec.components.seasonal)
+
+    ets_fit = Exp_mod.ets(target_vector,
+                          seasonal_period,
+                          model_code;
+                          damped = damped,
+                          pairs(fit_options)...)
+
+    return FittedEts(spec, ets_fit, target_col, tbl, seasonal_period)
+end
+
+"""
     forecast(fitted::FittedArima; h, level=[80, 95], newdata=nothing, kwargs...)
 
 Generate forecasts from a fitted ARIMA model.
@@ -417,6 +479,25 @@ function forecast(fitted::FittedArima; h::Int, level::Vector{<:Real} = [80, 95],
 end
 
 """
+    forecast(fitted::FittedEts; h, level=[80,95], kwargs...)
+
+Generate forecasts from a fitted ETS model.
+"""
+function forecast(fitted::FittedEts; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    parent_mod = parentmodule(@__MODULE__)
+    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+
+    if !isnothing(newdata)
+        @warn "newdata ignored for ETS forecasts; ETS models do not support exogenous regressors."
+    end
+
+    return Exp_mod.forecast(fitted.fit;
+        h = h,
+        level = level,
+        kwargs...)
+end
+
+"""
     forecast(collection::ModelCollection, data; kwargs...)
 
 Fit multiple model specifications to the same data.
@@ -461,6 +542,20 @@ function fit(collection::ModelCollection, data; kwargs...)
 end
 
 function fit(spec::ArimaSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = panel.m
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+function fit(spec::EtsSpec, panel::PanelData; kwargs...)
     kwdict = Dict{Symbol, Any}(kwargs)
     if !haskey(kwdict, :groupby) && !isempty(panel.groups)
         kwdict[:groupby] = panel.groups

@@ -44,8 +44,9 @@ fit = auto_arima(formula, data, 12)
 module Grammar
 
 export p, q, d, P, Q, D, auto
+export e, t, s, drift
 export AbstractTerm, ArimaOrderTerm, VarTerm, AutoVarTerm, ModelFormula
-export compile_arima_formula
+export compile_arima_formula, compile_ets_formula
 export @formula
 
 include("grammar.jl")

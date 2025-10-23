@@ -65,6 +65,40 @@ struct ArimaOrderTerm <: AbstractTerm
     end
 end
 
+# ============================================================================
+# ETS Grammar Terms
+# ============================================================================
+
+"""
+    EtsComponentTerm <: AbstractTerm
+
+Represents a component (error, trend, seasonal) in an ETS specification.
+
+# Fields
+- `component::Symbol` - One of `:error`, `:trend`, `:seasonal`
+- `code::String` - Component code (`"A"`, `"M"`, `"N"`, `"Z"`)
+"""
+struct EtsComponentTerm <: AbstractTerm
+    component::Symbol
+    code::String
+
+    function EtsComponentTerm(component::Symbol, code::AbstractString)
+        component ∈ (:error, :trend, :seasonal) ||
+            throw(ArgumentError("ETS component must be :error, :trend, or :seasonal, got :$(component)"))
+        normalized = uppercase(code)
+        new(component, normalized)
+    end
+end
+
+"""
+    EtsDriftTerm <: AbstractTerm
+
+Represents the damping/drift setting for an ETS specification.
+"""
+struct EtsDriftTerm <: AbstractTerm
+    damped::Union{Bool, Nothing}
+end
+
 """
     VarTerm <: AbstractTerm
 
@@ -292,6 +326,96 @@ D(value::Int) = ArimaOrderTerm(:D, value, value)
 D(min::Int, max::Int) = ArimaOrderTerm(:D, min, max)
 
 # ============================================================================
+# ETS Grammar Functions
+# ============================================================================
+
+const _ETS_ERROR_CODES = Set(["A", "M", "Z"])
+const _ETS_TREND_CODES = Set(["N", "A", "M", "Z"])
+const _ETS_SEASON_CODES = Set(["N", "A", "M", "Z"])
+
+function _validate_ets_code(component::Symbol, code::AbstractString)
+    normalized = uppercase(code)
+    if component === :error
+        normalized ∈ _ETS_ERROR_CODES ||
+            throw(ArgumentError("Invalid ETS error code '$(code)'. Use \"A\", \"M\", or \"Z\"."))
+    elseif component === :trend
+        normalized ∈ _ETS_TREND_CODES ||
+            throw(ArgumentError("Invalid ETS trend code '$(code)'. Use \"N\", \"A\", \"M\", or \"Z\"."))
+    elseif component === :seasonal
+        normalized ∈ _ETS_SEASON_CODES ||
+            throw(ArgumentError("Invalid ETS seasonal code '$(code)'. Use \"N\", \"A\", \"M\", or \"Z\"."))
+    else
+        throw(ArgumentError("Unknown ETS component :$(component)."))
+    end
+    return normalized
+end
+
+"""
+    e(code::AbstractString = "Z")
+
+Specify the error component in an ETS model.
+
+- `"A"`: additive error
+- `"M"`: multiplicative error
+- `"Z"`: automatically select
+"""
+e(code::AbstractString = "Z") = EtsComponentTerm(:error, _validate_ets_code(:error, code))
+
+"""
+    t(code::AbstractString = "Z")
+
+Specify the trend component in an ETS model.
+
+- `"N"`: no trend
+- `"A"`: additive trend
+- `"M"`: multiplicative trend
+- `"Z"`: automatically select
+"""
+t(code::AbstractString = "Z") = EtsComponentTerm(:trend, _validate_ets_code(:trend, code))
+
+"""
+    s(code::AbstractString = "Z")
+
+Specify the seasonal component in an ETS model.
+
+- `"N"`: no seasonality
+- `"A"`: additive seasonality
+- `"M"`: multiplicative seasonality
+- `"Z"`: automatically select
+"""
+s(code::AbstractString = "Z") = EtsComponentTerm(:seasonal, _validate_ets_code(:seasonal, code))
+
+"""
+    drift(v=true)
+
+Control the damping/drift behaviour of an ETS trend component.
+
+- `true`: include a damped trend (φ estimated)
+- `false`: forbid damping (standard trend)
+- `nothing`/`drift(:auto)`: allow automatic selection
+"""
+drift() = EtsDriftTerm(true)
+drift(flag::Bool) = EtsDriftTerm(flag)
+drift(::Nothing) = EtsDriftTerm(nothing)
+function drift(mode::Symbol)
+    mode === :auto ||
+        throw(ArgumentError("Unsupported drift mode ':$(mode)'. Use true, false, nothing, or :auto."))
+    return EtsDriftTerm(nothing)
+end
+function drift(mode::AbstractString)
+    upper = uppercase(mode)
+    if upper == "AUTO"
+        return EtsDriftTerm(nothing)
+    elseif upper == "TRUE"
+        return EtsDriftTerm(true)
+    elseif upper == "FALSE"
+        return EtsDriftTerm(false)
+    else
+        throw(ArgumentError("Unsupported drift mode \"$(mode)\". Use \"auto\", \"true\", or \"false\"."))
+    end
+end
+
+# ============================================================================
 # Formula Structure
 # ============================================================================
 
@@ -500,6 +624,63 @@ function compile_arima_formula(formula::ModelFormula)
     return result
 end
 
+"""
+    compile_ets_formula(formula::ModelFormula)
+
+Extract ETS components (error, trend, seasonal, drift) from a model formula.
+
+# Returns
+Named tuple `(error, trend, seasonal, damped)` with component codes and
+optional damping directive.
+"""
+function compile_ets_formula(formula::ModelFormula)
+    error_code = "Z"
+    trend_code = "Z"
+    seasonal_code = "Z"
+    damped::Union{Bool, Nothing} = nothing
+    error_set = false
+    trend_set = false
+    seasonal_set = false
+
+    for term in formula.terms
+        if term isa EtsComponentTerm
+            if term.component === :error
+                error_set &&
+                    throw(ArgumentError("Multiple error terms detected in ETS formula."))
+                error_code = _validate_ets_code(:error, term.code)
+                error_set = true
+            elseif term.component === :trend
+                trend_set &&
+                    throw(ArgumentError("Multiple trend terms detected in ETS formula."))
+                trend_code = _validate_ets_code(:trend, term.code)
+                trend_set = true
+            elseif term.component === :seasonal
+                seasonal_set &&
+                    throw(ArgumentError("Multiple seasonal terms detected in ETS formula."))
+                seasonal_code = _validate_ets_code(:seasonal, term.code)
+                seasonal_set = true
+            else
+                throw(ArgumentError("Unsupported ETS component :$(term.component)."))
+            end
+        elseif term isa EtsDriftTerm
+            !isnothing(damped) &&
+                throw(ArgumentError("Multiple drift() directives detected in ETS formula."))
+            damped = term.damped
+        elseif term isa VarTerm || term isa AutoVarTerm || term isa ArimaOrderTerm
+            throw(ArgumentError("ETS formulas cannot include ARIMA terms or exogenous regressors."))
+        elseif term === nothing
+            continue
+        else
+            throw(ArgumentError("Unsupported term type $(typeof(term)) in ETS formula."))
+        end
+    end
+
+    return (error = error_code,
+            trend = trend_code,
+            seasonal = seasonal_code,
+            damped = damped)
+end
+
 # ============================================================================
 # Pretty Printing
 # ============================================================================
@@ -518,6 +699,22 @@ end
 
 function Base.show(io::IO, ::AutoVarTerm)
     print(io, ".")
+end
+
+function Base.show(io::IO, term::EtsComponentTerm)
+    component_label = term.component === :error ? "e" :
+                      term.component === :trend ? "t" : "s"
+    print(io, "$(component_label)(\"$(term.code)\")")
+end
+
+function Base.show(io::IO, term::EtsDriftTerm)
+    if term.damped === true
+        print(io, "drift()")
+    elseif term.damped === false
+        print(io, "drift(false)")
+    else
+        print(io, "drift(:auto)")
+    end
 end
 
 function Base.show(io::IO, formula::ModelFormula)

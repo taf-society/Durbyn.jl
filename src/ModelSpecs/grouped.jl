@@ -419,40 +419,110 @@ _level_label(level::Real) = begin
     lvl = level >= 1 ? level : level * 100
     string(round(Int, lvl))
 end
+_level_label(level) = string(level)
+
+function _extract_interval_value(x, step::Int, idx::Int, horizon::Int)
+    if x isa AbstractMatrix
+        return x[step, idx]
+    elseif x isa AbstractVector
+        if length(x) == horizon && idx == 1 && x isa AbstractVector{<:Number}
+            return x[step]
+        elseif idx <= length(x)
+            element = x[idx]
+            if element isa AbstractVector
+                return element[step]
+            elseif element isa Number
+                return element
+            end
+        end
+        return missing
+    elseif isnothing(x)
+        return missing
+    else
+        return x
+    end
+end
+
+function forecast_table(fc::Forecast)
+    mean_vec = fc.mean
+    horizon = length(mean_vec)
+    steps = collect(1:horizon)
+    method_col = fill(fc.method, horizon)
+
+    level_vals = fc.level isa AbstractVector ? [Float64(l) for l in fc.level] : Float64[]
+    n_levels = length(level_vals)
+    lower_cols = [Vector{Union{Missing, Float64}}(undef, horizon) for _ in 1:n_levels]
+    upper_cols = [Vector{Union{Missing, Float64}}(undef, horizon) for _ in 1:n_levels]
+
+    for step in 1:horizon
+        for j in 1:n_levels
+            lv = _extract_interval_value(fc.lower, step, j, horizon)
+            uv = _extract_interval_value(fc.upper, step, j, horizon)
+            lower_cols[j][step] = lv === missing ? missing : Float64(lv)
+            upper_cols[j][step] = uv === missing ? missing : Float64(uv)
+        end
+    end
+
+    column_syms = Symbol[:step, :mean]
+    column_vals = Any[steps, Float64.(mean_vec)]
+
+    for (j, lvl) in enumerate(level_vals)
+        label = _level_label(lvl)
+        push!(column_syms, Symbol("lower_", label))
+        push!(column_vals, lower_cols[j])
+        push!(column_syms, Symbol("upper_", label))
+        push!(column_vals, upper_cols[j])
+    end
+
+    push!(column_syms, :model)
+    push!(column_vals, method_col)
+
+    return NamedTuple{Tuple(column_syms)}(Tuple(column_vals))
+end
 
 function forecast_table(fc::GroupedForecasts; include_failures::Bool = false)
     group_keys = fc.groups
     isempty(group_keys) && throw(ArgumentError("GroupedForecasts has no groups."))
 
-    first_success = nothing
+    success_found = false
+    group_names = Symbol[]
+    group_columns = Vector{Any}[]
+    level_values = Float64[]
+    level_map = Dict{Float64, Int}()
+    key_example = nothing
+
     for key in group_keys
-        val = fc.forecasts[key]
-        if val isa Forecast
-            first_success = (key, val)
-            break
+        result = fc.forecasts[key]
+        if result isa Forecast
+            if !success_found
+                success_found = true
+                key_example = key
+                group_names = Symbol.(propertynames(key))
+                group_columns = [Vector{typeof(getfield(key, name))}() for name in group_names]
+            end
+            for lvl in Float64.(result.level)
+                if !haskey(level_map, lvl)
+                    push!(level_values, lvl)
+                    level_map[lvl] = length(level_values)
+                end
+            end
         end
     end
-    first_success === nothing && throw(ArgumentError("No successful forecasts available."))
 
-    key_example, forecast_example = first_success
-    group_names = Symbol.(propertynames(key_example))
-    group_columns = [Vector{typeof(getfield(key_example, name))}() for name in group_names]
+    success_found || throw(ArgumentError("No successful forecasts available."))
+
     step_col = Int[]
     mean_col = Float64[]
     method_col = String[]
-
-    levels = [Float64(l) for l in forecast_example.level]
-    n_levels = length(levels)
-    lower_cols = [Float64[] for _ in 1:n_levels]
-    upper_cols = [Float64[] for _ in 1:n_levels]
+    lower_cols = [Vector{Union{Missing, Float64}}() for _ in 1:length(level_values)]
+    upper_cols = [Vector{Union{Missing, Float64}}() for _ in 1:length(level_values)]
 
     for key in group_keys
         result = fc.forecasts[key]
         if result isa Forecast
             mean_vec = result.mean
-            lower = result.lower
-            upper = result.upper
             horizon = length(mean_vec)
+            levels = Float64.(result.level)
 
             for step in 1:horizon
                 for (idx, name) in enumerate(group_names)
@@ -460,16 +530,25 @@ function forecast_table(fc::GroupedForecasts; include_failures::Bool = false)
                 end
                 push!(step_col, step)
                 push!(mean_col, Float64(mean_vec[step]))
-                for j in 1:n_levels
-                    lower_val = lower isa AbstractMatrix ? lower[step, j] : lower[j][step]
-                    upper_val = upper isa AbstractMatrix ? upper[step, j] : upper[j][step]
-                    push!(lower_cols[j], Float64(lower_val))
-                    push!(upper_cols[j], Float64(upper_val))
+
+                present = falses(length(level_values))
+                for (j, lvl) in enumerate(levels)
+                    idx_lvl = level_map[lvl]
+                    present[idx_lvl] = true
+                    lower_val = _extract_interval_value(result.lower, step, j, horizon)
+                    upper_val = _extract_interval_value(result.upper, step, j, horizon)
+                    push!(lower_cols[idx_lvl], lower_val === missing ? missing : Float64(lower_val))
+                    push!(upper_cols[idx_lvl], upper_val === missing ? missing : Float64(upper_val))
+                end
+                for idx_lvl in 1:length(level_values)
+                    if !present[idx_lvl]
+                        push!(lower_cols[idx_lvl], missing)
+                        push!(upper_cols[idx_lvl], missing)
+                    end
                 end
                 push!(method_col, result.method)
             end
-        elseif include_failures
-            # Skip for now: failures are ignored unless successful forecasts exist
+        elseif include_failures && result isa Exception
             continue
         end
     end
@@ -488,18 +567,122 @@ function forecast_table(fc::GroupedForecasts; include_failures::Bool = false)
     push!(column_vals, step_col)
     push!(column_syms, :mean)
     push!(column_vals, mean_col)
-    for (j, lvl) in enumerate(levels)
+    for (idx, lvl) in enumerate(level_values)
         label = _level_label(lvl)
         push!(column_syms, Symbol("lower_", label))
-        push!(column_vals, lower_cols[j])
+        push!(column_vals, lower_cols[idx])
         push!(column_syms, Symbol("upper_", label))
-        push!(column_vals, upper_cols[j])
+        push!(column_vals, upper_cols[idx])
     end
     push!(column_syms, :model)
     push!(column_vals, method_col)
 
     return NamedTuple{Tuple(column_syms)}(Tuple(column_vals))
 end
+
+function _ensure_model_name(table::NamedTuple, name::String)
+    cols = propertynames(table)
+    if :model_name in cols
+        return table
+    end
+    len = isempty(cols) ? 0 : length(getfield(table, cols[1]))
+    return merge(table, (model_name = fill(name, len),))
+end
+
+function _finalize_column(vec::Vector{Any})
+    len = length(vec)
+    len == 0 && return Vector{Any}()
+
+    has_missing = false
+    types = Type[]
+    for v in vec
+        if v === missing
+            has_missing = true
+        else
+            push!(types, typeof(v))
+        end
+    end
+
+    if isempty(types)
+        return has_missing ? fill(missing, len) : Vector{Any}()
+    end
+
+    T = reduce(promote_type, types)
+    if has_missing
+        return [v === missing ? missing : convert(T, v) for v in vec]
+    else
+        return [convert(T, v) for v in vec]
+    end
+end
+
+function forecast_table(collection::ForecastModelCollection; include_failures::Bool = false)
+    tables = NamedTuple[]
+    ordered_cols = Symbol[]
+
+    for name in collection.names
+        result = collection.forecasts[name]
+        table = nothing
+        if result isa GroupedForecasts
+            try
+                table = forecast_table(result; include_failures=include_failures)
+            catch err
+                if include_failures
+                    table = (model_name = [name], status = [:error], message = [string(err)])
+                else
+                    continue
+                end
+            end
+        elseif result isa Forecast
+            table = forecast_table(result)
+        elseif result isa Exception
+            if include_failures
+                table = (model_name = [name], status = [:error], message = [string(result)])
+            else
+                continue
+            end
+        elseif include_failures
+            table = (model_name = [name], status = [:unsupported], message = [string(typeof(result))])
+        else
+            continue
+        end
+
+        table = _ensure_model_name(table, name)
+        if !(:model in propertynames(table))
+            len = length(getfield(table, propertynames(table)[1]))
+            table = merge(table, (model = fill(name, len),))
+        end
+
+        push!(tables, table)
+        for col in propertynames(table)
+            if !(col in ordered_cols)
+                push!(ordered_cols, col)
+            end
+        end
+    end
+
+    isempty(tables) && throw(ArgumentError("No successful forecasts available."))
+
+    columns_data = Dict{Symbol, Vector{Any}}()
+    for col in ordered_cols
+        columns_data[col] = Any[]
+    end
+
+    for table in tables
+        cols = propertynames(table)
+        len = isempty(cols) ? 0 : length(getfield(table, cols[1]))
+        for col in ordered_cols
+            if col in cols
+                append!(columns_data[col], getfield(table, col))
+            else
+                append!(columns_data[col], fill(missing, len))
+            end
+        end
+    end
+
+    finalized = Tuple(_finalize_column(columns_data[col]) for col in ordered_cols)
+    return NamedTuple{Tuple(ordered_cols)}(finalized)
+end
+
 
 function Base.show(io::IO, ::MIME"text/plain", fc::GroupedForecasts)
     n_groups = length(fc.groups)

@@ -4,7 +4,7 @@ const _DEFAULT_VALUES_TO = :value
 struct _PivotSentinel end
 const _PIVOT_SENTINEL = _PivotSentinel()
 
-struct GroupedTable{CT, KT, VT}
+struct GroupedTable{CT, KT}
     data::CT
     keycols::Vector{Symbol}
     keys::Vector{KT}
@@ -116,6 +116,35 @@ function _finalize_column(vec::Vector)
     return out
 end
 
+"""
+    select(data, specs...)
+
+Select and optionally rename columns from a Tables.jl-compatible data source.
+
+# Arguments
+- `data`: Any Tables.jl-compatible source (e.g., `NamedTuple`, `DataFrame`, `CSV.File`)
+- `specs...`: Column specifications, either:
+  - Column names as `Symbol`s to select
+  - `Pair`s like `:new_name => :old_name` to rename columns
+
+# Returns
+A `NamedTuple` with the selected (and optionally renamed) columns.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2, 3], b = [4, 5, 6], c = [7, 8, 9])
+
+# Select specific columns
+select(tbl, :a, :c)
+# Output: (a = [1, 2, 3], c = [7, 8, 9])
+
+# Rename while selecting
+select(tbl, :x => :a, :y => :b)
+# Output: (x = [1, 2, 3], y = [4, 5, 6])
+```
+"""
 function select(data, specs...)
     ct = _to_columns(data)
     isempty(specs) && return ct
@@ -141,6 +170,33 @@ function select(data, specs...)
     return _assemble(names_out, columns_out)
 end
 
+"""
+    query(data, predicate::Function)
+
+Filter rows based on a predicate function.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `predicate`: A function that takes a `NamedTuple` row and returns a `Bool`
+
+# Returns
+A `NamedTuple` containing only rows where `predicate` returns `true`.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (id = [1, 2, 3, 4], value = [10, 20, 15, 30])
+
+# Filter rows where value > 15
+query(tbl, row -> row.value > 15)
+# Output: (id = [2, 4], value = [20, 30])
+
+# Combine multiple conditions
+query(tbl, row -> row.id > 1 && row.value < 25)
+# Output: (id = [2, 3], value = [20, 15])
+```
+"""
 function query(data, predicate::Function)
     Tables.istable(data) || throw(ArgumentError("TableOps.query expects a Tables.jl compatible source; use Base.filter for other collections."))
     ct = _to_columns(data)
@@ -154,6 +210,41 @@ function query(data, predicate::Function)
     return _subset_mask(ct, mask)
 end
 
+"""
+    arrange(data, cols...; rev::Bool=false)
+
+Sort rows by one or more columns.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `cols...`: Column specifications:
+  - Column names as `Symbol`s for ascending order
+  - `Pair`s like `:col => :desc` for descending order
+- `rev`: If `true`, reverse the entire final sort order (default: `false`)
+
+# Returns
+A `NamedTuple` with rows sorted according to the specified columns.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (name = ["Alice", "Bob", "Charlie"], age = [25, 30, 20])
+
+# Sort by age (ascending)
+arrange(tbl, :age)
+# Output: (name = ["Charlie", "Alice", "Bob"], age = [20, 25, 30])
+
+# Sort by age descending
+arrange(tbl, :age => :desc)
+# Output: (name = ["Bob", "Alice", "Charlie"], age = [30, 25, 20])
+
+# Multi-column sort
+tbl2 = (group = ["A", "B", "A", "B"], value = [3, 1, 2, 4])
+arrange(tbl2, :group, :value => :desc)
+# Output: (group = ["A", "A", "B", "B"], value = [3, 2, 4, 1])
+```
+"""
 function arrange(data, cols...; rev::Bool=false)
     ct = _to_columns(data)
     n = _check_lengths(ct)
@@ -200,6 +291,38 @@ function arrange(data, cols...; rev::Bool=false)
     return NamedTuple{names}(columns)
 end
 
+"""
+    groupby(data, cols...)
+
+Group rows by unique combinations of values in specified columns.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `cols...`: One or more column names (as `Symbol`s) to group by
+
+# Returns
+A `GroupedTable` object containing:
+- Groups organized by unique key combinations
+- Metadata about grouping columns
+- Indices for accessing each group's rows
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (category = ["A", "B", "A", "B", "A"],
+       value = [1, 2, 3, 4, 5])
+
+# Group by category
+gt = groupby(tbl, :category)
+# Output: GroupedTable(2 groups by category)
+
+# Use with summarise to compute group statistics
+summarise(gt, mean_value = :value => mean, count = data -> length(data.value))
+```
+
+See also: [`summarise`](@ref), [`summarize`](@ref)
+"""
 function groupby(data, cols::Symbol...)
     return groupby(data, collect(cols))
 end
@@ -233,6 +356,42 @@ function groupby(data, cols::AbstractVector{Symbol})
     return GroupedTable(ct, collect(names), key_list, idx_list)
 end
 
+"""
+    mutate(data; kwargs...)
+
+Add new columns or modify existing columns.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `kwargs...`: Named arguments where:
+  - Name is the new/modified column name
+  - Value is either:
+    - A function taking the current table and returning a vector
+    - A vector of values (must match row count)
+
+# Returns
+A `NamedTuple` with the original columns plus the new/modified columns.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2, 3], b = [4, 5, 6])
+
+# Add a new column computed from existing columns
+mutate(tbl, c = data -> data.a .+ data.b)
+# Output: (a = [1, 2, 3], b = [4, 5, 6], c = [5, 7, 9])
+
+# Add multiple columns
+mutate(tbl,
+    sum = data -> data.a .+ data.b,
+    product = data -> data.a .* data.b)
+
+# Modify existing column
+mutate(tbl, a = data -> data.a .* 2)
+# Output: (a = [2, 4, 6], b = [4, 5, 6])
+```
+"""
 function mutate(data; kwargs...)
     ct = _to_columns(data)
     names = collect(_column_names(ct))
@@ -264,19 +423,67 @@ end
 function _compute_summary(spec, subgroup::NamedTuple)
     if spec isa Function
         return spec(subgroup)
-    elseif spec isa Pair{Symbol, Function}
+    elseif spec isa Pair
         col = first(spec)
         func = last(spec)
-        return func(subgroup[col])
-    elseif spec isa Pair{Tuple, Function}
-        cols = first(spec)
-        func = last(spec)
-        return func(map(c -> subgroup[c], cols)...)
+        if col isa Symbol
+            return func(subgroup[col])
+        elseif col isa Tuple
+            return func(map(c -> subgroup[c], col)...)
+        else
+            throw(ArgumentError("First element of Pair must be Symbol or Tuple, got $(typeof(col))"))
+        end
     else
         throw(ArgumentError("Unsupported summarise specification of type $(typeof(spec))"))
     end
 end
 
+"""
+    summarise(gt::GroupedTable; kwargs...)
+    summarize(gt::GroupedTable; kwargs...)
+
+Compute summary statistics for each group in a `GroupedTable`.
+
+# Arguments
+- `gt`: A `GroupedTable` created by `groupby`
+- `kwargs...`: Named summary specifications where each value can be:
+  - A function taking the group's data (NamedTuple) and returning a scalar
+  - A `Pair` of `:column => function` to apply function to a specific column
+  - A `Pair` of `(cols...) => function` to apply function to multiple columns
+
+# Returns
+A `NamedTuple` with:
+- Key columns from the original grouping
+- Summary columns specified in `kwargs`
+
+# Examples
+```julia
+using Durbyn.TableOps
+using Statistics
+
+tbl = (category = ["A", "B", "A", "B", "A"],
+       value = [10, 20, 30, 40, 50])
+
+gt = groupby(tbl, :category)
+
+# Compute mean for each group
+summarise(gt, mean_value = :value => mean)
+# Output: (category = ["A", "B"], mean_value = [30.0, 30.0])
+
+# Multiple summaries
+summarise(gt,
+    mean_val = :value => mean,
+    count = data -> length(data.value),
+    sum_val = :value => sum)
+
+# Custom function on entire group
+summarise(gt, range = data -> maximum(data.value) - minimum(data.value))
+```
+
+Note: `summarize` is an alias for `summarise`.
+
+See also: [`groupby`](@ref)
+"""
 function summarise(gt::GroupedTable; kwargs...)
     m = length(gt)
     keycols = gt.keycols
@@ -293,7 +500,7 @@ function summarise(gt::GroupedTable; kwargs...)
     end
 
     summary_data = Dict{Symbol, Vector{Any}}()
-    for (name, spec) in pairs(kwargs)
+    for (name, _) in pairs(kwargs)
         summary_data[Symbol(name)] = Vector{Any}(undef, m)
     end
 
@@ -318,8 +525,54 @@ function summarise(gt::GroupedTable; kwargs...)
     return _assemble(names, cols)
 end
 
+"""
+    summarize(gt::GroupedTable; kwargs...)
+
+American English spelling alias for `summarise`. See [`summarise`](@ref) for details.
+"""
 summarize(gt::GroupedTable; kwargs...) = summarise(gt; kwargs...)
 
+"""
+    pivot_longer(data; id_cols=Symbol[], value_cols=Symbol[],
+                 names_to=:variable, values_to=:value)
+
+Transform data from wide format to long format by pivoting columns into rows.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `id_cols`: Column(s) to keep as identifiers (not pivoted)
+- `value_cols`: Column(s) to pivot into rows (if empty, all non-id columns are used)
+- `names_to`: Name for the new column containing original column names (default: `:variable`)
+- `values_to`: Name for the new column containing values (default: `:value`)
+
+# Returns
+A `NamedTuple` in long format with:
+- All `id_cols` repeated for each pivoted column
+- A `names_to` column with original column names
+- A `values_to` column with corresponding values
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+# Wide format data
+wide = (date = ["2024-01", "2024-02"],
+        A = [100, 110],
+        B = [200, 220],
+        C = [300, 330])
+
+# Pivot to long format
+long = pivot_longer(wide, id_cols=:date, names_to=:series, values_to=:value)
+# Output: (date = ["2024-01", "2024-01", "2024-01", "2024-02", "2024-02", "2024-02"],
+#          series = ["A", "B", "C", "A", "B", "C"],
+#          value = [100, 200, 300, 110, 220, 330])
+
+# Specify which columns to pivot
+pivot_longer(wide, id_cols=:date, value_cols=[:A, :B])
+```
+
+See also: [`pivot_wider`](@ref)
+"""
 function pivot_longer(data;
                       id_cols::Union{Symbol, AbstractVector{Symbol}} = Symbol[],
                       value_cols::Union{Symbol, AbstractVector{Symbol}} = Symbol[],
@@ -388,6 +641,54 @@ function pivot_longer(data;
     return _assemble(out_names, out_cols)
 end
 
+"""
+    pivot_wider(data; names_from::Symbol, values_from::Symbol,
+                id_cols=Symbol[], fill=missing, sort_names=false)
+
+Transform data from long format to wide format by spreading rows into columns.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source in long format
+- `names_from`: Column containing values to become new column names
+- `values_from`: Column containing values to populate the new columns
+- `id_cols`: Column(s) that uniquely identify each row (if empty, uses all other columns)
+- `fill`: Value to use for missing combinations (default: `missing`)
+- `sort_names`: If `true`, sort new column names alphabetically (default: `false`)
+
+# Returns
+A `NamedTuple` in wide format with:
+- All `id_cols` preserved
+- New columns created from unique values in `names_from`
+- Values from `values_from` distributed into the new columns
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+# Long format data
+long = (date = ["2024-01", "2024-01", "2024-01", "2024-02", "2024-02", "2024-02"],
+        series = ["A", "B", "C", "A", "B", "C"],
+        value = [100, 200, 300, 110, 220, 330])
+
+# Pivot to wide format
+wide = pivot_wider(long, names_from=:series, values_from=:value, id_cols=:date)
+# Output: (date = ["2024-01", "2024-02"],
+#          A = [100, 110],
+#          B = [200, 220],
+#          C = [300, 330])
+
+# Sort column names alphabetically
+pivot_wider(long, names_from=:series, values_from=:value,
+            id_cols=:date, sort_names=true)
+
+# Handle missing values
+incomplete = (id = [1, 1, 2], category = ["A", "B", "A"], val = [10, 20, 30])
+pivot_wider(incomplete, names_from=:category, values_from=:val, fill=0)
+# Output: (id = [1, 2], A = [10, 30], B = [20, 0])
+```
+
+See also: [`pivot_longer`](@ref)
+"""
 function pivot_wider(data;
                      names_from::Symbol,
                      values_from::Symbol,
@@ -610,4 +911,14 @@ function glimpse(io::IO, gt::GroupedTable; maxrows::Integer = 5, maxgroups::Inte
         println(io, "  … and ", n_groups - sample, " more groups")
     end
     return nothing
+end
+
+function glimpse(data::ForecastModelCollection; maxrows::Integer = 5, include_failures::Bool = false, io::IO = stdout)
+    tbl = forecast_table(data; include_failures=include_failures)
+    return glimpse(io, tbl; maxrows=maxrows)
+end
+
+function glimpse(io::IO, data::ForecastModelCollection; maxrows::Integer = 5, include_failures::Bool = false)
+    tbl = forecast_table(data; include_failures=include_failures)
+    return glimpse(io, tbl; maxrows=maxrows)
 end

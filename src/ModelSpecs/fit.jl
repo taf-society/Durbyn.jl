@@ -9,7 +9,7 @@ to the underlying fitting functions (auto_arima, arima, etc.).
 
 # Import fit and forecast generics from Generics module
 # Note: These will be available after Generics is loaded
-import ..Generics: fit, forecast
+import ..Generics: fit, forecast, fitted
 
 # Import Tables for data handling
 import Tables
@@ -265,6 +265,228 @@ function fit(spec::EtsSpec, data;
 end
 
 """
+    fit(spec::SesSpec, data; m=nothing, groupby=nothing, kwargs...)
+"""
+function fit(spec::SesSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m = m,
+                           groupby = groupby,
+                           datecol = datecol,
+                           parallel = parallel,
+                           fail_fast = fail_fast,
+                           kwargs...)
+    end
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    tbl = Tables.columntable(data)
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+
+    parent_mod = parentmodule(@__MODULE__)
+    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+
+    ses_fit = Exp_mod.ses(target_vector, seasonal_period; pairs(fit_options)...)
+
+    return FittedSes(spec, ses_fit, target_col, tbl, seasonal_period)
+end
+
+"""
+    fit(spec::HoltSpec, data; ...)
+"""
+function fit(spec::HoltSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m = m,
+                           groupby = groupby,
+                           datecol = datecol,
+                           parallel = parallel,
+                           fail_fast = fail_fast,
+                           kwargs...)
+    end
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    tbl = Tables.columntable(data)
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+    damped = haskey(fit_options, :damped) ? pop!(fit_options, :damped) : spec.damped
+    if !(damped === nothing || damped isa Bool)
+        throw(ArgumentError("damped must be Bool or nothing, got $(typeof(damped))"))
+    end
+    exponential = haskey(fit_options, :exponential) ? pop!(fit_options, :exponential) : spec.exponential
+    exponential isa Bool ||
+        throw(ArgumentError("exponential must be Bool, got $(typeof(exponential))"))
+
+    parent_mod = parentmodule(@__MODULE__)
+    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+
+    holt_fit = if isnothing(damped)
+        Exp_mod.holt(target_vector, seasonal_period;
+                     exponential = exponential,
+                     pairs(fit_options)...)
+    else
+        Exp_mod.holt(target_vector, seasonal_period;
+                     damped = damped,
+                     exponential = exponential,
+                     pairs(fit_options)...)
+    end
+
+    return FittedHolt(spec, holt_fit, target_col, tbl, seasonal_period)
+end
+
+"""
+    fit(spec::HoltWintersSpec, data; ...)
+"""
+function fit(spec::HoltWintersSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m = m,
+                           groupby = groupby,
+                           datecol = datecol,
+                           parallel = parallel,
+                           fail_fast = fail_fast,
+                           kwargs...)
+    end
+
+    seasonal_period = isnothing(m) ? spec.m : m
+    isnothing(seasonal_period) &&
+        throw(ArgumentError(
+            "Seasonal period 'm' must be specified for Holt-Winters. Provide it in the spec or as a kwarg."
+        ))
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    tbl = Tables.columntable(data)
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+    seasonal = haskey(fit_options, :seasonal) ? pop!(fit_options, :seasonal) : spec.seasonal
+    seasonal_str = lowercase(String(seasonal))
+    seasonal_str in ("additive", "multiplicative") ||
+        throw(ArgumentError("seasonal must be \"additive\" or \"multiplicative\", got $(seasonal)"))
+
+    damped = haskey(fit_options, :damped) ? pop!(fit_options, :damped) : spec.damped
+    if !(damped === nothing || damped isa Bool)
+        throw(ArgumentError("damped must be Bool or nothing, got $(typeof(damped))"))
+    end
+    exponential = haskey(fit_options, :exponential) ? pop!(fit_options, :exponential) : spec.exponential
+    exponential isa Bool ||
+        throw(ArgumentError("exponential must be Bool, got $(typeof(exponential))"))
+    if exponential && seasonal_str == "additive"
+        throw(ArgumentError("exponential trend cannot be combined with additive seasonality."))
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+
+    hw_kwargs = Dict{Symbol, Any}(fit_options)
+    hw_kwargs[:seasonal] = seasonal_str
+    hw_kwargs[:exponential] = exponential
+    if !isnothing(damped)
+        hw_kwargs[:damped] = damped
+    end
+
+    hw_fit = Exp_mod.holt_winters(target_vector, seasonal_period; pairs(hw_kwargs)...)
+
+    return FittedHoltWinters(spec, hw_fit, target_col, tbl, seasonal_period)
+end
+
+"""
+    fit(spec::CrostonSpec, data; ...)
+"""
+function fit(spec::CrostonSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m = m,
+                           groupby = groupby,
+                           datecol = datecol,
+                           parallel = parallel,
+                           fail_fast = fail_fast,
+                           kwargs...)
+    end
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    tbl = Tables.columntable(data)
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+
+    parent_mod = parentmodule(@__MODULE__)
+    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+
+    croston_fit = Exp_mod.croston(target_vector, seasonal_period; pairs(fit_options)...)
+
+    return FittedCroston(spec, croston_fit, target_col, tbl, seasonal_period)
+end
+
+"""
     forecast(fitted::FittedArima; h, level=[80, 95], newdata=nothing, kwargs...)
 
 Generate forecasts from a fitted ARIMA model.
@@ -497,6 +719,115 @@ function forecast(fitted::FittedEts; h::Int, level::Vector{<:Real} = [80, 95], n
         kwargs...)
 end
 
+function forecast(fitted::FittedSes; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for SES forecasts."
+    end
+    parent_mod = parentmodule(@__MODULE__)
+    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+    return Exp_mod.forecast(fitted.fit;
+        h = h,
+        level = level,
+        kwargs...)
+end
+
+function forecast(fitted::FittedHolt; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for Holt forecasts."
+    end
+    parent_mod = parentmodule(@__MODULE__)
+    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+    return Exp_mod.forecast(fitted.fit;
+        h = h,
+        level = level,
+        kwargs...)
+end
+
+function forecast(fitted::FittedHoltWinters; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for Holt-Winters forecasts."
+    end
+    parent_mod = parentmodule(@__MODULE__)
+    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+    return Exp_mod.forecast(fitted.fit;
+        h = h,
+        level = level,
+        kwargs...)
+end
+
+function forecast(fitted::FittedCroston; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isempty(kwargs)
+        @warn "Croston forecast ignores additional keywords."
+    end
+    if !isnothing(newdata)
+        @warn "newdata ignored for Croston forecasts."
+    end
+    parent_mod = parentmodule(@__MODULE__)
+    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+    croston_fc = Exp_mod.forecast(fitted.fit, h)
+    return _wrap_croston_forecast(fitted, croston_fc)
+end
+
+function _wrap_croston_forecast(fitted::FittedCroston, croston_fc)
+    mean_vec = Float64.(croston_fc.mean)
+    levels = Float64[]
+    x_data = croston_fc.model.x
+    upper = Vector{Vector{Float64}}()
+    lower = Vector{Vector{Float64}}()
+
+    fitted_vals = try
+        fitted(croston_fc.model)
+    catch
+        Float64[]
+    end
+
+    residuals = begin
+        if length(fitted_vals) == length(x_data)
+            try
+                Float64.(x_data) .- Float64.(fitted_vals)
+            catch
+                Float64[]
+            end
+        else
+            Float64[]
+        end
+    end
+
+    return Forecast(
+        fitted,
+        croston_fc.method,
+        mean_vec,
+        levels,
+        x_data,
+        upper,
+        lower,
+        fitted_vals,
+        residuals
+    )
+end
+
+"""
+    forecast(collection::FittedModelCollection; kwargs...)
+
+Generate forecasts for every fitted model in a collection.
+
+Returns a `Dict{String, Any}` keyed by model name. Each value is whatever the
+underlying model returns (e.g. `Forecast`, `GroupedForecasts`). Any keyword
+arguments are forwarded to the individual `forecast` calls.
+"""
+function forecast(collection::FittedModelCollection; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    haskey(kwdict, :h) ||
+        throw(ArgumentError("forecast(collection) requires keyword argument h = horizon."))
+
+    results = Dict{String, Any}()
+    for (name, model) in zip(collection.names, collection.models)
+        results[name] = forecast(model; kwargs...)
+    end
+
+    return ForecastModelCollection(copy(collection.names), results, kwdict)
+end
+
 """
     forecast(collection::ModelCollection, data; kwargs...)
 
@@ -532,13 +863,7 @@ function fit(collection::ModelCollection, data; kwargs...)
     # Fit each spec
     fitted_models = [fit(spec, data; kwargs...) for spec in collection.specs]
 
-    # Extract metrics from each fitted model
-    metrics = Dict{String, Dict{Symbol, Float64}}()
-    for (name, fitted) in zip(collection.names, fitted_models)
-        metrics[name] = extract_metrics(fitted)
-    end
-
-    return FittedModelCollection(fitted_models, collection.names, metrics)
+    return FittedModelCollection(fitted_models, collection.names)
 end
 
 function fit(spec::ArimaSpec, panel::PanelData; kwargs...)
@@ -556,6 +881,62 @@ function fit(spec::ArimaSpec, panel::PanelData; kwargs...)
 end
 
 function fit(spec::EtsSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = panel.m
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+function fit(spec::SesSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = panel.m
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+function fit(spec::HoltSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = panel.m
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+function fit(spec::HoltWintersSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = panel.m
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+function fit(spec::CrostonSpec, panel::PanelData; kwargs...)
     kwdict = Dict{Symbol, Any}(kwargs)
     if !haskey(kwdict, :groupby) && !isempty(panel.groups)
         kwdict[:groupby] = panel.groups

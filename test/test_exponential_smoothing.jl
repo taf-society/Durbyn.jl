@@ -1,9 +1,22 @@
 using Test
 using Durbyn
 import Durbyn.Generics: Forecast, forecast, fitted
-using Durbyn.ExponentialSmoothing
+using Durbyn.ExponentialSmoothing:
+    ets,
+    holt as es_holt,
+    holt_winters as es_holt_winters,
+    ses as es_ses,
+    croston as es_croston,
+    ETS,
+    SES,
+    Holt,
+    HoltWinters,
+    CrostonFit,
+    CrostonForecast,
+    CrostonType
 using Durbyn.ModelSpecs
 using Durbyn.Grammar
+using Durbyn.TableOps
 
 @testset "Durbyn.ExponentialSmoothing Tests" begin
     ap = air_passengers()
@@ -119,9 +132,9 @@ using Durbyn.Grammar
 
     @testset "ses() - Simple Exponential Smoothing" begin
         @testset "Optimal initialization" begin
-            fit = ses(ap, 12)
+            fit = es_ses(ap, 12)
             fc = forecast(fit, h = 4)
-            fit2 = ses(ap)
+            fit2 = es_ses(ap)
             fc2 = forecast(fit2, h = 4)
             fc.mean == fc2.mean
             @test fit isa SES
@@ -134,7 +147,7 @@ using Durbyn.Grammar
         end
 
         @testset "Simple initialization" begin
-            fit_simple = ses(ap, 12; initial="simple")
+            fit_simple = es_ses(ap, 12; initial="simple")
             fc_simple = forecast(fit_simple, h = 4)
             @test fc_simple.mean ≈ [459.8755335582515, 459.8755335582515, 459.8755335582515, 459.8755335582515]
             @test fit_simple isa SES
@@ -142,7 +155,7 @@ using Durbyn.Grammar
         end
 
         @testset "Fixed initial alpha parameter" begin
-            fit_alpha = ses(ap, 12; alpha=0.2)
+            fit_alpha = es_ses(ap, 12; alpha=0.2)
             #fc = forecast(fit_alpha, h = 12)
             #plot(fc)
             @test fit_alpha isa SES
@@ -150,7 +163,7 @@ using Durbyn.Grammar
         end
 
         @testset "Box-Cox transformation" begin
-            fit_lambda = ses(ap, 12; lambda=0.5, biasadj=true)
+            fit_lambda = es_ses(ap, 12; lambda=0.5, biasadj=true)
             fc = forecast(fit_lambda, h = 12)
             plot(fc)
             @test fit_lambda isa SES
@@ -159,7 +172,7 @@ using Durbyn.Grammar
         end
 
         @testset "Forecasting from SES" begin
-            fit = ses(ap, 12)
+            fit = es_ses(ap, 12)
             fc = forecast(fit; h=4)
             @test fc isa Forecast
             @test fc.mean ≈ [431.6744757039443, 431.6744757039443, 431.6744757039443, 431.6744757039443]
@@ -168,8 +181,8 @@ using Durbyn.Grammar
 
     @testset "holt() - Holt's Linear Trend Method" begin
         @testset "Basic Holt method" begin
-            fit1 = holt(ap, 12)
-            fit2 = holt(ap)
+            fit1 = es_holt(ap, 12)
+            fit2 = es_holt(ap)
             fc1 = forecast(fit1, h = 24)
             fc2 = forecast(fit2, h = 24)
             @test fc1.mean == fc2.mean 
@@ -179,8 +192,8 @@ using Durbyn.Grammar
         end
 
         @testset "Damped trend" begin
-            fit_damped1 = holt(ap, 12; damped=true)
-            fit_damped2 = holt(ap; damped=true)
+            fit_damped1 = es_holt(ap, 12; damped=true)
+            fit_damped2 = es_holt(ap; damped=true)
             fc1 = forecast(fit_damped1, h = 4)
             fc2 = forecast(fit_damped2, h = 4)
             # plot(fc2)
@@ -191,8 +204,8 @@ using Durbyn.Grammar
         end
 
         @testset "Exponential trend" begin
-            fit_exp1 = holt(ap, 12; exponential=true)
-            fit_exp2 = holt(ap; exponential=true)
+            fit_exp1 = es_holt(ap, 12; exponential=true)
+            fit_exp2 = es_holt(ap; exponential=true)
             fc1 = forecast(fit_exp1, h = 12)
             fc2 = forecast(fit_exp2, h = 12)
             # plot(fc2)
@@ -202,8 +215,8 @@ using Durbyn.Grammar
         end
 
         @testset "Simple initialization" begin
-            fit_simple1 = holt(ap, 12; initial="simple")
-            fit_simple2 = holt(ap; initial="simple")
+            fit_simple1 = es_holt(ap, 12; initial="simple")
+            fit_simple2 = es_holt(ap; initial="simple")
             fc1 = forecast(fit_simple1, h = 12)
             fc2 = forecast(fit_simple2, h = 12)
             plot(fc1)
@@ -214,17 +227,17 @@ using Durbyn.Grammar
         end
 
         @testset "Fixed parameters" begin
-            fit_fixed = holt(ap, 1; alpha=0.3, beta=0.1)
+            fit_fixed = es_holt(ap, 1; alpha=0.3, beta=0.1)
             # plot(forecast(fit_fixed, h = 12)) same as R
             @test fit_fixed isa Holt
         end
 
         @testset "Short series error" begin
-            @test_throws ArgumentError holt([100.0], 1)
+            @test_throws ArgumentError es_holt([100.0], 1)
         end
 
         @testset "Forecasting from Holt" begin
-            fit = holt(ap, 12)
+            fit = es_holt(ap, 12)
             fc = forecast(fit; h=12)
             plot(fc)
             @test fc isa Forecast
@@ -236,7 +249,7 @@ using Durbyn.Grammar
 
     @testset "holt_winters() - Holt-Winters Seasonal Method" begin
         @testset "Additive seasonality" begin
-            fit = holt_winters(ap, 12; seasonal="additive")
+            fit = es_holt_winters(ap, 12; seasonal="additive")
             fc = forecast(fit, h = 65)
             plot(fc)
             @test length(fc.mean) == 65
@@ -246,7 +259,7 @@ using Durbyn.Grammar
         end
 
         @testset "Multiplicative seasonality" begin
-            fit = holt_winters(ap, 12; seasonal="multiplicative")
+            fit = es_holt_winters(ap, 12; seasonal="multiplicative")
             fc = forecast(fit, h = 34)
             plot(fc)
             @test length(fc.mean) == 34
@@ -255,7 +268,7 @@ using Durbyn.Grammar
         end
 
         @testset "Damped trend" begin
-            fit_damped = holt_winters(ap, 12; damped=true)
+            fit_damped = es_holt_winters(ap, 12; damped=true)
             fc = forecast(fit_damped, h = 13)
             plot(fc)
             @test length(fc.mean)== 13
@@ -264,7 +277,7 @@ using Durbyn.Grammar
         end
 
         @testset "Exponential trend with multiplicative season" begin
-            fit = holt_winters(ap, 12; seasonal="multiplicative", exponential=false)
+            fit = es_holt_winters(ap, 12; seasonal="multiplicative", exponential=false)
             fc = forecast(fit, h = 12)
             plot(fc)
             @test fit isa HoltWinters
@@ -272,32 +285,32 @@ using Durbyn.Grammar
 
         @testset "Invalid combinations" begin
             # Additive seasonality with exponential trend is forbidden
-            @test_throws ArgumentError holt_winters(ap, 12; seasonal="additive", exponential=true)
+            @test_throws ArgumentError es_holt_winters(ap, 12; seasonal="additive", exponential=true)
         end
 
         @testset "Simple initialization" begin
-            fit_simple = holt_winters(ap, 12; initial="simple")
+            fit_simple = es_holt_winters(ap, 12; initial="simple")
             fc = forecast(fit_simple, h = 12)
             plot(fc)
             @test fit_simple isa HoltWinters
         end
 
         @testset "Fixed parameters" begin
-            fit_fixed = holt_winters(ap, 12; alpha=0.3, beta=0.1, gamma=0.2)
+            fit_fixed = es_holt_winters(ap, 12; alpha=0.3, beta=0.1, gamma=0.2)
             @test fit_fixed isa HoltWinters
         end
 
         @testset "Frequency validation" begin
-            @test_throws ArgumentError holt_winters(ap, 1)  # m <= 1
+            @test_throws ArgumentError es_holt_winters(ap, 1)  # m <= 1
         end
 
         @testset "Insufficient data error" begin
             short_series = ap[1:10]
-            @test_throws ArgumentError holt_winters(short_series, 12)
+            @test_throws ArgumentError es_holt_winters(short_series, 12)
         end
 
         @testset "Forecasting from Holt-Winters" begin
-            fit = holt_winters(ap, 12)
+            fit = es_holt_winters(ap, 12)
             fc = forecast(fit; h=24)
             @test fc isa Forecast
             @test length(fc.mean) == 24
@@ -310,7 +323,7 @@ using Durbyn.Grammar
     @testset "croston() - Croston's Method for Intermittent Demand" begin
         @testset "Regular intermittent series" begin
             intermittent = [0.0, 0.0, 5.0, 0.0, 0.0, 3.0, 0.0, 7.0, 0.0, 0.0, 4.0]
-            fit = croston(intermittent, 1)
+            fit = es_croston(intermittent, 1)
             @test fit isa CrostonFit
             #@test fit.type == CrostonFour
             @test fit.m == 1
@@ -318,27 +331,27 @@ using Durbyn.Grammar
 
         @testset "All zeros (type 1)" begin
             zeros_series = zeros(10)
-            fit = croston(zeros_series, 1)
+            fit = es_croston(zeros_series, 1)
             @test fit isa CrostonFit
             #@test fit.type == CrostonOne
         end
 
         @testset "Single non-zero value (type 2)" begin
             single_val = [0.0, 0.0, 5.0, 0.0, 0.0]
-            fit = croston(single_val, 1)
+            fit = es_croston(single_val, 1)
             @test fit isa CrostonFit
             #@test fit.type == CrostonTwo
         end
 
         @testset "Fixed alpha parameter" begin
             intermittent = [0.0, 0.0, 5.0, 0.0, 0.0, 3.0, 0.0, 7.0, 0.0, 0.0, 4.0]
-            fit = croston(intermittent, 1; alpha=0.2)
+            fit = es_croston(intermittent, 1; alpha=0.2)
             @test fit isa CrostonFit
         end
 
         @testset "Forecasting from Croston" begin
             intermittent = [0.0, 0.0, 5.0, 0.0, 0.0, 3.0, 0.0, 7.0, 0.0, 0.0, 4.0]
-            fit = croston(intermittent, 1)
+            fit = es_croston(intermittent, 1)
             fc = forecast(fit, 6)
             @test fc isa CrostonForecast
             @test length(fc.mean) == 6
@@ -347,7 +360,7 @@ using Durbyn.Grammar
 
         @testset "Fitted values" begin
             intermittent = [0.0, 0.0, 5.0, 0.0, 0.0, 3.0, 0.0, 7.0, 0.0, 0.0, 4.0]
-            fit = croston(intermittent, 1)
+            fit = es_croston(intermittent, 1)
             fits = fitted(fit)
             @test length(fits) == length(intermittent)
         end
@@ -357,7 +370,7 @@ using Durbyn.Grammar
         @testset "Consistency across methods" begin
             # SES via ets should match ses()
             fit_ets = ets(ap, 12, "ANN")
-            fit_ses = ses(ap, 12)
+            fit_ses = es_ses(ap, 12)
 
             @test fit_ets isa ETS
             @test fit_ses isa SES
@@ -367,7 +380,7 @@ using Durbyn.Grammar
 
         @testset "Holt via ets should match holt()" begin
             fit_ets = ets(ap, 12, "AAN")
-            fit_holt = holt(ap, 12)
+            fit_holt = es_holt(ap, 12)
 
             @test fit_ets isa ETS
             @test fit_holt isa Holt
@@ -375,11 +388,41 @@ using Durbyn.Grammar
 
         @testset "Holt-Winters via ets should match holt_winters()" begin
             fit_ets = ets(ap, 12, "AAA")
-            fit_hw = holt_winters(ap, 12)
+            fit_hw = es_holt_winters(ap, 12)
 
             @test fit_ets isa ETS
             @test fit_hw isa HoltWinters
         end
+    end
+
+    @testset "ModelCollection forecasts" begin
+        n = length(ap)
+        panel_tbl = (
+            series = repeat(["A", "B"], inner = n),
+            date = vcat(collect(1:n), collect(1:n)),
+            value = vcat(Float64.(ap), Float64.(ap))
+        )
+        panel = PanelData(panel_tbl; groupby = :series, date = :date, m = 12)
+
+        models = model(
+            ArimaSpec(@formula(value = p() + q())),
+            EtsSpec(@formula(value = e("Z") + t("Z") + s("Z"))),
+            SesSpec(@formula(value = ses())),
+            HoltSpec(@formula(value = holt())),
+            names = ["arima", "ets", "ses", "holt"]
+        )
+
+        fitted_collection = fit(models, panel)
+        @test fitted_collection isa FittedModelCollection
+
+        fc_collection = forecast(fitted_collection; h = 6)
+        @test fc_collection isa ForecastModelCollection
+
+        tbl = forecast_table(fc_collection)
+        @test :model_name in propertynames(tbl)
+        @test length(getfield(tbl, :model_name)) > 0
+
+        glimpse(fc_collection)
     end
 
     @testset "EtsSpec grammar interface" begin
@@ -422,5 +465,50 @@ using Durbyn.Grammar
         panel_fit = fit(grouped_spec, panel)
         @test panel_fit isa GroupedFittedModels
         @test panel_fit.successful == 2
+    end
+
+    @testset "Smoothing specs grammar interface" begin
+        ap_vals = Float64.(air_passengers())
+        data_basic = (value = ap_vals,)
+
+        ses_spec = SesSpec(@formula(value = ses()))
+        fit_ses_spec = fit(ses_spec, data_basic)
+        @test fit_ses_spec isa FittedSes
+        fc_ses_spec = forecast(fit_ses_spec, h = 5)
+        @test length(fc_ses_spec.mean) == 5
+
+        holt_spec = HoltSpec(@formula(value = holt(damped=true)))
+        fit_holt_spec = fit(holt_spec, data_basic)
+        @test fit_holt_spec isa FittedHolt
+        fc_holt_spec = forecast(fit_holt_spec, h = 6)
+        @test length(fc_holt_spec.mean) == 6
+
+        hw_spec = HoltWintersSpec(@formula(value = hw(seasonal="additive")))
+        fit_hw_spec = fit(hw_spec, data_basic; m = 12)
+        @test fit_hw_spec isa FittedHoltWinters
+        fc_hw_spec = forecast(fit_hw_spec, h = 3)
+        @test length(fc_hw_spec.mean) == 3
+
+        intermittent = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
+        croston_spec = CrostonSpec(@formula(demand = croston()))
+        fit_croston_spec = fit(croston_spec, (demand = intermittent,))
+        @test fit_croston_spec isa FittedCroston
+        fc_croston_spec = forecast(fit_croston_spec, h = 8)
+        @test length(fc_croston_spec.mean) == 8
+
+        grouped_data = (
+            store = repeat(["A", "B"], inner = length(ap_vals)),
+            value = vcat(ap_vals, ap_vals)
+        )
+        ses_group_spec = SesSpec(@formula(value = ses()))
+        ses_group_fit = fit(ses_group_spec, grouped_data; groupby = :store)
+        @test ses_group_fit isa GroupedFittedModels
+        @test ses_group_fit.successful == 2
+
+        panel = PanelData(grouped_data; groupby = :store, m = 12)
+        holt_panel_spec = HoltSpec(@formula(value = holt()))
+        holt_panel_fit = fit(holt_panel_spec, panel)
+        @test holt_panel_fit isa GroupedFittedModels
+        @test holt_panel_fit.successful == 2
     end
 end

@@ -208,6 +208,35 @@ struct FittedModelCollection
 end
 
 # ============================================================================
+# Forecast Collection
+# ============================================================================
+
+"""
+    ForecastModelCollection
+
+Container for forecasts generated from each model in a `FittedModelCollection`.
+
+Supports iteration, indexing by model name, and tidy-table stacking.
+"""
+struct ForecastModelCollection
+    names::Vector{String}
+    forecasts::Dict{String, Any}
+    metadata::Dict{Symbol, Any}
+
+    function ForecastModelCollection(names::Vector{String},
+                                     forecasts::Dict{String, Any},
+                                     metadata::Dict{Symbol, Any} = Dict{Symbol, Any}())
+        length(names) == length(forecasts) ||
+            error("Number of forecast names must match number of forecasts.")
+        for name in names
+            haskey(forecasts, name) ||
+                error("Forecasts dict missing entry for model '$name'.")
+        end
+        new(names, forecasts, metadata)
+    end
+end
+
+# ============================================================================
 # Helper Functions
 # ============================================================================
 
@@ -229,6 +258,37 @@ function extract_metrics(model::AbstractFittedModel)
     # Default: return empty dict
     # Subtypes override this
     return Dict{Symbol, Float64}()
+end
+
+# ============================================================================
+# Collection Utilities
+# ============================================================================
+
+Base.length(collection::ModelCollection) = length(collection.specs)
+Base.getindex(collection::ModelCollection, idx::Int) = collection.specs[idx]
+function Base.iterate(collection::ModelCollection, state::Int=1)
+    state > length(collection) && return nothing
+    return (collection.specs[state], state + 1)
+end
+
+Base.length(collection::FittedModelCollection) = length(collection.models)
+Base.getindex(collection::FittedModelCollection, idx::Int) = collection.models[idx]
+function Base.iterate(collection::FittedModelCollection, state::Int=1)
+    state > length(collection) && return nothing
+    name = collection.names[state]
+    return ((name, collection.models[state]), state + 1)
+end
+
+Base.length(collection::ForecastModelCollection) = length(collection.names)
+Base.keys(collection::ForecastModelCollection) = collection.names
+Base.getindex(collection::ForecastModelCollection, idx::Int) =
+    collection.forecasts[collection.names[idx]]
+Base.getindex(collection::ForecastModelCollection, name::AbstractString) =
+    collection.forecasts[string(name)]
+function Base.iterate(collection::ForecastModelCollection, state::Int=1)
+    state > length(collection) && return nothing
+    name = collection.names[state]
+    return ((name, collection.forecasts[name]), state + 1)
 end
 
 # ============================================================================
@@ -258,8 +318,27 @@ function Base.show(io::IO, fitted::FittedModelCollection)
             print(io, "  $name: ")
             if !isnan(aic)
                 print(io, "AIC = ", round(aic, digits=2))
+            else
+                print(io, "metrics unavailable")
             end
             println(io)
+        end
+    end
+end
+
+function Base.show(io::IO, collection::ForecastModelCollection)
+    n = length(collection.names)
+    print(io, "ForecastModelCollection with $n forecast")
+    n > 1 && print(io, "s")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", collection::ForecastModelCollection)
+    println(io, "ForecastModelCollection")
+    println(io, "  Models: ", join(collection.names, ", "))
+    if !isempty(collection.metadata)
+        println(io, "  Metadata:")
+        for (k, v) in collection.metadata
+            println(io, "    ", k, " => ", v)
         end
     end
 end

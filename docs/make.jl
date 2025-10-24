@@ -20,10 +20,12 @@ makedocs(
         "Home" => "index.md",
         "Quick Start" => "quickstart.md",
         "User Guide" => Any[
+            "Grammar"                => "grammar.md",
             "Exponential Smoothing" => "expsmoothing.md",
             "Intermittent Demand"   => "intermittent.md",
             "ARIMA"                  => "arima.md",
             "ARAR/ARARMA"            => "ararma.md",
+            "Table Operations"       => "tableops.md",
         ],
         "API Reference" => "api.md",
     ],

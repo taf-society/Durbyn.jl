@@ -44,7 +44,7 @@ fit = auto_arima(formula, data, 12)
 module Grammar
 
 export p, q, d, P, Q, D, auto
-export e, t, s, drift
+export e, t, s, drift, ses, holt, hw, holt_winters, croston
 export AbstractTerm, ArimaOrderTerm, VarTerm, AutoVarTerm, ModelFormula
 export compile_arima_formula, compile_ets_formula
 export @formula

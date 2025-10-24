@@ -6,6 +6,85 @@ Helper functions for fitting models to grouped/panel data.
 
 import Tables
 
+function _fit_grouped_no_xreg(spec::AbstractModelSpec,
+                              tbl,
+                              groupby_cols::Vector{Symbol},
+                              target_col::Symbol,
+                              seasonal_period::Int,
+                              parallel::Bool,
+                              fail_fast::Bool,
+                              builder::Function)
+    println("Grouping data by ", join(groupby_cols, ", "), "...")
+    grouped_data = group_data(tbl, groupby_cols, target_col, Symbol[], Symbol[], Symbol[])
+    n_groups = length(grouped_data)
+    println("Found ", n_groups, " groups")
+
+    models = Dict{NamedTuple, Union{AbstractFittedModel, Exception}}()
+    start_time = time()
+
+    if parallel && Threads.nthreads() > 1
+        println("Fitting models in parallel (", Threads.nthreads(), " threads)...")
+        group_keys = collect(keys(grouped_data))
+        results = Vector{Union{AbstractFittedModel, Exception}}(undef, n_groups)
+        completed = Threads.Atomic{Int}(0)
+        progress_stride = max(1, div(n_groups, 20))
+
+        Threads.@threads for idx in 1:n_groups
+            key = group_keys[idx]
+            group_data_i = grouped_data[key]
+            try
+                results[idx] = builder(group_data_i)
+            catch err
+                results[idx] = err
+                if fail_fast
+                    error("Failed on group $(key): ", err)
+                end
+            end
+
+            done = Threads.atomic_add!(completed, 1) + 1
+            if done % progress_stride == 0
+                pct = round(100 * done / n_groups, digits=1)
+                println("  Progress: ", done, "/", n_groups, " (", pct, "%)")
+            end
+        end
+
+        for (idx, key) in enumerate(group_keys)
+            models[key] = results[idx]
+        end
+    else
+        println("Fitting models sequentially...")
+        progress_stride = max(1, div(n_groups, 20))
+        idx = 0
+        for (key, group_data_i) in grouped_data
+            idx += 1
+            try
+                models[key] = builder(group_data_i)
+            catch err
+                models[key] = err
+                if fail_fast
+                    error("Failed on group $(key): ", err)
+                end
+            end
+
+            if idx % progress_stride == 0
+                pct = round(100 * idx / n_groups, digits=1)
+                println("  Progress: ", idx, "/", n_groups, " (", pct, "%)")
+            end
+        end
+    end
+
+    fit_time = time() - start_time
+    println("Completed in ", round(fit_time, digits=2), "s")
+
+    metadata = Dict{Symbol, Any}(
+        :fit_time => fit_time,
+        :parallel => parallel,
+        :m => seasonal_period
+    )
+
+    return GroupedFittedModels(spec, models, groupby_cols, metadata)
+end
+
 """
     fit_grouped(spec::ArimaSpec, data; m, groupby, parallel, fail_fast, kwargs...)
 
@@ -209,78 +288,11 @@ function fit_grouped(spec::EtsSpec, data;
     seasonal_period >= 1 ||
         throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
 
-    println("Grouping data by ", join(groupby_cols, ", "), "...")
-    grouped_data = group_data(tbl, groupby_cols, target_col, Symbol[], Symbol[], Symbol[])
-    n_groups = length(grouped_data)
-    println("Found ", n_groups, " groups")
+    kwdict = Dict{Symbol, Any}(kwargs)
+    pop!(kwdict, :m, nothing)
 
-    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
-
-    models = Dict{NamedTuple, Union{AbstractFittedModel, Exception}}()
-
-    start_time = time()
-
-    if parallel && Threads.nthreads() > 1
-        println("Fitting models in parallel (", Threads.nthreads(), " threads)...")
-        group_keys = collect(keys(grouped_data))
-        results = Vector{Union{FittedEts, Exception}}(undef, n_groups)
-        completed = Threads.Atomic{Int}(0)
-        progress_stride = max(1, div(n_groups, 20))
-
-        Threads.@threads for idx in 1:n_groups
-            key = group_keys[idx]
-            group_data_i = grouped_data[key]
-            try
-                results[idx] = fit_single_group(spec, group_data_i, seasonal_period, fit_options)
-            catch err
-                results[idx] = err
-                if fail_fast
-                    error("Failed on group $(key): ", err)
-                end
-            end
-
-            done = Threads.atomic_add!(completed, 1) + 1
-            if done % progress_stride == 0
-                pct = round(100 * done / n_groups, digits=1)
-                println("  Progress: ", done, "/", n_groups, " (", pct, "%)")
-            end
-        end
-
-        for (idx, key) in enumerate(group_keys)
-            models[key] = results[idx]
-        end
-    else
-        println("Fitting models sequentially...")
-        progress_stride = max(1, div(n_groups, 20))
-        idx = 0
-        for (key, group_data_i) in grouped_data
-            idx += 1
-            try
-                models[key] = fit_single_group(spec, group_data_i, seasonal_period, fit_options)
-            catch err
-                models[key] = err
-                if fail_fast
-                    error("Failed on group $(key): ", err)
-                end
-            end
-
-            if idx % progress_stride == 0
-                pct = round(100 * idx / n_groups, digits=1)
-                println("  Progress: ", idx, "/", n_groups, " (", pct, "%)")
-            end
-        end
-    end
-
-    fit_time = time() - start_time
-    println("Completed in ", round(fit_time, digits=2), "s")
-
-    metadata = Dict{Symbol, Any}(
-        :fit_time => fit_time,
-        :parallel => parallel,
-        :m => seasonal_period
-    )
-
-    return GroupedFittedModels(spec, models, groupby_cols, metadata)
+    builder = group_data_i -> fit(spec, group_data_i; m = seasonal_period, pairs(kwdict)...)
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
 end
 
 """
@@ -393,4 +405,116 @@ function fit_single_group(spec::EtsSpec,
                           pairs(fit_options)...)
 
     return FittedEts(spec, ets_fit, target_col, tbl, seasonal_period)
+end
+
+function fit_grouped(spec::SesSpec, data;
+                     m::Union{Int, Nothing} = nothing,
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+    groupby_cols = groupby isa Symbol ? [groupby] : groupby
+    tbl = Tables.columntable(data)
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    kwdict = Dict{Symbol, Any}(kwargs)
+    pop!(kwdict, :m, nothing)
+
+    builder = group_data_i -> fit(spec, group_data_i; m = seasonal_period, pairs(kwdict)...)
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
+end
+
+function fit_grouped(spec::HoltSpec, data;
+                     m::Union{Int, Nothing} = nothing,
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+    groupby_cols = groupby isa Symbol ? [groupby] : groupby
+    tbl = Tables.columntable(data)
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    kwdict = Dict{Symbol, Any}(kwargs)
+    pop!(kwdict, :m, nothing)
+
+    builder = group_data_i -> fit(spec, group_data_i; m = seasonal_period, pairs(kwdict)...)
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
+end
+
+function fit_grouped(spec::HoltWintersSpec, data;
+                     m::Union{Int, Nothing} = nothing,
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+    groupby_cols = groupby isa Symbol ? [groupby] : groupby
+    tbl = Tables.columntable(data)
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    seasonal_period = isnothing(m) ? spec.m : m
+    isnothing(seasonal_period) &&
+        throw(ArgumentError(
+            "Seasonal period 'm' must be specified for Holt-Winters. Provide it in the spec or as a kwarg."
+        ))
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    kwdict = Dict{Symbol, Any}(kwargs)
+    pop!(kwdict, :m, nothing)
+
+    builder = group_data_i -> fit(spec, group_data_i; m = seasonal_period, pairs(kwdict)...)
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
+end
+
+function fit_grouped(spec::CrostonSpec, data;
+                     m::Union{Int, Nothing} = nothing,
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+    groupby_cols = groupby isa Symbol ? [groupby] : groupby
+    tbl = Tables.columntable(data)
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    kwdict = Dict{Symbol, Any}(kwargs)
+    pop!(kwdict, :m, nothing)
+
+    builder = group_data_i -> fit(spec, group_data_i; m = seasonal_period, pairs(kwdict)...)
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
 end

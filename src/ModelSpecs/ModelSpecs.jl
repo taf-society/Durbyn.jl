@@ -54,7 +54,11 @@ export AbstractModelSpec, AbstractFittedModel
 
 export ArimaSpec, FittedArima
 export EtsSpec, FittedEts
-export ModelCollection, FittedModelCollection
+export SesSpec, FittedSes
+export HoltSpec, FittedHolt
+export HoltWintersSpec, FittedHoltWinters
+export CrostonSpec, FittedCroston
+export ModelCollection, FittedModelCollection, ForecastModelCollection
 export GroupedFittedModels, GroupedForecasts
 export PanelData
 
@@ -64,6 +68,7 @@ export successful_models, failed_groups, errors
 include("abstract.jl")
 include("arima_spec.jl")
 include("ets_spec.jl")
+include("smoothing_specs.jl")
 include("panel_data.jl")
 include("xreg_utils.jl")
 include("model.jl")

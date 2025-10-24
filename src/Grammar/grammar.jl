@@ -100,6 +100,43 @@ struct EtsDriftTerm <: AbstractTerm
 end
 
 """
+    SesTerm <: AbstractTerm
+
+Sentinel term for Simple Exponential Smoothing specifications.
+"""
+struct SesTerm <: AbstractTerm
+end
+
+"""
+    HoltTerm <: AbstractTerm
+
+Represents Holt's method options within a formula (`holt()`).
+"""
+struct HoltTerm <: AbstractTerm
+    damped::Union{Bool, Nothing}
+    exponential::Bool
+end
+
+"""
+    HoltWintersTerm <: AbstractTerm
+
+Represents Holt-Winters seasonal exponential smoothing options (`hw()`/`holt_winters()`).
+"""
+struct HoltWintersTerm <: AbstractTerm
+    seasonal::String
+    damped::Union{Bool, Nothing}
+    exponential::Bool
+end
+
+"""
+    CrostonTerm <: AbstractTerm
+
+Sentinel term for Croston's intermittent-demand model.
+"""
+struct CrostonTerm <: AbstractTerm
+end
+
+"""
     VarTerm <: AbstractTerm
 
 Represents an exogenous variable to be used as a regressor in the model.
@@ -349,6 +386,64 @@ function _validate_ets_code(component::Symbol, code::AbstractString)
     end
     return normalized
 end
+
+"""
+    ses()
+
+Specify Simple Exponential Smoothing in a model formula.
+"""
+ses() = SesTerm()
+
+function _validate_bool_or_auto(name::Symbol, value)
+    if !(value === nothing || value isa Bool)
+        throw(ArgumentError("Keyword $(name) must be Bool or nothing, got $(typeof(value))"))
+    end
+    return value
+end
+
+"""
+    holt(; damped=nothing, exponential=false)
+
+Specify Holt's linear trend method. `damped` may be `true`, `false`, or `nothing`
+(use default). `exponential=true` requests an exponential trend.
+"""
+function holt(; damped=nothing, exponential::Bool=false)
+    _validate_bool_or_auto(:damped, damped)
+    return HoltTerm(damped, exponential)
+end
+
+_normalize_hw_seasonal(x::Symbol) = _normalize_hw_seasonal(string(x))
+function _normalize_hw_seasonal(x::AbstractString)
+    val = lowercase(x)
+    val in ("additive", "multiplicative") ||
+        throw(ArgumentError("seasonal must be \"additive\" or \"multiplicative\", got $(x)"))
+    return val
+end
+
+"""
+    hw(; seasonal="additive", damped=nothing, exponential=false)
+    holt_winters(; seasonal="additive", damped=nothing, exponential=false)
+
+Specify Holt-Winters seasonal exponential smoothing within a formula.
+"""
+function hw(; seasonal::Union{AbstractString,Symbol}="additive",
+             damped=nothing,
+             exponential::Bool=false)
+    _validate_bool_or_auto(:damped, damped)
+    seasonal_norm = _normalize_hw_seasonal(seasonal)
+    if exponential && seasonal_norm == "additive"
+        throw(ArgumentError("exponential trend is only supported with multiplicative seasonality in Holt-Winters."))
+    end
+    return HoltWintersTerm(seasonal_norm, damped, exponential)
+end
+holt_winters(; kwargs...) = hw(; kwargs...)
+
+"""
+    croston()
+
+Specify Croston's intermittent demand model in a formula.
+"""
+croston() = CrostonTerm()
 
 """
     e(code::AbstractString = "Z")
@@ -681,6 +776,25 @@ function compile_ets_formula(formula::ModelFormula)
             damped = damped)
 end
 
+function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:AbstractTerm}
+    selected = nothing
+    for term in formula.terms
+        if term isa T
+            isnothing(selected) ||
+                throw(ArgumentError("Formula may contain only one $(T) term."))
+            selected = term
+        elseif term isa EtsComponentTerm || term isa EtsDriftTerm || term isa ArimaOrderTerm ||
+               term isa VarTerm || term isa AutoVarTerm
+            throw(ArgumentError("Formula term $(term) is not compatible with $(T)."))
+        elseif term !== nothing
+            throw(ArgumentError("Unsupported term $(term) in formula for $(T)."))
+        end
+    end
+    isnothing(selected) &&
+        throw(ArgumentError("Formula must include $(T) to build this specification."))
+    return selected
+end
+
 # ============================================================================
 # Pretty Printing
 # ============================================================================
@@ -715,6 +829,40 @@ function Base.show(io::IO, term::EtsDriftTerm)
     else
         print(io, "drift(:auto)")
     end
+end
+
+function Base.show(io::IO, ::SesTerm)
+    print(io, "ses()")
+end
+
+function Base.show(io::IO, term::HoltTerm)
+    args = String[]
+    if !isnothing(term.damped)
+        push!(args, "damped=$(term.damped)")
+    end
+    if term.exponential
+        push!(args, "exponential=true")
+    end
+    if isempty(args)
+        print(io, "holt()")
+    else
+        print(io, "holt(", join(args, ", "), ")")
+    end
+end
+
+function Base.show(io::IO, term::HoltWintersTerm)
+    args = ["seasonal=\"$(term.seasonal)\""]
+    if !isnothing(term.damped)
+        push!(args, "damped=$(term.damped)")
+    end
+    if term.exponential
+        push!(args, "exponential=true")
+    end
+    print(io, "hw(", join(args, ", "), ")")
+end
+
+function Base.show(io::IO, ::CrostonTerm)
+    print(io, "croston()")
 end
 
 function Base.show(io::IO, formula::ModelFormula)

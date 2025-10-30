@@ -1,6 +1,12 @@
 
 # Forecasting Using ARIMA, SARIMA, ARIMAX, SARIMAX, and Auto ARIMA
 
+!!! tip "Formula Interface is the Recommended Approach"
+    This page starts with the **formula interface** (recommended for most users),
+    which provides declarative model specification with support for regressors, panel data,
+    and model comparison. The array interface (base models) is covered later.
+    See the **[Grammar Guide](grammar.md)** for complete documentation.
+
 ## 1. ARIMA (AutoRegressive Integrated Moving Average)
 
 ### Definition
@@ -136,7 +142,214 @@ SARIMAX generalizes SARIMA by including **exogenous regressors**:
 - Out-of-sample forecast validation.
 
 ---
-# Forecasing in Julia Using Seasonal Arima Model
+
+# Formula Interface (Primary Usage)
+
+The formula interface provides a modern, declarative way to specify ARIMA models with full support for single series, regressors, model comparison, and panel data.
+
+## Example 1: Single ARIMA Model
+
+```julia
+using Durbyn
+
+# Load data
+data = (sales = [120, 135, 148, 152, 141, 158, 170, 165, 180, 195],)
+
+# Specify model with automatic order selection
+spec = ArimaSpec(@formula(sales = p() + q() + P() + Q() + d() + D()))
+fit = fit(spec, data, m = 12)
+fc = forecast(fit, h = 12)
+
+# Check model summary
+println(fit)
+
+# Access fitted values and residuals
+fitted_values = fitted(fit)
+resids = residuals(fit)
+```
+
+**Key features:**
+- `p()`, `q()`, `P()`, `Q()`, `d()` and `D()` with no arguments triggers automatic order selection
+- `m = 12` specifies monthly seasonality
+- Formula syntax clearly shows response variable (`sales`)
+
+## Example 2: ARIMA with Regressors
+
+When you have external variables that influence the response, include them as regressors:
+
+```julia
+# Model with exogenous regressors
+data = (
+    sales = rand(100),
+    temperature = rand(100),
+    promotion = rand(0:1, 100)
+)
+
+# Specify model with regressors
+spec = ArimaSpec(@formula(sales = p(1,3) + q(1,3) + temperature + promotion))
+fitted = fit(spec, data, m = 7)
+
+# Forecast requires future regressor values
+newdata = (temperature = rand(7), promotion = rand(0:1, 7))
+fc = forecast(fitted, h = 7, newdata = newdata)
+```
+
+**Terminology:**
+- **Response variable**: The variable being forecasted (`sales`)
+- **Regressors**: External predictors (`temperature`, `promotion`)
+
+**Key features:**
+- `p(1,3)` starts searching for best AR order between 1 and 3
+- Regressors are simply added to the formula
+- Future regressor values must be provided via `newdata`
+
+## Example 3: Manual ARIMA Specification
+
+For full control over model orders:
+
+```julia
+# Specify exact orders for SARIMA model
+spec = ArimaSpec(@formula(sales = p(2) + d(1) + q(1) + P(1) + D(1) + Q(1)))
+fitted = fit(spec, data, m = 12)
+fc = forecast(fitted, h = 12)
+
+# Or use specific values with regressors
+spec = ArimaSpec(@formula(sales = p(1) + d(1) + q(1) + temperature + promotion))
+fitted = fit(spec, data, m = 12)
+```
+
+**ARIMA order specification:**
+- `p(k)`: AR order = k
+- `d(k)`: Differencing order = k
+- `q(k)`: MA order = k
+- `P(k)`: Seasonal AR order = k
+- `D(k)`: Seasonal differencing = k
+- `Q(k)`: Seasonal MA order = k
+
+## Example 4: Fitting Multiple Models Together
+
+Fit different model specifications and manually compare results:
+
+```julia
+# Define multiple candidate models
+models = model(
+    ArimaSpec(@formula(sales = p() + q())),                    # Auto ARIMA
+    ArimaSpec(@formula(sales = p(2) + d(1) + q(2))),          # ARIMA(2,1,2)
+    ArimaSpec(@formula(sales = p(1) + d(1) + q(1) + P(1) + D(1) + Q(1))),  # SARIMA
+    names = ["auto_arima", "arima_212", "sarima_111_111"]
+)
+
+# Fit all models
+fitted = fit(models, data, m = 12)
+
+# Forecast with all models
+fc = forecast(fitted, h = 12)
+
+# Check forecast accuracy
+accuracy(fc, test)
+```
+
+**Key features:**
+- Fit multiple specifications at once
+- Mix different model types (ARIMA, ETS, etc.)
+- Check model accuracy
+- Forecasts generated for all models
+
+## Example 5: Panel Data (Multiple Time Series)
+
+Fit the same model specification to many series efficiently:
+
+```julia
+using Durbyn.TableOps
+using CSV, Downloads
+
+# Load panel data
+path = Downloads.download("https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv")
+wide = Tables.columntable(CSV.File(path))
+
+# Reshape to long format
+long = pivot_longer(wide; id_cols = :date, names_to = :series, values_to = :value)
+
+# Create panel data wrapper
+panel = PanelData(long; groupby = :series, date = :date, m = 12)
+
+# Fit model to all series at once
+spec = ArimaSpec(@formula(value = p() + q()))
+fitted = fit(spec, panel)
+
+# Forecast all series
+fc = forecast(fitted, h = 12)
+
+# Get tidy forecast table
+tbl = forecast_table(fc)
+
+# Optional: Save forecasts to CSV
+# CSV.write("forecasts.csv", tbl)
+
+# Calculate accuracy metrics
+# Method 1: Using ForecastModelCollection directly
+acc_results = accuracy(fc, test)
+
+println("\nAccuracy by Series and Model:")
+glimpse(acc_results)
+
+list_series(fc)  # See what's available
+plot(fc)  # Quick look at first series
+plot(fc, series=:all, facet=true, n_cols=4)  # Overview
+
+# Detailed inspection
+plot(fc, series="series_1", actual=test)
+
+# Calculate accuracy
+acc = accuracy(fc, test)
+
+# Find and plot interesting cases
+best = acc.series[argmin(acc.MAPE)]
+worst = acc.series[argmax(acc.MAPE)]
+
+plot(fc, series=[best, worst], facet=true, actual=test)
+
+```
+
+**Panel data features:**
+- Fits model separately to each group
+- Returns structured output for all series
+- `forecast_table` creates tidy format for analysis
+- Efficient for hundreds or thousands of series
+
+## Example 6: Panel Data with Grouping Variables
+
+For complex panel structures:
+
+```julia
+
+# Use PanelData interface
+panel = PanelData(train; groupby=[:product, :location, :product_line], date=:date, m=7);
+
+spec = ArimaSpec(@formula(sales = p() + q()))
+fitted = fit(spec, panel)
+fc = forecast(fitted, h = 14)
+
+# Data with multiple grouping variables
+spec = ArimaSpec(@formula(sales = p() + q()))
+fitted = fit(spec, data,
+             groupby = [:product, :location, :product_line],
+             m = 7)
+fc = forecast(fitted, h = 7)
+
+# Filter forecasts for specific groups
+tbl = forecast_table(fc)
+
+```
+
+---
+
+# Array Interface (Base Models)
+
+The array interface provides direct access to ARIMA estimation for numeric vectors.
+This is useful for quick analyses or integration with existing code for example using Durbyn base models as backend for Python or R packages.
+
+## Forecasting Using Seasonal ARIMA Model
 
 ```julia
 using Durbyn
@@ -149,7 +362,7 @@ plot(fc)
 
 ```
 
-# Forecasing in Julia Using Auto-Arima Model
+## Forecasting Using Auto-ARIMA Model
 ```julia
 fit2 = auto_arima(ap, 12)
 fc2  = forecast(fit2, h = 12)

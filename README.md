@@ -8,7 +8,9 @@
 
 ## About
 
-**Durbyn** is a Julia package that implements the functionality of the R **forecast** package, providing tools for time series forecasting. The name Durbyn traces back to Kurdish, where Dur means “far” and Byn means “to see,” together signifying binoculars, which is why the package logo features them.
+**Durbyn** is a Julia package that implements functionality of the R **forecast** package, providing tools for time-series forecasting.
+
+Durbyn — Kurdish for “binoculars” (Dur, far + Byn, to see), embodies foresight through science. Like Hari Seldon’s psychohistory in Asimov’s Foundation, we seek to glimpse the shape of tomorrow through the disciplined clarity of mathematics.
 
 This package is currently under development and will be part of the **TAFS Forecasting Ecosystem**, an open-source initiative.
 
@@ -31,7 +33,7 @@ The Durbyn package is licensed under the **MIT License**, allowing for open-sour
 
 ## Installation
 
-Durbyn is still in development. Once it is officially released, you will be able to install it using Julia’s package manager:
+Durbyn is still in development. Once it is officially released, you will be able to install it using Julia’s package manager.
 
 For the latest development version, you can install directly from GitHub:
 
@@ -41,7 +43,194 @@ Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 
 ## Usage
 
-### Forecasting using Exponential Smoothing.
+Durbyn ships with multiple forecasting engines and a unified **formula interface**
+for declarative model specification. The formula interface is the **recommended approach** for most users, providing a modern, expressive way to specify models with full support for tables, panel data, and model comparison.
+
+For complete documentation, see the [Grammar Guide](https://taf-society.github.io/Durbyn.jl/dev/grammar/) in the docs.
+
+### Key Components
+
+- **Formula Interface** — Declarative model specification using `@formula` for both
+  ARIMA and ETS models (`ArimaSpec`, `EtsSpec`, `SesSpec`, `HoltSpec`, etc.)
+- `Durbyn.ModelSpecs` — Formula-based model specifications with `PanelData` support,
+  grouped fitting, and `forecast_table` for tidy outputs
+- `Durbyn.TableOps` — Lightweight, Tables.jl-friendly data wrangling helpers
+  (`pivot_longer`, `arrange`, `groupby`, `summarise`, `mutate`, …) plus `glimpse` utilities, see the [Table Operations](https://taf-society.github.io/Durbyn.jl/dev/tableops/) in the docs,
+- `Durbyn.ExponentialSmoothing`, `Durbyn.Arima`, `Durbyn.Ararma`,
+  `Durbyn.IntermittentDemand` — Base model engines for array interface
+
+---
+
+## Formula Interface (Primary Usage)
+
+The formula interface provides a declarative, flexible way to specify forecasting models
+with support for single series, regressors, model comparison, and panel data.
+
+### Example 1: Single ARIMA Model
+
+```julia
+using Durbyn
+
+# Load data
+data = (sales = [120, 135, 148, 152, 141, 158, 170, 165, 180, 195],)
+
+# Specify model with automatic order selection
+spec = ArimaSpec(@formula(sales = p() + q() + d() + P() + D() + Q()))
+fitted = fit(spec, data, m = 12)
+fc = forecast(fitted, h = 10)
+plot(fc)
+```
+
+### Example 2: ARIMA with Regressors
+
+```julia
+# Model with exogenous regressors
+data = (
+    sales = rand(100),
+    temperature = rand(100),
+    promotion = rand(0:1, 100)
+)
+
+spec = ArimaSpec(@formula(sales = p(1,3) + q(1,3) + temperature + promotion))
+fitted = fit(spec, data, m = 7)
+
+# Forecast with future regressor values
+newdata = (temperature = rand(7), promotion = rand(0:1, 7))
+fc = forecast(fitted, h = 7, newdata = newdata)
+```
+
+### Example 3: Fitting Multiple Models Together
+
+```julia
+
+# Fit multiple model specifications at once
+models = model(
+    ArimaSpec(@formula(value = p() + q() + P() + Q() + d() + D())),
+    EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),
+    SesSpec(@formula(value = ses())),
+    HoltSpec(@formula(value = holt(damped=true))),
+    HoltWintersSpec(@formula(value = hw(seasonal="multiplicative")); m = 12),
+    CrostonSpec(@formula(value = croston())),
+    names = ["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+)
+
+fitted = fit(models, panel)       # each spec fitted to every series
+fc     = forecast(fitted, h = 12) # ForecastModelCollection
+
+fc_tbl = forecast_table(fc) # stacked tidy table with model_name column
+
+```
+
+### Example 4: Panel Data (Models and Multiple Time Series)
+
+```julia
+using Durbyn
+using Durbyn.ModelSpecs
+using Durbyn.Grammar
+using Downloads
+using Tables
+using CSV
+
+# Download and load data
+path = Downloads.download("https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv")
+tbl = Tables.columntable(CSV.File(path))
+
+# Reshape to long format
+tbl = pivot_longer(tbl; id_cols=:date, names_to=:series, values_to=:value)
+
+glimpse(tbl)
+
+# Split into train and test sets using table operations
+# Get unique dates to determine split point
+all_dates = unique(tbl.date)
+n_dates = length(all_dates)
+split_date = all_dates[end-11]  # Hold out last 12 periods for testing
+
+# Create train and test sets
+train = query(tbl, row -> row.date <= split_date)
+test = query(tbl, row -> row.date > split_date)
+
+println("Training data:")
+glimpse(train)
+println("\nTest data:")
+glimpse(test)
+
+# Create panel data wrapper for training
+panel = PanelData(train; groupby=:series, date=:date, m=12);
+
+glimpse(panel)
+
+# Define multiple models for comparison
+models = model(
+    ArimaSpec(@formula(value = p() + q())),
+    EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),
+    SesSpec(@formula(value = ses())),
+    HoltSpec(@formula(value = holt(damped=true))),
+    HoltWintersSpec(@formula(value = hw(seasonal="multiplicative")); m=12),
+    CrostonSpec(@formula(value = croston())),
+    names=["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+)
+
+# Fit all models to all series
+fitted = fit(models, panel)
+
+# Generate forecasts (h=12 to match test set)
+fc = forecast(fitted, h=12)
+
+# Convert to tidy table format
+fc_tbl = forecast_table(fc)
+
+glimpse(fc_tbl)
+
+# Optional: Save forecasts to CSV
+# CSV.write("forecasts.csv", fc_tbl)
+
+# Calculate accuracy metrics
+# Method 1: Using ForecastModelCollection directly
+acc_results = accuracy(fc, test)
+
+println("\nAccuracy by Series and Model:")
+glimpse(acc_results)
+
+list_series(fc)  # See what's available
+plot(fc)  # Quick look at first series
+plot(fc, series=:all, facet=true, n_cols=4)  # Overview
+
+# Detailed inspection
+plot(fc, series="series_1", actual=test)
+
+# Calculate accuracy
+acc = accuracy(fc, test)
+
+# Find and plot interesting cases
+best = acc.series[argmin(acc.MAPE)]
+worst = acc.series[argmax(acc.MAPE)]
+
+plot(fc, series=[best, worst], facet=true, actual=test)
+
+```
+
+### Example 5: ETS Models with Formula
+
+```julia
+# Automatic ETS model selection
+spec_ets = EtsSpec(@formula(sales = e("Z") + t("Z") + s("Z")))
+fitted = fit(spec_ets, data, m = 12)
+fc = forecast(fitted, h = 12)
+
+# Specific ETS components
+spec_ses = SesSpec(@formula(sales = e("A")))
+spec_holt = HoltSpec(@formula(sales = e("A") + t("A")), damped = true)
+spec_hw = HoltWintersSpec(@formula(sales = e("A") + t("A") + s("M")))
+```
+
+---
+
+## Base Models (Array Interface)
+
+The array interface provides direct access to forecasting engines for working with numeric vectors. This is useful for quick analyses or when integrating with existing code.
+
+### Exponential Smoothing
 
 ``` julia
 
@@ -69,7 +258,7 @@ hw_fc = forecast(hw_fit, h = 12)
 plot(hw_fc)
 ```
 
-### Forecasting Intermittent Demand Data
+### Intermittent Demand
 
 ``` julia
 data = [6, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -124,7 +313,7 @@ fitted(fc3)
 plot(fc3, show_fitted = true)
 ```
 
-### Forecasting using Arima
+### Classical ARIMA API
 
 ``` julia
 using Durbyn.Arima
@@ -145,7 +334,7 @@ fc = forecast(fit, h = 12)
 plot(fc)
 ```
 
-### Forecasting using Ararma and Arar models
+### ARAR and ARARMA models
 
 ``` julia
 # Ararma module
@@ -171,4 +360,3 @@ fc = forecast(fit, h = 12)
 plot(fc)
 ```
 
-Durbyn will introduce a **DataFrame-based interface** (tidy forecasting) similar to the **R fable** package, allowing for a more intuitive workflow when working with time series data.

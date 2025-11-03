@@ -6,7 +6,7 @@
 
 **Durbyn** is a Julia package that implements functionality of the R **forecast** package, providing tools for time-series forecasting.
 
-The name Durbyn derives from Kurdish: *Dur* (far) + *Byn* (to see) = binoculars—symbolizing our ability to see far into the future through mathematical precision.
+Durbyn — Kurdish for “binoculars” (Dur, far + Byn, to see), embodies foresight through science. Like Hari Seldon’s psychohistory in Asimov’s Foundation, we seek to glimpse the shape of tomorrow through the disciplined clarity of mathematics.
 
 > This site documents the development version. After your first tagged release, see **stable** docs for the latest release.
 
@@ -30,7 +30,141 @@ Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 
 ---
 
-## Quick peek (ETS)
+## Formula Interface (Recommended)
+
+Durbyn provides a modern, declarative interface for model specification using `@formula`.
+This is the **recommended approach** for most users, supporting single series, model comparison, and panel data forecasting.
+
+!!! note "Optional Dependencies"
+    Panel data examples require `CSV` and `Downloads` packages:
+    ```julia
+    using Pkg
+    Pkg.add(["CSV", "Downloads"])
+    ```
+
+### Complete Workflow: Model Comparison with Panel Data
+
+```julia
+using Durbyn, Durbyn.TableOps, Durbyn.Grammar
+using CSV, Downloads, Tables
+
+# 1. Load and prepare data
+path = Downloads.download("https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv")
+wide = Tables.columntable(CSV.File(path))
+
+# Reshape to long format
+tbl = pivot_longer(wide; id_cols=:date, names_to=:series, values_to=:value)
+glimpse(tbl)
+
+# 2. Split into train and test sets
+all_dates = unique(tbl.date)
+split_date = all_dates[end-11]  # Hold out last 12 periods for testing
+
+train = query(tbl, row -> row.date <= split_date)
+test = query(tbl, row -> row.date > split_date)
+
+println("Training data:")
+glimpse(train)
+println("\nTest data:")
+glimpse(test)
+
+# 3. Create panel data wrapper
+panel = PanelData(train; groupby=:series, date=:date, m=12)
+glimpse(panel)
+
+# 4. Define multiple models for comparison
+models = model(
+    ArimaSpec(@formula(value = p() + q())),                              # Auto ARIMA
+    EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),  # Auto ETS with drift
+    SesSpec(@formula(value = ses())),                                    # Simple exponential smoothing
+    HoltSpec(@formula(value = holt(damped=true))),                       # Damped Holt
+    HoltWintersSpec(@formula(value = hw(seasonal=:multiplicative))),     # Holt-Winters multiplicative
+    CrostonSpec(@formula(value = croston())),                            # Croston's method
+    names=["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+)
+
+# 5. Fit all models to all series
+fitted = fit(models, panel)
+
+# 6. Generate forecasts (h=12 to match test set)
+fc = forecast(fitted, h=12)
+
+# 7. Convert to tidy table format
+fc_tbl = forecast_table(fc)
+glimpse(fc_tbl)
+
+# 8. Calculate accuracy metrics across all models and series
+acc_results = accuracy(fc, test)
+println("\nAccuracy by Series and Model:")
+glimpse(acc_results)
+
+# 9. Visualization
+list_series(fc)  # Show available series
+
+# Quick overview of all series for first model
+plot(fc, series=:all, facet=true, n_cols=4)
+
+# Detailed inspection with actual values from test set
+plot(fc, series="series_10", actual=test)
+
+# 10. Find best and worst performing series
+best_series = acc_results.series[argmin(acc_results.MAPE)]
+worst_series = acc_results.series[argmax(acc_results.MAPE)]
+
+# Compare best vs worst performers
+plot(fc, series=[best_series, worst_series], facet=true, actual=test)
+```
+
+**This example demonstrates:**
+- **Data wrangling**: Load, reshape, and split data using TableOps
+- **Model comparison**: Fit 6 forecasting methods (ARIMA, ETS variants, Croston)
+- **Panel forecasting**: Automatic iteration over multiple time series
+- **Out-of-sample evaluation**: Train/test split with accuracy metrics
+- **Visualization**: Faceted plots, actual vs forecast comparison
+- **Tidy output**: Structured tables ready for further analysis
+
+### Quick Examples
+
+#### Single Series ARIMA
+
+```julia
+using Durbyn
+
+data = (sales = [120, 135, 148, 152, 141, 158, 170, 165, 180, 195],)
+
+spec = ArimaSpec(@formula(sales = p() + q()))
+fitted = fit(spec, data, m = 12)
+fc = forecast(fitted, h = 12)
+```
+
+#### ARIMA with Regressors (Features)
+
+```julia
+data = (
+    sales = rand(100),
+    temperature = rand(100),
+    promotion = rand(0:1, 100)
+)
+
+spec = ArimaSpec(@formula(sales = p(1,3) + q(1,3) + temperature + promotion))
+fitted = fit(spec, data, m = 7)
+
+# Provide future values of regressors
+newdata = (temperature = rand(7), promotion = rand(0:1, 7))
+fc = forecast(fitted, h = 7, newdata = newdata)
+```
+
+#### Automatic ETS Selection
+
+```julia
+spec_ets = EtsSpec(@formula(sales = e("Z") + t("Z") + s("Z")))
+fitted = fit(spec_ets, data, m = 12)
+fc = forecast(fitted, h = 12)
+```
+
+---
+
+## Base Models (Array Interface)
 
 ```julia
 using Durbyn
@@ -143,8 +277,14 @@ MIT License.
 
 ---
 
-## What’s next
+## What's next
 
-- Read the **Quick Start** (left sidebar).
-- Explore **User Guide** pages (ETS, Intermittent Demand, ARIMA, ARAR/ARARMA).
-- See the **API Reference** for full docs.
+- **[Grammar Guide](grammar.md)** (Recommended) — Learn the complete formula interface for ARIMA and ETS
+- **[Quick Start](quickstart.md)** — Get started quickly with formula and base models
+- **User Guide** pages:
+  - [Table Operations](tableops.md) — Data wrangling with Tables.jl for panel data
+  - [ARIMA](arima.md) — Formula interface and base models (ARIMA, SARIMA, Auto ARIMA)
+  - [Exponential Smoothing](expsmoothing.md) — Formula interface and base models (SES, Holt, Holt-Winters, ETS)
+  - [Intermittent Demand](intermittent.md) — Croston methods
+  - [ARAR/ARARMA](ararma.md) — Memory-shortening algorithms
+- **API Reference** — Complete API documentation

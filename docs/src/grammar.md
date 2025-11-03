@@ -2,6 +2,8 @@
 
 Durbyn provides an expressive, composable grammar for defining forecasting models. This unified interface lets you describe ARIMA, SARIMA, and exponential smoothing models with concise, readable syntax using the `@formula` macro and specialized model specifications.
 
+Future releases will extend this grammar to support additional statistical models (state space models, structural time series, etc.) and machine learning forecasting methods, all accessible through the same consistent interface.
+
 ---
 
 ## Overview
@@ -11,7 +13,7 @@ The Durbyn grammar system consists of:
 - **Formula interface**: Use `@formula` to declaratively specify model components
 - **Model specifications**: Wrap formulas in specs like `ArimaSpec`, `EtsSpec`, `SesSpec`, etc.
 - **Unified fitting**: Call `fit(spec, data)` with optional grouping for panel data
-- **Consistent forecasting**: Use `forecast(fitted, h)` for both single and grouped models
+- **Consistent forecasting**: Use `forecast(fitted, h)` for both single and grouped models; external variables can be passed if the model supports them
 
 This design eliminates manual tuning loops and provides a consistent interface across all model families.
 
@@ -23,13 +25,13 @@ The ARIMA grammar lets you describe ARIMA and SARIMA models with flexible order 
 
 ### Formula Basics
 
-Define the relationship between a target series and its ARIMA structure:
+Define the relationship between a response variable (target in ML terminology) and its ARIMA structure:
 
 ```julia
 @formula(sales = p() + d() + q())
 ```
 
-Every formula requires a target (left-hand side) and one or more terms (right-hand side). Terms may specify ARIMA orders, seasonal orders, or exogenous variables.
+Every formula requires a **response variable** (left-hand side; called *target* in ML) and one or more model components (right-hand side). Components may specify ARIMA orders, seasonal orders, or **regressors** (exogenous variables; called *features* in ML).
 
 ### Non-Seasonal Orders
 
@@ -71,7 +73,7 @@ Remember to provide the seasonal period `m` when fitting: `fit(spec, data, m=12)
 
 #### Explicit Variables
 
-Add predictors by listing column names:
+Add regressors (features) by listing column names:
 
 ```julia
 @formula(sales = p() + q() + price + promotion)
@@ -81,7 +83,7 @@ These become `VarTerm`s—during fitting, Durbyn pulls the matching columns from
 
 #### Automatic Selection (`auto()`)
 
-Use `auto()` to include all numeric columns except the target, group columns, and optional date column:
+Use `auto()` to include all numeric columns as regressors, excluding the response variable (target), group columns, and optional date column:
 
 ```julia
 @formula(sales = auto())                    # pure auto ARIMA + automatic xregs
@@ -139,7 +141,7 @@ The ETS grammar mirrors the ARIMA DSL, letting you describe exponential smoothin
 
 ### Formula Basics
 
-Use `@formula` to define the target series and its ETS components:
+Use `@formula` to define the response variable (target) and its ETS components:
 
 ```julia
 @formula(sales = e("A") + t("N") + s("N"))
@@ -244,9 +246,9 @@ These specs share the same grouped/PanelData support as `EtsSpec`, and all optio
 
 ---
 
-## Multi-Model Comparison
+## Multi-Model Fitting 
 
-Use `ModelCollection` to fit and compare multiple specifications simultaneously:
+Use `ModelCollection` to fit multiple specifications simultaneously:
 
 ```julia
 using Durbyn
@@ -272,55 +274,101 @@ fc     = forecast(fitted, h = 12) # ForecastModelCollection
 forecast_table(fc)                # stacked tidy table with model_name column
 ```
 
-`forecast_table` stacks every model (and group) with a `model_name` column, so downstream comparisons stay tidy. You can always filter to a specific model or pivot wider if needed.
+`forecast_table` stacks every model (and group) with a `model_name` column, so downstream comparisons stay tidy. You can filter to a specific model or pivot wider using `Durbyn.TableOps` functions, or use other Julia packages like `DataFrames.jl`, `DataFramesMeta.jl`, or `Query.jl`.
 
 ---
 
 ## Complete End-to-End Example
 
-Here's a complete workflow using the ARIMA grammar with panel data:
+Here's a comprehensive workflow demonstrating model comparison, forecasting, and accuracy evaluation with panel data:
+
+!!! note "Optional Dependencies"
+    This example requires `CSV` and `Downloads` packages:
+    ```julia
+    using Pkg
+    Pkg.add(["CSV", "Downloads"])
+    ```
 
 ```julia
-using CSV
-using Downloads
-using Tables
-using Durbyn
-using Durbyn.TableOps
+using Durbyn, Durbyn.TableOps, Durbyn.Grammar
+using CSV, Downloads, Tables
 
-# Download and reshape data
-local_path = Downloads.download(
-    "https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv"
+# 1. Load and prepare data
+path = Downloads.download("https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv")
+wide = Tables.columntable(CSV.File(path))
+
+# Reshape to long format
+tbl = pivot_longer(wide; id_cols=:date, names_to=:series, values_to=:value)
+glimpse(tbl)
+
+# 2. Split into train and test sets
+all_dates = unique(tbl.date)
+split_date = all_dates[end-11]  # Hold out last 12 periods for testing
+
+train = query(tbl, row -> row.date <= split_date)
+test = query(tbl, row -> row.date > split_date)
+
+println("Training data:")
+glimpse(train)
+println("\nTest data:")
+glimpse(test)
+
+# 3. Create panel data wrapper
+panel = PanelData(train; groupby=:series, date=:date, m=12)
+glimpse(panel)
+
+# 4. Define multiple models for comparison
+models = model(
+    ArimaSpec(@formula(value = p() + q())),                              # Auto ARIMA
+    EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),  # Auto ETS with drift
+    SesSpec(@formula(value = ses())),                                    # Simple exponential smoothing
+    HoltSpec(@formula(value = holt(damped=true))),                       # Damped Holt
+    HoltWintersSpec(@formula(value = hw(seasonal=:multiplicative))),     # Holt-Winters multiplicative
+    CrostonSpec(@formula(value = croston())),                            # Croston's method
+    names=["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
 )
-retail = CSV.File(local_path)
-tbl = Tables.columntable(retail)
 
-glimpse(tbl)  # Column overview
+# 5. Fit all models to all series
+fitted = fit(models, panel)
 
-# Convert to long format
-tbl_long = pivot_longer(tbl; id_cols = :date, names_to = :series, values_to = :value)
-glimpse(tbl_long)
+# 6. Generate forecasts (h=12 to match test set)
+fc = forecast(fitted, h=12)
 
-# Wrap in PanelData with group/date metadata
-panel_tbl = PanelData(tbl_long; groupby = :series, date = :date, m = 12)
-
-# Auto ARIMA with automatic xreg selection
-spec = ArimaSpec(@formula(value = auto()))
-# Alternative specifications:
-# spec = ArimaSpec(@formula(value = p() + d() + q() + P() + D() + Q()))  # Auto ARIMA
-# spec = ArimaSpec(@formula(value = p(1)))                               # ARIMA(1,0,0)
-
-fitted = fit(spec, panel_tbl)
-
-# Inspect grouped result
-glimpse(fitted)
-
-# Forecast 12 steps ahead for every series
-fc = forecast(fitted, h = 12)
-
-# Convert to tidy forecast table
+# 7. Convert to tidy table format
 fc_tbl = forecast_table(fc)
 glimpse(fc_tbl)
+
+# 8. Calculate accuracy metrics across all models and series
+acc_results = accuracy(fc, test)
+println("\nAccuracy by Series and Model:")
+glimpse(acc_results)
+
+# 9. Visualization
+list_series(fc)  # Show available series
+
+# Quick overview of all series for first model
+plot(fc, series=:all, facet=true, n_cols=4)
+
+# Detailed inspection with actual values from test set
+plot(fc, series="A10", actual=test)
+
+# 10. Find best and worst performing series
+# Filter accuracy results for a specific metric (e.g., MAPE)
+best_series = acc_results.series[argmin(acc_results.MAPE)]
+worst_series = acc_results.series[argmax(acc_results.MAPE)]
+
+# Compare best vs worst performers
+plot(fc, series=[best_series, worst_series], facet=true, actual=test)
 ```
+
+**Key Features Demonstrated:**
+- **Data preparation**: Download, reshape, and split data using TableOps
+- **Model comparison**: Fit 6 different forecasting methods simultaneously
+- **Panel forecasting**: Automatic iteration over multiple time series
+- **Train/test split**: Proper out-of-sample evaluation
+- **Accuracy metrics**: Compare model performance across series
+- **Visualization**: Multiple plotting options for analysis
+- **Tidy output**: Structured forecast tables ready for downstream analysis
 
 ---
 

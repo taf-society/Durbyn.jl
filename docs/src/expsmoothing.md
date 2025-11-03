@@ -1,6 +1,13 @@
 # Exponential Smoothing (ETS): State-Space Form, Additive & Multiplicative Models
 
-This page summarizes the **ETS state-space framework wich is implemented in Durbyn.jl as ``ets()``** for automatic forecasting, and the **admissible parameter regions** for stability/forecastability.  
+!!! tip "Formula Interface is the Recommended Approach"
+    This page starts with the **formula interface** (recommended for most users),
+    which provides declarative model specification with `EtsSpec`, `SesSpec`, `HoltSpec`,
+    `HoltWintersSpec`, and support for panel data and model comparison.
+    The array interface (base models) is covered later.
+    See the **[Grammar Guide](grammar.md)** for complete documentation.
+
+This page summarizes the **ETS state-space framework which is implemented in Durbyn.jl as `ets()`** for automatic forecasting, and the **admissible parameter regions** for stability/forecastability.
 It includes both **additive** and **multiplicative** error models, following Hyndman et al. (2002, 2008).
 
 ---
@@ -158,6 +165,287 @@ This normalization restores stability.
 
 ---
 
+# Formula Interface (Primary Usage)
+
+The formula interface provides a modern, declarative way to specify exponential smoothing models with full support for single series, model comparison, and panel data.
+
+## Example 1: Automatic ETS Selection
+
+Let the algorithm choose the best error, trend, and seasonal components:
+
+```julia
+using Durbyn
+using Durbyn.Grammar
+
+# Load data
+data = (sales = [120, 135, 148, 152, 141, 158, 170, 165, 180, 195],)
+
+# Automatic model selection (error, trend, seasonal all set to "Z" for automatic)
+spec = EtsSpec(@formula(sales = e("Z") + t("Z") + s("Z")))
+fitted = fit(spec, data, m = 12)
+fc = forecast(fitted, h = 12)
+plot(fc)
+# Check selected model
+println(fitted.fit.method)  # Shows selected ETS model
+
+# Access fitted values and residuals
+fitted_values = fitted.fit.fitted
+resids = fitted.fit.residuals
+```
+
+**Key features:**
+- `e("Z")`, `t("Z")`, `s("Z")` trigger automatic selection
+- `m = 12` specifies monthly seasonality
+- Searches over all admissible ETS models
+
+## Example 2: Specific ETS Model
+
+Specify exact error, trend, and seasonal components:
+
+```julia
+# ETS(A,A,M): Additive error, Additive trend, Multiplicative seasonality
+spec = EtsSpec(@formula(sales = e("A") + t("A") + s("M")))
+fitted = fit(spec, data, m = 12)
+fc = forecast(fitted, h = 12)
+plot(fc)
+# ETS(M,Ad,M): Multiplicative error, Additive damped trend, Multiplicative seasonal
+spec_damped = EtsSpec(@formula(sales = e("M") + t("A") + s("M") + drift()))
+fitted_damped = fit(spec_damped, data, m = 12)
+fc_damped = forecast(fitted_damped, h = 12)
+plot(fc_damped)
+# ETS(A,N,N): Simple exponential smoothing (additive error, no trend, no seasonality)
+spec_ses = EtsSpec(@formula(sales = e("A") + t("N") + s("N")))
+fitted_ses = fit(spec_ses, data)
+fc_ses = forecast(fitted_ses, h = 12)
+plot(fc_ses)
+```
+
+**Component specification:**
+- **Error**: `"A"` (additive), `"M"` (multiplicative), `"Z"` (auto)
+- **Trend**: `"N"` (none), `"A"` (additive), `"Ad"` (additive damped), `"M"` (multiplicative), `"Md"` (multiplicative damped), `"Z"` (auto)
+- **Seasonal**: `"N"` (none), `"A"` (additive), `"M"` (multiplicative), `"Z"` (auto)
+
+## Example 3: Specialized ETS Specs
+
+Use convenience specs for common models:
+
+```julia
+# Simple Exponential Smoothing (SES)
+spec_ses = SesSpec(@formula(sales = ses()))
+fitted_ses = fit(spec_ses, data)
+fc_ses = forecast(fitted_ses, h = 12)
+plot(fc_ses)
+
+# Holt's Linear Trend
+spec_holt = HoltSpec(@formula(sales = holt()))
+fitted_holt = fit(spec_holt, data)
+fc_holt = forecast(fitted_holt, h = 12)
+plot(fc_holt)
+# Holt's method with damped trend (recommended for long horizons)
+spec_holt_damped = HoltSpec(@formula(sales = holt(damped = true)))
+fitted_holt_damped = fit(spec_holt_damped, data)
+fc_holt_damped = forecast(fitted_holt_damped, h = 12)
+plot(fc_holt_damped)
+# Holt-Winters Seasonal
+ap = (passengers = air_passengers(), )
+spec_hw = HoltWintersSpec(@formula(passengers = hw(seasonal=:additive)))
+fitted_hw = fit(spec_hw, ap, m = 12)
+fc_hw = forecast(fitted_hw, h = 12)
+plot(fc_hw)
+# Holt-Winters with multiplicative seasonality
+spec_hw_mult = HoltWintersSpec(@formula(passengers = hw(seasonal=:multiplicative)))
+fitted_hw_mult = fit(spec_hw_mult, ap, m = 12)
+fc_hw = forecast(fitted_hw_mult, h = 12)
+plot(fc_hw)
+```
+
+**Specialized specs:**
+- `SesSpec`: Simple exponential smoothing
+- `HoltSpec`: Linear trend (with optional damping)
+- `HoltWintersSpec`: Seasonal models (additive or multiplicative)
+
+## Example 4: Fitting Multiple Models Together
+
+Fit different ETS specifications and manually compare results:
+
+```julia
+using Durbyn
+using Durbyn.Grammar
+
+# Create synthetic monthly sales data with trend and seasonality
+n = 72  # 6 years of monthly data
+tt = 1:n
+trend = 100 .+ 2 .* tt
+seasonal = 20 .* sin.(2π .* tt ./ 12)  # Annual seasonality
+noise = randn(n) .* 5
+sales_data = trend .+ seasonal .+ noise
+
+# Split into training and test sets
+n_test = 12
+train_sales = sales_data[1:(end - n_test)]
+test_sales = sales_data[(end - n_test + 1):end]
+
+# Create data structure for training
+data = (sales = train_sales,)
+test = (sales = test_sales,)
+
+# Fit multiple ETS models at once
+# Fit multiple ETS models at once
+  models = model(
+      EtsSpec(@formula(sales = e("A") + t("A") + s("A"))),           # Additive Holt-Winters
+      EtsSpec(@formula(sales = e("M") + t("A") + s("M"))),           # Multiplicative seasonality
+      EtsSpec(@formula(sales = e("A") + t("A") + drift() + s("A"))), # Damped trend
+      SesSpec(@formula(sales = ses())),                              # Simple exponential smoothing
+      HoltSpec(@formula(sales = holt())),                            # Holt's method
+      names = ["hw_aaa", "ets_mam", "hw_damped", "ses", "holt"]
+  )
+
+# Fit all models
+fitted = fit(models, data, m = 12)
+
+# Forecast with all models
+fc = forecast(fitted, h = 12)
+
+# Compare forecasts against test data
+acc = accuracy(fc, test)
+glimpse(acc)
+
+# Manually compare information criteria
+for (name, model_result) in zip(models.names, fitted.models)
+    println("$name: AIC = $(round(model_result.fit.aic, digits=2)), BIC = $(round(model_result.fit.bic, digits=2))")
+end
+
+# Plot forecasts (if plotting is available)
+plot(fc)
+
+fc_tbl = forecast_table(fc)
+glimpse(fc_tbl)
+
+```
+
+**Key features:**
+- Generate synthetic data with trend and seasonality
+- Fit multiple ETS specifications at once
+- Mix different exponential smoothing methods
+- Compare forecasts against held-out test data
+- Manually inspect AIC, BIC, and other diagnostics
+- Forecasts generated for all models
+
+**Alternative damped trend specification:**
+```julia
+# Instead of using drift() in the formula, you can use the damped parameter
+EtsSpec(@formula(sales = e("A") + t("A") + s("A")), damped=true)
+```
+
+## Example 5: Panel Data (Multiple Time Series)
+
+Fit ETS models to multiple series:
+
+!!! note "Optional Dependencies"
+This example requires `CSV` and `Downloads` packages, which are not installed by default with Durbyn.
+
+Install them first:
+
+```julia
+using Pkg
+Pkg.add(["CSV", "Downloads"])
+```
+         
+```julia
+using Durbyn
+using Durbyn.ModelSpecs
+using Durbyn.Grammar
+using Downloads
+using Tables
+using CSV
+
+# Download and load data
+path = Downloads.download("https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv")
+tbl = Tables.columntable(CSV.File(path))
+
+# Reshape to long format
+tbl = pivot_longer(tbl; id_cols=:date, names_to=:series, values_to=:value)
+
+glimpse(tbl)
+
+# Split into train and test sets using table operations
+# Get unique dates to determine split point
+all_dates = unique(tbl.date)
+n_dates = length(all_dates)
+split_date = all_dates[end-11]  # Hold out last 12 periods for testing
+
+# Create train and test sets
+train = query(tbl, row -> row.date <= split_date)
+test = query(tbl, row -> row.date > split_date)
+
+println("Training data:")
+glimpse(train)
+println("\nTest data:")
+glimpse(test)
+
+# Create panel data wrapper for training
+panel = PanelData(train; groupby=:series, date=:date, m=12);
+
+glimpse(panel)
+
+# Fit automatic ETS to all series
+spec = EtsSpec(@formula(value = e("Z") + t("Z") + s("Z")))
+fitted = fit(spec, panel)
+
+# Forecast all series
+fc = forecast(fitted, h = 12)
+
+# Get tidy forecast table
+fc_tbl = forecast_table(fc)
+
+glimpse(fc_tbl)
+
+# Plot forecasts 
+list_series(fc)  # See what's available
+plot(fc)  # Quick look at first series
+plot(fc, series=:all, facet=true, n_cols=4)  # Overview
+
+# Detailed inspection
+plot(fc, series="series_1", actual=test)
+
+```
+
+**Panel data features:**
+- Fits separate model to each series
+- Automatic model selection for each series individually
+- Returns structured output for all series
+- Efficient for hundreds or thousands of series
+
+## Example 6: Box-Cox Transformation
+
+Handle non-constant variance with Box-Cox transformation:
+
+```julia
+# Automatic lambda selection
+spec = EtsSpec(@formula(sales = e("A") + t("A") + s("M")))
+fitted = fit(spec, data, m = 12, lambda = "auto", biasadj = true)
+
+# Check selected lambda
+println(fitted.fit.lambda)
+
+# Manual lambda
+fitted_lambda = fit(spec, data, m = 12, lambda = 0.5)
+# Check fixed lambda
+println(fitted_lambda.fit.lambda)
+
+
+```
+
+**Transformation features:**
+- `lambda = "auto"` selects optimal transformation
+- `biasadj = true` applies bias adjustment to forecasts
+- Common values: 0 (log), 0.5 (square root), 1 (no transform)
+
+---
+
+# Array Interface (Base Models)
+
+The array interface provides direct access to exponential smoothing engines for numeric vectors. 
 ## Simple Exponential Smoothing (SES)
 
 **Simple exponential smoothing** is the simplest form of exponential smoothing (equivalent to ETS(A,N,N) or ETS(M,N,N)), with no trend or seasonality components. It is suitable for forecasting data with no clear trend or seasonal pattern.
@@ -436,7 +724,7 @@ Use Holt's linear trend method when:
 
 ---
 
-# Forecast with Automatic ETS model
+## Automatic ETS Model Selection
 
 ```julia
 using Durbyn

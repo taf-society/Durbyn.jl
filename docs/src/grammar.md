@@ -350,7 +350,7 @@ list_series(fc)  # Show available series
 plot(fc, series=:all, facet=true, n_cols=4)
 
 # Detailed inspection with actual values from test set
-plot(fc, series="A10", actual=test)
+plot(fc, series="series_10", actual=test)
 
 # 10. Find best and worst performing series
 # Filter accuracy results for a specific metric (e.g., MAPE)

@@ -2285,12 +2285,10 @@ function predict_arima(model::ArimaFit, n_ahead::Int=1;
     narma = sum(arma[1:4])
     ncoefs = length(coefs)
 
-    xreg_names = filter(n -> !(startswith(n, "ar") || startswith(n, "ma") ||
-                               startswith(n, "sar") || startswith(n, "sma")), coef_names)
     intercept_idx = findfirst(==("intercept"), coef_names)
     has_intercept = !isnothing(intercept_idx)
 
-    ncxreg = length(xreg_names) - (has_intercept ? 1 : 0)
+    ncxreg = model.xreg isa NamedMatrix ? size(model.xreg.data, 2) : 0
     if myncol(newxreg) != ncxreg
         throw(ArgumentError("`xreg` and `newxreg` have different numbers of columns"))
     end

@@ -31,7 +31,7 @@ using .IntermittentDemand
 
 import .Utils: air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
 import .Utils: Formula, parse_formula, compile, model_matrix, model_frame
-import .Generics: plot, fitted, residuals, summary, predict, forecast, fit
+import .Generics: plot, fitted, residuals, summary, predict, forecast, fit, accuracy, list_series
 import .Optimize: NelderMeadOptions
 import .Grammar: p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm
 import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, EtsSpec, FittedEts
@@ -44,7 +44,7 @@ import .TableOps: select, query, arrange, groupby, mutate, summarise, summarize,
 
 export air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
 export Formula, parse_formula, compile, model_matrix, model_frame
-export plot, fitted, residuals, summary, predict, forecast, fit
+export plot, fitted, residuals, summary, predict, forecast, fit, accuracy, list_series
 export coef, coefficients, coefs
 export NelderMeadOptions
 export p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm

@@ -107,15 +107,30 @@ function diff(x::AbstractMatrix; lag::Int=1, differences::Int=1)
         return x[1:0, :]
     end
 
-    r = fill(NaN, size(x))
-
+    r = copy(x)
+    tmp = similar(r)
     for _ in 1:differences
         for j in 1:ncol
-            r[:, j] = r[:, j] .- lag_series(r[:, j], lag)
+            @views begin
+                col = view(r, :, j)
+                tmp[:, j] = col .- lag_series(col, lag)
+            end
         end
+        r, tmp = tmp, r
     end
 
     return r
 end
 
+"""
+    diff(x::NamedMatrix; lag::Int=1, differences::Int=1) -> NamedMatrix
+
+Apply lagged differencing to each column of a `NamedMatrix`, preserving column names
+and row names (when present).
+"""
+function diff(x::NamedMatrix; lag::Int=1, differences::Int=1)
+    data = diff(x.data; lag = lag, differences = differences)
+    rownames = isnothing(x.rownames) ? nothing : copy(x.rownames)
+    return NamedMatrix{eltype(data)}(data, rownames, copy(x.colnames))
+end
 

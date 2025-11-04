@@ -125,7 +125,7 @@ function auto_arima(
 
     if !isnothing(xreg)
         indx = firstnm:size(xreg.data, 1)
-        xreg = get_elements(xreg, row = indx)
+        xreg = select_rows(xreg, indx)
     end
     # Check constant data
     if is_constant(x)

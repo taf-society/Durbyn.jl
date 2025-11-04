@@ -44,6 +44,20 @@ function NamedMatrix(nrows::Integer, colnames::Vector{String};
     NamedMatrix{T}(data, rownames, colnames)
 end
 
+"""
+    select_rows(nm::NamedMatrix, rows) -> NamedMatrix
+
+Return a new `NamedMatrix` that contains only the rows specified by `rows`
+(any iterable of integer indices). Column metadata is preserved, and row
+names are subset when present.
+"""
+function select_rows(nm::NamedMatrix, rows)
+    row_inds = rows isa AbstractVector ? rows : collect(rows)
+    newdata = nm.data[row_inds, :]
+    newrownames = isnothing(nm.rownames) ? nothing : nm.rownames[row_inds]
+    return NamedMatrix{eltype(nm.data)}(newdata, newrownames, copy(nm.colnames))
+end
+
 function setrow!(nm::NamedMatrix{T}, i::Integer, row) where {T}
     length(row) == size(nm.data, 2) || error("Row length != number of columns")
     nm.data[i, :] .= row
@@ -385,5 +399,4 @@ function cbind(nm::NamedMatrix{T}, newcols::AbstractMatrix{T}, newcolnames::Vect
     end
     return NamedMatrix{T}(combined_data, nm.rownames, combined_colnames)
 end
-
 

@@ -43,7 +43,7 @@ function compute_approx_offset(;
             # row count of xreg
             nrows = size(Xreg.data, 1)
             if nrows == N0
-                Xreg = get_elements(Xreg, row = collect(start_idx:nrows))
+                Xreg = select_rows(Xreg, start_idx:nrows)
             end
         end
     end

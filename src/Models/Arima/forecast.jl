@@ -133,9 +133,16 @@ function forecast(model::ArimaFit;
             end
         end
     else
-        
+
         Xnm = xreg isa NamedMatrix ? xreg :
               NamedMatrix(Matrix(xreg), size(Matrix(xreg),2)==1 ? ["xreg"] : ["xreg$(i)" for i in 1:size(Matrix(xreg),2)])
+
+        # If model has drift but user's xreg doesn't, add it automatically
+        if has_drift && !("drift" in Xnm.colnames)
+            h_temp = size(Xnm.data, 1)
+            drift = collect((n+1):(n+h_temp))
+            Xnm = add_drift_term(Xnm, drift, "drift")
+        end
 
         if !isempty(train_xcols)
             if sort(Xnm.colnames) != sort(train_xcols)

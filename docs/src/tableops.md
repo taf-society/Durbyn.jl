@@ -412,16 +412,18 @@ glimpse(summary)
 
 7. **Memory efficiency**: TableOps functions return new `NamedTuple`s, so be mindful of memory when working with very large datasets.
 
-## API Reference
+## Function Reference
 
-For detailed API documentation of each function, see:
+Core functions provided by TableOps:
 
-- [`select`](@ref)
-- [`query`](@ref)
-- [`arrange`](@ref)
-- [`groupby`](@ref)
-- [`mutate`](@ref)
-- [`summarise`](@ref) / [`summarize`](@ref)
-- [`pivot_longer`](@ref)
-- [`pivot_wider`](@ref)
-- [`glimpse`](@ref)
+- `select` — Select specific columns
+- `query` — Filter rows based on conditions
+- `arrange` — Sort rows by column values
+- `groupby` — Group data by column values
+- `mutate` — Add or transform columns
+- `summarise` / `summarize` — Aggregate grouped data
+- `pivot_longer` — Reshape from wide to long format
+- `pivot_wider` — Reshape from long to wide format
+- `glimpse` — Quick data preview with types and samples
+
+All functions are documented above with examples.

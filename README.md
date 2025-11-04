@@ -33,13 +33,20 @@ The Durbyn package is licensed under the **MIT License**, allowing for open-sour
 
 ## Installation
 
-Durbyn is still in development. Once it is officially released, you will be able to install it using Julia’s package manager.
+Durbyn is still in development. Once it is officially released, you will be able to install it using Julia's package manager.
 
 For the latest development version, you can install directly from GitHub:
 
 ``` julia
 Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 ```
+
+**Performance Tip:** Durbyn supports automatic parallel computing when fitting models to panel data. Start Julia with multiple threads for massive speedups:
+```bash
+julia -t auto  # Use all available CPU cores
+```
+Performance scales with cores (8 cores: ~8x faster, 32 cores: ~20x faster, 96+ cores: even greater speedups).
+See the [Quick Start Performance Guide](https://taf-society.github.io/Durbyn.jl/dev/quickstart/#Performance-Multi-Threading-for-Parallel-Computing) for details.
 
 ## Usage
 

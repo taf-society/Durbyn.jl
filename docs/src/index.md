@@ -28,6 +28,13 @@ using Pkg
 Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 ```
 
+!!! tip "Performance: Multi-Threading"
+    Durbyn automatically uses parallel computing when fitting models to panel data. Start Julia with multiple threads for **massive speedups** that scale with your CPU cores:
+    ```bash
+    julia -t auto
+    ```
+    See [Performance Guide](quickstart.md#Performance-Multi-Threading-for-Parallel-Computing) for all setup methods including VS Code configuration.
+
 ---
 
 ## Formula Interface (Recommended)

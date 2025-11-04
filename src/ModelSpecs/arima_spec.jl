@@ -5,9 +5,6 @@ Provides `ArimaSpec` for specifying ARIMA models using the grammar interface,
 and `FittedArima` for fitted ARIMA models.
 """
 
-# ============================================================================
-# ARIMA Specification
-# ============================================================================
 
 """
     ArimaSpec(formula::ModelFormula; m=nothing, xreg_formula=nothing, kwargs...)
@@ -130,10 +127,6 @@ struct ArimaSpec <: AbstractModelSpec
     end
 end
 
-# ============================================================================
-# Fitted ARIMA Model
-# ============================================================================
-
 """
     FittedArima
 
@@ -169,19 +162,18 @@ fc = forecast(fitted, h = 12)
 """
 struct FittedArima <: AbstractFittedModel
     spec::ArimaSpec
-    fit::Any  # Will be ArimaFit when Arima module is loaded
+    fit::Any
     target_col::Symbol
     xreg_cols::Vector{Symbol}
     data_schema::Dict{Symbol, Type}
     m::Int
 
     function FittedArima(spec::ArimaSpec,
-                        fit,  # Any type - will be ArimaFit
+                        fit,
                         target_col::Symbol,
                         xreg_cols::Vector{Symbol},
                         data,
                         m::Int)
-        # Extract schema from data (columntable)
         schema = Dict{Symbol, Type}()
         for (k, v) in pairs(data)
             schema[k] = eltype(v)
@@ -190,10 +182,6 @@ struct FittedArima <: AbstractFittedModel
         new(spec, fit, target_col, xreg_cols, schema, m)
     end
 end
-
-# ============================================================================
-# Extract Metrics
-# ============================================================================
 
 """
     extract_metrics(model::FittedArima)
@@ -219,55 +207,44 @@ function extract_metrics(model::FittedArima)
     return metrics
 end
 
-# ============================================================================
-# Pretty Printing
-# ============================================================================
 
 function Base.show(io::IO, spec::ArimaSpec)
     print(io, "ArimaSpec: ")
 
-    # Show formula
     print(io, spec.formula)
 
-    # Show seasonal period if specified
     if !isnothing(spec.m)
         print(io, ", m = ", spec.m)
     end
 
-    # Show if xreg_formula is present
     if !isnothing(spec.xreg_formula)
         print(io, ", xreg = Formula(...)")
     end
 end
 
 function Base.show(io::IO, fitted::FittedArima)
-    # Extract ARIMA orders
+    
     p, q, P, Q, m, d, D = fitted.fit.arma
 
-    # Build model string
     model_str = "ARIMA($(Int(p)),$(Int(d)),$(Int(q)))"
     if m > 1
         model_str *= "($(Int(P)),$(Int(D)),$(Int(Q)))[$(Int(m))]"
     end
 
-    # Add X if has exogenous variables
     if !isempty(fitted.xreg_cols)
         model_str *= " with xreg"
     end
 
     print(io, "FittedArima: ", model_str)
 
-    # Show fit metrics if available
     if !isnothing(fitted.fit.aic)
         print(io, ", AIC = ", round(fitted.fit.aic, digits=2))
     end
 end
 
 function Base.show(io::IO, ::MIME"text/plain", fitted::FittedArima)
-    # Extract ARIMA orders
     p, q, P, Q, m, d, D = fitted.fit.arma
 
-    # Multi-line display
     println(io, "FittedArima")
     println(io, "  Model: ARIMA($(Int(p)),$(Int(d)),$(Int(q)))")
     if m > 1
@@ -291,6 +268,5 @@ function Base.show(io::IO, ::MIME"text/plain", fitted::FittedArima)
         println(io, "  σ²:   ", round(fitted.fit.sigma2, digits=6))
     end
 
-    # Show number of observations
     println(io, "  n:    ", fitted.fit.nobs)
 end

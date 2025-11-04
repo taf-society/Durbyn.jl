@@ -60,7 +60,6 @@ best = select_best(fitted, metric = :aic)
 function model(specs::AbstractModelSpec...; names::Union{Vector{String}, Nothing} = nothing)
     n_specs = length(specs)
 
-    # Single spec - return directly (not wrapped)
     if n_specs == 1
         if !isnothing(names) && length(names) > 1
             @warn "Single spec provided but $(length(names)) names given. Ignoring names."
@@ -68,10 +67,8 @@ function model(specs::AbstractModelSpec...; names::Union{Vector{String}, Nothing
         return specs[1]
     end
 
-    # Multiple specs - create collection
     specs_vec = collect(specs)
 
-    # Generate or validate names
     if isnothing(names)
         names = ["model_$i" for i in 1:n_specs]
     else

@@ -69,10 +69,10 @@ struct GroupedFittedModels <: AbstractFittedModel
         groupby_cols::Vector{Symbol},
         metadata::Dict{Symbol, Any} = Dict{Symbol, Any}()
     )
-        # Sort groups for consistent ordering
+    
         groups = sort(collect(keys(models)))
 
-        # Count successful and failed
+        
         successful = count(v -> !(v isa Exception), values(models))
         failed = count(v -> v isa Exception, values(models))
 
@@ -209,10 +209,6 @@ function errors(fc::GroupedForecasts)
     return Dict(k => v for (k, v) in fc.forecasts if v isa Exception)
 end
 
-# ============================================================================
-# Pretty Printing
-# ============================================================================
-
 function Base.show(io::IO, fitted::GroupedFittedModels)
     n_groups = length(fitted.groups)
     pct_success = round(100 * fitted.successful / n_groups, digits=1)
@@ -281,9 +277,6 @@ function Base.show(io::IO, ::MIME"text/plain", fitted::GroupedFittedModels)
     end
 end
 
-# ============================================================================
-# Grouping Logic
-# ============================================================================
 
 """
     group_data(data, groupby_cols::Vector{Symbol}, target::Symbol, xreg_cols::Vector{Symbol})
@@ -398,9 +391,6 @@ function group_data(data,
     return grouped_data
 end
 
-# ============================================================================
-# Forecasting
-# ============================================================================
 
 function Base.show(io::IO, fc::GroupedForecasts)
     n_groups = length(fc.groups)

@@ -7,16 +7,9 @@ This file provides the concrete implementations that connect model specs
 to the underlying fitting functions (auto_arima, arima, etc.).
 """
 
-# Import fit and forecast generics from Generics module
-# Note: These will be available after Generics is loaded
 import ..Generics: fit, forecast, fitted
 
-# Import Tables for data handling
 import Tables
-
-# Import ARIMA fitting functions
-# Note: These will be available after Arima module is loaded
-# We use qualified names (..Arima.auto_arima) in function bodies instead of importing here
 
 """
     fit(spec::ArimaSpec, data; m=nothing, groupby=nothing, parallel=true, fail_fast=false, kwargs...)
@@ -86,7 +79,7 @@ function fit(spec::ArimaSpec, data;
              parallel::Bool = true,
              fail_fast::Bool = false,
              kwargs...)
-    # Route to grouped fitting if groupby specified
+             
     if !isnothing(groupby)
         return fit_grouped(spec, data;
                            m=m,
@@ -97,9 +90,6 @@ function fit(spec::ArimaSpec, data;
                            kwargs...)
     end
 
-    # Single series fitting below
-    # Determine seasonal period
-    # Priority: kwarg > spec.m > error
     seasonal_period = if !isnothing(m)
         m
     elseif !isnothing(spec.m)
@@ -111,15 +101,12 @@ function fit(spec::ArimaSpec, data;
         ))
     end
 
-    # Validate seasonal period
     if seasonal_period < 1
         throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
     end
 
-    # Merge spec options with kwargs (kwargs take precedence)
     fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
 
-# Convert data to columntable for schema extraction
     tbl = Tables.columntable(data)
 
     target_col = spec.formula.target
@@ -139,11 +126,9 @@ function fit(spec::ArimaSpec, data;
     end
     n_rows = length(target_data)
 
-    # Access Utils module (provides NamedMatrix/model_matrix helpers)
     parent_mod = parentmodule(@__MODULE__)
     Utils_mod = getfield(parent_mod, :Utils)
 
-    # Build xreg design matrix when spec.xreg_formula is provided
     xreg_formula_cols = Symbol[]
     design_matrix, design_cols = _build_xreg_formula_matrix(spec, tbl, n_rows, Utils_mod)
     if !isnothing(design_matrix) && size(design_matrix.data, 2) > 0
@@ -167,18 +152,10 @@ function fit(spec::ArimaSpec, data;
             fit_options[:xreg] = auto_matrix
         end
     end
-
-    # Call existing auto_arima with formula interface
-    # This handles all the heavy lifting:
-    # - Target extraction
-    # - Exogenous variable extraction from VarTerms
-    # - Smart routing (search vs fixed)
-    # - Validation
-    # Note: Access Arima module via parent module since it's loaded after ModelSpecs
+    
     Arima_mod = getfield(parent_mod, :Arima)
     arima_fit = Arima_mod.auto_arima(spec.formula, data, seasonal_period; pairs(fit_options)...)
 
-    # Extract exogenous variable names from VarTerms
     var_terms = filter(t -> isa(t, VarTerm), spec.formula.terms)
     xreg_cols = Symbol[vt.name for vt in var_terms]
     if !isempty(xreg_formula_cols)
@@ -191,13 +168,12 @@ function fit(spec::ArimaSpec, data;
         unique!(xreg_cols)
     end
 
-    # Create and return FittedArima
     return FittedArima(
         spec,
         arima_fit,
         target_col,
         xreg_cols,
-        tbl,  # Pass columntable for schema extraction
+        tbl,
         seasonal_period
     )
 end

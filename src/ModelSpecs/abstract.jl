@@ -30,10 +30,6 @@ AbstractFittedModel
 3. **Composable**: Single models or collections for comparison/ensembling.
 """
 
-# ============================================================================
-# Model Specification Types
-# ============================================================================
-
 """
     AbstractModelSpec
 
@@ -66,10 +62,6 @@ fitted = fit(spec, data, m = 12)
 - [`fit`](@ref)
 """
 abstract type AbstractModelSpec end
-
-# ============================================================================
-# Fitted Model Types
-# ============================================================================
 
 """
     AbstractFittedModel
@@ -108,9 +100,6 @@ fc = forecast(fitted, h = 12)
 """
 abstract type AbstractFittedModel end
 
-# ============================================================================
-# Model Collection Type
-# ============================================================================
 
 """
     ModelCollection
@@ -207,9 +196,6 @@ struct FittedModelCollection
     end
 end
 
-# ============================================================================
-# Forecast Collection
-# ============================================================================
 
 """
     ForecastModelCollection
@@ -236,10 +222,6 @@ struct ForecastModelCollection
     end
 end
 
-# ============================================================================
-# Helper Functions
-# ============================================================================
-
 """
     extract_metrics(model::AbstractFittedModel) -> Dict{Symbol, Float64}
 
@@ -255,14 +237,9 @@ Dictionary with metrics like:
 - `:rmse` - Root Mean Squared Error (if available)
 """
 function extract_metrics(model::AbstractFittedModel)
-    # Default: return empty dict
-    # Subtypes override this
     return Dict{Symbol, Float64}()
 end
 
-# ============================================================================
-# Collection Utilities
-# ============================================================================
 
 Base.length(collection::ModelCollection) = length(collection.specs)
 Base.getindex(collection::ModelCollection, idx::Int) = collection.specs[idx]
@@ -291,9 +268,6 @@ function Base.iterate(collection::ForecastModelCollection, state::Int=1)
     return ((name, collection.forecasts[name]), state + 1)
 end
 
-# ============================================================================
-# Pretty Printing
-# ============================================================================
 
 function Base.show(io::IO, collection::ModelCollection)
     n = length(collection.specs)

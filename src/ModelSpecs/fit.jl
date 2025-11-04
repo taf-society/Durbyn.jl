@@ -661,17 +661,38 @@ function forecast(fitted::FittedArima; h::Int, level::Vector{<:Real} = [80, 95],
                     unique!(names)
                 end
 
+                internal_cols = Set(["drift", "intercept"])
+                if any(name -> name in internal_cols, final_names)
+                    push!(numeric_types, Float64)
+                end
                 promoted_type = isempty(numeric_types) ? Float64 : promote_type(numeric_types...)
+                train_length = hasproperty(fitted.fit, :y) ? length(fitted.fit.y) : getproperty(fitted.fit, :nobs)
+
+                internal_series = Dict{String, Vector{promoted_type}}()
+                if "drift" in final_names && !haskey(combined_series, "drift")
+                    drift_vals = collect((train_length + 1):(train_length + h))
+                    internal_series["drift"] = convert.(promoted_type, drift_vals)
+                end
+                if "intercept" in final_names && !haskey(combined_series, "intercept")
+                    internal_series["intercept"] = fill(one(promoted_type), h)
+                end
+
                 matrix = Matrix{promoted_type}(undef, h, length(final_names))
                 for (j, name) in enumerate(final_names)
-                    if !haskey(combined_series, name)
+                    col_data = get(combined_series, name, nothing)
+                    if isnothing(col_data)
+                        col_data = get(internal_series, name, nothing)
+                    else
+                        col_data = convert.(promoted_type, col_data)
+                    end
+                    if isnothing(col_data)
                         available = join(sort(collect(keys(combined_series))), ", ")
                         throw(ArgumentError(
                             "Exogenous variable '$(name)' required by the fitted model not found in newdata. " *
                             "Available columns: $(available)"
                         ))
                     end
-                    matrix[:, j] = convert.(promoted_type, combined_series[name])
+                    matrix[:, j] = col_data
                 end
                 xreg_new = Utils_mod.NamedMatrix(matrix, final_names)
             end

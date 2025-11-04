@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Table Operations · Durbyn.jl</title><meta name="title" content="Table Operations · Durbyn.jl"/><meta property="og:title" content="Table Operations · Durbyn.jl"/><meta property="twitter:title" content="Table Operations · Durbyn.jl"/><meta name="description" content="Documentation for Durbyn.jl."/><meta property="og:description" content="Documentation for Durbyn.jl."/><meta property="twitter:description" content="Documentation for Durbyn.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/theme.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="Durbyn.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">Durbyn.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../quickstart/">Quick Start</a></li><li><span class="tocitem">User Guide</span><ul><li><a class="tocitem" href="../grammar/">Grammar</a></li><li><a class="tocitem" href="../expsmoothing/">Exponential Smoothing</a></li><li><a class="tocitem" href="../intermittent/">Intermittent Demand</a></li><li><a class="tocitem" href="../arima/">ARIMA</a></li><li><a class="tocitem" href="../ararma/">ARAR/ARARMA</a></li><li class="is-active"><a class="tocitem" href>Table Operations</a><ul class="internal"><li><a class="tocitem" href="#Overview"><span>Overview</span></a></li><li><a class="tocitem" href="#Getting-Started"><span>Getting Started</span></a></li><li><a class="tocitem" href="#Core-Functions"><span>Core Functions</span></a></li><li><a class="tocitem" href="#Complete-Workflow-Example"><span>Complete Workflow Example</span></a></li><li><a class="tocitem" href="#Chaining-Operations"><span>Chaining Operations</span></a></li><li><a class="tocitem" href="#Working-with-GroupedTable"><span>Working with GroupedTable</span></a></li><li><a class="tocitem" href="#Tips-and-Best-Practices"><span>Tips and Best Practices</span></a></li><li><a class="tocitem" href="#Function-Reference"><span>Function Reference</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">User Guide</a></li><li class="is-active"><a href>Table Operations</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Table Operations</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl/blob/main/docs/src/tableops.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Table-Operations"><a class="docs-heading-anchor" href="#Table-Operations">Table Operations</a><a id="Table-Operations-1"></a><a class="docs-heading-anchor-permalink" href="#Table-Operations" title="Permalink"></a></h1><p>The <code>TableOps</code> module provides a comprehensive set of data manipulation functions for working with Tables.jl-compatible data sources. These functions enable common data wrangling tasks like filtering, grouping, pivoting, and summarizing data.</p><h2 id="Overview"><a class="docs-heading-anchor" href="#Overview">Overview</a><a id="Overview-1"></a><a class="docs-heading-anchor-permalink" href="#Overview" title="Permalink"></a></h2><p><code>TableOps</code> is inspired by popular data manipulation libraries like dplyr (R) and pandas (Python), but designed specifically for Julia&#39;s Tables.jl ecosystem. All functions work seamlessly with any Tables.jl-compatible data source, including:</p><ul><li>NamedTuples</li><li>DataFrames</li><li>CSV.File objects</li><li>And many others</li></ul><h2 id="Getting-Started"><a class="docs-heading-anchor" href="#Getting-Started">Getting Started</a><a id="Getting-Started-1"></a><a class="docs-heading-anchor-permalink" href="#Getting-Started" title="Permalink"></a></h2><pre><code class="language-julia hljs">using CSV
+using Downloads
+using Tables
+using Durbyn
+using Durbyn.TableOps
+using Durbyn.Grammar
+using Durbyn.ModelSpecs
+
+# Download example retail data
+local_path = Downloads.download(&quot;https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv&quot;)
+retail = CSV.File(local_path)
+tbl = Tables.columntable(retail)
+
+# Preview the data
+glimpse(tbl)</code></pre><h2 id="Core-Functions"><a class="docs-heading-anchor" href="#Core-Functions">Core Functions</a><a id="Core-Functions-1"></a><a class="docs-heading-anchor-permalink" href="#Core-Functions" title="Permalink"></a></h2><h3 id="glimpse-Quick-Data-Preview"><a class="docs-heading-anchor" href="#glimpse-Quick-Data-Preview"><code>glimpse</code> - Quick Data Preview</a><a id="glimpse-Quick-Data-Preview-1"></a><a class="docs-heading-anchor-permalink" href="#glimpse-Quick-Data-Preview" title="Permalink"></a></h3><p>Get a compact summary of your data, showing column names, types, and sample values.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+
+tbl = (date = [&quot;2024-01&quot;, &quot;2024-02&quot;, &quot;2024-03&quot;],
+       A = [100, 110, 120],
+       B = [200, 220, 240],
+       C = [300, 330, 360])
+
+glimpse(tbl)
+# Table glimpse
+#   Rows: 3
+#   Columns: 4
+#   date                :: String  [2024-01, 2024-02, 2024-03]
+#   A                   :: Int64   [100, 110, 120]
+#   B                   :: Int64   [200, 220, 240]
+#   C                   :: Int64   [300, 330, 360]</code></pre><h3 id="select-Choose-and-Rename-Columns"><a class="docs-heading-anchor" href="#select-Choose-and-Rename-Columns"><code>select</code> - Choose and Rename Columns</a><a id="select-Choose-and-Rename-Columns-1"></a><a class="docs-heading-anchor-permalink" href="#select-Choose-and-Rename-Columns" title="Permalink"></a></h3><p>Select specific columns from your data, optionally renaming them.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+
+tbl = (id = [1, 2, 3],
+       name = [&quot;Alice&quot;, &quot;Bob&quot;, &quot;Charlie&quot;],
+       age = [25, 30, 35],
+       salary = [50000, 60000, 70000])
+
+# Select specific columns
+select(tbl, :name, :age)
+# Output: (name = [&quot;Alice&quot;, &quot;Bob&quot;, &quot;Charlie&quot;], age = [25, 30, 35])
+
+# Rename while selecting
+select(tbl, :employee =&gt; :name, :years =&gt; :age)
+# Output: (employee = [&quot;Alice&quot;, &quot;Bob&quot;, &quot;Charlie&quot;], years = [25, 30, 35])</code></pre><h3 id="query-Filter-Rows"><a class="docs-heading-anchor" href="#query-Filter-Rows"><code>query</code> - Filter Rows</a><a id="query-Filter-Rows-1"></a><a class="docs-heading-anchor-permalink" href="#query-Filter-Rows" title="Permalink"></a></h3><p>Filter rows based on custom conditions using a predicate function.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+
+tbl = (product = [&quot;A&quot;, &quot;B&quot;, &quot;C&quot;, &quot;D&quot;, &quot;E&quot;],
+       price = [10, 25, 15, 30, 20],
+       quantity = [100, 50, 75, 25, 60])
+
+# Filter rows where price &gt; 15
+query(tbl, row -&gt; row.price &gt; 15)
+# Output: (product = [&quot;B&quot;, &quot;D&quot;, &quot;E&quot;], price = [25, 30, 20], quantity = [50, 25, 60])
+
+# Multiple conditions
+query(tbl, row -&gt; row.price &gt; 15 &amp;&amp; row.quantity &gt; 30)
+# Output: (product = [&quot;B&quot;, &quot;E&quot;], price = [25, 20], quantity = [50, 60])</code></pre><h3 id="arrange-Sort-Data"><a class="docs-heading-anchor" href="#arrange-Sort-Data"><code>arrange</code> - Sort Data</a><a id="arrange-Sort-Data-1"></a><a class="docs-heading-anchor-permalink" href="#arrange-Sort-Data" title="Permalink"></a></h3><p>Sort rows by one or more columns in ascending or descending order.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+
+tbl = (name = [&quot;Alice&quot;, &quot;Bob&quot;, &quot;Charlie&quot;, &quot;David&quot;],
+       department = [&quot;Sales&quot;, &quot;IT&quot;, &quot;Sales&quot;, &quot;IT&quot;],
+       salary = [60000, 70000, 55000, 75000])
+
+# Sort by salary (ascending)
+arrange(tbl, :salary)
+# Output: (name = [&quot;Charlie&quot;, &quot;Alice&quot;, &quot;Bob&quot;, &quot;David&quot;],
+#          department = [&quot;Sales&quot;, &quot;Sales&quot;, &quot;IT&quot;, &quot;IT&quot;],
+#          salary = [55000, 60000, 70000, 75000])
+
+# Sort by salary (descending)
+arrange(tbl, :salary =&gt; :desc)
+# Output: (name = [&quot;David&quot;, &quot;Bob&quot;, &quot;Alice&quot;, &quot;Charlie&quot;],
+#          department = [&quot;IT&quot;, &quot;IT&quot;, &quot;Sales&quot;, &quot;Sales&quot;],
+#          salary = [75000, 70000, 60000, 55000])
+
+# Multi-column sort: department ascending, then salary descending
+arrange(tbl, :department, :salary =&gt; :desc)
+# Output: (name = [&quot;David&quot;, &quot;Bob&quot;, &quot;Alice&quot;, &quot;Charlie&quot;],
+#          department = [&quot;IT&quot;, &quot;IT&quot;, &quot;Sales&quot;, &quot;Sales&quot;],
+#          salary = [75000, 70000, 60000, 55000])</code></pre><h3 id="mutate-Add-or-Modify-Columns"><a class="docs-heading-anchor" href="#mutate-Add-or-Modify-Columns"><code>mutate</code> - Add or Modify Columns</a><a id="mutate-Add-or-Modify-Columns-1"></a><a class="docs-heading-anchor-permalink" href="#mutate-Add-or-Modify-Columns" title="Permalink"></a></h3><p>Create new columns or modify existing ones based on computations.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+
+tbl = (product = [&quot;A&quot;, &quot;B&quot;, &quot;C&quot;],
+       price = [10.0, 20.0, 15.0],
+       quantity = [100, 50, 75])
+
+# Add a new column
+mutate(tbl, revenue = data -&gt; data.price .* data.quantity)
+# Output: (product = [&quot;A&quot;, &quot;B&quot;, &quot;C&quot;],
+#          price = [10.0, 20.0, 15.0],
+#          quantity = [100, 50, 75],
+#          revenue = [1000.0, 1000.0, 1125.0])
+
+# Add multiple columns
+mutate(tbl,
+    revenue = data -&gt; data.price .* data.quantity,
+    discounted_price = data -&gt; data.price .* 0.9)
+
+# Modify existing column
+mutate(tbl, price = data -&gt; data.price .* 1.1)  # 10% price increase</code></pre><h3 id="groupby-Group-Data"><a class="docs-heading-anchor" href="#groupby-Group-Data"><code>groupby</code> - Group Data</a><a id="groupby-Group-Data-1"></a><a class="docs-heading-anchor-permalink" href="#groupby-Group-Data" title="Permalink"></a></h3><p>Group rows by unique combinations of values in specified columns.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+
+tbl = (department = [&quot;Sales&quot;, &quot;IT&quot;, &quot;Sales&quot;, &quot;IT&quot;, &quot;Sales&quot;],
+       employee = [&quot;Alice&quot;, &quot;Bob&quot;, &quot;Charlie&quot;, &quot;David&quot;, &quot;Eve&quot;],
+       salary = [60000, 70000, 55000, 75000, 65000])
+
+# Group by department
+gt = groupby(tbl, :department)
+# Output: GroupedTable(2 groups by department)
+
+glimpse(gt)
+# GroupedTable glimpse
+#   Groups: 2
+#   Key columns: department
+#   Rows: 5 (avg 2.5, min 2, max 3)
+#   Group 1: (department = &quot;IT&quot;,) (2 rows)
+#     ...
+#   Group 2: (department = &quot;Sales&quot;,) (3 rows)
+#     ...</code></pre><h3 id="summarise-/-summarize-Aggregate-Data"><a class="docs-heading-anchor" href="#summarise-/-summarize-Aggregate-Data"><code>summarise</code> / <code>summarize</code> - Aggregate Data</a><a id="summarise-/-summarize-Aggregate-Data-1"></a><a class="docs-heading-anchor-permalink" href="#summarise-/-summarize-Aggregate-Data" title="Permalink"></a></h3><p>Compute summary statistics for each group in a GroupedTable.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Statistics
+
+tbl = (department = [&quot;Sales&quot;, &quot;IT&quot;, &quot;Sales&quot;, &quot;IT&quot;, &quot;Sales&quot;],
+       employee = [&quot;Alice&quot;, &quot;Bob&quot;, &quot;Charlie&quot;, &quot;David&quot;, &quot;Eve&quot;],
+       salary = [60000, 70000, 55000, 75000, 65000])
+
+gt = groupby(tbl, :department)
+
+# Compute mean salary per department
+stbl = summarise(gt, avg_salary = :salary =&gt; mean)
+# Output: (department = [&quot;IT&quot;, &quot;Sales&quot;], avg_salary = [72500.0, 60000.0])
+glimpse(stbl)
+
+# Multiple summary statistics
+summarise(gt,
+    avg_salary = :salary =&gt; mean,
+    min_salary = :salary =&gt; minimum,
+    max_salary = :salary =&gt; maximum,
+    count = data -&gt; length(data.salary))
+# Output: (department = [&quot;IT&quot;, &quot;Sales&quot;],
+#          avg_salary = [72500.0, 60000.0],
+#          min_salary = [70000, 55000],
+#          max_salary = [75000, 65000],
+#          count = [2, 3])</code></pre><h3 id="pivot_longer-Wide-to-Long-Format"><a class="docs-heading-anchor" href="#pivot_longer-Wide-to-Long-Format"><code>pivot_longer</code> - Wide to Long Format</a><a id="pivot_longer-Wide-to-Long-Format-1"></a><a class="docs-heading-anchor-permalink" href="#pivot_longer-Wide-to-Long-Format" title="Permalink"></a></h3><p>Transform data from wide format to long format by pivoting columns into rows.</p><pre><code class="language-julia hljs">using CSV
+using Downloads
+using Tables
+using Durbyn
+using Durbyn.TableOps
+
+# Download and load retail data
+local_path = Downloads.download(&quot;https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv&quot;)
+retail = CSV.File(local_path)
+tbl = Tables.columntable(retail)
+
+# Preview wide format
+glimpse(tbl)
+
+# Convert from wide to long format
+tbl_long = pivot_longer(tbl, id_cols=:date, names_to=:series, values_to=:value)
+glimpse(tbl_long)
+
+# Example with simpler data
+wide = (date = [&quot;2024-01&quot;, &quot;2024-02&quot;, &quot;2024-03&quot;],
+        A = [100, 110, 120],
+        B = [200, 220, 240],
+        C = [300, 330, 360])
+
+long = pivot_longer(wide, id_cols=:date, names_to=:series, values_to=:value)
+# Output: (date = [&quot;2024-01&quot;, &quot;2024-01&quot;, &quot;2024-01&quot;, &quot;2024-02&quot;, &quot;2024-02&quot;, &quot;2024-02&quot;, &quot;2024-03&quot;, &quot;2024-03&quot;, &quot;2024-03&quot;],
+#          series = [&quot;A&quot;, &quot;B&quot;, &quot;C&quot;, &quot;A&quot;, &quot;B&quot;, &quot;C&quot;, &quot;A&quot;, &quot;B&quot;, &quot;C&quot;],
+#          value = [100, 200, 300, 110, 220, 330, 120, 240, 360])
+glimpse(long)
+glimpse(wide)</code></pre><h3 id="pivot_wider-Long-to-Wide-Format"><a class="docs-heading-anchor" href="#pivot_wider-Long-to-Wide-Format"><code>pivot_wider</code> - Long to Wide Format</a><a id="pivot_wider-Long-to-Wide-Format-1"></a><a class="docs-heading-anchor-permalink" href="#pivot_wider-Long-to-Wide-Format" title="Permalink"></a></h3><p>Transform data from long format to wide format by spreading rows into columns.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+
+# Long format data
+long = (date = [&quot;2024-01&quot;, &quot;2024-01&quot;, &quot;2024-01&quot;, &quot;2024-02&quot;, &quot;2024-02&quot;, &quot;2024-02&quot;],
+        series = [&quot;A&quot;, &quot;B&quot;, &quot;C&quot;, &quot;A&quot;, &quot;B&quot;, &quot;C&quot;],
+        value = [100, 200, 300, 110, 220, 330])
+
+# Convert to wide format
+wide = pivot_wider(long, names_from=:series, values_from=:value, id_cols=:date)
+# Output: (date = [&quot;2024-01&quot;, &quot;2024-02&quot;],
+#          A = [100, 110],
+#          B = [200, 220],
+#          C = [300, 330])
+
+glimpse(long)
+glimpse(wide)
+
+# Sort column names alphabetically
+pivot_wider(long, names_from=:series, values_from=:value,
+            id_cols=:date, sort_names=true)
+
+# Handle missing values with custom fill
+incomplete = (id = [1, 1, 2], category = [&quot;A&quot;, &quot;B&quot;, &quot;A&quot;], val = [10, 20, 30])
+pivot_wider(incomplete, names_from=:category, values_from=:val, fill=0)
+# Output: (id = [1, 2], A = [10, 30], B = [20, 0])</code></pre><h2 id="Complete-Workflow-Example"><a class="docs-heading-anchor" href="#Complete-Workflow-Example">Complete Workflow Example</a><a id="Complete-Workflow-Example-1"></a><a class="docs-heading-anchor-permalink" href="#Complete-Workflow-Example" title="Permalink"></a></h2><p>Here&#39;s a complete example demonstrating how to chain multiple operations together for a typical data analysis workflow:</p><pre><code class="language-julia hljs">using CSV
+using Downloads
+using Tables
+using Durbyn.TableOps
+using Statistics
+
+# Download retail data
+local_path = Downloads.download(&quot;https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv&quot;)
+retail = CSV.File(local_path)
+tbl = Tables.columntable(retail)
+
+# Step 1: Preview the data
+glimpse(tbl)
+
+# Step 2: Transform from wide to long format
+tbl_long = pivot_longer(tbl, id_cols=:date, names_to=:series, values_to=:value)
+glimpse(tbl_long)
+
+# Step 3: Filter to specific series
+tbl_filtered = query(tbl_long, row -&gt; row.series in [&quot;series_10&quot;, &quot;series_20&quot;, &quot;series_30&quot;])
+
+# Step 4: Add computed columns
+tbl_with_log = mutate(tbl_filtered, log_value = data -&gt; log.(data.value))
+
+# Step 5: Group by series
+gt = groupby(tbl_with_log, :series)
+
+# Step 6: Compute summary statistics
+summary = summarise(gt,
+    mean_value = :value =&gt; mean,
+    std_value = :value =&gt; std,
+    min_value = :value =&gt; minimum,
+    max_value = :value =&gt; maximum,
+    count = data -&gt; length(data.value))
+
+glimpse(summary)
+
+# Step 7: Sort by mean value
+result = arrange(summary, :mean_value =&gt; :desc)
+glimpse(result)</code></pre><h2 id="Chaining-Operations"><a class="docs-heading-anchor" href="#Chaining-Operations">Chaining Operations</a><a id="Chaining-Operations-1"></a><a class="docs-heading-anchor-permalink" href="#Chaining-Operations" title="Permalink"></a></h2><p>While Julia doesn&#39;t have a built-in pipe operator for data manipulation (like R&#39;s <code>%&gt;%</code> or <code>|&gt;</code>), you can chain operations by nesting function calls or using intermediate variables:</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Statistics
+
+tbl = (department = [&quot;Sales&quot;, &quot;IT&quot;, &quot;Sales&quot;, &quot;IT&quot;, &quot;Sales&quot;, &quot;HR&quot;, &quot;HR&quot;],
+       employee = [&quot;Alice&quot;, &quot;Bob&quot;, &quot;Charlie&quot;, &quot;David&quot;, &quot;Eve&quot;, &quot;Frank&quot;, &quot;Grace&quot;],
+       salary = [60000, 70000, 55000, 75000, 65000, 50000, 52000],
+       years = [5, 8, 3, 10, 6, 2, 4])
+
+# Method 1: Nested functions
+result = arrange(
+    summarise(
+        groupby(
+            query(tbl, row -&gt; row.salary &gt; 52000),
+            :department),
+        avg_salary = :salary =&gt; mean,
+        avg_years = :years =&gt; mean,
+        count = data -&gt; length(data.salary)),
+    :avg_salary =&gt; :desc)
+
+glimpse(result)
+
+# Method 2: Step by step with intermediate variables (recommended for readability)
+filtered = query(tbl, row -&gt; row.salary &gt; 52000)
+grouped = groupby(filtered, :department)
+summarized = summarise(grouped,
+    avg_salary = :salary =&gt; mean,
+    avg_years = :years =&gt; mean,
+    count = data -&gt; length(data.salary))
+result = arrange(summarized, :avg_salary =&gt; :desc)
+
+glimpse(result)</code></pre><h2 id="Working-with-GroupedTable"><a class="docs-heading-anchor" href="#Working-with-GroupedTable">Working with GroupedTable</a><a id="Working-with-GroupedTable-1"></a><a class="docs-heading-anchor-permalink" href="#Working-with-GroupedTable" title="Permalink"></a></h2><p>The <code>GroupedTable</code> type is a central concept in TableOps, similar to grouped data frames in other languages.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Statistics
+
+sales_data = (
+    region = [&quot;North&quot;, &quot;South&quot;, &quot;North&quot;, &quot;South&quot;, &quot;East&quot;, &quot;East&quot;, &quot;West&quot;],
+    product = [&quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;A&quot;, &quot;B&quot;, &quot;A&quot;],
+    revenue = [1000, 1500, 2000, 2500, 1800, 2200, 1200],
+    units = [100, 150, 200, 250, 180, 220, 120]
+)
+
+# Group by multiple columns
+gt = groupby(sales_data, :region, :product)
+glimpse(gt)
+
+# Compute complex summaries
+summary = summarise(gt,
+    total_revenue = :revenue =&gt; sum,
+    total_units = :units =&gt; sum,
+    avg_price = data -&gt; sum(data.revenue) / sum(data.units),
+    count = data -&gt; length(data.revenue))
+
+glimpse(summary)</code></pre><h2 id="Tips-and-Best-Practices"><a class="docs-heading-anchor" href="#Tips-and-Best-Practices">Tips and Best Practices</a><a id="Tips-and-Best-Practices-1"></a><a class="docs-heading-anchor-permalink" href="#Tips-and-Best-Practices" title="Permalink"></a></h2><ol><li><p><strong>Use <code>glimpse</code> frequently</strong>: It&#39;s a quick way to understand your data&#39;s structure and verify transformations.</p></li><li><p><strong>Predicate functions in <code>query</code></strong>: Keep them simple and readable. For complex filters, break them into logical parts.</p></li><li><p><strong>Type stability in <code>mutate</code></strong>: Ensure your computed columns have consistent types across all rows.</p></li><li><p><strong>Group before summarize</strong>: Always create a <code>GroupedTable</code> with <code>groupby</code> before using <code>summarise</code>.</p></li><li><p><strong>Column naming</strong>: Use descriptive names in <code>mutate</code> and <code>summarise</code> to make your data self-documenting.</p></li><li><p><strong>Pivot operations</strong>:</p><ul><li>Use <code>pivot_longer</code> when you need to reshape data for modeling or plotting</li><li>Use <code>pivot_wider</code> when you need to create summary tables or compare values across categories</li></ul></li><li><p><strong>Memory efficiency</strong>: TableOps functions return new <code>NamedTuple</code>s, so be mindful of memory when working with very large datasets.</p></li></ol><h2 id="Function-Reference"><a class="docs-heading-anchor" href="#Function-Reference">Function Reference</a><a id="Function-Reference-1"></a><a class="docs-heading-anchor-permalink" href="#Function-Reference" title="Permalink"></a></h2><p>Core functions provided by TableOps:</p><ul><li><code>select</code> — Select specific columns</li><li><code>query</code> — Filter rows based on conditions</li><li><code>arrange</code> — Sort rows by column values</li><li><code>groupby</code> — Group data by column values</li><li><code>mutate</code> — Add or transform columns</li><li><code>summarise</code> / <code>summarize</code> — Aggregate grouped data</li><li><code>pivot_longer</code> — Reshape from wide to long format</li><li><code>pivot_wider</code> — Reshape from long to wide format</li><li><code>glimpse</code> — Quick data preview with types and samples</li></ul><p>All functions are documented above with examples.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../ararma/">« ARAR/ARARMA</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Tuesday 4 November 2025 17:29">Tuesday 4 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

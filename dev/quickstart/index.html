@@ -1,9 +1,191 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Quick Start · Durbyn.jl</title><meta name="title" content="Quick Start · Durbyn.jl"/><meta property="og:title" content="Quick Start · Durbyn.jl"/><meta property="twitter:title" content="Quick Start · Durbyn.jl"/><meta name="description" content="Documentation for Durbyn.jl."/><meta property="og:description" content="Documentation for Durbyn.jl."/><meta property="twitter:description" content="Documentation for Durbyn.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/theme.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="Durbyn.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">Durbyn.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Quick Start</a></li><li><span class="tocitem">User Guide</span><ul><li><a class="tocitem" href="../expsmoothing/">Exponential Smoothing</a></li><li><a class="tocitem" href="../intermittent/">Intermittent Demand</a></li><li><a class="tocitem" href="../arima/">ARIMA</a></li><li><a class="tocitem" href="../ararma/">ARAR/ARARMA</a></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Quick Start</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Quick Start</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl/blob/main/docs/src/quickstart.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Quick-Start"><a class="docs-heading-anchor" href="#Quick-Start">Quick Start</a><a id="Quick-Start-1"></a><a class="docs-heading-anchor-permalink" href="#Quick-Start" title="Permalink"></a></h1><p>Install (dev version):</p><pre><code class="language-julia hljs">using Pkg
-Pkg.add(url=&quot;https://github.com/taf-society/Durbyn.jl&quot;)</code></pre><p>Basic forecasting with Exponential Smoothing (ETS):</p><pre><code class="language-julia hljs">using Durbyn
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Quick Start · Durbyn.jl</title><meta name="title" content="Quick Start · Durbyn.jl"/><meta property="og:title" content="Quick Start · Durbyn.jl"/><meta property="twitter:title" content="Quick Start · Durbyn.jl"/><meta name="description" content="Documentation for Durbyn.jl."/><meta property="og:description" content="Documentation for Durbyn.jl."/><meta property="twitter:description" content="Documentation for Durbyn.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/theme.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="Durbyn.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">Durbyn.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Quick Start</a><ul class="internal"><li><a class="tocitem" href="#Installation"><span>Installation</span></a></li><li><a class="tocitem" href="#Formula-Interface-(Recommended)"><span>Formula Interface (Recommended)</span></a></li><li><a class="tocitem" href="#Base-Models-(Array-Interface)"><span>Base Models (Array Interface)</span></a></li><li><a class="tocitem" href="#Performance:-Multi-Threading-for-Parallel-Computing"><span>Performance: Multi-Threading for Parallel Computing</span></a></li><li><a class="tocitem" href="#Next-Steps"><span>Next Steps</span></a></li></ul></li><li><span class="tocitem">User Guide</span><ul><li><a class="tocitem" href="../grammar/">Grammar</a></li><li><a class="tocitem" href="../expsmoothing/">Exponential Smoothing</a></li><li><a class="tocitem" href="../intermittent/">Intermittent Demand</a></li><li><a class="tocitem" href="../arima/">ARIMA</a></li><li><a class="tocitem" href="../ararma/">ARAR/ARARMA</a></li><li><a class="tocitem" href="../tableops/">Table Operations</a></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Quick Start</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Quick Start</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl/blob/main/docs/src/quickstart.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Quick-Start"><a class="docs-heading-anchor" href="#Quick-Start">Quick Start</a><a id="Quick-Start-1"></a><a class="docs-heading-anchor-permalink" href="#Quick-Start" title="Permalink"></a></h1><h2 id="Installation"><a class="docs-heading-anchor" href="#Installation">Installation</a><a id="Installation-1"></a><a class="docs-heading-anchor-permalink" href="#Installation" title="Permalink"></a></h2><p>Install the development version:</p><pre><code class="language-julia hljs">using Pkg
+Pkg.add(url=&quot;https://github.com/taf-society/Durbyn.jl&quot;)</code></pre><h2 id="Formula-Interface-(Recommended)"><a class="docs-heading-anchor" href="#Formula-Interface-(Recommended)">Formula Interface (Recommended)</a><a id="Formula-Interface-(Recommended)-1"></a><a class="docs-heading-anchor-permalink" href="#Formula-Interface-(Recommended)" title="Permalink"></a></h2><p>Durbyn provides a modern, declarative interface for model specification with full support for tables, regressors (features in ML terminology), model comparison, and panel data.</p><h3 id="Example-1:-Single-Time-Series"><a class="docs-heading-anchor" href="#Example-1:-Single-Time-Series">Example 1: Single Time Series</a><a id="Example-1:-Single-Time-Series-1"></a><a class="docs-heading-anchor-permalink" href="#Example-1:-Single-Time-Series" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn
+
+# Load data
+data = (sales = [120, 135, 148, 152, 141, 158, 170, 165, 180, 195],)
+
+# ARIMA with automatic order selection
+spec = ArimaSpec(@formula(sales = p() + q() + P() + Q()))
+fitted = fit(spec, data, m = 12)
+fc = forecast(fitted, h = 12)
+plot(fc)
+
+
+# Load data another data
+data = (passengers = air_passengers(),)
+
+# ARIMA with automatic order selection
+spec = ArimaSpec(@formula(passengers = p() + q() + P() + Q()))
+fitted = fit(spec, data, m = 12)
+fc = forecast(fitted, h = 12)
+plot(fc)
+</code></pre><h3 id="Example-2:-With-Regressors-(Features)"><a class="docs-heading-anchor" href="#Example-2:-With-Regressors-(Features)">Example 2: With Regressors (Features)</a><a id="Example-2:-With-Regressors-(Features)-1"></a><a class="docs-heading-anchor-permalink" href="#Example-2:-With-Regressors-(Features)" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn
+using Random
+Random.seed!(123)
+
+# Simulate data 
+n = 120
+idx = 1:n
+temperature = -(15 .+ 8 .* sin.(2π .* idx ./ 12) .+ 0.5 .* randn(n))
+marketing = -(0.3 .+ 0.15 .* sin.(2π .* idx ./ 6) .+ 0.05 .* randn(n))
+sales = 120 .+ 1.5 .* temperature .+ 30 .* marketing .+ randn(n)
+data = (sales = sales, temperature = temperature, marketing = marketing)
+
+spec = ArimaSpec(@formula(sales = temperature + marketing + p() + d() + q() + P() + D() + Q()))
+# spec = ArimaSpec(@formula(sales = auto()))
+fitted = fit(spec, data, m = 12)
+
+# Simulate future data
+n_ahead = 24
+future_idx = (n + 1):(n + n_ahead)
+future_temp = -(15 .+ 8 .* sin.(2π .* future_idx ./ 12))
+future_marketing = -(0.3 .+ 0.15 .* sin.(2π .* future_idx ./ 6))
+newdata = (temperature = future_temp, marketing = future_marketing)
+
+
+fc = forecast(fitted, h = n_ahead, newdata = newdata)
+
+plot(fc)
+</code></pre><h3 id="Example-3:-Fitting-Multiple-Models-Together"><a class="docs-heading-anchor" href="#Example-3:-Fitting-Multiple-Models-Together">Example 3: Fitting Multiple Models Together</a><a id="Example-3:-Fitting-Multiple-Models-Together-1"></a><a class="docs-heading-anchor-permalink" href="#Example-3:-Fitting-Multiple-Models-Together" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Fit multiple model specifications at once
+models = model(
+    ArimaSpec(@formula(sales = p() + q())),
+    EtsSpec(@formula(sales = e(&quot;A&quot;) + t(&quot;A&quot;) + s(&quot;A&quot;))),
+    ArimaSpec(@formula(sales = p(2) + d(1) + q(2))),
+    names = [&quot;auto_arima&quot;, &quot;ets_aaa&quot;, &quot;arima_212&quot;]
+)
+
+# Fit all models
+fitted = fit(models, data, m = 12)
+
+# Forecast with all models
+fc = forecast(fitted, h = 12)
+
+# Compare results
+for (name, model_result) in zip(models.names, fitted.models)
+    println(&quot;$name: AIC = $(round(model_result.fit.aic, digits=2)), BIC = $(round(model_result.fit.bic, digits=2))&quot;)
+end</code></pre><h3 id="Example-4:-Panel-Data-(Multiple-Series)"><a class="docs-heading-anchor" href="#Example-4:-Panel-Data-(Multiple-Series)">Example 4: Panel Data (Multiple Series)</a><a id="Example-4:-Panel-Data-(Multiple-Series)-1"></a><a class="docs-heading-anchor-permalink" href="#Example-4:-Panel-Data-(Multiple-Series)" title="Permalink"></a></h3><div class="admonition is-info" id="Optional-Dependencies-6091dd47cec025a3"><header class="admonition-header">Optional Dependencies<a class="admonition-anchor" href="#Optional-Dependencies-6091dd47cec025a3" title="Permalink"></a></header><div class="admonition-body"><p>This example requires <code>CSV</code> and <code>Downloads</code>:</p><pre><code class="language-julia hljs">using Pkg
+Pkg.add([&quot;CSV&quot;, &quot;Downloads&quot;])</code></pre></div></div><pre><code class="language-julia hljs">using Durbyn, Durbyn.TableOps
+using CSV, Downloads, Tables
+
+# Load and reshape data
+path = Downloads.download(&quot;https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv&quot;)
+wide = Tables.columntable(CSV.File(path))
+
+long = pivot_longer(wide; id_cols = :date, names_to = :series, values_to = :value)
+panel = PanelData(long; groupby = :series, date = :date, m = 12)
+glimpse(panel)
+# Fit model to all series at once
+spec = ArimaSpec(@formula(value = p() + q()))
+fitted = fit(spec, panel)
+
+# Forecast all series
+fc = forecast(fitted, h = 12)
+
+# Get tidy forecast table
+tbl = forecast_table(fc)
+glimpse(tbl)</code></pre><h3 id="Example-5:-ETS-Models-with-Formula"><a class="docs-heading-anchor" href="#Example-5:-ETS-Models-with-Formula">Example 5: ETS Models with Formula</a><a id="Example-5:-ETS-Models-with-Formula-1"></a><a class="docs-heading-anchor-permalink" href="#Example-5:-ETS-Models-with-Formula" title="Permalink"></a></h3><pre><code class="language-julia hljs">
+using Durbyn.Grammar
+
+# Automatic ETS model selection
+spec_ets = EtsSpec(@formula(sales = e(&quot;Z&quot;) + t(&quot;Z&quot;) + s(&quot;Z&quot;)))
+fitted = fit(spec_ets, data, m = 12)
+fc = forecast(fitted, h = 12)
+plot(fc)
+# Specialized ETS specifications
+spec_ses = SesSpec(@formula(sales = ses()))
+spec_holt = HoltSpec(@formula(sales = holt(damped=true)))
+spec_hw = HoltWintersSpec(@formula(sales = hw(seasonal=:multiplicative)))
+
+# Fit and forecast
+fitted_ses = fit(spec_ses, data)
+fc_ses = forecast(fitted_ses, h = 12)
+
+plot(fc_ses)
+</code></pre><hr/><h2 id="Base-Models-(Array-Interface)"><a class="docs-heading-anchor" href="#Base-Models-(Array-Interface)">Base Models (Array Interface)</a><a id="Base-Models-(Array-Interface)-1"></a><a class="docs-heading-anchor-permalink" href="#Base-Models-(Array-Interface)" title="Permalink"></a></h2><p>The array interface provides direct access to forecasting engines for working with numeric vectors.</p><h3 id="Exponential-Smoothing-(ETS)"><a class="docs-heading-anchor" href="#Exponential-Smoothing-(ETS)">Exponential Smoothing (ETS)</a><a id="Exponential-Smoothing-(ETS)-1"></a><a class="docs-heading-anchor-permalink" href="#Exponential-Smoothing-(ETS)" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn
 using Durbyn.ExponentialSmoothing
 
 ap = air_passengers()
+
+# Automatic ETS model selection
 fit_ets = ets(ap, 12, &quot;ZZZ&quot;)
-fc_ets  = forecast(fit_ets, h = 12)</code></pre><p>Plot (example with Plots.jl):</p><pre><code class="language-julia hljs">using Plots
-plot(fc_ets)</code></pre><p>Next: Explore <a href="../intermittent/">Intermittent Demand</a>, <a href="../arima/">ARIMA</a>, and <a href="../ararma/">ARAR/ARARMA</a>.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../expsmoothing/">Exponential Smoothing »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Wednesday 15 October 2025 13:04">Wednesday 15 October 2025</span>. Using Julia version 1.12.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+fc_ets  = forecast(fit_ets, h = 12)
+plot(fc_ets)
+
+# Simple exponential smoothing
+ses_fit = ses(ap)
+ses_fc  = forecast(ses_fit, h = 12)
+plot(ses_fc)
+
+# Holt&#39;s linear trend method
+holt_fit = holt(ap)
+holt_fc  = forecast(holt_fit, h = 12)
+plot(holt_fc)
+
+# Holt-Winters seasonal method
+hw_fit = holt_winters(ap, 12)
+hw_fc  = forecast(hw_fit, h = 12)
+plot(hw_fc)</code></pre><h3 id="ARIMA"><a class="docs-heading-anchor" href="#ARIMA">ARIMA</a><a id="ARIMA-1"></a><a class="docs-heading-anchor-permalink" href="#ARIMA" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn.Arima
+
+ap = air_passengers()
+
+# Manual ARIMA specification
+fit = arima(ap, 12, order = PDQ(2,1,1), seasonal = PDQ(0,1,0))
+fc  = forecast(fit, h = 12)
+plot(fc)
+
+# Automatic ARIMA selection
+fit_auto = auto_arima(ap, 12)
+fc_auto  = forecast(fit_auto, h = 12)
+plot(fc_auto)</code></pre><hr/><h2 id="Performance:-Multi-Threading-for-Parallel-Computing"><a class="docs-heading-anchor" href="#Performance:-Multi-Threading-for-Parallel-Computing">Performance: Multi-Threading for Parallel Computing</a><a id="Performance:-Multi-Threading-for-Parallel-Computing-1"></a><a class="docs-heading-anchor-permalink" href="#Performance:-Multi-Threading-for-Parallel-Computing" title="Permalink"></a></h2><p>Durbyn&#39;s <code>fit</code> function automatically leverages Julia&#39;s multi-threading for <strong>massive parallel computing</strong> when fitting models to panel data (multiple time series) or comparing multiple model specifications. Performance scales nearly linearly with CPU cores—from laptops to large cloud instances with 96+ cores.</p><h3 id="When-Does-Multi-Threading-Help?"><a class="docs-heading-anchor" href="#When-Does-Multi-Threading-Help?">When Does Multi-Threading Help?</a><a id="When-Does-Multi-Threading-Help?-1"></a><a class="docs-heading-anchor-permalink" href="#When-Does-Multi-Threading-Help?" title="Permalink"></a></h3><p>Multi-threading provides dramatic performance improvements when:</p><ul><li><strong>Fitting models to panel data</strong> with many series (e.g., 40+ series)</li><li><strong>Comparing multiple models</strong> across series simultaneously</li><li><strong>Running ensemble methods</strong> or model selection procedures</li></ul><p><strong>Example: Without multi-threading (1 thread)</strong></p><ul><li>Fitting 6 models to 42 series = 252 individual fits</li><li>Time: ~5-10 minutes (sequential processing)</li></ul><p><strong>With multi-threading</strong></p><ul><li>Same 252 fits processed in parallel</li><li>8 cores (laptop): ~60-90 seconds (5-8x faster)</li><li>16 cores (workstation): ~30-45 seconds (10-15x faster)</li><li>32+ cores (cloud): ~15-30 seconds (15-20x faster)</li></ul><h3 id="How-to-Enable-Multi-Threading"><a class="docs-heading-anchor" href="#How-to-Enable-Multi-Threading">How to Enable Multi-Threading</a><a id="How-to-Enable-Multi-Threading-1"></a><a class="docs-heading-anchor-permalink" href="#How-to-Enable-Multi-Threading" title="Permalink"></a></h3><p>Julia must be started with multiple threads to enable parallel processing. Here are all the methods:</p><h4 id="Method-1:-VS-Code-Julia-Extension-Settings-(Recommended-for-VS-Code-Users)"><a class="docs-heading-anchor" href="#Method-1:-VS-Code-Julia-Extension-Settings-(Recommended-for-VS-Code-Users)">Method 1: VS Code Julia Extension Settings (Recommended for VS Code Users)</a><a id="Method-1:-VS-Code-Julia-Extension-Settings-(Recommended-for-VS-Code-Users)-1"></a><a class="docs-heading-anchor-permalink" href="#Method-1:-VS-Code-Julia-Extension-Settings-(Recommended-for-VS-Code-Users)" title="Permalink"></a></h4><p>Add to your VS Code <code>settings.json</code> (File → Preferences → Settings → Open Settings JSON):</p><pre><code class="language-json hljs">{
+    &quot;julia.additionalArgs&quot;: [
+        &quot;-t&quot;,
+        &quot;auto&quot;
+    ]
+}</code></pre><p><strong>Options:</strong></p><ul><li><code>&quot;auto&quot;</code> — Use all available CPU cores (recommended)</li><li>Specific number (e.g., <code>&quot;8&quot;</code>, <code>&quot;12&quot;</code>) — Limit threads if you want to reserve cores for other tasks</li></ul><p><strong>To apply:</strong></p><ol><li>Save settings.json</li><li>Restart Julia REPL in VS Code (click trash icon in Julia REPL, then restart)</li><li>Verify with <code>Threads.nthreads()</code></li></ol><h4 id="Method-2:-Command-Line"><a class="docs-heading-anchor" href="#Method-2:-Command-Line">Method 2: Command Line</a><a id="Method-2:-Command-Line-1"></a><a class="docs-heading-anchor-permalink" href="#Method-2:-Command-Line" title="Permalink"></a></h4><pre><code class="language-bash hljs"># Use all available cores (recommended)
+julia -t auto
+
+# Use specific number of threads (e.g., 8 threads)
+julia -t 8
+
+# Alternative syntax
+julia --threads=auto</code></pre><h4 id="Method-3:-Environment-Variable-(Persistent)"><a class="docs-heading-anchor" href="#Method-3:-Environment-Variable-(Persistent)">Method 3: Environment Variable (Persistent)</a><a id="Method-3:-Environment-Variable-(Persistent)-1"></a><a class="docs-heading-anchor-permalink" href="#Method-3:-Environment-Variable-(Persistent)" title="Permalink"></a></h4><p>Set once and applies to all Julia sessions.</p><p><strong>Linux/macOS</strong> — Add to <code>~/.bashrc</code>, <code>~/.zshrc</code>, or <code>~/.profile</code>:</p><pre><code class="language-bash hljs">export JULIA_NUM_THREADS=auto</code></pre><p><strong>Windows (PowerShell)</strong> — Add to PowerShell profile:</p><pre><code class="language-powershell hljs">$env:JULIA_NUM_THREADS = &quot;auto&quot;</code></pre><p><strong>Windows (System Environment Variables):</strong></p><ol><li>Search &quot;Environment Variables&quot; in Windows</li><li>Add new system variable: <code>JULIA_NUM_THREADS</code> = <code>auto</code></li></ol><p>After setting, restart terminal/IDE for changes to take effect.</p><h4 id="Method-4:-Julia-Startup-File"><a class="docs-heading-anchor" href="#Method-4:-Julia-Startup-File">Method 4: Julia Startup File</a><a id="Method-4:-Julia-Startup-File-1"></a><a class="docs-heading-anchor-permalink" href="#Method-4:-Julia-Startup-File" title="Permalink"></a></h4><p>Create/edit <code>~/.julia/config/startup.jl</code> (Linux/macOS) or <code>%USERPROFILE%\.julia\config\startup.jl</code> (Windows):</p><pre><code class="language-julia hljs"># Set before Julia starts - less reliable, use environment variable instead
+ENV[&quot;JULIA_NUM_THREADS&quot;] = &quot;auto&quot;</code></pre><p><strong>Note:</strong> This method is less reliable. Prefer environment variable or command-line methods.</p><h3 id="Verifying-Multi-Threading-Is-Active"><a class="docs-heading-anchor" href="#Verifying-Multi-Threading-Is-Active">Verifying Multi-Threading Is Active</a><a id="Verifying-Multi-Threading-Is-Active-1"></a><a class="docs-heading-anchor-permalink" href="#Verifying-Multi-Threading-Is-Active" title="Permalink"></a></h3><pre><code class="language-julia hljs">julia&gt; Threads.nthreads()
+8  # Number of threads available (depends on your CPU and settings)
+
+julia&gt; Threads.threadpoolsize()
+8  # Confirms thread pool size</code></pre><h3 id="Real-World-Example:-Panel-Data-Model-Comparison"><a class="docs-heading-anchor" href="#Real-World-Example:-Panel-Data-Model-Comparison">Real-World Example: Panel Data Model Comparison</a><a id="Real-World-Example:-Panel-Data-Model-Comparison-1"></a><a class="docs-heading-anchor-permalink" href="#Real-World-Example:-Panel-Data-Model-Comparison" title="Permalink"></a></h3><p>Here&#39;s how multi-threading accelerates fitting multiple models to panel data:</p><pre><code class="language-julia hljs">using Durbyn, Durbyn.TableOps, Durbyn.Grammar
+using CSV, Downloads, Tables
+
+# Load panel data (42 retail series)
+path = Downloads.download(&quot;https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv&quot;)
+wide = Tables.columntable(CSV.File(path))
+long = pivot_longer(wide; id_cols=:date, names_to=:series, values_to=:value)
+panel = PanelData(long; groupby=:series, date=:date, m=12)
+
+# Define multiple models for comparison
+models = model(
+    ArimaSpec(@formula(value = p() + q())),                              # Auto ARIMA
+    EtsSpec(@formula(value = e(&quot;Z&quot;) + t(&quot;Z&quot;) + s(&quot;Z&quot;) + drift(:auto))),  # Auto ETS with drift
+    SesSpec(@formula(value = ses())),                                    # Simple exponential smoothing
+    HoltSpec(@formula(value = holt(damped=true))),                       # Damped Holt
+    HoltWintersSpec(@formula(value = hw(seasonal=:multiplicative))),     # Holt-Winters multiplicative
+    CrostonSpec(@formula(value = croston())),                            # Croston&#39;s method
+    names=[&quot;arima&quot;, &quot;ets_auto&quot;, &quot;ses&quot;, &quot;holt_damped&quot;, &quot;hw_mul&quot;, &quot;croston&quot;]
+)
+
+# Fit all models to all series IN PARALLEL
+# Automatically uses available threads - no code changes needed!
+fitted = fit(models, panel)
+# Performance scales with cores:
+#   1 thread:    ~400-500 seconds (baseline)
+#   8 threads:   ~60-90 seconds (laptop/desktop)
+#   16 threads:  ~30-45 seconds (workstation)
+#   32+ threads: ~15-30 seconds (cloud/HPC)
+
+# Generate forecasts (also parallelized)
+fc = forecast(fitted, h=12)
+
+# Convert to tidy table format
+fc_tbl = forecast_table(fc)
+glimpse(fc_tbl)</code></pre><p><strong>What&#39;s happening under the hood:</strong></p><ul><li>42 series × 6 models = <strong>252 model fits</strong></li><li>With multiple threads: Fits are distributed across available cores</li><li>Each thread handles a series/model combination independently</li><li>No code changes needed — parallelization is automatic!</li></ul><h3 id="Troubleshooting"><a class="docs-heading-anchor" href="#Troubleshooting">Troubleshooting</a><a id="Troubleshooting-1"></a><a class="docs-heading-anchor-permalink" href="#Troubleshooting" title="Permalink"></a></h3><p><strong>Problem:</strong> <code>Threads.nthreads()</code> returns 1</p><ul><li><strong>Solution:</strong> Julia was started without <code>-t</code> flag. Restart Julia with multi-threading enabled.</li></ul><p><strong>Problem:</strong> VS Code settings not working</p><ul><li><strong>Solution:</strong> Fully restart VS Code (not just Julia REPL). Settings only apply on fresh start.</li></ul><p><strong>Problem:</strong> Performance not improving</p><ul><li><strong>Solution:</strong> Check you have enough series/models. Small datasets (&lt; 10 series) may not show speedup due to threading overhead.</li></ul><h3 id="Recommended-Settings"><a class="docs-heading-anchor" href="#Recommended-Settings">Recommended Settings</a><a id="Recommended-Settings-1"></a><a class="docs-heading-anchor-permalink" href="#Recommended-Settings" title="Permalink"></a></h3><ul><li><strong>Development/Interactive:</strong> <code>julia -t auto</code> or VS Code settings with <code>&quot;auto&quot;</code></li><li><strong>Production/Scripts:</strong> <code>export JULIA_NUM_THREADS=auto</code> in environment</li><li><strong>Cloud/HPC Systems:</strong> <code>julia -t auto</code> to leverage all available cores (e.g., 32, 64, 128+ threads)</li><li><strong>Shared Systems:</strong> Use specific number (e.g., <code>-t 8</code>) to avoid consuming all resources and leave cores for other users</li></ul><hr/><h2 id="Next-Steps"><a class="docs-heading-anchor" href="#Next-Steps">Next Steps</a><a id="Next-Steps-1"></a><a class="docs-heading-anchor-permalink" href="#Next-Steps" title="Permalink"></a></h2><div class="admonition is-success" id="Complete-End-to-End-Example-9a5eda8dcce72139"><header class="admonition-header">Complete End-to-End Example<a class="admonition-anchor" href="#Complete-End-to-End-Example-9a5eda8dcce72139" title="Permalink"></a></header><div class="admonition-body"><p>Want to see a comprehensive workflow with train/test split, model comparison, accuracy evaluation, and visualization? Check out the <strong><a href="../grammar/#complete-end-to-end-example">Complete End-to-End Example in Grammar Guide</a></strong> — demonstrates fitting 6 models to panel data with full evaluation pipeline.</p></div></div><p><strong>Documentation:</strong></p><ul><li><strong><a href="../grammar/">Grammar Guide</a></strong> — Complete formula interface documentation for ARIMA and ETS</li><li><strong><a href="../tableops/">Table Operations</a></strong> — Data wrangling for time series and panel data</li><li><strong><a href="../arima/">ARIMA</a></strong> — Formula interface and base models (ARIMA, SARIMA, Auto ARIMA)</li><li><strong><a href="../expsmoothing/">Exponential Smoothing</a></strong> — Formula interface and base models (SES, Holt, Holt-Winters, ETS)</li><li><strong><a href="../intermittent/">Intermittent Demand</a></strong> — Croston methods for sparse/intermittent data</li><li><strong><a href="../ararma/">ARAR/ARARMA</a></strong> — Memory-shortening algorithms</li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../grammar/">Grammar »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Tuesday 4 November 2025 17:29">Tuesday 4 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

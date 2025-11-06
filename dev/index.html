@@ -30,13 +30,14 @@ glimpse(panel)
 
 # 4. Define multiple models for comparison
 models = model(
+    ArarSpec(@formula(value = arar())),                                # ARAR
     ArimaSpec(@formula(value = p() + q())),                              # Auto ARIMA
     EtsSpec(@formula(value = e(&quot;Z&quot;) + t(&quot;Z&quot;) + s(&quot;Z&quot;) + drift(:auto))),  # Auto ETS with drift
     SesSpec(@formula(value = ses())),                                    # Simple exponential smoothing
     HoltSpec(@formula(value = holt(damped=true))),                       # Damped Holt
     HoltWintersSpec(@formula(value = hw(seasonal=:multiplicative))),     # Holt-Winters multiplicative
     CrostonSpec(@formula(value = croston())),                            # Croston&#39;s method
-    names=[&quot;arima&quot;, &quot;ets_auto&quot;, &quot;ses&quot;, &quot;holt_damped&quot;, &quot;hw_mul&quot;, &quot;croston&quot;]
+    names=[&quot;arar&quot;, &quot;arima&quot;, &quot;ets_auto&quot;, &quot;ses&quot;, &quot;holt_damped&quot;, &quot;hw_mul&quot;, &quot;croston&quot;]
 )
 
 # 5. Fit all models to all series
@@ -68,7 +69,7 @@ best_series = acc_results.series[argmin(acc_results.MAPE)]
 worst_series = acc_results.series[argmax(acc_results.MAPE)]
 
 # Compare best vs worst performers
-plot(fc, series=[best_series, worst_series], facet=true, actual=test)</code></pre><p><strong>This example demonstrates:</strong></p><ul><li><strong>Data wrangling</strong>: Load, reshape, and split data using TableOps</li><li><strong>Model comparison</strong>: Fit 6 forecasting methods (ARIMA, ETS variants, Croston)</li><li><strong>Panel forecasting</strong>: Automatic iteration over multiple time series</li><li><strong>Out-of-sample evaluation</strong>: Train/test split with accuracy metrics</li><li><strong>Visualization</strong>: Faceted plots, actual vs forecast comparison</li><li><strong>Tidy output</strong>: Structured tables ready for further analysis</li></ul><h3 id="Quick-Examples"><a class="docs-heading-anchor" href="#Quick-Examples">Quick Examples</a><a id="Quick-Examples-1"></a><a class="docs-heading-anchor-permalink" href="#Quick-Examples" title="Permalink"></a></h3><h4 id="Single-Series-ARIMA"><a class="docs-heading-anchor" href="#Single-Series-ARIMA">Single Series ARIMA</a><a id="Single-Series-ARIMA-1"></a><a class="docs-heading-anchor-permalink" href="#Single-Series-ARIMA" title="Permalink"></a></h4><pre><code class="language-julia hljs">using Durbyn
+plot(fc, series=[best_series, worst_series], facet=true, actual=test)</code></pre><p><strong>This example demonstrates:</strong></p><ul><li><strong>Data wrangling</strong>: Load, reshape, and split data using TableOps</li><li><strong>Model comparison</strong>: Fit 7 forecasting methods (ARAR, ARIMA, ETS variants, Croston)</li><li><strong>Panel forecasting</strong>: Automatic iteration over multiple time series</li><li><strong>Out-of-sample evaluation</strong>: Train/test split with accuracy metrics</li><li><strong>Visualization</strong>: Faceted plots, actual vs forecast comparison</li><li><strong>Tidy output</strong>: Structured tables ready for further analysis</li></ul><h3 id="Quick-Examples"><a class="docs-heading-anchor" href="#Quick-Examples">Quick Examples</a><a id="Quick-Examples-1"></a><a class="docs-heading-anchor-permalink" href="#Quick-Examples" title="Permalink"></a></h3><h4 id="Single-Series-ARIMA"><a class="docs-heading-anchor" href="#Single-Series-ARIMA">Single Series ARIMA</a><a id="Single-Series-ARIMA-1"></a><a class="docs-heading-anchor-permalink" href="#Single-Series-ARIMA" title="Permalink"></a></h4><pre><code class="language-julia hljs">using Durbyn
 
 data = (sales = [120, 135, 148, 152, 141, 158, 170, 165, 180, 195],)
 
@@ -141,25 +142,25 @@ plot(fc3, show_fitted = true)</code></pre><hr/><h2 id="ARIMA"><a class="docs-hea
 ap  = air_passengers()
 
 # manual ARIMA
-fit = arima(ap, 12, order = PDQ(2,1,1), seasonal = PDQ(0,1,0))
-fc  = forecast(fit, h = 12)
+arima_model = arima(ap, 12, order = PDQ(2,1,1), seasonal = PDQ(0,1,0))
+fc  = forecast(arima_model, h = 12)
 
 # auto ARIMA
-fit2 = auto_arima(ap, 12, d = 1, D = 1)
-fc2  = forecast(fit2, h = 12)
+auto_arima_model = auto_arima(ap, 12, d = 1, D = 1)
+fc2  = forecast(auto_arima_model, h = 12)
 plot(fc2)</code></pre><hr/><h2 id="ARAR-/-ARARMA"><a class="docs-heading-anchor" href="#ARAR-/-ARARMA">ARAR / ARARMA</a><a id="ARAR-/-ARARMA-1"></a><a class="docs-heading-anchor-permalink" href="#ARAR-/-ARARMA" title="Permalink"></a></h2><pre><code class="language-julia hljs">using Durbyn
 using Durbyn.Ararma
 
 ap = air_passengers()
 
-fit  = arar(ap, max_ar_depth = 13)
-fc   = forecast(fit, h = 12)
+arar_model_basic  = arar(ap, max_ar_depth = 13)
+fc   = forecast(arar_model_basic, h = 12)
 plot(fc)
 
-fit2 = ararma(ap, p = 0, q = 1)
-fc2  = forecast(fit2, h = 12)
+ararma_model = ararma(ap, p = 0, q = 1)
+fc2  = forecast(ararma_model, h = 12)
 plot(fc2)
 
-fit3 = auto_ararma(ap)
-fc3  = forecast(fit3, h = 12)
-plot(fc3)</code></pre><hr/><h2 id="License"><a class="docs-heading-anchor" href="#License">License</a><a id="License-1"></a><a class="docs-heading-anchor-permalink" href="#License" title="Permalink"></a></h2><p>MIT License.</p><hr/><h2 id="What&#39;s-next"><a class="docs-heading-anchor" href="#What&#39;s-next">What&#39;s next</a><a id="What&#39;s-next-1"></a><a class="docs-heading-anchor-permalink" href="#What&#39;s-next" title="Permalink"></a></h2><ul><li><strong><a href="grammar/">Grammar Guide</a></strong> (Recommended) — Learn the complete formula interface for ARIMA and ETS</li><li><strong><a href="quickstart/">Quick Start</a></strong> — Get started quickly with formula and base models</li><li><strong>User Guide</strong> pages:<ul><li><a href="tableops/">Table Operations</a> — Data wrangling with Tables.jl for panel data</li><li><a href="arima/">ARIMA</a> — Formula interface and base models (ARIMA, SARIMA, Auto ARIMA)</li><li><a href="expsmoothing/">Exponential Smoothing</a> — Formula interface and base models (SES, Holt, Holt-Winters, ETS)</li><li><a href="intermittent/">Intermittent Demand</a> — Croston methods</li><li><a href="ararma/">ARAR/ARARMA</a> — Memory-shortening algorithms</li></ul></li><li><strong>API Reference</strong> — Complete API documentation</li></ul></article><nav class="docs-footer"><a class="docs-footer-nextpage" href="quickstart/">Quick Start »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Tuesday 4 November 2025 18:24">Tuesday 4 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+auto_ararma_model = auto_ararma(ap)
+fc3  = forecast(auto_ararma_model, h = 12)
+plot(fc3)</code></pre><hr/><h2 id="License"><a class="docs-heading-anchor" href="#License">License</a><a id="License-1"></a><a class="docs-heading-anchor-permalink" href="#License" title="Permalink"></a></h2><p>MIT License.</p><hr/><h2 id="What&#39;s-next"><a class="docs-heading-anchor" href="#What&#39;s-next">What&#39;s next</a><a id="What&#39;s-next-1"></a><a class="docs-heading-anchor-permalink" href="#What&#39;s-next" title="Permalink"></a></h2><ul><li><strong><a href="grammar/">Grammar Guide</a></strong> (Recommended) — Learn the complete formula interface for ARIMA and ETS</li><li><strong><a href="quickstart/">Quick Start</a></strong> — Get started quickly with formula and base models</li><li><strong>User Guide</strong> pages:<ul><li><a href="tableops/">Table Operations</a> — Data wrangling with Tables.jl for panel data</li><li><a href="arima/">ARIMA</a> — Formula interface and base models (ARIMA, SARIMA, Auto ARIMA)</li><li><a href="expsmoothing/">Exponential Smoothing</a> — Formula interface and base models (SES, Holt, Holt-Winters, ETS)</li><li><a href="intermittent/">Intermittent Demand</a> — Croston methods</li><li><a href="ararma/">ARAR/ARARMA</a> — Memory-shortening algorithms</li></ul></li><li><strong>API Reference</strong> — Complete API documentation</li></ul></article><nav class="docs-footer"><a class="docs-footer-nextpage" href="quickstart/">Quick Start »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Thursday 6 November 2025 20:26">Thursday 6 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

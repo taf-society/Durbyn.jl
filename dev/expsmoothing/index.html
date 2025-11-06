@@ -202,7 +202,7 @@ using Durbyn.ExponentialSmoothing
 y = [10.5, 12.3, 11.8, 13.1, 12.9, 14.2, 13.8, 15.1, 14.7, 16.0]
 
 # Fit SES with optimal initialization
-fit = ses(y)
+ses_model = ses(y)
 
 # Fit SES with specified alpha
 fit_fixed = ses(y, alpha = 0.3)
@@ -211,7 +211,7 @@ fit_fixed = ses(y, alpha = 0.3)
 fit_bc = ses(y, lambda = 0.5)
 
 # Generate forecasts
-fc = forecast(fit, h = 6)
+fc = forecast(ses_model, h = 6)
 
 # For seasonal data (frequency m)
 monthly_data = randn(60) .+ 100
@@ -243,11 +243,11 @@ t = 1:50
 y = 100 .+ 2 .* t .+ randn(50) .* 5
 
 # Standard Holt&#39;s method (m parameter optional since no seasonality)
-fit = holt(y)
-println(fit)
+holt_model = holt(y)
+println(holt_model)
 
 # Generate forecasts
-fc = forecast(fit, h=10)
+fc = forecast(holt_model, h=10)
 plot(fc)
 
 # Damped trend (recommended for long horizons)
@@ -271,7 +271,7 @@ fit_explicit = holt(y, 1, damped=true)</code></pre><h3 id="Model-Output-2"><a cl
 using Durbyn.ExponentialSmoothing
 # Fit automatically selected ETS model to a monthly series (m = 12)
 ap = air_passengers()
-fit = ets(ap(), 12, &quot;ZZZ&quot;)
+ets_model = ets(ap(), 12, &quot;ZZZ&quot;)
 
 # Specify a particular structure (multiplicative seasonality, additive trend, additive errors)
 fit2 = ets(ap, 12, &quot;AAM&quot;)
@@ -281,4 +281,4 @@ plot(fc2)
 # Use a damped trend search and automatic Box–Cox selection
 fit3 = ets(ap, 12, &quot;ZZZ&quot;; damped=nothing, lambda=&quot;auto&quot;, biasadj=true)
 fc3 = forecast(fit3, h=12)
-plot(fc3)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../grammar/">« Grammar</a><a class="docs-footer-nextpage" href="../intermittent/">Intermittent Demand »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Tuesday 4 November 2025 18:24">Tuesday 4 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+plot(fc3)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../grammar/">« Grammar</a><a class="docs-footer-nextpage" href="../intermittent/">Intermittent Demand »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.15.0 on <span class="colophon-date" title="Thursday 6 November 2025 20:26">Thursday 6 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

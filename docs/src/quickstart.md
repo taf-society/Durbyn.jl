@@ -194,13 +194,13 @@ using Durbyn.Arima
 ap = air_passengers()
 
 # Manual ARIMA specification
-fit = arima(ap, 12, order = PDQ(2,1,1), seasonal = PDQ(0,1,0))
-fc  = forecast(fit, h = 12)
+arima_model = arima(ap, 12, order = PDQ(2,1,1), seasonal = PDQ(0,1,0))
+fc  = forecast(arima_model, h = 12)
 plot(fc)
 
 # Automatic ARIMA selection
-fit_auto = auto_arima(ap, 12)
-fc_auto  = forecast(fit_auto, h = 12)
+auto_arima_model = auto_arima(ap, 12)
+fc_auto  = forecast(auto_arima_model, h = 12)
 plot(fc_auto)
 ```
 
@@ -323,13 +323,14 @@ panel = PanelData(long; groupby=:series, date=:date, m=12)
 
 # Define multiple models for comparison
 models = model(
+    ArarSpec(@formula(value = arar())),                                # ARAR
     ArimaSpec(@formula(value = p() + q())),                              # Auto ARIMA
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),  # Auto ETS with drift
     SesSpec(@formula(value = ses())),                                    # Simple exponential smoothing
     HoltSpec(@formula(value = holt(damped=true))),                       # Damped Holt
     HoltWintersSpec(@formula(value = hw(seasonal=:multiplicative))),     # Holt-Winters multiplicative
     CrostonSpec(@formula(value = croston())),                            # Croston's method
-    names=["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+    names=["arar", "arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
 )
 
 # Fit all models to all series IN PARALLEL
@@ -350,7 +351,7 @@ glimpse(fc_tbl)
 ```
 
 **What's happening under the hood:**
-- 42 series × 6 models = **252 model fits**
+- 42 series × 7 models = **294 model fits**
 - With multiple threads: Fits are distributed across available cores
 - Each thread handles a series/model combination independently
 - No code changes needed — parallelization is automatic!

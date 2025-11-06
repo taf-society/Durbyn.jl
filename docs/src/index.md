@@ -81,13 +81,14 @@ glimpse(panel)
 
 # 4. Define multiple models for comparison
 models = model(
+    ArarSpec(@formula(value = arar())),                                # ARAR
     ArimaSpec(@formula(value = p() + q())),                              # Auto ARIMA
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),  # Auto ETS with drift
     SesSpec(@formula(value = ses())),                                    # Simple exponential smoothing
     HoltSpec(@formula(value = holt(damped=true))),                       # Damped Holt
     HoltWintersSpec(@formula(value = hw(seasonal=:multiplicative))),     # Holt-Winters multiplicative
     CrostonSpec(@formula(value = croston())),                            # Croston's method
-    names=["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+    names=["arar", "arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
 )
 
 # 5. Fit all models to all series
@@ -124,7 +125,7 @@ plot(fc, series=[best_series, worst_series], facet=true, actual=test)
 
 **This example demonstrates:**
 - **Data wrangling**: Load, reshape, and split data using TableOps
-- **Model comparison**: Fit 6 forecasting methods (ARIMA, ETS variants, Croston)
+- **Model comparison**: Fit 7 forecasting methods (ARAR, ARIMA, ETS variants, Croston)
 - **Panel forecasting**: Automatic iteration over multiple time series
 - **Out-of-sample evaluation**: Train/test split with accuracy metrics
 - **Visualization**: Faceted plots, actual vs forecast comparison
@@ -244,12 +245,12 @@ using Durbyn.Arima
 ap  = air_passengers()
 
 # manual ARIMA
-fit = arima(ap, 12, order = PDQ(2,1,1), seasonal = PDQ(0,1,0))
-fc  = forecast(fit, h = 12)
+arima_model = arima(ap, 12, order = PDQ(2,1,1), seasonal = PDQ(0,1,0))
+fc  = forecast(arima_model, h = 12)
 
 # auto ARIMA
-fit2 = auto_arima(ap, 12, d = 1, D = 1)
-fc2  = forecast(fit2, h = 12)
+auto_arima_model = auto_arima(ap, 12, d = 1, D = 1)
+fc2  = forecast(auto_arima_model, h = 12)
 plot(fc2)
 ```
 
@@ -263,16 +264,16 @@ using Durbyn.Ararma
 
 ap = air_passengers()
 
-fit  = arar(ap, max_ar_depth = 13)
-fc   = forecast(fit, h = 12)
+arar_model_basic  = arar(ap, max_ar_depth = 13)
+fc   = forecast(arar_model_basic, h = 12)
 plot(fc)
 
-fit2 = ararma(ap, p = 0, q = 1)
-fc2  = forecast(fit2, h = 12)
+ararma_model = ararma(ap, p = 0, q = 1)
+fc2  = forecast(ararma_model, h = 12)
 plot(fc2)
 
-fit3 = auto_ararma(ap)
-fc3  = forecast(fit3, h = 12)
+auto_ararma_model = auto_ararma(ap)
+fc3  = forecast(auto_ararma_model, h = 12)
 plot(fc3)
 ```
 

@@ -319,13 +319,14 @@ glimpse(panel)
 
 # 4. Define multiple models for comparison
 models = model(
+    ArarSpec(@formula(value = arar())),                                # ARAR via grammar
     ArimaSpec(@formula(value = p() + q())),                              # Auto ARIMA
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),  # Auto ETS with drift
     SesSpec(@formula(value = ses())),                                    # Simple exponential smoothing
     HoltSpec(@formula(value = holt(damped=true))),                       # Damped Holt
     HoltWintersSpec(@formula(value = hw(seasonal=:multiplicative))),     # Holt-Winters multiplicative
     CrostonSpec(@formula(value = croston())),                            # Croston's method
-    names=["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+    names=["arar", "arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
 )
 
 # 5. Fit all models to all series
@@ -363,12 +364,76 @@ plot(fc, series=[best_series, worst_series], facet=true, actual=test)
 
 **Key Features Demonstrated:**
 - **Data preparation**: Download, reshape, and split data using TableOps
-- **Model comparison**: Fit 6 different forecasting methods simultaneously
+- **Model comparison**: Fit 7 different forecasting methods simultaneously (ARAR + classical methods)
 - **Panel forecasting**: Automatic iteration over multiple time series
 - **Train/test split**: Proper out-of-sample evaluation
 - **Accuracy metrics**: Compare model performance across series
 - **Visualization**: Multiple plotting options for analysis
 - **Tidy output**: Structured forecast tables ready for downstream analysis
+
+---
+
+## ARAR Grammar
+
+The ARAR grammar exposes the `arar()` term so you can configure the adaptive-reduction model with the same declarative workflow as ARIMA and ETS.
+
+### Formula term
+
+```julia
+@formula(value = arar())                           # use defaults
+@formula(value = arar(max_ar_depth=20))            # custom depth
+@formula(value = arar(max_ar_depth=20, max_lag=40))
+```
+
+Both keywords are optional; if omitted, Durbyn derives appropriate values from the series length. Validation happens at macro-expansion time so mistakes are caught immediately.
+
+### Direct formula fitting
+
+```julia
+using Durbyn
+using Durbyn.Ararma
+
+data = (value = air_passengers(),)
+formula = @formula(value = arar(max_lag=30))
+arar_model = arar(formula, data)          # tables.jl compatible data
+fc  = forecast(arar_model; h = 12)
+```
+
+The estimator lives in the `Durbyn.Ararma` submodule, so call `arar(formula, data)` from there (either via `using Durbyn.Ararma` or `Durbyn.Ararma.arar(...)`). It works with any Tables.jl source and returns the familiar `ARAR` struct.
+
+### Model specification (`ArarSpec`)
+
+To leverage grouped fitting, forecasting, and model collections, wrap the formula in `ArarSpec`:
+
+```julia
+spec = ArarSpec(@formula(value = arar(max_ar_depth=15)))
+fitted = fit(spec, data)
+fc = forecast(fitted; h = 8)
+```
+
+For panel data:
+
+```julia
+panel = PanelData(tbl; groupby = :region)
+group_fit = fit(spec, panel)
+group_fc = forecast(group_fit; h = 6)
+```
+
+And to compare against other specs:
+
+```julia
+models = model(
+    ArarSpec(@formula(value = arar())),
+    ArimaSpec(@formula(value = p() + q())),
+    EtsSpec(@formula(value = e("Z") + t("Z") + s("Z"))),
+    names = ["arar", "arima", "ets"]
+)
+
+fitted = fit(models, panel)
+fc = forecast(fitted; h = 12)
+```
+
+The ARAR grammar therefore integrates seamlessly with every Durbyn workflow—single series, grouped/panel data, and large-scale model comparisons.
 
 ---
 

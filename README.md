@@ -323,20 +323,23 @@ plot(fc3, show_fitted = true)
 ### Classical ARIMA API
 
 ``` julia
+using Durbyn
 using Durbyn.Arima
+
+ap = air_passengers()
 # Fit an arima model
-fit = arima(ap, 12, order = PDQ(2,1,1), seasonal=PDQ(0,1,0))
+arima_model = arima(ap, 12, order = PDQ(2,1,1), seasonal=PDQ(0,1,0))
 
 ## Generate a forecast
-fc = forecast(fit, h = 12)
+fc = forecast(arima_model, h = 12)
 # Plot the forecast
 plot(fc)
 
 # Fit an auto arima model
-fit = auto_arima(ap, 12)
+auto_arima_model = auto_arima(ap, 12)
 
 ## Generate a forecast
-fc = forecast(fit, h = 12)
+fc = forecast(auto_arima_model, h = 12)
 # Plot the forecast
 plot(fc)
 ```
@@ -352,18 +355,45 @@ using Durbyn.Ararma
 ap = air_passengers();
 
 # basing arar model
-fit = arar(ap, max_ar_depth = 13)
-fc = forecast(fit, h = 12)
+arar_model_basic = arar(ap, max_ar_depth = 13)
+fc = forecast(arar_model_basic, h = 12)
 plot(fc)
 
 # arar model
-fit = ararma(ap, p = 0, q = 1)
-fc = forecast(fit, h = 12)
+ararma_model = ararma(ap, p = 0, q = 1)
+fc = forecast(ararma_model, h = 12)
 plot(fc)
 
 # auto arar model
-fit = auto_ararma(ap)
-fc = forecast(fit, h = 12)
+auto_ararma_model = auto_ararma(ap)
+fc = forecast(auto_ararma_model, h = 12)
 plot(fc)
 ```
 
+You can also fit ARAR declaratively using Durbyn's forecasting grammar:
+
+```julia
+using Durbyn
+using Durbyn.Ararma
+
+series = air_passengers()
+data = (value = series,)
+formula = @formula(value = arar(max_ar_depth=20, max_lag=30))
+
+arar_model = arar(formula, data)
+fc = forecast(arar_model; h = 12)
+plot(fc)
+
+spec = ArarSpec(@formula(value = arar()))
+panel_tbl = (
+    value = vcat(series, series .* 1.05),
+    region = vcat(fill("north", length(series)), fill("south", length(series)))
+)
+panel = PanelData(panel_tbl; groupby = :region)
+group_fit = fit(spec, panel)
+group_fc = forecast(group_fit; h = 6)
+plot(group_fc)
+
+```
+
+`ArarSpec` slots into `model(...)` collections alongside ARIMA/ETS specs, so benchmarking ARAR against other models is now a one-line change.

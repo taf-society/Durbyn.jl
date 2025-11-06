@@ -101,7 +101,7 @@ using Durbyn.ExponentialSmoothing
 demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
 # Fit Croston model with automatic parameter optimization
-fit = croston(demand)
+croston_model = croston(demand)
 
 # Fit with fixed smoothing parameter
 fit_fixed = croston(demand, alpha=0.1)

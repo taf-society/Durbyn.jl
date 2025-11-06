@@ -157,15 +157,15 @@ data = (sales = [120, 135, 148, 152, 141, 158, 170, 165, 180, 195],)
 
 # Specify model with automatic order selection
 spec = ArimaSpec(@formula(sales = p() + q() + P() + Q() + d() + D()))
-fit = fit(spec, data, m = 12)
-fc = forecast(fit, h = 12)
+fitted_model = fit(spec, data, m = 12)
+fc = forecast(fitted_model, h = 12)
 
 # Check model summary
-println(fit)
+println(fitted_model)
 
 # Access fitted values and residuals
-fitted_values = fitted(fit)
-resids = residuals(fit)
+fitted_values = fitted(fitted_model)
+resids = residuals(fitted_model)
 ```
 
 **Key features:**
@@ -356,17 +356,17 @@ using Durbyn
 using Durbyn.Arima
 
 ap  = air_passengers()
-fit = arima(ap, 12, order = PDQ(2,1,1), seasonal = PDQ(0,1,0))
-fc  = forecast(fit, h = 12)
+arima_model = arima(ap, 12, order = PDQ(2,1,1), seasonal = PDQ(0,1,0))
+fc  = forecast(arima_model, h = 12)
 plot(fc)
 
 ```
 
 ## Forecasting Using Auto-ARIMA Model
 ```julia
-fit2 = auto_arima(ap, 12)
-fc2  = forecast(fit2, h = 12)
-plot(fc)
+auto_arima_model = auto_arima(ap, 12)
+fc2  = forecast(auto_arima_model, h = 12)
+plot(fc2)
 ```
 
 

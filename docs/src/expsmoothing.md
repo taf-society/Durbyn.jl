@@ -510,7 +510,7 @@ using Durbyn.ExponentialSmoothing
 y = [10.5, 12.3, 11.8, 13.1, 12.9, 14.2, 13.8, 15.1, 14.7, 16.0]
 
 # Fit SES with optimal initialization
-fit = ses(y)
+ses_model = ses(y)
 
 # Fit SES with specified alpha
 fit_fixed = ses(y, alpha = 0.3)
@@ -519,7 +519,7 @@ fit_fixed = ses(y, alpha = 0.3)
 fit_bc = ses(y, lambda = 0.5)
 
 # Generate forecasts
-fc = forecast(fit, h = 6)
+fc = forecast(ses_model, h = 6)
 
 # For seasonal data (frequency m)
 monthly_data = randn(60) .+ 100
@@ -653,11 +653,11 @@ t = 1:50
 y = 100 .+ 2 .* t .+ randn(50) .* 5
 
 # Standard Holt's method (m parameter optional since no seasonality)
-fit = holt(y)
-println(fit)
+holt_model = holt(y)
+println(holt_model)
 
 # Generate forecasts
-fc = forecast(fit, h=10)
+fc = forecast(holt_model, h=10)
 plot(fc)
 
 # Damped trend (recommended for long horizons)
@@ -731,7 +731,7 @@ using Durbyn
 using Durbyn.ExponentialSmoothing
 # Fit automatically selected ETS model to a monthly series (m = 12)
 ap = air_passengers()
-fit = ets(ap(), 12, "ZZZ")
+ets_model = ets(ap(), 12, "ZZZ")
 
 # Specify a particular structure (multiplicative seasonality, additive trend, additive errors)
 fit2 = ets(ap, 12, "AAM")

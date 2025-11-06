@@ -1,7 +1,92 @@
 # ARAR and ARARMA Models
 
-## ARAR Model
-The ARAR model applies a memory-shortening transformation; if the underlying process of a time series ``\{Y_t,\ t=1,2,\ldots,n\}`` is “long-memory”, it then fits an autoregressive model.
+!!! tip "Formula Interface is the Recommended Approach"
+    This page starts with the **formula interface** (recommended for most users),
+    which provides declarative model specification with support for panel data
+    and model comparison. The array interface (base models) is covered later.
+    See the **[Grammar Guide](grammar.md)** for complete documentation.
+
+---
+
+## Formula Interface
+
+The ARAR model participates in Durbyn's forecasting grammar, allowing you to build models declaratively with `@formula` and integrate them into `model(...)` collections or grouped workflows.
+
+### Basic Example
+
+```julia
+using Durbyn
+
+series = air_passengers()
+data = (sales = series,)
+
+# Using ArarSpec for fit/forecast workflow
+spec = ArarSpec(@formula(sales = arar()))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+plot(fc)
+```
+
+### Custom Parameters
+
+```julia
+# Specify max_ar_depth and max_lag
+spec = ArarSpec(@formula(sales = arar(max_ar_depth=20, max_lag=30)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+```
+
+### Panel Data (Multiple Series)
+
+```julia
+# Create panel data with multiple regions
+panel_tbl = (
+    sales = vcat(series, series .* 1.05),
+    region = vcat(fill("north", length(series)), fill("south", length(series)))
+)
+
+# Wrap in PanelData for grouped fitting
+panel = PanelData(panel_tbl; groupby = :region, m = 12)
+
+# Fit to all groups
+spec = ArarSpec(@formula(sales = arar()))
+group_fit = fit(spec, panel)
+
+# Forecast all groups
+group_fc = forecast(group_fit, h = 6)
+plot(group_fc)
+```
+
+### Model Collections (Benchmarking)
+
+`ArarSpec` slots into model collections for easy benchmarking against other forecasting methods:
+
+```julia
+# Compare ARAR against ARIMA and ETS
+models = model(
+    ArarSpec(@formula(sales = arar())),
+    ArimaSpec(@formula(sales = p() + q() + P() + Q())),
+    EtsSpec(@formula(sales = e("Z") + t("Z") + s("Z"))),
+    names = ["arar", "arima", "ets"]
+)
+
+# Fit all models
+fitted_models = fit(models, panel)
+
+# Forecast with all models
+fc_models = forecast(fitted_models, h = 12)
+
+# Compare forecasts
+plot(fc_models)
+```
+
+This shared syntax keeps ARAR on equal footing with ARIMA, ETS, and other forecasting families.
+
+---
+
+## ARAR Model Theory
+
+The ARAR model applies a memory-shortening transformation; if the underlying process of a time series ``\{Y_t,\ t=1,2,\ldots,n\}`` is "long-memory", it then fits an autoregressive model.
 
 ### Memory Shortening
 
@@ -15,13 +100,13 @@ If ``Y_t`` is declared **L** or **M**, the series is transformed again until the
 
 ### Steps
 
-1. For each ``\tau=1,2,\ldots,15``, find ``\hat\phi(\tau)`` that minimizes  
+1. For each ``\tau=1,2,\ldots,15``, find ``\hat\phi(\tau)`` that minimizes
    ```math
-   \mathrm{ERR}(\phi,\tau) \;=\; 
+   \mathrm{ERR}(\phi,\tau) \;=\;
    \frac{\displaystyle\sum_{t=\tau+1}^{n}\!\big(Y_t-\phi\,Y_{t-\tau}\big)^2}
         {\displaystyle\sum_{t=\tau+1}^{n}\!Y_t^{\,2}},
    ```
-   then set ``\mathrm{Err}(\tau)=\mathrm{ERR}\big(\hat\phi(\tau),\tau\big)`` and choose  
+   then set ``\mathrm{Err}(\tau)=\mathrm{ERR}\big(\hat\phi(\tau),\tau\big)`` and choose
    ``\hat\tau=\arg\min_{\tau}\mathrm{Err}(\tau)``.
 2. If ``\mathrm{Err}(\hat\tau)\le 8/n``, then ``Y_t`` is a long-memory series.
 3. If ``\hat\phi(\hat\tau)\ge 0.93`` and ``\hat\tau>2``, then ``Y_t`` is a long-memory series.
@@ -30,7 +115,7 @@ If ``Y_t`` is declared **L** or **M**, the series is transformed again until the
 
 ### Subset Autoregressive Model
 
-We now describe how ARAR fits an autoregression to the mean-corrected series  
+We now describe how ARAR fits an autoregression to the mean-corrected series
 ``X_t=S_t-\bar S``, ``t=k+1,\ldots,n``, where ``\{S_t\}`` is the memory-shortened version of ``\{Y_t\}`` obtained above and ``\bar S`` is the sample mean of ``S_{k+1},\ldots,S_n``.
 
 The fitted model has the form
@@ -68,7 +153,7 @@ The coefficients ``\phi_j`` and the noise variance ``\sigma^2`` follow from the 
 ```math
 \sigma^2 \;=\; \hat\gamma(0)\,\Big( 1 - \phi_1\hat\rho(1) - \phi_{l_1}\hat\rho(l_1) - \phi_{l_2}\hat\rho(l_2) - \phi_{l_3}\hat\rho(l_3) \Big),
 ```
-where ``\hat\gamma(j)`` and ``\hat\rho(j)``, ``j=0,1,2,\ldots``, are the sample autocovariances and autocorrelations of ``X_t``.  
+where ``\hat\gamma(j)`` and ``\hat\rho(j)``, ``j=0,1,2,\ldots``, are the sample autocovariances and autocorrelations of ``X_t``.
 The algorithm computes ``\phi(\cdot)`` for each set of lags with ``1<l_1<l_2<l_3\le m`` (``m`` typically 13 or 26) and selects the model with minimal Yule–Walker estimate of ``\sigma^2``.
 
 ### Forecasting
@@ -80,15 +165,15 @@ S_t \;=\; \Psi(B)Y_t \;=\; Y_t + \Psi_1 Y_{t-1} + \cdots + \Psi_k Y_{t-k},
 \Psi(B) \;=\; 1 + \Psi_1 B + \cdots + \Psi_k B^k .
 ```
 
-If the subset AR coefficients are ``\phi_1,\phi_{l_1},\phi_{l_2},\phi_{l_3}`` then, for ``X_t=S_t-\bar S``, 
+If the subset AR coefficients are ``\phi_1,\phi_{l_1},\phi_{l_2},\phi_{l_3}`` then, for ``X_t=S_t-\bar S``,
 ```math
-\phi(B)X_t \;=\; Z_t, \qquad 
+\phi(B)X_t \;=\; Z_t, \qquad
 \phi(B) \;=\; 1 - \phi_1 B - \phi_{l_1} B^{l_1} - \phi_{l_2} B^{l_2} - \phi_{l_3} B^{l_3}.
 ```
 
 From the two displays above,
 ```math
-\xi(B)Y_t \;=\; \phi(1)\,\bar S \;+\; Z_t, 
+\xi(B)Y_t \;=\; \phi(1)\,\bar S \;+\; Z_t,
 \qquad \xi(B) \;=\; \Psi(B)\,\phi(B).
 ```
 
@@ -101,8 +186,11 @@ with initial conditions ``P_n Y_{n+h}=Y_{n+h}`` for ``h\le 0``.
 ### Reference
 - Brockwell, Peter J., and Richard A. Davis. *Introduction to Time Series and Forecasting*. [Springer](https://link.springer.com/book/10.1007/978-3-319-29854-2) (2016)
 
+---
 
-# Forecasing in Julia using Arar Model
+## Array Interface (Base Models)
+
+The array interface provides direct access to the ARAR fitting engine for working with numeric vectors.
 
 ```julia
 using Durbyn
@@ -110,13 +198,21 @@ using Durbyn.Ararma
 
 ap = air_passengers()
 
-fit = arar(ap, max_ar_depth = 13)
-fc  = forecast(fit, h = 12)
+# Basic ARAR with default parameters
+arar_fit = arar(ap)
+fc = forecast(arar_fit, h = 12)
 plot(fc)
 
+# ARAR with custom parameters
+arar_fit = arar(ap, max_ar_depth = 20, max_lag = 30)
+fc = forecast(arar_fit, h = 12)
+plot(fc)
 ```
 
-## ARARMA Model
+---
+
+## ARARMA Model Theory
+
 **ARARMA** extends the ARAR approach by first applying an adaptive **AR** prefilter to shorten memory (the *ARAR* stage), and then fitting a short-memory **ARMA(p, q)** model on the prefiltered residuals. The goal is to capture long/persistent structure via a composed AR filter ``\Psi(B)`` and the remaining short-term dynamics via an ARMA kernel.
 
 Given a univariate series ``\{Y_t,\ t=1,2,\ldots,n\}``, ARARMA produces a fitted model and forecasting mechanism that combine both stages.
@@ -224,19 +320,23 @@ with initialization ``P_n Y_{n+h}=Y_{n+h}`` for ``h\le 0`` and future shocks set
 ### References
 - Parzen, E. (1985). *ARARMA Models for Time Series Analysis and Forecasting*. **Journal of Forecasting**, 1(1), 67–82.
 
+---
 
-# Forecasing in Julia using Ararma Model
+## ARARMA Array Interface
+
 ```julia
 using Durbyn
 using Durbyn.Ararma
 
 ap = air_passengers()
 
+# ARARMA with specified orders
 fit1 = ararma(ap, p = 0, q = 1)
-fc1  = forecast(fit1, h = 12)
+fc1 = forecast(fit1, h = 12)
 plot(fc1)
 
+# Automatic ARARMA order selection
 fit2 = auto_ararma(ap)
-fc2  = forecast(fit2, h = 12)
+fc2 = forecast(fit2, h = 12)
 plot(fc2)
 ```

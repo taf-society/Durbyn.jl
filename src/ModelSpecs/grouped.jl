@@ -839,12 +839,11 @@ function _forecast_single_group(model,
     group_newdata = isnothing(grouped_newdata) ? nothing : get(grouped_newdata, key, nothing)
 
     try
-        return forecast(model;
-            h = h,
-            level = level,
-            newdata = group_newdata,
-            kwargs...
-        )
+        forecast_kwargs = merge((; h = h, level = level), (; kwargs...))
+        if !isnothing(group_newdata)
+            forecast_kwargs = merge(forecast_kwargs, (; newdata = group_newdata))
+        end
+        return forecast(model; forecast_kwargs...)
     catch err
         return err
     end
@@ -956,6 +955,9 @@ function _xreg_columns(spec::AbstractModelSpec)
             end
         end
         return cols
+    elseif spec isa ArarSpec
+        # ARAR doesn't support exogenous variables
+        return Symbol[]
     end
     return Symbol[]
 end

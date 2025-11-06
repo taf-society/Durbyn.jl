@@ -26,20 +26,21 @@ using .ModelSpecs
 using .TableOps
 using .Naive
 using .Arima
-using .Ararma
 using .IntermittentDemand
 
 import .Utils: air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
 import .Utils: Formula, parse_formula, compile, model_matrix, model_frame
 import .Generics: plot, fitted, residuals, summary, predict, forecast, fit, accuracy, list_series
 import .Optimize: NelderMeadOptions
-import .Grammar: p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm
-import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, EtsSpec, FittedEts
+import .Grammar: p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm
+import .Grammar: e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
+import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, EtsSpec, FittedEts
 import .ModelSpecs: SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
 import .ModelSpecs: CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection
 import .ModelSpecs: ForecastModelCollection, model, PanelData, forecast_table
 import .ModelSpecs: GroupedFittedModels, GroupedForecasts, successful_models, failed_groups
 import .Arima: arima, arima_rjh, auto_arima, ArimaFit, PDQ
+import .Ararma: ARAR, ArarmaModel, arar, ararma, auto_ararma
 import .TableOps: select, query, arrange, groupby, mutate, summarise, summarize, pivot_longer, pivot_wider, glimpse, GroupedTable
 
 export air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
@@ -47,13 +48,15 @@ export Formula, parse_formula, compile, model_matrix, model_frame
 export plot, fitted, residuals, summary, predict, forecast, fit, accuracy, list_series
 export coef, coefficients, coefs
 export NelderMeadOptions
-export p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm
-export AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, EtsSpec, FittedEts
+export p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm
+export e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
+export AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, EtsSpec, FittedEts
 export SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
 export CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection, ForecastModelCollection
 export model, PanelData, forecast_table
 export GroupedFittedModels, GroupedForecasts, successful_models, failed_groups
 export arima, arima_rjh, auto_arima, ArimaFit, PDQ
+export ARAR, ArarmaModel, ararma, auto_ararma
 export select, query, arrange, groupby, mutate, summarise, summarize, pivot_longer, pivot_wider, glimpse, GroupedTable
 
 include("glimpse_extensions.jl")

@@ -137,6 +137,20 @@ struct CrostonTerm <: AbstractTerm
 end
 
 """
+    ArarTerm <: AbstractTerm
+
+Represents ARAR (AutoRegressive with Adaptive Reduction) model options within a formula.
+
+# Fields
+- `max_ar_depth::Union{Int, Nothing}` - Maximum AR depth to consider
+- `max_lag::Union{Int, Nothing}` - Maximum lag for autocovariance computation
+"""
+struct ArarTerm <: AbstractTerm
+    max_ar_depth::Union{Int, Nothing}
+    max_lag::Union{Int, Nothing}
+end
+
+"""
     VarTerm <: AbstractTerm
 
 Represents an exogenous variable to be used as a regressor in the model.
@@ -444,6 +458,37 @@ holt_winters(; kwargs...) = hw(; kwargs...)
 Specify Croston's intermittent demand model in a formula.
 """
 croston() = CrostonTerm()
+
+"""
+    arar(; max_ar_depth=nothing, max_lag=nothing)
+
+Specify ARAR (AutoRegressive with Adaptive Reduction) model in a formula.
+
+# Arguments
+- `max_ar_depth::Union{Int, Nothing}=nothing` - Maximum lag to consider when selecting the best 4-lag AR model (must be at least 4)
+- `max_lag::Union{Int, Nothing}=nothing` - Maximum lag for computing autocovariance sequence
+
+# Examples
+```julia
+# Basic ARAR with defaults
+@formula(y = arar())
+
+# ARAR with custom max_ar_depth
+@formula(y = arar(max_ar_depth=15))
+
+# ARAR with both parameters
+@formula(y = arar(max_ar_depth=20, max_lag=20))
+```
+"""
+function arar(; max_ar_depth::Union{Int, Nothing}=nothing, max_lag::Union{Int, Nothing}=nothing)
+    if !isnothing(max_ar_depth) && max_ar_depth < 4
+        throw(ArgumentError("max_ar_depth must be at least 4, got $(max_ar_depth)"))
+    end
+    if !isnothing(max_lag) && max_lag < 0
+        throw(ArgumentError("max_lag must be non-negative, got $(max_lag)"))
+    end
+    return ArarTerm(max_ar_depth, max_lag)
+end
 
 """
     e(code::AbstractString = "Z")
@@ -784,7 +829,7 @@ function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:Abstra
                 throw(ArgumentError("Formula may contain only one $(T) term."))
             selected = term
         elseif term isa EtsComponentTerm || term isa EtsDriftTerm || term isa ArimaOrderTerm ||
-               term isa VarTerm || term isa AutoVarTerm
+               term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm
             throw(ArgumentError("Formula term $(term) is not compatible with $(T)."))
         elseif term !== nothing
             throw(ArgumentError("Unsupported term $(term) in formula for $(T)."))
@@ -863,6 +908,21 @@ end
 
 function Base.show(io::IO, ::CrostonTerm)
     print(io, "croston()")
+end
+
+function Base.show(io::IO, term::ArarTerm)
+    args = String[]
+    if !isnothing(term.max_ar_depth)
+        push!(args, "max_ar_depth=$(term.max_ar_depth)")
+    end
+    if !isnothing(term.max_lag)
+        push!(args, "max_lag=$(term.max_lag)")
+    end
+    if isempty(args)
+        print(io, "arar()")
+    else
+        print(io, "arar(", join(args, ", "), ")")
+    end
 end
 
 function Base.show(io::IO, formula::ModelFormula)

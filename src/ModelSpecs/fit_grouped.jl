@@ -518,3 +518,34 @@ function fit_grouped(spec::CrostonSpec, data;
     builder = group_data_i -> fit(spec, group_data_i; m = seasonal_period, pairs(kwdict)...)
     return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
 end
+
+function fit_grouped(spec::ArarSpec, data;
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+
+    tbl = Tables.columntable(data)
+
+    groupby_cols = groupby isa Symbol ? [groupby] : collect(groupby)
+    target_col = spec.formula.target
+
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+    parent_mod = parentmodule(@__MODULE__)
+    Ararma_mod = getfield(parent_mod, :Ararma)
+
+    builder = function(group_data)
+        arar_fit = Ararma_mod.arar(spec.formula, group_data; pairs(fit_options)...)
+        return FittedArar(spec, arar_fit, target_col, group_data)
+    end
+
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, 1, parallel, fail_fast, builder)
+end

@@ -946,3 +946,137 @@ function fit(spec::CrostonSpec, panel::PanelData; kwargs...)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end
+
+"""
+    fit(spec::ArarSpec, data; groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+
+Fit an ARAR model specification to data (single series or grouped).
+
+# Arguments
+- `spec::ArarSpec` - ARAR model specification created with `@formula`
+- `data` - Tables.jl-compatible data (NamedTuple, DataFrame, CSV.File, etc.)
+
+# Keyword Arguments
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+- Additional kwargs passed to underlying `arar` function
+
+# Returns
+- If `groupby=nothing`: `FittedArar` - Single fitted model
+- If `groupby` specified: `GroupedFittedModels` - Fitted models for each group
+
+# Examples
+```julia
+# Single series fit
+spec = ArarSpec(@formula(sales = arar()))
+fitted = fit(spec, data)
+
+# With custom parameters
+spec = ArarSpec(@formula(sales = arar(max_ar_depth=20)))
+fitted = fit(spec, data)
+
+# Grouped data fit
+spec = ArarSpec(@formula(sales = arar()))
+fitted = fit(spec, data, groupby = [:product, :location])
+```
+
+# See Also
+- [`ArarSpec`](@ref)
+- [`forecast`](@ref)
+"""
+function fit(spec::ArarSpec, data;
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           groupby=groupby,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           kwargs...)
+    end
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    target_data = tbl[target_col]
+    if !(target_data isa AbstractVector)
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' must be a vector, got $(typeof(target_data))"
+        ))
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Ararma_mod = getfield(parent_mod, :Ararma)
+    arar_fit = Ararma_mod.arar(spec.formula, data; pairs(fit_options)...)
+
+    return FittedArar(
+        spec,
+        arar_fit,
+        target_col,
+        tbl
+    )
+end
+
+"""
+    forecast(fitted::FittedArar; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+
+Generate forecasts from a fitted ARAR model.
+
+# Arguments
+- `fitted::FittedArar` - Fitted ARAR model from `fit(ArarSpec, data)`
+
+# Keyword Arguments
+- `h::Int` - Forecast horizon (number of periods ahead)
+- `level::Vector{<:Real}` - Confidence levels for prediction intervals (default [80, 95])
+- Additional kwargs passed to underlying `forecast` function
+
+# Returns
+`Forecast` object containing point forecasts and prediction intervals
+
+# Examples
+```julia
+spec = ArarSpec(@formula(sales = arar()))
+fitted = fit(spec, data)
+
+# 12-period ahead forecast
+fc = forecast(fitted, h = 12)
+
+# Custom confidence levels
+fc = forecast(fitted, h = 12, level = [90, 95, 99])
+```
+
+# See Also
+- [`ArarSpec`](@ref)
+- [`fit`](@ref)
+"""
+function forecast(fitted::FittedArar; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+    parent_mod = parentmodule(@__MODULE__)
+    Generics_mod = getfield(parent_mod, :Generics)
+
+    # Call the Ararma.forecast method directly
+    return Generics_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
+end
+
+# Support PanelData with ArarSpec
+function fit(spec::ArarSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    # Note: ARAR doesn't use a seasonal period parameter, so we don't need to check for it
+    return fit(spec, panel.data; pairs(kwdict)...)
+end

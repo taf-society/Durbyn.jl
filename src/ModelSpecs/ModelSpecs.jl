@@ -53,6 +53,7 @@ using ..Utils: Formula
 export AbstractModelSpec, AbstractFittedModel
 
 export ArimaSpec, FittedArima
+export ArarSpec, FittedArar
 export EtsSpec, FittedEts
 export SesSpec, FittedSes
 export HoltSpec, FittedHolt
@@ -67,6 +68,7 @@ export successful_models, failed_groups, errors
 
 include("abstract.jl")
 include("arima_spec.jl")
+include("arar_spec.jl")
 include("ets_spec.jl")
 include("smoothing_specs.jl")
 include("panel_data.jl")

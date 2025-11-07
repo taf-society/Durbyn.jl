@@ -34,7 +34,7 @@ import .Generics: plot, fitted, residuals, summary, predict, forecast, fit, accu
 import .Optimize: NelderMeadOptions
 import .Grammar: p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm
 import .Grammar: e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
-import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, EtsSpec, FittedEts
+import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, FittedEts
 import .ModelSpecs: SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
 import .ModelSpecs: CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection
 import .ModelSpecs: ForecastModelCollection, model, PanelData, forecast_table
@@ -50,7 +50,7 @@ export coef, coefficients, coefs
 export NelderMeadOptions
 export p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm
 export e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
-export AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, EtsSpec, FittedEts
+export AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, FittedEts
 export SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
 export CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection, ForecastModelCollection
 export model, PanelData, forecast_table

@@ -346,54 +346,104 @@ plot(fc)
 
 ### ARAR and ARARMA models
 
-``` julia
-# Ararma module
+#### Formula Interface (Recommended)
 
+Both ARAR and ARARMA support Durbyn's declarative grammar for seamless integration with panel data and model comparison:
+
+```julia
+using Durbyn
+
+series = air_passengers()
+data = (value = series,)
+
+# ARAR with formula interface
+arar_spec = ArarSpec(@formula(value = arar(max_ar_depth=20, max_lag=30)))
+arar_fitted = fit(arar_spec, data)
+fc_arar = forecast(arar_fitted; h = 12)
+plot(fc_arar)
+
+# ARARMA with formula interface - Fixed orders
+ararma_spec = ArarmaSpec(@formula(value = p(1) + q(2)))
+ararma_fitted = fit(ararma_spec, data)
+fc_ararma = forecast(ararma_fitted; h = 12)
+plot(fc_ararma)
+
+# ARARMA with formula interface - Auto selection
+ararma_auto_spec = ArarmaSpec(@formula(value = p() + q()))
+ararma_auto_fitted = fit(ararma_auto_spec, data)
+fc_ararma_auto = forecast(ararma_auto_fitted; h = 12)
+plot(fc_ararma_auto)
+
+# ARARMA with custom ARAR parameters
+ararma_custom_spec = ArarmaSpec(
+    @formula(value = p() + q()),
+    max_ar_depth = 20,
+    max_lag = 30,
+    crit = :bic
+)
+ararma_custom_fitted = fit(ararma_custom_spec, data)
+fc_ararma_custom = forecast(ararma_custom_fitted; h = 12)
+```
+
+#### Panel Data and Model Comparison
+
+Both specs integrate with grouped data and model collections:
+
+```julia
+# Create panel data
+panel_tbl = (
+    value = vcat(series, series .* 1.05),
+    region = vcat(fill("north", length(series)), fill("south", length(series)))
+)
+panel = PanelData(panel_tbl; groupby = :region, m = 12)
+
+# Compare ARAR and ARARMA against other models
+models = model(
+    ArarSpec(@formula(value = arar())),
+    ArarmaSpec(@formula(value = p() + q())),
+    ArimaSpec(@formula(value = p() + q() + P() + Q())),
+    EtsSpec(@formula(value = e("Z") + t("Z") + s("Z"))),
+    names = ["arar", "ararma", "arima", "ets"]
+)
+
+# Fit all models to all groups
+fitted_models = fit(models, panel)
+
+# Forecast with all models
+fc_all = forecast(fitted_models, h = 12)
+
+# Compare results
+plot(fc_all)
+```
+
+#### Array Interface
+
+For direct numeric vector operations:
+
+``` julia
 using Durbyn
 using Durbyn.Ararma
 
 ap = air_passengers();
 
-# basing arar model
+# Basic ARAR model
 arar_model_basic = arar(ap, max_ar_depth = 13)
 fc = forecast(arar_model_basic, h = 12)
 plot(fc)
 
-# arar model
-ararma_model = ararma(ap, p = 0, q = 1)
+# ARARMA with fixed orders
+ararma_model = ararma(ap, p = 1, q = 2)
 fc = forecast(ararma_model, h = 12)
 plot(fc)
 
-# auto arar model
-auto_ararma_model = auto_ararma(ap)
+# Auto ARARMA (order selection)
+auto_ararma_model = auto_ararma(ap, max_p=3, max_q=2, crit=:bic)
 fc = forecast(auto_ararma_model, h = 12)
 plot(fc)
 ```
 
-You can also fit ARAR declaratively using Durbyn's forecasting grammar:
-
-```julia
-using Durbyn
-using Durbyn.Ararma
-
-series = air_passengers()
-data = (value = series,)
-formula = @formula(value = arar(max_ar_depth=20, max_lag=30))
-
-arar_model = arar(formula, data)
-fc = forecast(arar_model; h = 12)
-plot(fc)
-
-spec = ArarSpec(@formula(value = arar()))
-panel_tbl = (
-    value = vcat(series, series .* 1.05),
-    region = vcat(fill("north", length(series)), fill("south", length(series)))
-)
-panel = PanelData(panel_tbl; groupby = :region)
-group_fit = fit(spec, panel)
-group_fc = forecast(group_fit; h = 6)
-plot(group_fc)
-
-```
-
-`ArarSpec` slots into `model(...)` collections alongside ARIMA/ETS specs, so benchmarking ARAR against other models is now a one-line change.
+**Key Points:**
+- `ArarSpec` and `ArarmaSpec` slot into `model(...)` collections alongside ARIMA/ETS specs
+- ARARMA uses `p()` and `q()` grammar (same as ARIMA) - distinction is the Spec type
+- Auto selection when any order has a range: `p() + q()` or `p(0,3) + q()`
+- Fixed orders for faster fitting: `p(1) + q(2)` directly calls `ararma()`

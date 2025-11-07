@@ -437,6 +437,105 @@ The ARAR grammar therefore integrates seamlessly with every Durbyn workflow—si
 
 ---
 
+## ARARMA Grammar
+
+The ARARMA grammar extends the ARAR approach by fitting a short-memory ARMA(p,q) model after the adaptive reduction stage. Like ARIMA, it uses the `p()` and `q()` terms to specify model orders, but the distinction comes from using `ArarmaSpec` instead of `ArimaSpec`.
+
+### Formula terms
+
+ARARMA reuses ARIMA's order grammar:
+
+```julia
+@formula(value = p() + q())                    # auto selection with defaults
+@formula(value = p(1) + q(2))                  # fixed ARARMA(1,2)
+@formula(value = p(0,3) + q(0,2))              # search ranges
+```
+
+**Key differences from ARIMA:**
+- ARARMA does **not** support `d()`, `D()`, `P()`, or `Q()` terms (differencing is handled by the ARAR stage)
+- ARARMA does **not** support exogenous regressors (no variables, no `auto()`)
+- ARARMA adds ARAR-specific parameters: `max_ar_depth` and `max_lag`
+
+### Automatic vs Fixed Order Selection
+
+**If ANY order is a range** → uses `auto_ararma()`:
+- `p() + q()` → searches with defaults (p: 0-4, q: 0-2)
+- `p(0,3) + q()` → searches p ∈ {0,1,2,3}, q with defaults
+- `p(1) + q(0,2)` → searches q ∈ {0,1,2} with fixed p=1
+
+**If ALL orders are fixed** → uses `ararma()` directly (faster):
+- `p(1) + q(2)` → fits ARARMA(1,2) without search
+
+### Direct formula fitting
+
+```julia
+using Durbyn
+using Durbyn.Ararma
+
+data = (value = air_passengers(),)
+
+# Fixed ARARMA(1,2)
+formula = @formula(value = p(1) + q(2))
+ararma_model = ararma(formula, data)
+fc = forecast(ararma_model; h = 12)
+
+# Auto ARARMA with custom parameters
+formula = @formula(value = p() + q())
+ararma_model = ararma(formula, data, max_ar_depth=20, max_lag=30, crit=:bic)
+fc = forecast(ararma_model; h = 12)
+```
+
+The estimator lives in the `Durbyn.Ararma` submodule. It works with any Tables.jl source and returns an `ArarmaModel` struct.
+
+### Model specification (`ArarmaSpec`)
+
+To leverage grouped fitting, forecasting, and model collections, wrap the formula in `ArarmaSpec`:
+
+```julia
+# Fixed ARARMA(2,1)
+spec = ArarmaSpec(@formula(value = p(2) + q(1)))
+fitted = fit(spec, data)
+fc = forecast(fitted; h = 8)
+
+# Auto ARARMA with custom ARAR parameters
+spec = ArarmaSpec(
+    @formula(value = p() + q()),
+    max_ar_depth = 20,
+    max_lag = 30,
+    crit = :bic
+)
+fitted = fit(spec, data)
+fc = forecast(fitted; h = 12)
+```
+
+For panel data:
+
+```julia
+panel = PanelData(tbl; groupby = :region, m = m)
+spec = ArarmaSpec(@formula(value = p(1) + q(1)))
+group_fit = fit(spec, panel)
+group_fc = forecast(group_fit; h = 6)
+```
+
+And to compare against other specs:
+
+```julia
+models = model(
+    ArarmaSpec(@formula(value = p() + q())),
+    ArarSpec(@formula(value = arar())),
+    ArimaSpec(@formula(value = p() + q() + P() + Q())),
+    EtsSpec(@formula(value = e("Z") + t("Z") + s("Z"))),
+    names = ["ararma", "arar", "arima", "ets"]
+)
+
+fitted = fit(models, panel)
+fc = forecast(fitted; h = 12)
+```
+
+The ARARMA grammar therefore integrates seamlessly with every Durbyn workflow—single series, grouped/panel data, and large-scale model comparisons.
+
+---
+
 ## Tips and Best Practices
 
 ### ARIMA Tips

@@ -46,7 +46,7 @@ fc = forecast(fitted, h = 12)
 """
 module ModelSpecs
 
-using ..Grammar: ModelFormula, VarTerm, AutoVarTerm, compile_ets_formula
+using ..Grammar: ModelFormula, VarTerm, AutoVarTerm, ArimaOrderTerm, compile_ets_formula
 using ..Utils: Formula
 
 
@@ -54,6 +54,7 @@ export AbstractModelSpec, AbstractFittedModel
 
 export ArimaSpec, FittedArima
 export ArarSpec, FittedArar
+export ArarmaSpec, FittedArarma
 export EtsSpec, FittedEts
 export SesSpec, FittedSes
 export HoltSpec, FittedHolt
@@ -69,6 +70,7 @@ export successful_models, failed_groups, errors
 include("abstract.jl")
 include("arima_spec.jl")
 include("arar_spec.jl")
+include("ararma_spec.jl")
 include("ets_spec.jl")
 include("smoothing_specs.jl")
 include("panel_data.jl")

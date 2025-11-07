@@ -84,6 +84,110 @@ This shared syntax keeps ARAR on equal footing with ARIMA, ETS, and other foreca
 
 ---
 
+## ARARMA Formula Interface
+
+The ARARMA model participates in Durbyn's forecasting grammar, allowing you to build models declaratively with `@formula` and integrate them into `model(...)` collections or grouped workflows.
+
+### Basic Example
+
+```julia
+using Durbyn
+
+series = air_passengers()
+data = (sales = series,)
+
+# Using ArarmaSpec for fit/forecast workflow
+spec = ArarmaSpec(@formula(sales = p(1) + q(2)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+plot(fc)
+```
+
+### Auto ARARMA (Model Selection)
+
+```julia
+# Auto ARARMA with default search ranges
+spec = ArarmaSpec(@formula(sales = p() + q()))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# Auto ARARMA with custom search ranges
+spec = ArarmaSpec(@formula(sales = p(0,3) + q(0,2)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# With custom ARAR parameters
+spec = ArarmaSpec(
+    @formula(sales = p() + q()),
+    max_ar_depth = 20,
+    max_lag = 30,
+    crit = :bic
+)
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+```
+
+### Panel Data (Multiple Series)
+
+```julia
+# Create panel data with multiple regions
+panel_tbl = (
+    sales = vcat(series, series .* 1.05),
+    region = vcat(fill("north", length(series)), fill("south", length(series)))
+)
+
+# Wrap in PanelData for grouped fitting
+panel = PanelData(panel_tbl; groupby = :region, m = 12)
+
+# Fit to all groups
+spec = ArarmaSpec(@formula(sales = p(1) + q(1)))
+group_fit = fit(spec, panel)
+
+# Forecast all groups
+group_fc = forecast(group_fit, h = 6)
+plot(group_fc)
+```
+
+### Model Collections (Benchmarking)
+
+`ArarmaSpec` slots into model collections for easy benchmarking against other forecasting methods:
+
+```julia
+# Compare ARARMA against ARAR, ARIMA, and ETS
+models = model(
+    ArarmaSpec(@formula(sales = p() + q())),
+    ArarSpec(@formula(sales = arar())),
+    ArimaSpec(@formula(sales = p() + q() + P() + Q())),
+    EtsSpec(@formula(sales = e("Z") + t("Z") + s("Z"))),
+    names = ["ararma", "arar", "arima", "ets"]
+)
+
+# Fit all models
+fitted_models = fit(models, panel)
+
+# Forecast with all models
+fc_models = forecast(fitted_models, h = 12)
+
+# Compare forecasts
+plot(fc_models)
+```
+
+This shared syntax keeps ARARMA on equal footing with ARIMA, ARAR, ETS, and other forecasting families.
+
+### Automatic vs Fixed Order Selection
+
+**Automatic selection** (uses `auto_ararma`):
+- Any order term with a range triggers automatic model selection
+- `p()` or `q()` with no arguments use default search ranges
+- Examples: `p() + q()`, `p(0,3) + q()`, `p(1) + q(0,2)`
+
+**Fixed orders** (uses `ararma` directly - faster):
+- When all orders are fixed, the formula interface calls `ararma()` directly
+- Much faster as it skips the search process
+- Example: `p(1) + q(2)` fits ARARMA(1,2) directly
+
+---
+
 ## ARAR Model Theory
 
 The ARAR model applies a memory-shortening transformation; if the underlying process of a time series ``\{Y_t,\ t=1,2,\ldots,n\}`` is "long-memory", it then fits an autoregressive model.

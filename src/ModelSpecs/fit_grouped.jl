@@ -549,3 +549,38 @@ function fit_grouped(spec::ArarSpec, data;
 
     return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, 1, parallel, fail_fast, builder)
 end
+
+function fit_grouped(spec::ArarmaSpec, data;
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+
+    tbl = Tables.columntable(data)
+
+    groupby_cols = groupby isa Symbol ? [groupby] : collect(groupby)
+    target_col = spec.formula.target
+
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    # Merge spec options with kwargs and add ARAR parameters
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+    fit_options[:max_ar_depth] = spec.max_ar_depth
+    fit_options[:max_lag] = spec.max_lag
+
+    parent_mod = parentmodule(@__MODULE__)
+    Ararma_mod = getfield(parent_mod, :Ararma)
+
+    builder = function(group_data)
+        ararma_fit = Ararma_mod.ararma(spec.formula, group_data; pairs(fit_options)...)
+        return FittedArarma(spec, ararma_fit, target_col, group_data)
+    end
+
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, 1, parallel, fail_fast, builder)
+end

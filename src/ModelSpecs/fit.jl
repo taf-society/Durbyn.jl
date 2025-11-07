@@ -1067,16 +1067,154 @@ function forecast(fitted::FittedArar; h::Int, level::Vector{<:Real} = [80, 95], 
     parent_mod = parentmodule(@__MODULE__)
     Generics_mod = getfield(parent_mod, :Generics)
 
-    # Call the Ararma.forecast method directly
     return Generics_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
 end
 
-# Support PanelData with ArarSpec
 function fit(spec::ArarSpec, panel::PanelData; kwargs...)
     kwdict = Dict{Symbol, Any}(kwargs)
     if !haskey(kwdict, :groupby) && !isempty(panel.groups)
         kwdict[:groupby] = panel.groups
     end
-    # Note: ARAR doesn't use a seasonal period parameter, so we don't need to check for it
+    
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+"""
+    fit(spec::ArarmaSpec, data; groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+
+Fit an ARARMA model specification to data (single series or grouped).
+
+# Arguments
+- `spec::ArarmaSpec` - ARARMA model specification created with `@formula`
+- `data` - Tables.jl-compatible data (NamedTuple, DataFrame, CSV.File, etc.)
+
+# Keyword Arguments
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+- Additional kwargs passed to underlying `ararma` or `auto_ararma` function
+
+# Returns
+- If `groupby=nothing`: `FittedArarma` - Single fitted model
+- If `groupby` specified: `GroupedFittedModels` - Fitted models for each group
+
+# Examples
+```julia
+# Single series fit - fixed orders
+spec = ArarmaSpec(@formula(sales = p(1) + q(2)))
+fitted = fit(spec, data)
+
+# Single series fit - auto selection
+spec = ArarmaSpec(@formula(sales = p() + q()))
+fitted = fit(spec, data)
+
+# With custom ARAR parameters
+spec = ArarmaSpec(@formula(sales = p(2) + q(1)), max_ar_depth=20, max_lag=30)
+fitted = fit(spec, data)
+
+# Grouped data fit
+spec = ArarmaSpec(@formula(sales = p() + q()))
+fitted = fit(spec, data, groupby = [:product, :location])
+```
+
+# See Also
+- [`ArarmaSpec`](@ref)
+- [`forecast`](@ref)
+"""
+function fit(spec::ArarmaSpec, data;
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           groupby=groupby,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           kwargs...)
+    end
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+
+    fit_options[:max_ar_depth] = spec.max_ar_depth
+    fit_options[:max_lag] = spec.max_lag
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    target_data = tbl[target_col]
+    if !(target_data isa AbstractVector)
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' must be a vector, got $(typeof(target_data))"
+        ))
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Ararma_mod = getfield(parent_mod, :Ararma)
+
+    ararma_fit = Ararma_mod.ararma(spec.formula, data; pairs(fit_options)...)
+
+    return FittedArarma(
+        spec,
+        ararma_fit,
+        target_col,
+        tbl
+    )
+end
+
+"""
+    forecast(fitted::FittedArarma; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+
+Generate forecasts from a fitted ARARMA model.
+
+# Arguments
+- `fitted::FittedArarma` - Fitted ARARMA model from `fit(ArarmaSpec, data)`
+
+# Keyword Arguments
+- `h::Int` - Forecast horizon (number of periods ahead)
+- `level::Vector{<:Real}` - Confidence levels for prediction intervals (default [80, 95])
+- Additional kwargs passed to underlying `forecast` function
+
+# Returns
+`Forecast` object containing point forecasts and prediction intervals
+
+# Examples
+```julia
+spec = ArarmaSpec(@formula(sales = p(1) + q(2)))
+fitted = fit(spec, data)
+
+# 12-period ahead forecast
+fc = forecast(fitted, h = 12)
+
+# Custom confidence levels
+fc = forecast(fitted, h = 12, level = [90, 95, 99])
+```
+
+# See Also
+- [`ArarmaSpec`](@ref)
+- [`fit`](@ref)
+"""
+function forecast(fitted::FittedArarma; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+    parent_mod = parentmodule(@__MODULE__)
+    Generics_mod = getfield(parent_mod, :Generics)
+
+    return Generics_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
+end
+
+function fit(spec::ArarmaSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    
     return fit(spec, panel.data; pairs(kwdict)...)
 end

@@ -131,9 +131,27 @@ end
 """
     CrostonTerm <: AbstractTerm
 
-Sentinel term for Croston's intermittent-demand model.
+Represents Croston's intermittent-demand model options within a formula.
+
+# Fields
+- `method::String` - Croston method variant:
+  - `"hyndman"` - Simple Croston from ExponentialSmoothing module (default)
+  - `"classic"` - Classical Croston from IntermittentDemand module
+  - `"sba"` - Syntetos-Boylan Approximation (bias-corrected)
+  - `"sbj"` - Shale-Boylan-Johnston Bias Correction
+- `init_strategy::Union{String, Nothing}` - Initialization: "mean" or "naive" (IntermittentDemand only)
+- `number_of_params::Union{Int, Nothing}` - Number of parameters to optimize: 1 or 2 (IntermittentDemand only)
+- `cost_metric::Union{String, Nothing}` - Optimization metric: "mar", "msr", "mae", "mse" (IntermittentDemand only)
+- `optimize_init::Union{Bool, Nothing}` - Optimize initial values (IntermittentDemand only)
+- `rm_missing::Union{Bool, Nothing}` - Remove missing values (IntermittentDemand only)
 """
 struct CrostonTerm <: AbstractTerm
+    method::String
+    init_strategy::Union{String, Nothing}
+    number_of_params::Union{Int, Nothing}
+    cost_metric::Union{String, Nothing}
+    optimize_init::Union{Bool, Nothing}
+    rm_missing::Union{Bool, Nothing}
 end
 
 """
@@ -453,11 +471,103 @@ end
 holt_winters(; kwargs...) = hw(; kwargs...)
 
 """
-    croston()
+    croston(; method="hyndman", init_strategy=nothing, number_of_params=nothing,
+            cost_metric=nothing, optimize_init=nothing, rm_missing=nothing)
 
 Specify Croston's intermittent demand model in a formula.
+
+# Arguments
+- `method::String` - Croston method variant (default: "hyndman"):
+  - `"hyndman"` - Simple Croston from ExponentialSmoothing module
+  - `"classic"` - Classical Croston from IntermittentDemand module
+  - `"sba"` - Syntetos-Boylan Approximation (bias-corrected, recommended)
+  - `"sbj"` - Shale-Boylan-Johnston Bias Correction
+
+**IntermittentDemand-specific parameters** (only apply to "classic", "sba", "sbj"):
+- `init_strategy::Union{String, Nothing}` - Initialization: "mean" or "naive" (default: "mean")
+- `number_of_params::Union{Int, Nothing}` - Parameters to optimize: 1 or 2 (default: 2)
+- `cost_metric::Union{String, Nothing}` - Optimization metric: "mar", "msr", "mae", "mse" (default: "mar")
+- `optimize_init::Union{Bool, Nothing}` - Optimize initial values (default: true)
+- `rm_missing::Union{Bool, Nothing}` - Remove missing values (default: false)
+
+# Examples
+```julia
+# Simple Croston (ExponentialSmoothing)
+@formula(demand = croston())
+@formula(demand = croston(method="hyndman"))
+
+# IntermittentDemand methods
+@formula(demand = croston(method="classic"))
+@formula(demand = croston(method="sba"))      # Recommended for intermittent demand
+@formula(demand = croston(method="sbj"))
+
+# With IntermittentDemand parameters
+@formula(demand = croston(method="sba", cost_metric="mse"))
+@formula(demand = croston(method="classic", init_strategy="naive", number_of_params=1))
+```
+
+# See Also
+- [`CrostonSpec`](@ref) - Model specification wrapper
+- ExponentialSmoothing.croston - Simple Croston implementation
+- IntermittentDemand.croston_classic, croston_sba, croston_sbj - Advanced implementations
 """
-croston() = CrostonTerm()
+function croston(; method::Union{AbstractString, Symbol} = "hyndman",
+                   init_strategy::Union{AbstractString, Symbol, Nothing} = nothing,
+                   number_of_params::Union{Int, Nothing} = nothing,
+                   cost_metric::Union{AbstractString, Symbol, Nothing} = nothing,
+                   optimize_init::Union{Bool, Nothing} = nothing,
+                   rm_missing::Union{Bool, Nothing} = nothing)
+
+    # Normalize method to lowercase string
+    method_str = lowercase(String(method))
+
+    # Validate method
+    valid_methods = ("hyndman", "classic", "sba", "sbj")
+    if !(method_str in valid_methods)
+        throw(ArgumentError(
+            "method must be one of $(valid_methods), got \"$(method_str)\""
+        ))
+    end
+
+    # Validate IntermittentDemand parameters
+    if !isnothing(init_strategy)
+        init_str = lowercase(String(init_strategy))
+        if !(init_str in ("mean", "naive"))
+            throw(ArgumentError(
+                "init_strategy must be \"mean\" or \"naive\", got \"$(init_str)\""
+            ))
+        end
+        init_strategy = init_str
+    end
+
+    if !isnothing(number_of_params)
+        if !(number_of_params in (1, 2))
+            throw(ArgumentError(
+                "number_of_params must be 1 or 2, got $(number_of_params)"
+            ))
+        end
+    end
+
+    if !isnothing(cost_metric)
+        cost_str = lowercase(String(cost_metric))
+        if !(cost_str in ("mar", "msr", "mae", "mse"))
+            throw(ArgumentError(
+                "cost_metric must be one of (\"mar\", \"msr\", \"mae\", \"mse\"), got \"$(cost_str)\""
+            ))
+        end
+        cost_metric = cost_str
+    end
+
+    # Warn if IntermittentDemand parameters are provided for hyndman method
+    if method_str == "hyndman" &&
+       (!isnothing(init_strategy) || !isnothing(number_of_params) ||
+        !isnothing(cost_metric) || !isnothing(optimize_init) || !isnothing(rm_missing))
+        @warn "IntermittentDemand-specific parameters (init_strategy, number_of_params, cost_metric, optimize_init, rm_missing) " *
+              "are ignored for method=\"hyndman\". These parameters only apply to \"classic\", \"sba\", and \"sbj\" methods."
+    end
+
+    return CrostonTerm(method_str, init_strategy, number_of_params, cost_metric, optimize_init, rm_missing)
+end
 
 """
     arar(; max_ar_depth=nothing, max_lag=nothing)

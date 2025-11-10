@@ -117,8 +117,8 @@ models = model(
     SesSpec(@formula(value = ses())),
     HoltSpec(@formula(value = holt(damped=true))),
     HoltWintersSpec(@formula(value = hw(seasonal="multiplicative")); m = 12),
-    CrostonSpec(@formula(value = croston())),
-    names = ["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+    CrostonSpec(@formula(value = croston(method="sba"))),  # Bias-corrected Croston
+    names = ["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston_sba"]
 )
 
 fitted = fit(models, panel)       # each spec fitted to every series
@@ -174,8 +174,8 @@ models = model(
     SesSpec(@formula(value = ses())),
     HoltSpec(@formula(value = holt(damped=true))),
     HoltWintersSpec(@formula(value = hw(seasonal="multiplicative")); m=12),
-    CrostonSpec(@formula(value = croston())),
-    names=["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+    CrostonSpec(@formula(value = croston(method="sba"))),  # Syntetos-Boylan Approximation
+    names=["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston_sba"]
 )
 
 # Fit all models to all series
@@ -265,60 +265,149 @@ hw_fc = forecast(hw_fit, h = 12)
 plot(hw_fc)
 ```
 
-### Intermittent Demand
+### Intermittent Demand Forecasting
 
-``` julia
-data = [6, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0,
-0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 
-0, 0, 0, 0, 0];
+**Croston methods** are specialized for intermittent demand time series—data with many zero values and sporadic non-zero demands. Common in:
+- Spare parts inventory management
+- Slow-moving retail items
+- Low-volume products with irregular purchasing patterns
+- Any series with >50% zero values
 
-# Based on Shenstone, L., and Hyndman, R.J. (2005)
+**Why Croston?** Standard methods (ARIMA, ETS) struggle with intermittent data because they:
+- Assume continuous demand patterns
+- Produce biased forecasts when faced with zeros
+- Cannot properly model the dual nature of intermittent demand (size and timing)
 
-fit_crst =croston(data)
-fc_crst = forecast(fit_crst, 12)
-plot(fc_crst)
+#### Quick Start: Formula Interface (Recommended)
 
-# this module is based on Kourentzes (2014)
+```julia
+using Durbyn
+
+# Intermittent demand data (many zeros)
+data = (demand = [6, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 2, 0, 0, 0, 3, 0],)
+
+# 🎯 RECOMMENDED: Syntetos-Boylan Approximation (SBA)
+# Bias-corrected method with superior accuracy
+spec = CrostonSpec(@formula(demand = croston(method="sba")))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+plot(fc)
+
+# Compare multiple Croston variants
+models = model(
+    CrostonSpec(@formula(demand = croston(method="sba"))),
+    CrostonSpec(@formula(demand = croston(method="sbj"))),
+    CrostonSpec(@formula(demand = croston(method="classic"))),
+    names = ["croston_sba", "croston_sbj", "croston_classic"]
+)
+fitted_models = fit(models, data)
+fc_all = forecast(fitted_models, h = 12)
+```
+
+#### Advanced Configuration
+
+Fine-tune optimization parameters for better performance (Kourentzes 2014 recommendations):
+
+```julia
+# Custom parameters for IntermittentDemand methods
+spec = CrostonSpec(@formula(demand = croston(
+    method = "sba",              # Bias-corrected method
+    cost_metric = "mar",         # Mean Absolute Rate (recommended over MSE)
+    number_of_params = 2,        # Separate smoothing for demand size and intervals
+    optimize_init = true,        # Optimize initial values (important for short series)
+    init_strategy = "mean"       # Initialize with mean (vs "naive")
+)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+```
+
+#### Method Selection Guide
+
+| Method | Description | When to Use |
+|--------|-------------|-------------|
+| **`"sba"`** ⭐ | Syntetos-Boylan Approximation | **Default choice** - bias-corrected, best accuracy |
+| **`"sbj"`** | Shale-Boylan-Johnston correction | Alternative if SBA over-forecasts |
+| **`"classic"`** | Classical Croston (1972) | Original method with modern optimization |
+| **`"hyndman"`** | Shenstone & Hyndman (2005) | Standard implementation, fixed alpha |
+
+**💡 Recommendation:** Start with `method="sba"` - it's the most validated and generally performs best.
+
+#### Panel Data Example
+
+Croston methods integrate seamlessly with panel data for multi-product forecasting:
+
+```julia
+using Durbyn, CSV, Downloads, Tables
+
+# Load intermittent demand data with multiple products
+# (your data should have columns: product_id, date, demand)
+panel = PanelData(tbl; groupby = :product_id, date = :date)
+
+# Fit SBA to all products in parallel
+spec = CrostonSpec(@formula(demand = croston(method="sba")))
+fitted = fit(spec, panel)  # Automatically parallelized
+
+# Generate forecasts for all products
+fc = forecast(fitted, h = 12)
+
+# Analyze results
+fc_table = forecast_table(fc)
+glimpse(fc_table)
+```
+
+#### Array Interface (Direct)
+
+For lower-level control or integration with existing numeric workflows:
+
+```julia
 using Durbyn.IntermittentDemand
 
-# Classical Croston Method based Croston, J. (1972) 
-crst1 =croston_classic(data)
-fc1 = forecast(crst1, h = 12)
+demand = [6, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 2, 0]
 
-residuals(crst1)
-residuals(fc1)
+# Recommended: Syntetos-Boylan Approximation (bias-corrected)
+fit_sba = croston_sba(demand, cost_metric="mar", number_of_params=2)
+fc_sba = forecast(fit_sba, h = 12)
+plot(fc_sba, show_fitted = true)
 
-fitted(crst1)
-fitted(fc1)
+# Alternative: Shale-Boylan-Johnston (alternative bias correction)
+fit_sbj = croston_sbj(demand, cost_metric="mar", optimize_init=true)
+fc_sbj = forecast(fit_sbj, h = 12)
 
-plot(fc1, show_fitted = true)
+# Extract diagnostics
+fitted_values = fitted(fit_sba)
+resids = residuals(fit_sba)
 
-# Croston Method with Syntetos-Boylan Approximation
-crst2 =croston_sba(data)
-fc2 = forecast(crst2, h = 12)
-
-residuals(crst2)
-residuals(fc2)
-
-fitted(crst2)
-fitted(fc2)
-
-plot(fc2, show_fitted = true)
-
-# Croston-Shale-Boylan-Johnston Bias Correction Method
-crst3 =croston_sbj(data)
-fc3 = forecast(crst3, h = 12)
-
-residuals(crst3)
-residuals(fc3)
-
-fitted(crst3)
-fitted(fc3)
-
-plot(fc3, show_fitted = true)
+# Compare methods
+println("SBA Forecast: ", fc_sba.mean[1])
+println("SBJ Forecast: ", fc_sbj.mean[1])
 ```
+
+#### Key Parameters Explained
+
+- **`cost_metric`**: Loss function for optimization
+  - `"mar"`: Mean Absolute Rate - **recommended** (Kourentzes 2014)
+  - `"msr"`: Mean Squared Rate - also good
+  - `"mae"`, `"mse"`: Classical metrics
+
+- **`number_of_params`**: Smoothing parameter count
+  - `2`: Separate smoothing for demand size and intervals - **recommended**
+  - `1`: Single parameter for both (faster, less accurate)
+
+- **`optimize_init`**: Optimize starting values
+  - `true`: **Recommended**, especially for short series
+  - `false`: Use heuristic initialization (faster)
+
+- **`init_strategy`**: Initial value method
+  - `"mean"`: Use mean of non-zero demands - **recommended**
+  - `"naive"`: Use first observation
+
+#### References
+
+For theoretical background and validation studies:
+
+- Croston, J. D. (1972). Forecasting and stock control for intermittent demands. *Operational Research Quarterly*, 23(3), 289-303.
+- Syntetos, A. A., & Boylan, J. E. (2005). The accuracy of intermittent demand estimates. *International Journal of Forecasting*, 21(2), 303-314.
+- Kourentzes, N. (2014). On intermittent demand model optimisation and selection. *International Journal of Production Economics*, 156, 180–190.
 
 ### Classical ARIMA API
 

@@ -455,9 +455,38 @@ function fit(spec::CrostonSpec, data;
     fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
 
     parent_mod = parentmodule(@__MODULE__)
-    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
 
-    croston_fit = Exp_mod.croston(target_vector, seasonal_period; pairs(fit_options)...)
+    # Route based on method
+    croston_fit = if spec.method == "hyndman"
+        # Use ExponentialSmoothing.croston
+        Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+        Exp_mod.croston(target_vector, seasonal_period; pairs(fit_options)...)
+    else
+        # Use IntermittentDemand module (classic, sba, sbj)
+        ID_mod = getfield(parent_mod, :IntermittentDemand)
+
+        # Build IntermittentDemand parameters
+        id_options = Dict{Symbol, Any}()
+        id_options[:init_strategy] = something(spec.init_strategy, "mean")
+        id_options[:number_of_params] = something(spec.number_of_params, 2)
+        id_options[:cost_metric] = something(spec.cost_metric, "mar")
+        id_options[:optimize_init] = something(spec.optimize_init, true)
+        id_options[:rm_missing] = something(spec.rm_missing, false)
+
+        # Merge with user-provided kwargs (user options take precedence)
+        merge!(id_options, fit_options)
+
+        # Call the appropriate method
+        if spec.method == "classic"
+            ID_mod.croston_classic(target_vector; pairs(id_options)...)
+        elseif spec.method == "sba"
+            ID_mod.croston_sba(target_vector; pairs(id_options)...)
+        elseif spec.method == "sbj"
+            ID_mod.croston_sbj(target_vector; pairs(id_options)...)
+        else
+            throw(ArgumentError("Unknown Croston method: $(spec.method)"))
+        end
+    end
 
     return FittedCroston(spec, croston_fit, target_col, tbl, seasonal_period)
 end
@@ -760,8 +789,13 @@ function forecast(fitted::FittedCroston; h::Int, level::Vector{<:Real} = [80, 95
         @warn "newdata ignored for Croston forecasts."
     end
     parent_mod = parentmodule(@__MODULE__)
-    Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
-    croston_fc = Exp_mod.forecast(fitted.fit, h)
+    croston_fc = if fitted.spec.method == "hyndman"
+        Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
+        Exp_mod.forecast(fitted.fit, h)
+    else
+        ID_mod = getfield(parent_mod, :IntermittentDemand)
+        ID_mod.forecast(fitted.fit; h = h)
+    end
     return _wrap_croston_forecast(fitted, croston_fc)
 end
 

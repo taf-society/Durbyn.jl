@@ -86,17 +86,32 @@ end
     CrostonSpec
 
 Specification wrapper for Croston's intermittent demand method (`croston()`).
+
+Supports multiple Croston method variants:
+- `"hyndman"` - Simple Croston from ExponentialSmoothing module (default)
+- `"classic"` - Classical Croston from IntermittentDemand module
+- `"sba"` - Syntetos-Boylan Approximation (bias-corrected, recommended for intermittent demand)
+- `"sbj"` - Shale-Boylan-Johnston Bias Correction
 """
 struct CrostonSpec <: AbstractModelSpec
     formula::ModelFormula
     m::Union{Int, Nothing}
+    method::String
+    # IntermittentDemand-specific parameters
+    init_strategy::Union{String, Nothing}
+    number_of_params::Union{Int, Nothing}
+    cost_metric::Union{String, Nothing}
+    optimize_init::Union{Bool, Nothing}
+    rm_missing::Union{Bool, Nothing}
     options::Dict{Symbol, Any}
 
     function CrostonSpec(formula::ModelFormula;
                          m::Union{Int, Nothing} = nothing,
                          kwargs...)
-        _extract_single_term(formula, CrostonTerm)
-        new(formula, m, Dict{Symbol, Any}(kwargs))
+        term = _extract_single_term(formula, CrostonTerm)
+        new(formula, m, term.method, term.init_strategy, term.number_of_params,
+            term.cost_metric, term.optimize_init, term.rm_missing,
+            Dict{Symbol, Any}(kwargs))
     end
 end
 
@@ -270,7 +285,7 @@ function Base.show(io::IO, spec::HoltWintersSpec)
 end
 
 function Base.show(io::IO, spec::CrostonSpec)
-    print(io, "CrostonSpec: ", spec.formula.target)
+    print(io, "CrostonSpec(", spec.method, "): ", spec.formula.target)
     if !isnothing(spec.m)
         print(io, ", m = ", spec.m)
     end
@@ -348,5 +363,12 @@ function Base.show(io::IO, ::MIME"text/plain", fitted::FittedCroston)
     println(io, "FittedCroston")
     println(io, "  Target: ", fitted.target_col)
     println(io, "  m: ", fitted.m)
-    println(io, "  Type: ", fitted.fit.type)
+
+    # Handle both ExponentialSmoothing.CrostonFit (has .type)
+    # and IntermittentDemand.IntermittentDemandCrostonFit (has .method)
+    if hasproperty(fitted.fit, :type)
+        println(io, "  Type: ", fitted.fit.type)
+    elseif hasproperty(fitted.fit, :method)
+        println(io, "  Method: ", fitted.fit.method)
+    end
 end

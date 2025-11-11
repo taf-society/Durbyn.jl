@@ -12,7 +12,7 @@ using Tables
 
 include("setup_params.jl")
 include("arar.jl")
-include("ararma.jl")
+include("ararma_base.jl")
 include("arar_formula_interface.jl")
 include("ararma_formula_interface.jl")
 

@@ -25,7 +25,7 @@ import ..Optimize: optim, optim_hessian
 import ..Grammar: ModelFormula, ArimaOrderTerm, VarTerm, compile_arima_formula
 
 import Base: show
-include("arima.jl")
+include("arima_base.jl")
 include("arima_rjh.jl")
 include("auto_arima_utils.jl")
 include("auto_arima.jl")

@@ -155,6 +155,11 @@ This normalization restores stability.
 
 ---
 
+!!! info "Need multiple seasonal cycles?"
+    The [`bats`](bats.md) models extend ETS with Box–Cox transforms,
+    ARMA errors, damped trends, and multiple seasonal periods following
+    De Livera, Hyndman & Snyder (2011).
+
 ## References
 
 - Hyndman, Koehler, Snyder & Grose (2002). *A state space framework for automatic forecasting using exponential smoothing methods.*

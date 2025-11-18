@@ -22,6 +22,7 @@ makedocs(
         "User Guide" => Any[
             "Grammar"                => "grammar.md",
             "Exponential Smoothing" => "expsmoothing.md",
+            "BATS"                   => "bats.md",
             "Intermittent Demand"   => "intermittent.md",
             "ARIMA"                  => "arima.md",
             "ARAR/ARARMA"            => "ararma.md",
@@ -36,4 +37,3 @@ deploydocs(
     repo      = "github.com/taf-society/Durbyn.jl",
     devbranch = "main",
 )
-

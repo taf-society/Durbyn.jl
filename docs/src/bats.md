@@ -4,7 +4,7 @@ The **BATS** framework extends exponential smoothing to accommodate multiple,
 possibly long seasonal cycles together with Box–Cox variance stabilization
 and ARMA error correction. It was introduced by De Livera, Hyndman &
 Snyder (2011) as part of the innovation-state-space family and is the
-method implemented by Durbyn’s [`bats`](@ref) function.
+method implemented by Durbyn’s [`bats`] function.
 
 This page summarizes the core equations, highlights limitations (and why
 TBATS was proposed in the paper), and shows how to use the Julia interface.
@@ -104,7 +104,7 @@ using Durbyn
 m = [168, 8760]
 fit = bats(load, m; use_box_cox = true, use_arma_errors = true)
 
-println(string(fit))  # e.g. BATS(0.21, {1,0}, 0.93, {168,8760})
+println(string(fit))
 fc = forecast(fit; h = 168)
 ```
 
@@ -113,7 +113,7 @@ fc = forecast(fit; h = 168)
 - `use_box_cox`, `use_trend`, `use_damped_trend`: `Bool`, `Vector{Bool}`, or
   `nothing` to try both options; the best combination is chosen using AIC.
 - `use_arma_errors`: toggles fitting an ARMA(p, q) model to the residuals via
-  [`auto_arima`](@ref); if the selected ARMA orders are zero, the pure
+  [`auto_arima`]; if the selected ARMA orders are zero, the pure
   exponential-smoothing state-space model is retained.
 - `bc_lower`, `bc_upper`: bounds for the Box–Cox search when enabled.
 - `biasadj`: apply bias correction during inverse Box–Cox transformation.

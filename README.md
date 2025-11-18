@@ -65,6 +65,11 @@ For complete documentation, see the [Grammar Guide](https://taf-society.github.i
   (`pivot_longer`, `arrange`, `groupby`, `summarise`, `mutate`, …) plus `glimpse` utilities, see the [Table Operations](https://taf-society.github.io/Durbyn.jl/dev/tableops/) in the docs,
 - `Durbyn.ExponentialSmoothing`, `Durbyn.Arima`, `Durbyn.Ararma`,
   `Durbyn.IntermittentDemand` — Base model engines for array interface
+- **BATS (Box-Cox, ARMA errors, Trend, Seasonal)** — Multi-seasonal state-space
+  models following De Livera, Hyndman & Snyder (2011) for complex seasonal patterns.
+  See the dedicated [BATS guide](https://taf-society.github.io/Durbyn.jl/dev/bats/)
+  for methodology details and references to
+  [“Forecasting time series with complex seasonal patterns using exponential smoothing.”](https://robjhyndman.com/papers/ComplexSeasonality.pdf)
 
 ---
 

@@ -83,13 +83,15 @@ limitations:
   cannot be represented exactly.
 
 TBATS replaces the seasonal states with Fourier (trigonometric) terms to
-overcome those issues. **TBATS is not yet implemented in Durbyn**; the
-current `bats` function corresponds strictly to the BATS formulation above.
+overcome those issues. **Durbyn provides both BATS and TBATS implementations.**
+The `bats` function corresponds strictly to the BATS formulation above for
+integer seasonal periods, while `tbats` supports non-integer periods and
+more efficient handling of long seasonal cycles via Fourier representation.
 
-!!! note "TBATS documentation will follow"
-    Once TBATS is implemented, it will live on its own documentation page
-    paralleling this guide so each innovation-state-space variant remains
-    easy to reference independently.
+!!! note "TBATS documentation"
+    For detailed information about TBATS, including non-integer seasonal periods,
+    dual calendar effects, and computational efficiency, see the
+    [TBATS documentation](tbats.md).
 
 ---
 
@@ -127,6 +129,6 @@ interface (`[m]`), making single-season calls ergonomic.
 
 ## 5. Reference
 
-- De Livera, A.M., Hyndman, R.J., & Snyder, R.D. (2011). *Forecasting time
-  series with complex seasonal patterns using exponential smoothing.*
+- De Livera, A.M., Hyndman, R.J., & Snyder, R.D. (2011). [*Forecasting time
+  series with complex seasonal patterns using exponential smoothing.*](https://www.tandfonline.com/doi/abs/10.1198/jasa.2011.tm09771)
   Journal of the American Statistical Association, 106(496), 1513–1527.

@@ -15,6 +15,7 @@ include("Models/Arima/Arima.jl")
 include("Models/IntermittentDemand/IntermittentDemand.jl")
 include("Models/Ararma/Ararma.jl")
 include("Models/Bats/Bats.jl")
+include("Models/Tbats/Tbats.jl")
 
 
 using .Utils
@@ -29,6 +30,7 @@ using .Naive
 using .Arima
 using .IntermittentDemand
 using .Bats
+using .Tbats
 
 import .Utils: air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
 import .Utils: Formula, parse_formula, compile, model_matrix, model_frame
@@ -44,6 +46,7 @@ import .ModelSpecs: GroupedFittedModels, GroupedForecasts, successful_models, fa
 import .Arima: arima, arima_rjh, auto_arima, ArimaFit, PDQ
 import .Ararma: ARAR, ArarmaModel, arar, ararma, auto_ararma
 import .Bats: bats, BATSModel
+import .Tbats: tbats, TBATSModel
 import .TableOps: select, query, arrange, groupby, mutate, summarise, summarize, pivot_longer, pivot_wider, glimpse, GroupedTable
 
 export air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
@@ -61,6 +64,7 @@ export GroupedFittedModels, GroupedForecasts, successful_models, failed_groups
 export arima, arima_rjh, auto_arima, ArimaFit, PDQ
 export ARAR, ArarmaModel, ararma, auto_ararma
 export bats, BATSModel
+export tbats, TBATSModel
 export select, query, arrange, groupby, mutate, summarise, summarize, pivot_longer, pivot_wider, glimpse, GroupedTable
 
 include("glimpse_extensions.jl")

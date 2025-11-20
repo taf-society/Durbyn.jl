@@ -1,18 +1,18 @@
 """
     TBATSModel
 
-Container for fitted TBATS models (Trigonometric seasonality, Box-Cox transformation,
-ARMA errors, Trend and seasonal components) following the definition in
-De Livera, Hyndman & Snyder (2011) and the `forecast::tbats` R implementation.
+Container for a fitted TBATS model (Box-Cox transformation, ARMA errors,
+trend, and multiple seasonal components via Fourier terms). Mirrors the
+`forecast::tbats` object: fields store smoothing parameters, ARMA
+coefficients, state matrices (`x`/`seed_states`), fitted values, errors,
+likelihood, information criteria, and metadata needed to forecast without
+refitting. The descriptor `TBATS(omega, {p,q}, phi, <m1,k1>,...,<mJ,kJ>)`
+matches the R output, where `omega` is the Box-Cox lambda, `{p,q}` the ARMA
+orders, `phi` the damping parameter, and `<m,k>` pairs define seasonal
+periods and Fourier orders.
 
-The key difference from BATS is that TBATS uses Fourier terms (trigonometric
-seasonal representation) instead of seasonal dummies, making it more efficient
-for high-frequency seasonal data.
-
-Fields store Box-Cox lambda, level/trend coefficients, Fourier smoothing parameters
-(gamma.one.values and gamma.two.values for sine and cosine components), k.vector
-(number of Fourier pairs for each seasonal period), ARMA coefficients, state matrices,
-diagnostics and metadata.
+# References
+- De Livera, A.M., Hyndman, R.J., & Snyder, R.D. (2011). Forecasting time series with complex seasonal patterns using exponential smoothing. Journal of the American Statistical Association, 106(496), 1513-1527.
 """
 mutable struct TBATSModel
     lambda::Union{Float64,Nothing}
@@ -85,7 +85,7 @@ struct TBATSParameterControl
     use_box_cox::Bool
     use_beta::Bool
     use_damping::Bool
-    length_gamma::Int  # Total number of gamma parameters (2 * num_seasonal_periods)
+    length_gamma::Int
     p::Int
     q::Int
 end
@@ -407,7 +407,6 @@ function unparameterise_tbats(param_vector::Vector{Float64}, control::TBATSParam
     end
 
     if control.length_gamma > 0
-        
         half_length = div(control.length_gamma, 2)
         gamma_one_v = param_vector[idx:(idx+half_length-1)]
         idx += half_length
@@ -666,7 +665,6 @@ function fitSpecificTBATS(
         w_tilda_transpose[i, :] = vec(transpose(w_tilda_transpose[i-1, :]) * D)
     end
 
-    # Cut w for seed state estimation
     if (p != 0) || (q != 0)
         end_cut = size(w_tilda_transpose, 2)
         start_cut = end_cut - (p + q) + 1
@@ -866,10 +864,10 @@ function calc_likelihood_tbats(
     bc_upper::Float64 = 1.0,
 )
     control = TBATSParameterControl(
-        true,  # use_box_cox
+        true,
         use_beta,
         use_small_phi,
-        isnothing(k_vector) ? 0 : 2 * length(k_vector),  # length_gamma = 2 * num_seasonal_periods
+        isnothing(k_vector) ? 0 : 2 * length(k_vector),
         p,
         q
     )
@@ -909,7 +907,6 @@ function calc_likelihood_tbats(
     n = size(opt_env[:y], 2)
     mat_transformed_y = reshape(y_transformed_vec, 1, n)
 
-    # Simplified state space calculation
     for t = 1:n
         if t == 1
             opt_env[:y_hat][:, t] = opt_env[:w_transpose] * x_nought[:, 1]
@@ -958,10 +955,10 @@ function calc_likelihood_tbats_notransform(
     tau::Int = 0,
 )
     control = TBATSParameterControl(
-        false,  # use_box_cox
+        false,
         use_beta,
         use_small_phi,
-        isnothing(k_vector) ? 0 : 2 * length(k_vector),  # length_gamma = 2 * num_seasonal_periods
+        isnothing(k_vector) ? 0 : 2 * length(k_vector),
         p,
         q
     )
@@ -995,7 +992,6 @@ function calc_likelihood_tbats_notransform(
 
     n = size(opt_env[:y], 2)
 
-    # Simplified state space calculation
     for t = 1:n
         if t == 1
             opt_env[:y_hat][:, t] = opt_env[:w_transpose] * x_nought[:, 1]
@@ -1029,38 +1025,141 @@ function calc_likelihood_tbats_notransform(
     end
 end
 
+
+function filterTBATSSpecifics(
+    y::AbstractVector{<:Real},
+    box_cox::Bool,
+    trend::Bool,
+    damping::Bool,
+    seasonal_periods::Vector{Int},
+    k_vector::Vector{Int},
+    use_arma_errors::Bool;
+    aux_model::Union{TBATSModel,NamedTuple,Nothing} = nothing,
+    init_box_cox::Union{Nothing,Real} = nothing,
+    bc_lower::Real = 0.0,
+    bc_upper::Real = 1.0,
+    biasadj::Bool = false,
+    arima_kwargs...,
+)
+
+    first_model = if aux_model === nothing
+        try
+            fitSpecificTBATS(
+                Float64.(y);
+                use_box_cox = box_cox,
+                use_beta = trend,
+                use_damping = damping,
+                seasonal_periods = seasonal_periods,
+                k_vector = k_vector,
+                init_box_cox = init_box_cox,
+                bc_lower = bc_lower,
+                bc_upper = bc_upper,
+                biasadj = biasadj,
+            )
+        catch e
+            @warn "fitSpecificTBATS in filterTBATSSpecifics failed: $e"
+            nothing
+        end
+    else
+        aux_model
+    end
+
+    if first_model === nothing
+        return nothing
+    end
+
+    if !use_arma_errors
+        return first_model
+    end
+
+    arma = try
+        arma_m = isempty(seasonal_periods) ? 1 : maximum(seasonal_periods)
+        auto_arima(collect(Float64, first_model.errors), arma_m; d = 0, arima_kwargs...)
+    catch e
+        @warn "auto_arima in filterTBATSSpecifics failed: $e"
+        nothing
+    end
+
+    if arma === nothing
+        return first_model
+    end
+
+    p = arma.arma[1]
+    q = arma.arma[2]
+
+    if p == 0 && q == 0
+        return first_model
+    end
+
+    ar_coefs = p > 0 ? zeros(Float64, p) : Float64[]
+    ma_coefs = q > 0 ? zeros(Float64, q) : Float64[]
+
+
+    second_model = try
+        fitSpecificTBATS(
+            Float64.(y);
+            use_box_cox = box_cox,
+            use_beta = trend,
+            use_damping = damping,
+            seasonal_periods = seasonal_periods,
+            k_vector = k_vector,
+            ar_coefs = ar_coefs,
+            ma_coefs = ma_coefs,
+            init_box_cox = init_box_cox,
+            bc_lower = bc_lower,
+            bc_upper = bc_upper,
+            biasadj = biasadj,
+        )
+    catch e
+        @warn "fitSpecificTBATS with ARMA in filterTBATSSpecifics failed: $e"
+        nothing
+    end
+
+    aic_first = first_model.AIC
+    aic_second = second_model === nothing ? Inf : second_model.AIC
+
+    if aic_second < aic_first
+        return second_model
+    else
+        return first_model
+    end
+end
+
 """
-    tbats(y::AbstractVector{<:Real}, m::Union{Vector{Int},Nothing}=nothing; kwargs...)
+    tbats(y, m; use_box_cox=nothing, use_trend=nothing, use_damped_trend=nothing,
+          use_arma_errors=true, bc_lower=0.0, bc_upper=1.0, biasadj=false,
+          model=nothing)
 
-Fit a TBATS model (Trigonometric seasonality, Box-Cox transformation, ARMA errors,
-Trend and seasonal components) to the univariate series `y`, mirroring the behaviour
-of the `forecast::tbats` R function.
-
-TBATS uses Fourier terms to represent seasonality, making it more efficient than BATS
-for high-frequency seasonal data.
+Fit a TBATS model (Exponential smoothing state space with Box-Cox
+transformation, ARMA errors, trend, and trigonometric seasonality) to a
+univariate time series. This is a Julia port of `forecast::tbats`
+(`De Livera, Hyndman & Snyder 2011`); it searches over Box-Cox, trend, and
+damped-trend options, optimizes Fourier orders per seasonal period, and can
+optionally refit a supplied TBATS/BATS model.
 
 # Arguments
-- `y`: real-valued vector representing the time series.
-- `m`: optional vector of seasonal periods.
-- `use_box_cox`, `use_trend`, `use_damped_trend`: `Bool`, vector of `Bool`, or `nothing`.
-- `use_arma_errors`: include ARMA(p, q) error structure via `auto_arima`.
-- `bc_lower`, `bc_upper`: bounds for Box-Cox lambda search.
-- `biasadj`: request bias-adjusted inverse Box-Cox transformation.
-- `model`: result from a previous `tbats` call; reuses its specification.
+- `y`: Univariate series to model.
+- `m`: Seasonal periods; pass `nothing` to infer nonseasonal.
+- `use_box_cox`: Bool or vector of Bools; if `nothing`, both FALSE/TRUE are tried and chosen by AIC.
+- `use_trend`: Bool or vector; if `nothing`, both are tried and chosen by AIC.
+- `use_damped_trend`: Bool or vector; if `nothing`, both are tried and chosen by AIC (ignored when trend is FALSE).
+- `use_arma_errors`: Whether to fit ARMA errors (orders selected by `auto_arima` on residuals).
+- `bc_lower`/`bc_upper`: Bounds for Box-Cox lambda search.
+- `biasadj`: Use bias-adjusted inverse Box-Cox for fitted/forecast means.
+- `model`: Previous TBATS/BATS fit to refit without re-estimating parameters.
+- `...`: Extra keywords forwarded to `auto_arima` when selecting ARMA(p,q).
 
 # Returns
-A [`TBATSModel`](@ref) storing the fitted parameters, state vectors, original
-series and a descriptive method label such as `TBATS(λ, {p,q}, φ, {<m,k>…})`.
+A `TBATSModel` (or `BATSModel` when no seasonality) storing parameters,
+states, fitted values, residuals, variance, likelihood, AIC, and the
+descriptor `TBATS(omega, {p,q}, phi, <m1,k1>,...,<mJ,kJ>)`.
 
-# Examples
-```julia
-fit = tbats(rand(120), [12])
-fc = forecast(fit; h = 12)
-```
+# References
+- De Livera, A.M., Hyndman, R.J., & Snyder, R.D. (2011). Forecasting time series with complex seasonal patterns using exponential smoothing. Journal of the American Statistical Association, 106(496), 1513-1527.
 """
 function tbats(
     y::AbstractVector{<:Real},
-    m::Union{Vector{Int},Nothing} = nothing;
+    m::Union{Vector{Int},Nothing} = nothing;          # seasonal.periods
     use_box_cox::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
     use_trend::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
     use_damped_trend::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
@@ -1070,6 +1169,7 @@ function tbats(
     biasadj::Bool = false,
     model = nothing,
 )
+
     if ndims(y) != 1
         error("y should be a univariate time series (1D vector)")
     end
@@ -1077,20 +1177,15 @@ function tbats(
     orig_y = copy(y)
     orig_len = length(y)
 
-    if m === nothing
-        m = [1]
+    seasonal_periods = if m === nothing
+        [1]
+    else
+        copy(m)
     end
 
-    m = m[m.<length(y)]
-
-    if isempty(m)
-        m = [1]
-    end
-
-    m = unique(max.(m, 1))
-
-    if all(m .== 1)
-        m = nothing
+    seasonal_periods = unique(max.(seasonal_periods, 1))
+    if all(seasonal_periods .== 1)
+        seasonal_periods = nothing
     end
 
     y_contig = na_contiguous(y)
@@ -1099,11 +1194,20 @@ function tbats(
     end
     y = y_contig
 
+    if model !== nothing
+        if model isa TBATSModel
+            return fitPreviousTBATSModel(y, model = model)
+        elseif model isa BATSModel
+            return bats(orig_y; model = model)
+        else
+            error("Unsupported model type for refit in tbats")
+        end
+    end
+
     if is_constant(y)
-        @info "Series is constant. Returning trivial TBATS model."
         m_const = create_constant_tbats_model(y)
-        m_const.method = tbats_descriptor(m_const)
         m_const.y = orig_y
+        m_const.method = tbats_descriptor(m_const)
         return m_const
     end
 
@@ -1117,50 +1221,309 @@ function tbats(
         x isa AbstractVector{Bool} ? collect(x) :
         error("use_* arguments must be Bool, Vector{Bool}, or nothing")
 
-    if use_box_cox === nothing
-        use_box_cox = [false, true]
-    end
-
     box_cox_values = normalize_bool_vector(use_box_cox)
-
-    init_box_cox = nothing
     if any(box_cox_values)
         init_box_cox = box_cox_lambda(y, 1; lower = bc_lower, upper = bc_upper)
+    else
+        init_box_cox = nothing
     end
 
-    if use_trend === nothing
-        use_trend = [false, true]
-    elseif use_trend isa Bool && use_trend == false
-        use_damped_trend = false
+    trend_values = begin
+        if use_trend === nothing
+            use_trend = [false, true]
+        elseif use_trend isa Bool && use_trend == false
+            use_damped_trend = false
+        end
+        normalize_bool_vector(use_trend)
     end
-    trend_values = normalize_bool_vector(use_trend)
 
-    if use_damped_trend === nothing
-        use_damped_trend = [false, true]
+    damping_values = begin
+        if use_damped_trend === nothing
+            use_damped_trend = [false, true]
+        end
+        normalize_bool_vector(use_damped_trend)
     end
-    damping_values = normalize_bool_vector(use_damped_trend)
+
+    model_params = Bool[any(box_cox_values), any(trend_values), any(damping_values)]
 
     y_num = Float64.(y)
+    n = length(y_num)
 
-    # For now, use simple k-vector selection (k=1 for all periods)
-    # More sophisticated selection can be added later
-    if m !== nothing
-        k_vector = ones(Int, length(m))
-        # Adjust k based on period size
-        for (i, period) in enumerate(m)
-            if period == 2
-                k_vector[i] = 1
-            else
-                max_k = floor(Int, (period - 1) / 2)
-                k_vector[i] = min(1, max_k)  # Start with k=1 for simplicity
-            end
-        end
+    nonseasonal_model = bats(
+        y_num;
+        use_box_cox = use_box_cox,
+        use_trend = use_trend,
+        use_damped_trend = use_damped_trend,
+        use_arma_errors = use_arma_errors,
+        bc_lower = bc_lower,
+        bc_upper = bc_upper,
+        biasadj = biasadj,
+    )
+
+    if seasonal_periods === nothing
+        nonseasonal_model.y = orig_y
+        return nonseasonal_model
     else
-        k_vector = nothing
+        mask = seasonal_periods .== 1
+        seasonal_periods = seasonal_periods[.!mask]
     end
 
-    best_aic = Inf
-    best_model = nothing
+    k_vector = ones(Int, length(seasonal_periods))
+
+    function safe_fitSpecificTBATS(
+        y_num;
+        use_box_cox::Bool,
+        use_beta::Bool,
+        use_damping::Bool,
+        seasonal_periods::Vector{Int},
+        k_vector::Vector{Int},
+        init_box_cox,
+        bc_lower,
+        bc_upper,
+        biasadj,
+    )
+        try
+            return fitSpecificTBATS(
+                y_num;
+                use_box_cox = use_box_cox,
+                use_beta = use_beta,
+                use_damping = use_damping,
+                seasonal_periods = seasonal_periods,
+                k_vector = k_vector,
+                init_box_cox = init_box_cox,
+                bc_lower = bc_lower,
+                bc_upper = bc_upper,
+                biasadj = biasadj,
+            )
+        catch e
+            @warn "fitSpecificTBATS failed: $e"
+            return nothing
+        end
+    end
+
+    best_model = safe_fitSpecificTBATS(
+        y_num;
+        use_box_cox = model_params[1],
+        use_beta = model_params[2],
+        use_damping = model_params[3],
+        seasonal_periods = seasonal_periods,
+        k_vector = k_vector,
+        init_box_cox = init_box_cox,
+        bc_lower = bc_lower,
+        bc_upper = bc_upper,
+        biasadj = biasadj,
+    )
+
+    best_aic = best_model === nothing ? Inf : getfield(best_model, :AIC)
+
+    for (i, period) in enumerate(seasonal_periods)
+        if period == 2
+            continue
+        end
+
+        max_k = fld(period - 1, 2)
+
+        if i != 1
+            current_k = 2
+            while current_k <= max_k
+                if period % current_k != 0
+                    current_k += 1
+                    continue
+                end
+                latter = div(period, current_k)
+                if any(seasonal_periods[1:i-1] .% latter .== 0)
+                    max_k = current_k - 1
+                    break
+                else
+                    current_k += 1
+                end
+            end
+        end
+
+        if max_k == 1
+            continue
+        end
+
+        if max_k <= 6
+            k_vector[i] = max_k
+            local_best_model = best_model
+            local_best_aic = Inf
+
+            while true
+                new_model = safe_fitSpecificTBATS(
+                    y_num;
+                    use_box_cox = model_params[1],
+                    use_beta = model_params[2],
+                    use_damping = model_params[3],
+                    seasonal_periods = seasonal_periods,
+                    k_vector = k_vector,
+                    init_box_cox = init_box_cox,
+                    bc_lower = bc_lower,
+                    bc_upper = bc_upper,
+                    biasadj = biasadj,
+                )
+
+                new_aic = new_model === nothing ? Inf : getfield(new_model, :AIC)
+
+                if new_aic > local_best_aic
+                    k_vector[i] += 1
+                    break
+                else
+                    if k_vector[i] == 1
+                        local_best_model =
+                            new_model === nothing ? local_best_model : new_model
+                        local_best_aic = min(local_best_aic, new_aic)
+                        break
+                    end
+                    k_vector[i] -= 1
+                    local_best_model = new_model === nothing ? local_best_model : new_model
+                    local_best_aic = min(local_best_aic, new_aic)
+                end
+            end
+
+            if local_best_aic < best_aic
+                best_aic = local_best_aic
+                best_model = local_best_model
+            end
+
+        else
+            step_up_k = copy(k_vector)
+            step_down_k = copy(k_vector)
+            step_up_k[i] = 7
+            step_down_k[i] = 5
+            k_vector[i] = 6
+
+            up_model = safe_fitSpecificTBATS(
+                y_num;
+                use_box_cox = model_params[1],
+                use_beta = model_params[2],
+                use_damping = model_params[3],
+                seasonal_periods = seasonal_periods,
+                k_vector = step_up_k,
+                init_box_cox = init_box_cox,
+                bc_lower = bc_lower,
+                bc_upper = bc_upper,
+                biasadj = biasadj,
+            )
+            level_model = safe_fitSpecificTBATS(
+                y_num;
+                use_box_cox = model_params[1],
+                use_beta = model_params[2],
+                use_damping = model_params[3],
+                seasonal_periods = seasonal_periods,
+                k_vector = k_vector,
+                init_box_cox = init_box_cox,
+                bc_lower = bc_lower,
+                bc_upper = bc_upper,
+                biasadj = biasadj,
+            )
+            down_model = safe_fitSpecificTBATS(
+                y_num;
+                use_box_cox = model_params[1],
+                use_beta = model_params[2],
+                use_damping = model_params[3],
+                seasonal_periods = seasonal_periods,
+                k_vector = step_down_k,
+                init_box_cox = init_box_cox,
+                bc_lower = bc_lower,
+                bc_upper = bc_upper,
+                biasadj = biasadj,
+            )
+
+            a_up = up_model === nothing ? Inf : getfield(up_model, :AIC)
+            a_level = level_model === nothing ? Inf : getfield(level_model, :AIC)
+            a_down = down_model === nothing ? Inf : getfield(down_model, :AIC)
+
+            if a_down <= a_up && a_down <= a_level
+                best_local = down_model
+                best_local_aic = a_down
+                k_vector[i] = 5
+
+                while true
+                    k_vector[i] -= 1
+                    new_model = safe_fitSpecificTBATS(
+                        y_num;
+                        use_box_cox = model_params[1],
+                        use_beta = model_params[2],
+                        use_damping = model_params[3],
+                        seasonal_periods = seasonal_periods,
+                        k_vector = k_vector,
+                        init_box_cox = init_box_cox,
+                        bc_lower = bc_lower,
+                        bc_upper = bc_upper,
+                        biasadj = biasadj,
+                    )
+                    new_aic = new_model === nothing ? Inf : getfield(new_model, :AIC)
+
+                    if new_aic > best_local_aic
+                        k_vector[i] += 1
+                        break
+                    else
+                        best_local = new_model === nothing ? best_local : new_model
+                        best_local_aic = min(best_local_aic, new_aic)
+                    end
+                    if k_vector[i] == 1
+                        break
+                    end
+                end
+
+                if best_local_aic < best_aic
+                    best_aic = best_local_aic
+                    best_model = best_local
+                end
+
+            elseif a_level <= a_up && a_level <= a_down
+                if a_level < best_aic
+                    best_aic = a_level
+                    best_model = level_model
+                end
+
+            else
+                best_local = up_model
+                best_local_aic = a_up
+                k_vector[i] = 7
+
+                while true
+                    k_vector[i] += 1
+                    new_model = safe_fitSpecificTBATS(
+                        y_num;
+                        use_box_cox = model_params[1],
+                        use_beta = model_params[2],
+                        use_damping = model_params[3],
+                        seasonal_periods = seasonal_periods,
+                        k_vector = k_vector,
+                        init_box_cox = init_box_cox,
+                        bc_lower = bc_lower,
+                        bc_upper = bc_upper,
+                        biasadj = biasadj,
+                    )
+                    new_aic = new_model === nothing ? Inf : getfield(new_model, :AIC)
+
+                    if new_aic > best_local_aic
+                        k_vector[i] -= 1
+                        break
+                    else
+                        best_local = new_model === nothing ? best_local : new_model
+                        best_local_aic = min(best_local_aic, new_aic)
+                    end
+                    if k_vector[i] == max_k
+                        break
+                    end
+                end
+
+                if best_local_aic < best_aic
+                    best_aic = best_local_aic
+                    best_model = best_local
+                end
+            end
+        end
+    end
+
+    aux_model = best_model
+
+    if nonseasonal_model.AIC < (best_model === nothing ? Inf : best_model.AIC)
+        best_model = nonseasonal_model
+    end
 
     for box_cox in box_cox_values
         for trend in trend_values
@@ -1169,44 +1532,61 @@ function tbats(
                     continue
                 end
 
-                current_model = try
-                    fitSpecificTBATS(
-                        y_num;
-                        use_box_cox = box_cox,
-                        use_beta = trend,
-                        use_damping = damping,
-                        seasonal_periods = m,
-                        k_vector = k_vector,
+                if model_params == Bool[box_cox, trend, damping]
+                    new_model = filterTBATSSpecifics(
+                        y_num,
+                        box_cox,
+                        trend,
+                        damping,
+                        seasonal_periods,
+                        k_vector,
+                        use_arma_errors;
+                        aux_model = aux_model,
                         init_box_cox = init_box_cox,
                         bc_lower = bc_lower,
                         bc_upper = bc_upper,
                         biasadj = biasadj,
                     )
-                catch e
-                    @warn "Model failed: $e"
-                    nothing
-                end
-
-                if current_model === nothing
+                elseif trend || !damping
+                    new_model = filterTBATSSpecifics(
+                        y_num,
+                        box_cox,
+                        trend,
+                        damping,
+                        seasonal_periods,
+                        k_vector,
+                        use_arma_errors;
+                        init_box_cox = init_box_cox,
+                        bc_lower = bc_lower,
+                        bc_upper = bc_upper,
+                        biasadj = biasadj,
+                    )
+                else
                     continue
                 end
 
-                aic = getfield(current_model, :AIC)
-                if aic < best_aic
-                    best_aic = aic
-                    best_model = current_model
+                if new_model === nothing
+                    continue
+                end
+
+                if best_model === nothing || new_model.AIC < best_model.AIC
+                    best_model = new_model
                 end
             end
         end
     end
 
-    if best_model === nothing
-        error("Unable to fit a model")
-    end
-
     if hasproperty(best_model, :optim_return_code) &&
        getfield(best_model, :optim_return_code) != 0
         @warn "optim() did not converge."
+    end
+
+    if best_model === nothing
+        error("Failed to fit any TBATS/BATS model")
+    end
+
+    if best_model isa BATSModel
+        return best_model
     end
 
     method_label = tbats_descriptor(
@@ -1238,13 +1618,24 @@ function tbats(
         best_model.likelihood,
         best_model.optim_return_code,
         orig_y,
-        Dict{Symbol,Any}(:vect => best_model.parameters.vect, :control => best_model.parameters.control),
+        Dict{Symbol,Any}(
+            :vect => best_model.parameters.vect,
+            :control => best_model.parameters.control,
+        ),
         method_label,
     )
 
     return result
 end
 
+
+
+"""
+    tbats(y::AbstractVector, m::Int; kwargs...)
+
+Convenience wrapper for `tbats` when a single seasonal period is supplied as
+an `Int`. It forwards all keyword arguments to the primary `tbats` method.
+"""
 function tbats(
     y::AbstractVector{<:Real},
     m::Int;
@@ -1453,6 +1844,10 @@ end
 
 function fitted(model::TBATSModel)
     return model.fitted_values
+end
+
+function residuals(model::TBATSModel)
+    return model.errors
 end
 
 function Base.show(io::IO, model::TBATSModel)

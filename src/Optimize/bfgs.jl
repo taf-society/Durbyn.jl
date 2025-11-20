@@ -125,7 +125,7 @@ full form.
     end
     D2 = 1.0 + D2 / D1
 
-    inv_D1 = inv(D1)
+    inv_D1 = 1.0 / D1
     @inbounds for i in 1:n
         ti_scaled = t[i] * inv_D1
         xi_scaled = X_cache[i] * inv_D1
@@ -265,8 +265,9 @@ function bfgsmin(
 
     while true
         if ilast == gradcount
-            @inbounds for i in 1:n, j in 1:n
-                workspace.B[i, j] = (i == j) ? 1.0 : 0.0
+            fill!(workspace.B, 0.0)
+            @inbounds for i in 1:n
+                workspace.B[i, i] = 1.0
             end
         end
 

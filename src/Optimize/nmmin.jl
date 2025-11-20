@@ -76,10 +76,17 @@ NelderMeadOptions(;
 """
 	nmmin(f, x0, options::NelderMeadOptions)
 
-Nelder-Mead simplex minimization following **Nash (1990). 
-This implementation mirrors the Pascal algorithm and the R/C port for: initial simplex construction, 
-reflection/expansion/contraction/shrink steps, convergence checks, and shrink-failure handling. 
-It also offers optional, *off-by-default* bounds-aware behavior.
+Nelder-Mead simplex minimization - a line-for-line port of the C `nmmin` from R's `stats::optim`.
+
+This implementation exactly reproduces the C code behavior from Nash (1990) / R source, including:
+- Initial simplex construction with ×10 step escalation
+- Reflection/expansion/contraction/shrink steps with identical formulas
+- Convergence checks matching C tolerances
+- Shrink-failure handling
+- Contraction/shrink logic: shrink **only** when reflection fails to improve worst AND contraction fails
+- Polytope size accumulation matching C's loop structure
+
+It also offers optional, *off-by-default* bounds-aware extensions (project_to_bounds, init_step_cap).
 
 # Arguments
 
@@ -207,18 +214,35 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
         return x
     end
 
+    if maxit <= 0
+        if project_to_bounds && !isnothing(lower) && !isnothing(upper)
+            clamp_inplace!(B, lower, upper)
+        end
+        fmin = f(B)
+        return (x_opt = copy(B), f_opt = fmin, fncount = 0, fail = 0)
+    end
+
+    if trace
+        println("  Nelder-Mead direct search function minimizer")
+    end
+
     if project_to_bounds && !isnothing(lower) && !isnothing(upper)
         clamp_inplace!(B, lower, upper)
     end
     fB = f(B)
     if !(isfinite(fB))
-        trace && println("function cannot be evaluated at initial parameters")
-        return (x_opt = copy(B), f_opt = fB, fncount = 1, fail = true)
+        error("function cannot be evaluated at initial parameters")
+    end
+
+    if trace
+        println("function value for initial parameters = ", fB)
     end
 
     fncount = 1
     convtol = intol * (abs(fB) + intol)
-    trace && println("  Scaled convergence tolerance is ", convtol)
+    if trace
+        println("  Scaled convergence tolerance is ", convtol)
+    end
 
     n1 = n + 1
     C = n + 2  
@@ -236,20 +260,22 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
     if step == 0.0
         step = 0.1
     end
+    if trace
+        println("Stepsize computed as ", step)
+    end
 
     size = 0.0
     @inbounds for j = 2:n1
         P[1:n, j] .= B
         trystep = step
-        while true
-            
+        while P[j-1, j] == B[j-1]
             P[j-1, j] = B[j-1] + trystep
-            
+
             if !isnothing(init_step_cap) && abs(trystep) > init_step_cap
                 trystep = init_step_cap
                 P[j-1, j] = B[j-1] + trystep
             end
-            
+
             if project_to_bounds && !isnothing(lower) && !isnothing(upper)
                 lj = Float64(lower[j-1])
                 uj = Float64(upper[j-1])
@@ -261,11 +287,9 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
                     P[j-1, j] = uj
                 end
             end
-            if P[j-1, j] != B[j-1]
-                break
-            end
+
             trystep *= 10.0
-            
+
             if !isnothing(init_step_cap) && trystep > init_step_cap
                 P[j-1, j] = nextfloat(B[j-1])
                 break
@@ -361,7 +385,6 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
                 action = "REFLECTION     "
             end
         else
-            
             action = "HI-REDUCTION   "
             if VR < VH
                 @inbounds P[1:n, H] .= B
@@ -369,7 +392,7 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
                 action = "LO-REDUCTION   "
             end
 
-            
+            # Contraction step
             @inbounds for i = 1:n
                 B[i] = (1 - beta) * P[i, H] + beta * P[i, C]
             end
@@ -379,30 +402,32 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
             fC = f(B)
             fC = isfinite(fC) ? fC : invalid_penalty
             fncount += 1
-            if fC <= P[end, H]
+
+            if fC < P[end, H]
                 @inbounds P[1:n, H] .= B
                 P[end, H] = fC
-                action = "HI-REDUCTION   "
             else
-                action = "SHRINK         "
-                calcvert = true
-                size = 0.0
-                @inbounds for j = 1:n1
-                    if j != L
-                        for i = 1:n
-                            P[i, j] = beta * (P[i, j] - P[i, L]) + P[i, L]
-                            size += abs(P[i, j] - P[i, L])
+                if VR >= VH
+                    action = "SHRINK         "
+                    calcvert = true
+                    size = 0.0
+                    @inbounds for j = 1:n1
+                        if j != L
+                            for i = 1:n
+                                P[i, j] = beta * (P[i, j] - P[i, L]) + P[i, L]
+                                size += abs(P[i, j] - P[i, L])
+                            end
                         end
                     end
-                end
-                if size < oldsize
-                    oldsize = size
-                else
-                    if trace
-                        println("Polytope size measure not decreased in shrink")
+                    if size < oldsize
+                        oldsize = size
+                    else
+                        if trace
+                            println("Polytope size measure not decreased in shrink")
+                        end
+                        xopt = vec(copy(P[1:n, L]))
+                        return (x_opt = xopt, f_opt = P[end, L], fncount = fncount, fail = 10)
                     end
-                    xopt = vec(copy(P[1:n, L]))
-                    return (x_opt = xopt, f_opt = P[end, L], fncount = fncount, fail = 10)
                 end
             end
         end

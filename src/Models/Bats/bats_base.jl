@@ -249,7 +249,7 @@ function build_seasonal_amatrix(seasonal_periods::Vector{Int})
     return A
 end
 
-function make_fmatrix(
+@inline function make_fmatrix(
     alpha::Float64,
     beta::Union{Float64,Nothing},
     small_phi::Union{Float64,Nothing},
@@ -336,31 +336,59 @@ function make_fmatrix(
     return F
 end
 
-function make_wmatrix(
+@inline function make_wmatrix(
     small_phi::Union{Float64,Nothing},
     seasonal_periods::Union{Vector{Int},Nothing},
     ar_coefs::Union{Vector{Float64},Nothing},
     ma_coefs::Union{Vector{Float64},Nothing},
 )
+    # Pre-calculate size to reduce reallocations
+    w_size = 1
+    !isnothing(small_phi) && (w_size += 1)
+    !isnothing(seasonal_periods) && (w_size += sum(seasonal_periods))
+    !isnothing(ar_coefs) && (w_size += length(ar_coefs))
+    !isnothing(ma_coefs) && (w_size += length(ma_coefs))
 
-    w_transpose = [1.0]
-    !isnothing(small_phi) && push!(w_transpose, small_phi)
+    w_transpose = Vector{Float64}(undef, w_size)
+    idx = 1
+    w_transpose[idx] = 1.0
+    idx += 1
+
+    if !isnothing(small_phi)
+        w_transpose[idx] = small_phi
+        idx += 1
+    end
 
     if !isnothing(seasonal_periods)
         for m in seasonal_periods
-            append!(w_transpose, zeros(m - 1))
-            push!(w_transpose, 1.0)
+            for _ in 1:(m-1)
+                w_transpose[idx] = 0.0
+                idx += 1
+            end
+            w_transpose[idx] = 1.0
+            idx += 1
         end
     end
 
-    !isnothing(ar_coefs) && append!(w_transpose, ar_coefs)
-    !isnothing(ma_coefs) && append!(w_transpose, ma_coefs)
+    if !isnothing(ar_coefs)
+        for val in ar_coefs
+            w_transpose[idx] = val
+            idx += 1
+        end
+    end
+
+    if !isnothing(ma_coefs)
+        for val in ma_coefs
+            w_transpose[idx] = val
+            idx += 1
+        end
+    end
 
     w_transpose_mat = reshape(w_transpose, 1, :)
     return (w_transpose = w_transpose_mat, w = w_transpose_mat')
 end
 
-function make_gmatrix(
+@inline function make_gmatrix(
     alpha::Float64,
     beta::Union{Float64,Nothing},
     gamma_vector::Union{Vector{Float64},Nothing},
@@ -368,34 +396,60 @@ function make_gmatrix(
     p::Int,
     q::Int,
 )
-
-    g = Float64[]
-    push!(g, alpha)
+    # Pre-calculate total size
     adjustBeta = !isnothing(beta)
-    adjustBeta && push!(g, beta)
-    gamma_bold_matrix = nothing
+    g_size = 1 + (adjustBeta ? 1 : 0)
     gammaLength = 0
 
     if !isnothing(gamma_vector) && !isnothing(seasonal_periods)
         gammaLength = sum(seasonal_periods)
-        gamma_block = Float64[]
-        for (i, m) in enumerate(seasonal_periods)
-            push!(gamma_block, gamma_vector[i])
-            append!(gamma_block, zeros(m - 1))
-        end
-        append!(g, gamma_block)
+        g_size += gammaLength
+    end
+    g_size += p + q
 
-        gamma_bold_matrix = reshape(gamma_block, 1, :)
+    g = Vector{Float64}(undef, g_size)
+    idx = 1
+
+    g[idx] = alpha
+    idx += 1
+
+    if adjustBeta
+        g[idx] = beta
+        idx += 1
+    end
+
+    gamma_bold_matrix = nothing
+
+    if !isnothing(gamma_vector) && !isnothing(seasonal_periods)
+        gamma_block_start = idx
+        for (i, m) in enumerate(seasonal_periods)
+            g[idx] = gamma_vector[i]
+            idx += 1
+            for _ in 1:(m-1)
+                g[idx] = 0.0
+                idx += 1
+            end
+        end
+        # Create a copy, not a view, for compatibility
+        gamma_bold_matrix = reshape(g[gamma_block_start:(idx-1)], 1, :)
     end
 
     if p > 0
-        push!(g, 1.0)
-        append!(g, zeros(p - 1))
+        g[idx] = 1.0
+        idx += 1
+        for _ in 1:(p-1)
+            g[idx] = 0.0
+            idx += 1
+        end
     end
 
     if q > 0
-        push!(g, 1.0)
-        append!(g, zeros(q - 1))
+        g[idx] = 1.0
+        idx += 1
+        for _ in 1:(q-1)
+            g[idx] = 0.0
+            idx += 1
+        end
     end
 
     return (g = g, gamma_bold_matrix = gamma_bold_matrix)
@@ -429,7 +483,7 @@ function calc_model(
     return (y_hat = y_hat, e = e, x = x)
 end
 
-function calc_bats_faster(
+@inline function calc_bats_faster(
     y::AbstractMatrix,
     y_hat::AbstractMatrix,
     w_transpose::AbstractMatrix,
@@ -562,7 +616,7 @@ function calc_bats_faster(
             x[idx_q1, 1] += e[1, 1]
         end
 
-        for t = 1:(nT-1)
+        @inbounds for t = 1:(nT-1)
             col_t = t + 1
 
             @views y_hat[:, col_t] .= w_transpose[:, 1:(adjBeta+1)] * x[1:(adjBeta+1), t]
@@ -679,7 +733,7 @@ function calc_bats_faster(
         e[1, 1] = y[1, 1] - y_hat[1, 1]
         @views x[:, 1] .= F * x_nought[:, 1] .+ g .* e[1, 1]
 
-        for t = 1:(nT-1)
+        @inbounds for t = 1:(nT-1)
             col_t = t + 1
             @views y_hat[:, col_t] .= w_transpose * x[:, t]
             e[1, col_t] = y[1, col_t] - y_hat[1, col_t]
@@ -903,7 +957,7 @@ function calc_seasonal_seeds(
     return x_nought
 end
 
-function calc_likelihood(
+@inline function calc_likelihood(
     param_vector::Vector{Float64},
     opt_env::Dict{Symbol,Any};
     use_beta::Bool,
@@ -1003,9 +1057,9 @@ function calc_likelihood(
         q = q,
     )
 
-
+    # Use sum(abs2, x) instead of sum(x .^ 2) to avoid allocations
     log_likelihood =
-        n * log(sum(opt_env[:e] .^ 2)) -
+        n * log(sum(abs2, opt_env[:e])) -
         2 * (box_cox_parameter - 1) * sum(log.(opt_env[:y]))
 
     D = opt_env[:F] - opt_env[:g] * opt_env[:w_transpose]
@@ -1029,7 +1083,7 @@ function calc_likelihood(
     end
 end
 
-function calc_likelihood2(
+@inline function calc_likelihood2(
     param_vector::Vector{Float64},
     opt_env::Dict{Symbol,Any},
     x_nought::AbstractMatrix;
@@ -1121,7 +1175,8 @@ function calc_likelihood2(
         q = q,
     )
 
-    log_likelihood = n * log(sum(opt_env[:e] .* opt_env[:e]))
+    # Use sum(abs2, x) instead of sum(x .* x) to avoid allocations
+    log_likelihood = n * log(sum(abs2, opt_env[:e]))
 
     D = opt_env[:F] - opt_env[:g] * opt_env[:w_transpose]
     opt_env[:D] = D
@@ -1345,6 +1400,11 @@ function fitSpecificBATS(
     opt_env[:e] = zeros(1, n)
     opt_env[:x] = zeros(size(x_nought, 1), n)
 
+    # Pre-allocate buffers for Box-Cox transformations to reduce allocations
+    opt_env[:y_vec_buffer] = Vector{Float64}(undef, n)
+    opt_env[:x_nought_buffer] = Vector{Float64}(undef, size(x_nought, 1))
+    opt_env[:y_transformed_mat] = Matrix{Float64}(undef, 1, n)
+
     tau = seasonal_periods === nothing ? 0 : sum(seasonal_periods)
 
 
@@ -1416,7 +1476,7 @@ function fitSpecificBATS(
         y_transformed, lambda = box_cox(y, 1; lambda=lambda)
         fitted_values_and_errors = calc_model(y_transformed, vec(x_nought), F, g.g, w)
         e = fitted_values_and_errors.e
-        variance = sum(e .^ 2) / length(y)
+        variance = sum(abs2, e) / length(y)
 
         fitted_values = inv_box_cox(fitted_values_and_errors.y_hat; lambda=lambda, biasadj=biasadj, fvar=variance)
 
@@ -1482,7 +1542,7 @@ function fitSpecificBATS(
         fitted_values_and_errors = calc_model(y, vec(x_nought), F, g.g, w)
         e = fitted_values_and_errors.e
         fitted_values = fitted_values_and_errors.y_hat
-        variance = sum(e .^ 2) / length(y)
+        variance = sum(abs2, e) / length(y)
     end
 
 

@@ -717,14 +717,14 @@ function fitSpecificTBATS(
         objective_scaled = θs -> original_objective(θs .* par_scale)
 
         maxit = 100 * length(param_vector)^2
-        opt_result = optimize(
-            objective_scaled,
+        opt_result = optim(
             scaled_param0,
-            NelderMead(),
-            Optim.Options(iterations = maxit),
+            objective_scaled;
+            method = "Nelder-Mead",
+            control = Dict("maxit" => maxit),
         )
 
-        opt_par_scaled = Optim.minimizer(opt_result)
+        opt_par_scaled = opt_result.par
         opt_par = opt_par_scaled .* par_scale
 
         paramz = unparameterise_tbats(opt_par, control)
@@ -778,17 +778,21 @@ function fitSpecificTBATS(
 
         if length(param_vector) > 1
             maxit = 100 * length(param_vector)^2
-            opt_result = optimize(
-                objective_scaled,
+            opt_result = optim(
                 scaled_param0,
-                NelderMead(),
-                Optim.Options(iterations = maxit),
+                objective_scaled;
+                method = "Nelder-Mead",
+                control = Dict("maxit" => maxit),
             )
         else
-            opt_result = optimize(objective_scaled, scaled_param0, BFGS())
+            opt_result = optim(
+                scaled_param0,
+                objective_scaled;
+                method = "BFGS",
+            )
         end
 
-        opt_par_scaled = Optim.minimizer(opt_result)
+        opt_par_scaled = opt_result.par
         opt_par = opt_par_scaled .* par_scale
 
         paramz = unparameterise_tbats(opt_par, control)
@@ -820,7 +824,7 @@ function fitSpecificTBATS(
         variance = sum(e .^ 2) / length(y)
     end
 
-    likelihood = Optim.minimum(opt_result)
+    likelihood = opt_result.value
     aic = likelihood + 2 * (length(param_vector) + size(x_nought, 1))
 
     model = (
@@ -833,7 +837,7 @@ function fitSpecificTBATS(
         ar_coefficients = ar_coefs,
         ma_coefficients = ma_coefs,
         likelihood = likelihood,
-        optim_return_code = Optim.converged(opt_result) ? 0 : 1,
+        optim_return_code = opt_result.convergence,
         variance = variance,
         AIC = aic,
         parameters = (vect = opt_par, control = control),

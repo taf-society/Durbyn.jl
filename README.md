@@ -66,10 +66,19 @@ For complete documentation, see the [Grammar Guide](https://taf-society.github.i
 - `Durbyn.ExponentialSmoothing`, `Durbyn.Arima`, `Durbyn.Ararma`,
   `Durbyn.IntermittentDemand` — Base model engines for array interface
 - **BATS (Box-Cox, ARMA errors, Trend, Seasonal)** — Multi-seasonal state-space
-  models following De Livera, Hyndman & Snyder (2011) for complex seasonal patterns.
-  See the dedicated [BATS guide](https://taf-society.github.io/Durbyn.jl/dev/bats/)
-  for methodology details and references to
-  [“Forecasting time series with complex seasonal patterns using exponential smoothing.”](https://robjhyndman.com/papers/ComplexSeasonality.pdf)
+  models following De Livera, Hyndman & Snyder (2011) for complex seasonal patterns
+  with **integer seasonal periods**. Suitable for series with multiple integer cycles
+  (e.g., hourly data with daily and weekly patterns). See the dedicated
+  [BATS guide](https://taf-society.github.io/Durbyn.jl/dev/bats/) for methodology
+  details and the reference paper: [De Livera, Hyndman & Snyder (2011). "Forecasting
+  time series with complex seasonal patterns using exponential smoothing."](https://www.tandfonline.com/doi/abs/10.1198/jasa.2011.tm09771)
+  *Journal of the American Statistical Association*, 106(496), 1513-1527.
+- **TBATS (Trigonometric seasonal BATS)** — Extension of BATS using Fourier representation
+  for seasonal components, enabling handling of **non-integer seasonal periods** (e.g., 52.18
+  weeks/year), **very long cycles** (e.g., 5-minute data with daily and weekly patterns),
+  and **dual calendar effects** (e.g., Gregorian + Hijri). Computational efficiency: $O(k)$
+  instead of $O(m)$ where $k \ll m$. See the [TBATS documentation](https://taf-society.github.io/Durbyn.jl/dev/tbats/)
+  for full mathematical details, usage examples, and references.
 
 ---
 

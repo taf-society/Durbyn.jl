@@ -1178,6 +1178,8 @@ function tbats(
         error("y should be a univariate time series (1D vector)")
     end
 
+    @info "⚠️ PERFORMANCE NOTICE: TBATS model is not yet optimized and will run significantly slower than expected. This is a known limitation under active development. Please do not report performance issues - optimization improvements are planned for future releases."
+
     orig_y = copy(y)
     orig_len = length(y)
 

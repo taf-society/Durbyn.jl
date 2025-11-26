@@ -260,12 +260,13 @@ panel = PanelData(tbl; groupby = :series, date = :date, m = 12)
 
 models = model(
     ArimaSpec(@formula(value = p() + q())),
+    BatsSpec(@formula(value = bats(seasonal_periods=12))),
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),
     SesSpec(@formula(value = ses())),
     HoltSpec(@formula(value = holt(damped=true))),
     HoltWintersSpec(@formula(value = hw(seasonal="multiplicative")); m = 12),
     CrostonSpec(@formula(value = croston())),
-    names = ["arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+    names = ["arima", "bats", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
 )
 
 fitted = fit(models, panel)       # each spec fitted to every series
@@ -320,13 +321,14 @@ glimpse(panel)
 # 4. Define multiple models for comparison
 models = model(
     ArarSpec(@formula(value = arar())),                                # ARAR via grammar
+    BatsSpec(@formula(value = bats(seasonal_periods=12))),             # BATS with seasonality
     ArimaSpec(@formula(value = p() + q())),                              # Auto ARIMA
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),  # Auto ETS with drift
     SesSpec(@formula(value = ses())),                                    # Simple exponential smoothing
     HoltSpec(@formula(value = holt(damped=true))),                       # Damped Holt
     HoltWintersSpec(@formula(value = hw(seasonal=:multiplicative))),     # Holt-Winters multiplicative
     CrostonSpec(@formula(value = croston())),                            # Croston's method
-    names=["arar", "arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+    names=["arar", "bats", "arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
 )
 
 # 5. Fit all models to all series
@@ -364,7 +366,7 @@ plot(fc, series=[best_series, worst_series], facet=true, actual=test)
 
 **Key Features Demonstrated:**
 - **Data preparation**: Download, reshape, and split data using TableOps
-- **Model comparison**: Fit 7 different forecasting methods simultaneously (ARAR + classical methods)
+- **Model comparison**: Fit 8 different forecasting methods simultaneously (ARAR, BATS, ARIMA, ETS, and classical methods)
 - **Panel forecasting**: Automatic iteration over multiple time series
 - **Train/test split**: Proper out-of-sample evaluation
 - **Accuracy metrics**: Compare model performance across series
@@ -533,6 +535,200 @@ fc = forecast(fitted; h = 12)
 ```
 
 The ARARMA grammar therefore integrates seamlessly with every Durbyn workflow—single series, grouped/panel data, and large-scale model comparisons.
+
+---
+
+## BATS Grammar
+
+The BATS grammar provides a declarative interface for Box-Cox transformation, ARMA errors, Trend, and Seasonal components models. BATS is designed for complex seasonal patterns with integer seasonal periods and supports automatic component selection.
+
+### Formula Terms
+
+The `bats()` term supports flexible seasonal and component specifications:
+
+```julia
+@formula(value = bats())                                      # use defaults (auto selection)
+@formula(value = bats(seasonal_periods=12))                   # single seasonal period
+@formula(value = bats(seasonal_periods=[24, 168]))            # multiple seasonal periods
+@formula(value = bats(seasonal_periods=12, use_box_cox=true)) # specify Box-Cox
+@formula(value = bats(
+    seasonal_periods=12,
+    use_box_cox=true,
+    use_trend=true,
+    use_damped_trend=false,
+    use_arma_errors=true
+))
+```
+
+**Available parameters:**
+- `seasonal_periods`: `Int` or `Vector{Int}` for seasonal period(s)
+- `use_box_cox`: `Bool`, `Vector{Bool}`, or `nothing` (auto selection)
+- `use_trend`: `Bool`, `Vector{Bool}`, or `nothing` (auto selection)
+- `use_damped_trend`: `Bool`, `Vector{Bool}`, or `nothing` (auto selection)
+- `use_arma_errors`: `Bool` to enable ARMA error modeling (default: `true`)
+
+When component parameters are `nothing`, BATS searches over both `true` and `false` options and selects the best combination using AIC.
+
+### Direct Formula Fitting
+
+```julia
+using Durbyn
+
+data = (sales = randn(120) .+ 10,)
+
+# BATS with monthly seasonality
+formula = @formula(sales = bats(seasonal_periods=12))
+bats_model = bats(formula, data)  # Works with Tables.jl compatible data
+fc = forecast(bats_model, h = 12)
+
+# BATS with multiple seasonal periods and Box-Cox
+formula = @formula(sales = bats(
+    seasonal_periods=[24, 168],
+    use_box_cox=true
+))
+bats_model = bats(formula, data)
+fc = forecast(bats_model, h = 12)
+```
+
+The `bats` function in the `Durbyn.Bats` module directly accepts formulas, making it easy to work with Tables.jl-compatible data sources.
+
+### Model Specification (`BatsSpec`)
+
+To leverage grouped fitting, forecasting, and model collections, wrap the formula in `BatsSpec`:
+
+```julia
+using Durbyn.ModelSpecs
+
+# Basic BATS with auto selection
+spec = BatsSpec(@formula(value = bats()))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# BATS with monthly seasonality
+spec = BatsSpec(@formula(value = bats(seasonal_periods=12)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# BATS with specific components
+spec = BatsSpec(@formula(value = bats(
+    seasonal_periods=12,
+    use_box_cox=true,
+    use_trend=true,
+    use_damped_trend=true,
+    use_arma_errors=true
+)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# Additional options at fit time
+fitted = fit(spec, data, bc_lower=0.0, bc_upper=1.5, biasadj=true)
+```
+
+### Panel Data
+
+BATS integrates with panel data for multi-series forecasting:
+
+```julia
+# Create panel data (Tables.jl compatible)
+tbl = (
+    date = repeat(1:120, 3),
+    product = repeat(["A", "B", "C"], inner=120),
+    sales = randn(360) .+ 10
+)
+
+# Fit BATS to each product
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+fitted = fit(spec, tbl, groupby = :product)
+fc = forecast(fitted, h = 12)
+
+# Or use PanelData wrapper
+panel = PanelData(tbl; groupby = :product, date = :date, m = 12)
+fitted = fit(spec, panel)
+fc = forecast(fitted, h = 12)
+```
+
+### Model Comparison
+
+Compare BATS against other forecasting methods:
+
+```julia
+models = model(
+    BatsSpec(@formula(value = bats(seasonal_periods=12))),
+    ArimaSpec(@formula(value = p() + q() + P() + Q())),
+    EtsSpec(@formula(value = e("Z") + t("Z") + s("Z"))),
+    ArarSpec(@formula(value = arar())),
+    names = ["bats", "arima", "ets", "arar"]
+)
+
+# Fit all models
+fitted = fit(models, panel)
+fc = forecast(fitted, h = 12)
+
+# Convert to tidy table
+fc_table = forecast_table(fc)
+
+# Compare accuracy
+acc = accuracy(fc, test_data)
+```
+
+### Multiple Seasonal Periods
+
+BATS excels at handling multiple seasonal patterns:
+
+```julia
+# Hourly data with daily (24) and weekly (168) seasonality
+spec = BatsSpec(@formula(demand = bats(seasonal_periods=[24, 168])))
+fitted = fit(spec, hourly_data)
+fc = forecast(fitted, h = 168)  # Forecast one week ahead
+
+# Half-hourly data with daily (48) and weekly (336) seasonality
+spec = BatsSpec(@formula(load = bats(seasonal_periods=[48, 336])))
+fitted = fit(spec, half_hourly_data)
+fc = forecast(fitted, h = 48)  # Forecast one day ahead
+```
+
+### Use Cases
+
+**When to use BATS:**
+- Multiple integer seasonal periods (e.g., hourly data with daily and weekly patterns)
+- Need variance stabilization (Box-Cox transformation)
+- Non-constant variance over time
+- Complex error structures requiring ARMA modeling
+
+**BATS vs TBATS:**
+- Use **BATS** for integer seasonal periods (faster, exact representation)
+- Use **TBATS** for non-integer periods, very long seasonal cycles, or dual-calendar effects
+- TBATS uses Fourier representation for more efficient handling of long seasonality
+
+**Component Selection Tips:**
+- Let `use_box_cox=nothing` (default) search over both options if variance changes
+- Use `use_arma_errors=true` when residuals show autocorrelation
+- Set `use_damped_trend=true` when trend shouldn't grow indefinitely
+- Specify `bc_lower` and `bc_upper` to constrain Box-Cox lambda search
+
+### Integration with Durbyn Workflows
+
+The BATS grammar integrates seamlessly with all Durbyn features:
+
+```julia
+# Single series
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+fitted = fit(spec, (sales = y,))
+fc = forecast(fitted, h = 12)
+
+# Grouped data with parallel processing
+fitted = fit(spec, df, groupby = :store, parallel = true)
+
+# Model collection for comparison
+models = model(
+    BatsSpec(@formula(sales = bats(seasonal_periods=12))),
+    ArimaSpec(@formula(sales = p() + q() + P() + Q())),
+    names = ["bats", "arima"]
+)
+fitted = fit(models, df, groupby = :store)
+fc = forecast(fitted, h = 12)
+fc_tbl = forecast_table(fc)
+```
 
 ---
 

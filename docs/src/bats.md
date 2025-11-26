@@ -97,7 +97,82 @@ more efficient handling of long seasonal cycles via Fourier representation.
 
 ## 4. Usage in Durbyn
 
-### Basic example
+Durbyn provides two interfaces for BATS: the **classic API** with direct function calls and the **grammar interface** for declarative model specification.
+
+### Grammar Interface (Recommended)
+
+The grammar interface provides a unified, declarative way to specify BATS models using `@formula` and `BatsSpec`:
+
+```julia
+using Durbyn
+using Durbyn.ModelSpecs
+
+# Create sample data
+data = (sales = randn(120) .+ 10,)
+
+# Basic BATS with defaults (automatic component selection)
+spec = BatsSpec(@formula(sales = bats()))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# BATS with monthly seasonality
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# BATS with multiple seasonal periods (e.g., hourly data with daily and weekly)
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=[24, 168])))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# BATS with specific component selection
+spec = BatsSpec(@formula(sales = bats(
+    seasonal_periods=12,
+    use_box_cox=true,
+    use_trend=true,
+    use_damped_trend=false,
+    use_arma_errors=true
+)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# Additional options at fit time
+fitted = fit(spec, data, bc_lower=0.0, bc_upper=1.5, biasadj=true)
+```
+
+**Panel Data Support:**
+
+```julia
+# Create panel data (Tables.jl compatible)
+tbl = (
+    date = repeat(1:120, 3),
+    product = repeat(["A", "B", "C"], inner=120),
+    sales = randn(360) .+ 10
+)
+
+# Fit BATS to each product separately
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+fitted = fit(spec, tbl, groupby = :product)
+fc = forecast(fitted, h = 12)
+```
+
+**Model Comparison:**
+
+```julia
+models = model(
+    BatsSpec(@formula(sales = bats(seasonal_periods=12))),
+    ArimaSpec(@formula(sales = p() + q() + P() + Q())),
+    EtsSpec(@formula(sales = e("Z") + t("Z") + s("Z"))),
+    names = ["bats", "arima", "ets"]
+)
+
+fitted = fit(models, data)
+fc = forecast(fitted, h = 12)
+```
+
+### Classic API
+
+For direct usage without the grammar interface:
 
 ```julia
 using Durbyn
@@ -110,8 +185,22 @@ println(string(fit))
 fc = forecast(fit; h = 168)
 ```
 
+### Formula Interface (Direct)
+
+You can also use the formula interface directly without `BatsSpec`:
+
+```julia
+using Durbyn
+
+data = (sales = randn(120) .+ 10,)
+formula = @formula(sales = bats(seasonal_periods=12))
+fit = bats(formula, data)  # Works with Tables.jl compatible data
+fc = forecast(fit, h = 12)
+```
+
 ### Key keyword arguments
 
+- `seasonal_periods`: `Int` or `Vector{Int}` specifying seasonal period(s)
 - `use_box_cox`, `use_trend`, `use_damped_trend`: `Bool`, `Vector{Bool}`, or
   `nothing` to try both options; the best combination is chosen using AIC.
 - `use_arma_errors`: toggles fitting an ARMA(p, q) model to the residuals via

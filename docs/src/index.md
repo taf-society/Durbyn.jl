@@ -81,14 +81,15 @@ glimpse(panel)
 
 # 4. Define multiple models for comparison
 models = model(
-    ArarSpec(@formula(value = arar())),                                # ARAR
+    ArarSpec(@formula(value = arar())),                                  # ARAR
+    BatsSpec(@formula(value = bats(seasonal_periods=12))),               # BATS with seasonality
     ArimaSpec(@formula(value = p() + q())),                              # Auto ARIMA
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),  # Auto ETS with drift
     SesSpec(@formula(value = ses())),                                    # Simple exponential smoothing
     HoltSpec(@formula(value = holt(damped=true))),                       # Damped Holt
     HoltWintersSpec(@formula(value = hw(seasonal=:multiplicative))),     # Holt-Winters multiplicative
     CrostonSpec(@formula(value = croston())),                            # Croston's method
-    names=["arar", "arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
+    names=["arar", "bats", "arima", "ets_auto", "ses", "holt_damped", "hw_mul", "croston"]
 )
 
 # 5. Fit all models to all series
@@ -125,7 +126,7 @@ plot(fc, series=[best_series, worst_series], facet=true, actual=test)
 
 **This example demonstrates:**
 - **Data wrangling**: Load, reshape, and split data using TableOps
-- **Model comparison**: Fit 7 forecasting methods (ARAR, ARIMA, ETS variants, Croston)
+- **Model comparison**: Fit 8 forecasting methods (ARAR, BATS, ARIMA, ETS variants, Croston)
 - **Panel forecasting**: Automatic iteration over multiple time series
 - **Out-of-sample evaluation**: Train/test split with accuracy metrics
 - **Visualization**: Faceted plots, actual vs forecast comparison
@@ -279,6 +280,64 @@ plot(fc3)
 
 ---
 
+## BATS / TBATS
+
+BATS (Box-Cox, ARMA errors, Trend, Seasonal) and TBATS (Trigonometric BATS) handle complex seasonal patterns with multiple seasonal periods.
+
+### Formula Interface (Recommended)
+
+```julia
+using Durbyn
+using Durbyn.ModelSpecs
+
+# BATS with monthly seasonality
+data = (sales = randn(120) .+ 10,)
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+plot(fc)
+# BATS with multiple seasonal periods (hourly data with daily and weekly patterns)
+spec_multi = BatsSpec(@formula(sales = bats(seasonal_periods=[24, 168])))
+fitted_multi = fit(spec_multi, data)
+fc_multi = forecast(fitted_multi, h = 24)
+
+# BATS with specific components
+spec_custom = BatsSpec(@formula(sales = bats(
+    seasonal_periods=12,
+    use_box_cox=true,
+    use_trend=true,
+    use_damped_trend=true,
+    use_arma_errors=true
+)))
+fitted_custom = fit(spec_custom, data)
+fc_custom = forecast(fitted_custom, h = 12)
+```
+
+### Base API
+
+```julia
+using Durbyn.Bats
+
+y = randn(120)
+
+# BATS with automatic component selection
+bats_model = bats(y, 12)
+fc = forecast(bats_model, h = 12)
+plot(fc)
+
+# BATS with multiple seasonal periods
+bats_multi = bats(y, [24, 168]; use_box_cox=true, use_arma_errors=true)
+fc_multi = forecast(bats_multi, h = 24)
+
+# TBATS for non-integer seasonality
+tbats_model = tbats(y, [12.5, 52.18])  # Non-integer periods
+fc_tbats = forecast(tbats_model, h = 12)
+```
+
+> ⚠️ **PERFORMANCE NOTICE**: TBATS is currently **not optimized** and will run significantly slower than expected. This is a known limitation under active development.
+
+---
+
 ## License
 
 MIT License.
@@ -287,12 +346,14 @@ MIT License.
 
 ## What's next
 
-- **[Grammar Guide](grammar.md)** (Recommended) — Learn the complete formula interface for ARIMA and ETS
+- **[Grammar Guide](grammar.md)** (Recommended) — Learn the complete formula interface for ARIMA, BATS, and ETS
 - **[Quick Start](quickstart.md)** — Get started quickly with formula and base models
 - **User Guide** pages:
   - [Table Operations](tableops.md) — Data wrangling with Tables.jl for panel data
   - [ARIMA](arima.md) — Formula interface and base models (ARIMA, SARIMA, Auto ARIMA)
   - [Exponential Smoothing](expsmoothing.md) — Formula interface and base models (SES, Holt, Holt-Winters, ETS)
+  - [BATS](bats.md) — Box-Cox, ARMA errors, Trend, Seasonal models for complex seasonality
+  - [TBATS](tbats.md) — Trigonometric BATS for non-integer and very long seasonal periods
   - [Intermittent Demand](intermittent.md) — Croston methods
   - [ARAR/ARARMA](ararma.md) — Memory-shortening algorithms
 - **API Reference** — Complete API documentation

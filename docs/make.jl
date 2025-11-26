@@ -23,6 +23,7 @@ makedocs(
             "Grammar"                => "grammar.md",
             "Exponential Smoothing" => "expsmoothing.md",
             "BATS"                   => "bats.md",
+            "TBATS"                  => "tbats.md",
             "Intermittent Demand"   => "intermittent.md",
             "ARIMA"                  => "arima.md",
             "ARAR/ARARMA"            => "ararma.md",

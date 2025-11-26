@@ -255,8 +255,8 @@ end
     small_phi::Union{Float64,Nothing},
     seasonal_periods::Union{Vector{Int},Nothing},
     gamma_bold_matrix::Union{Matrix{Float64},Nothing},
-    ar_coefs::Union{Vector{Float64},Nothing},
-    ma_coefs::Union{Vector{Float64},Nothing},
+    ar_coefs::Union{AbstractVector{<:Real},Nothing},
+    ma_coefs::Union{AbstractVector{<:Real},Nothing},
 )
 
     F = ones(1, 1)
@@ -290,8 +290,8 @@ end
         A = build_seasonal_amatrix(seasonal_periods)
         seasonal_rows = hcat(seasonal_rows, A)
 
-        p > 0 && (seasonal_rows = hcat(seasonal_rows, gamma_bold_matrix' * ar_coefs))
-        q > 0 && (seasonal_rows = hcat(seasonal_rows, gamma_bold_matrix' * ma_coefs))
+        p > 0 && (seasonal_rows = hcat(seasonal_rows, gamma_bold_matrix' * reshape(ar_coefs, 1, :)))
+        q > 0 && (seasonal_rows = hcat(seasonal_rows, gamma_bold_matrix' * reshape(ma_coefs, 1, :)))
 
         F = vcat(F, seasonal_rows)
     end
@@ -339,8 +339,8 @@ end
 @inline function make_wmatrix(
     small_phi::Union{Float64,Nothing},
     seasonal_periods::Union{Vector{Int},Nothing},
-    ar_coefs::Union{Vector{Float64},Nothing},
-    ma_coefs::Union{Vector{Float64},Nothing},
+    ar_coefs::Union{AbstractVector{<:Real},Nothing},
+    ma_coefs::Union{AbstractVector{<:Real},Nothing},
 )
     # Pre-calculate size to reduce reallocations
     w_size = 1
@@ -391,7 +391,7 @@ end
 @inline function make_gmatrix(
     alpha::Float64,
     beta::Union{Float64,Nothing},
-    gamma_vector::Union{Vector{Float64},Nothing},
+    gamma_vector::Union{AbstractVector{<:Real},Nothing},
     seasonal_periods::Union{Vector{Int},Nothing},
     p::Int,
     q::Int,
@@ -998,7 +998,7 @@ end
 
     if seasonal_periods !== nothing
         n_gamma = length(seasonal_periods)
-        gamma_vector = param_vector[gamma_start:(gamma_start+n_gamma-1)]
+        gamma_vector = collect(param_vector[gamma_start:(gamma_start+n_gamma-1)])
         final_gamma_pos = gamma_start + n_gamma - 1
     else
         gamma_vector = nothing
@@ -1006,13 +1006,13 @@ end
     end
 
     if p != 0
-        ar_coefs = param_vector[(final_gamma_pos+1):(final_gamma_pos+p)]
+        ar_coefs = collect(param_vector[(final_gamma_pos+1):(final_gamma_pos+p)])
     else
         ar_coefs = nothing
     end
 
     if q != 0
-        ma_coefs = param_vector[(final_gamma_pos+p+1):end]
+        ma_coefs = collect(param_vector[(final_gamma_pos+p+1):end])
     else
         ma_coefs = nothing
     end
@@ -1032,7 +1032,13 @@ end
         ma_coefs,
     )
 
-    opt_env[:w_transpose] = w.w_transpose
+    # Ensure w.w_transpose is a matrix (1, n_states)
+    w_transpose_mat = w.w_transpose
+    if ndims(w_transpose_mat) != 2
+        w_transpose_mat = reshape(w_transpose_mat, 1, :)
+    end
+
+    opt_env[:w_transpose] = w_transpose_mat
     opt_env[:g] = reshape(g.g, :, 1)
     opt_env[:gamma_bold_matrix] = g.gamma_bold_matrix
     opt_env[:F] = F
@@ -1121,7 +1127,7 @@ end
 
     if seasonal_periods !== nothing
         n_gamma = length(seasonal_periods)
-        gamma_vector = param_vector[gamma_start:(gamma_start+n_gamma-1)]
+        gamma_vector = collect(param_vector[gamma_start:(gamma_start+n_gamma-1)])
         final_gamma_pos = gamma_start + n_gamma - 1
     else
         gamma_vector = nothing
@@ -1129,13 +1135,13 @@ end
     end
 
     if p != 0
-        ar_coefs = param_vector[(final_gamma_pos+1):(final_gamma_pos+p)]
+        ar_coefs = collect(param_vector[(final_gamma_pos+1):(final_gamma_pos+p)])
     else
         ar_coefs = nothing
     end
 
     if q != 0
-        ma_coefs = param_vector[(final_gamma_pos+p+1):end]
+        ma_coefs = collect(param_vector[(final_gamma_pos+p+1):end])
     else
         ma_coefs = nothing
     end
@@ -1152,7 +1158,13 @@ end
         ma_coefs,
     )
 
-    opt_env[:w_transpose] = w.w_transpose
+    # Ensure w.w_transpose is a matrix (1, n_states)
+    w_transpose_mat = w.w_transpose
+    if ndims(w_transpose_mat) != 2
+        w_transpose_mat = reshape(w_transpose_mat, 1, :)
+    end
+
+    opt_env[:w_transpose] = w_transpose_mat
     opt_env[:g] = reshape(g.g, :, 1)
     opt_env[:gamma_bold_matrix] = g.gamma_bold_matrix
     opt_env[:F] = F
@@ -1330,7 +1342,7 @@ function fitSpecificBATS(
         ar_coefs,
         ma_coefs,
     )
-    D = F .- g.g * w.w_transpose
+    D = F .- reshape(g.g, :, 1) * w.w_transpose
 
 
     if use_box_cox
@@ -1393,7 +1405,7 @@ function fitSpecificBATS(
     opt_env = Dict{Symbol,Any}()
     opt_env[:F] = F
     opt_env[:w_transpose] = w.w_transpose
-    opt_env[:g] = g.g
+    opt_env[:g] = reshape(g.g, :, 1)
     opt_env[:gamma_bold_matrix] = g.gamma_bold_matrix
     opt_env[:y] = reshape(y, 1, :)
     opt_env[:y_hat] = zeros(1, n)
@@ -1616,6 +1628,9 @@ function filterSpecifics(
     )
 
 
+    # Store the chosen seasonal configuration for ARMA model fitting
+    best_seasonal_periods = seasonal_periods
+
     if seasonal_periods !== nothing && !force_seasonality
         non_seasonal_model = fitSpecificBATS(
             y;
@@ -1631,7 +1646,7 @@ function filterSpecifics(
         )
 
         if first_model.AIC > non_seasonal_model.AIC
-            seasonal_periods = nothing
+            best_seasonal_periods = nothing
             first_model = non_seasonal_model
         end
     end
@@ -1645,7 +1660,6 @@ function filterSpecifics(
 
         p = arma.arma[1]
         q = arma.arma[2]
-
 
         if p != 0 || q != 0
             ar_coefs = p != 0 ? zeros(p) : nothing
@@ -1661,7 +1675,7 @@ function filterSpecifics(
                 use_box_cox = box_cox,
                 use_beta = trend,
                 use_damping = damping,
-                seasonal_periods = seasonal_periods,
+                seasonal_periods = best_seasonal_periods,
                 ar_coefs = ar_coefs,
                 ma_coefs = ma_coefs,
                 init_box_cox = init_box_cox,

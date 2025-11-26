@@ -1249,6 +1249,154 @@ function fit(spec::ArarmaSpec, panel::PanelData; kwargs...)
     if !haskey(kwdict, :groupby) && !isempty(panel.groups)
         kwdict[:groupby] = panel.groups
     end
-    
+
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+"""
+    fit(spec::BatsSpec, data; groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+
+Fit a BATS model specification to data (single series or grouped).
+
+# Arguments
+- `spec::BatsSpec` - BATS model specification created with `@formula`
+- `data` - Tables.jl-compatible data (NamedTuple, DataFrame, CSV.File, etc.)
+
+# Keyword Arguments
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+- Additional kwargs passed to underlying `bats` function
+
+# Returns
+- If `groupby=nothing`: `FittedBats` - Single fitted model
+- If `groupby` specified: `GroupedFittedModels` - Fitted models for each group
+
+# Examples
+```julia
+# Single series fit with defaults
+spec = BatsSpec(@formula(sales = bats()))
+fitted = fit(spec, data)
+
+# With seasonal period
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+fitted = fit(spec, data)
+
+# With multiple seasonal periods
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=[24, 168])))
+fitted = fit(spec, data)
+
+# With custom parameters
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=12, use_box_cox=true)))
+fitted = fit(spec, data, bc_lower=0.0, bc_upper=1.5)
+
+# Grouped data fit
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+fitted = fit(spec, data, groupby = [:product, :location])
+```
+
+# See Also
+- [`BatsSpec`](@ref)
+- [`forecast`](@ref)
+"""
+function fit(spec::BatsSpec, data;
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           groupby=groupby,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           kwargs...)
+    end
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    target_data = tbl[target_col]
+    if !(target_data isa AbstractVector)
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' must be a vector, got $(typeof(target_data))"
+        ))
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Bats_mod = getfield(parent_mod, :Bats)
+    bats_fit = Bats_mod.bats(spec.formula, data; pairs(fit_options)...)
+
+    return FittedBats(
+        spec,
+        bats_fit,
+        target_col,
+        tbl
+    )
+end
+
+"""
+    forecast(fitted::FittedBats; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+
+Generate forecasts from a fitted BATS model.
+
+# Arguments
+- `fitted::FittedBats` - Fitted BATS model from `fit(BatsSpec, data)`
+
+# Keyword Arguments
+- `h::Int` - Forecast horizon (number of periods ahead)
+- `level::Vector{<:Real}` - Confidence levels for prediction intervals (default [80, 95])
+- `fan::Bool` - Generate fan chart with multiple levels (default false)
+- `biasadj::Union{Bool, Nothing}` - Bias adjustment for Box-Cox back-transformation
+- Additional kwargs passed to underlying `forecast` function
+
+# Returns
+`Forecast` object containing point forecasts and prediction intervals
+
+# Examples
+```julia
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+fitted = fit(spec, data)
+
+# 12-period ahead forecast
+fc = forecast(fitted, h = 12)
+
+# Custom confidence levels
+fc = forecast(fitted, h = 12, level = [90, 95, 99])
+
+# Fan chart
+fc = forecast(fitted, h = 12, fan = true)
+
+# With bias adjustment
+fc = forecast(fitted, h = 12, biasadj = true)
+```
+
+# See Also
+- [`BatsSpec`](@ref)
+- [`fit`](@ref)
+"""
+function forecast(fitted::FittedBats; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+    parent_mod = parentmodule(@__MODULE__)
+    Generics_mod = getfield(parent_mod, :Generics)
+
+    return Generics_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
+end
+
+function fit(spec::BatsSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+
     return fit(spec, panel.data; pairs(kwdict)...)
 end

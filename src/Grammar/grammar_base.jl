@@ -169,6 +169,26 @@ struct ArarTerm <: AbstractTerm
 end
 
 """
+    BatsTerm <: AbstractTerm
+
+Represents BATS (Box-Cox transformation, ARMA errors, Trend and Seasonal) model options within a formula.
+
+# Fields
+- `seasonal_periods::Union{Vector{Int}, Int, Nothing}` - Seasonal period(s) for the model
+- `use_box_cox::Union{Bool, Nothing}` - Whether to use Box-Cox transformation (nothing = automatic selection)
+- `use_trend::Union{Bool, Nothing}` - Whether to include trend component (nothing = automatic selection)
+- `use_damped_trend::Union{Bool, Nothing}` - Whether to use damped trend (nothing = automatic selection)
+- `use_arma_errors::Union{Bool, Nothing}` - Whether to include ARMA error structure
+"""
+struct BatsTerm <: AbstractTerm
+    seasonal_periods::Union{Vector{Int}, Int, Nothing}
+    use_box_cox::Union{Bool, Nothing}
+    use_trend::Union{Bool, Nothing}
+    use_damped_trend::Union{Bool, Nothing}
+    use_arma_errors::Union{Bool, Nothing}
+end
+
+"""
     VarTerm <: AbstractTerm
 
 Represents an exogenous variable to be used as a regressor in the model.
@@ -601,6 +621,56 @@ function arar(; max_ar_depth::Union{Int, Nothing}=nothing, max_lag::Union{Int, N
 end
 
 """
+    bats(; seasonal_periods=nothing, use_box_cox=nothing, use_trend=nothing,
+         use_damped_trend=nothing, use_arma_errors=nothing)
+
+Specify BATS (Box-Cox transformation, ARMA errors, Trend and Seasonal) model in a formula.
+
+# Arguments
+- `seasonal_periods::Union{Int, Vector{Int}, Nothing}=nothing` - Seasonal period(s) for the model (e.g., 12 for monthly data, [24, 168] for multiple seasonality)
+- `use_box_cox::Union{Bool, Nothing}=nothing` - Whether to use Box-Cox transformation (nothing = automatic selection)
+- `use_trend::Union{Bool, Nothing}=nothing` - Whether to include trend component (nothing = automatic selection)
+- `use_damped_trend::Union{Bool, Nothing}=nothing` - Whether to use damped trend (nothing = automatic selection)
+- `use_arma_errors::Union{Bool, Nothing}=nothing` - Whether to include ARMA error structure (nothing = use default: true)
+
+# Examples
+```julia
+# Basic BATS with defaults (automatic component selection)
+@formula(y = bats())
+
+# BATS with monthly seasonality
+@formula(y = bats(seasonal_periods=12))
+
+# BATS with multiple seasonal periods
+@formula(y = bats(seasonal_periods=[24, 168]))
+
+# BATS with Box-Cox and trend specified
+@formula(y = bats(seasonal_periods=12, use_box_cox=true, use_trend=true))
+
+# BATS with all options
+@formula(y = bats(seasonal_periods=12, use_box_cox=true, use_trend=true,
+                  use_damped_trend=false, use_arma_errors=true))
+```
+"""
+function bats(; seasonal_periods::Union{Int, Vector{Int}, Nothing}=nothing,
+               use_box_cox::Union{Bool, Nothing}=nothing,
+               use_trend::Union{Bool, Nothing}=nothing,
+               use_damped_trend::Union{Bool, Nothing}=nothing,
+               use_arma_errors::Union{Bool, Nothing}=nothing)
+
+    # Validate seasonal_periods
+    if !isnothing(seasonal_periods)
+        if seasonal_periods isa Int
+            seasonal_periods > 0 || throw(ArgumentError("seasonal_periods must be positive, got $(seasonal_periods)"))
+        elseif seasonal_periods isa Vector{Int}
+            all(m -> m > 0, seasonal_periods) || throw(ArgumentError("All seasonal_periods must be positive"))
+        end
+    end
+
+    return BatsTerm(seasonal_periods, use_box_cox, use_trend, use_damped_trend, use_arma_errors)
+end
+
+"""
     e(code::AbstractString = "Z")
 
 Specify the error component in an ETS model.
@@ -939,7 +1009,7 @@ function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:Abstra
                 throw(ArgumentError("Formula may contain only one $(T) term."))
             selected = term
         elseif term isa EtsComponentTerm || term isa EtsDriftTerm || term isa ArimaOrderTerm ||
-               term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm
+               term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm || term isa BatsTerm
             throw(ArgumentError("Formula term $(term) is not compatible with $(T)."))
         elseif term !== nothing
             throw(ArgumentError("Unsupported term $(term) in formula for $(T)."))
@@ -1032,6 +1102,34 @@ function Base.show(io::IO, term::ArarTerm)
         print(io, "arar()")
     else
         print(io, "arar(", join(args, ", "), ")")
+    end
+end
+
+function Base.show(io::IO, term::BatsTerm)
+    args = String[]
+    if !isnothing(term.seasonal_periods)
+        if term.seasonal_periods isa Vector
+            push!(args, "seasonal_periods=[$(join(term.seasonal_periods, ", "))]")
+        else
+            push!(args, "seasonal_periods=$(term.seasonal_periods)")
+        end
+    end
+    if !isnothing(term.use_box_cox)
+        push!(args, "use_box_cox=$(term.use_box_cox)")
+    end
+    if !isnothing(term.use_trend)
+        push!(args, "use_trend=$(term.use_trend)")
+    end
+    if !isnothing(term.use_damped_trend)
+        push!(args, "use_damped_trend=$(term.use_damped_trend)")
+    end
+    if !isnothing(term.use_arma_errors)
+        push!(args, "use_arma_errors=$(term.use_arma_errors)")
+    end
+    if isempty(args)
+        print(io, "bats()")
+    else
+        print(io, "bats(", join(args, ", "), ")")
     end
 end
 

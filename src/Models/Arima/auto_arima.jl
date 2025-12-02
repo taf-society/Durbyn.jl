@@ -66,7 +66,7 @@ fit = auto_arima(y, 12; xreg=X)
 
 # Inspect results
 fit.ic, fit.arma, fit.coef, fit.sigma2
-````
+```
 
 **References**
 

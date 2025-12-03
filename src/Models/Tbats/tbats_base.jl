@@ -1077,8 +1077,7 @@ function filterTBATSSpecifics(
     end
 
     arma = try
-        arma_m = isempty(seasonal_periods) ? 1 : maximum(seasonal_periods)
-        auto_arima(collect(Float64, first_model.errors), arma_m; d = 0, arima_kwargs...)
+        auto_arima(collect(Float64, first_model.errors), 1; d = 0, arima_kwargs...)
     catch e
         @warn "auto_arima in filterTBATSSpecifics failed: $e"
         nothing

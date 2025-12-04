@@ -334,8 +334,6 @@ tbats_model = tbats(y, [12.5, 52.18])  # Non-integer periods
 fc_tbats = forecast(tbats_model, h = 12)
 ```
 
-> ⚠️ **PERFORMANCE NOTICE**: TBATS is currently **not optimized** and will run significantly slower than expected. This is a known limitation under active development.
-
 ---
 
 ## License

@@ -342,7 +342,6 @@ end
     ar_coefs::Union{AbstractVector{<:Real},Nothing},
     ma_coefs::Union{AbstractVector{<:Real},Nothing},
 )
-    # Pre-calculate size to reduce reallocations
     w_size = 1
     !isnothing(small_phi) && (w_size += 1)
     !isnothing(seasonal_periods) && (w_size += sum(seasonal_periods))
@@ -396,7 +395,6 @@ end
     p::Int,
     q::Int,
 )
-    # Pre-calculate total size
     adjustBeta = !isnothing(beta)
     g_size = 1 + (adjustBeta ? 1 : 0)
     gammaLength = 0
@@ -730,9 +728,7 @@ end
         end
 
     else
-        # Non-seasonal path: use optimized operations with buffer if available
         if Fx_buffer !== nothing
-            # Optimized path using mul! and dot
             y_hat[1, 1] = dot(view(w_transpose, 1, :), view(x_nought, :, 1))
             e[1, 1] = y[1, 1] - y_hat[1, 1]
             mul!(Fx_buffer, F, view(x_nought, :, 1))
@@ -785,7 +781,6 @@ function check_admissibility(
         (small_phi < 0.8 || small_phi > 1.0) && return false
     end
 
-    # Check AR coefficients - avoid findall allocation
     if ar_coefs !== nothing
         p = 0
         @inbounds for i in eachindex(ar_coefs)
@@ -806,7 +801,6 @@ function check_admissibility(
         end
     end
 
-    # Check MA coefficients - avoid findall allocation
     if ma_coefs !== nothing
         q = 0
         @inbounds for i in eachindex(ma_coefs)
@@ -827,7 +821,6 @@ function check_admissibility(
         end
     end
 
-    # Check eigenvalues - avoid abs.() allocation
     vals = eigvals(D)
     @inbounds for v in vals
         abs(v) >= RAD && return false
@@ -1061,7 +1054,6 @@ end
         ma_coefs = nothing
     end
 
-    # Use pre-allocated buffer for box_cox to eliminate allocations
     box_cox!(opt_env[:x_nought_buffer], vec(opt_env[:x_nought_untransformed]), 1; lambda=box_cox_parameter)
     x_nought = reshape(opt_env[:x_nought_buffer], :, 1)
 
@@ -1088,7 +1080,6 @@ end
     opt_env[:gamma_bold_matrix] = g.gamma_bold_matrix
     opt_env[:F] = F
 
-    # Use pre-allocated buffer for y transformation
     box_cox!(opt_env[:y_vec_buffer], vec(opt_env[:y]), 1; lambda=box_cox_parameter)
     n = size(opt_env[:y], 2)
     mat_transformed_y = reshape(opt_env[:y_vec_buffer], 1, n)
@@ -1110,7 +1101,6 @@ end
         Fx_buffer = opt_env[:Fx_buffer],
     )
 
-    # Use sum(abs2, x) instead of sum(x .^ 2) to avoid allocations
     log_likelihood =
         n * log(sum(abs2, opt_env[:e])) -
         2 * (box_cox_parameter - 1) * sum(log.(opt_env[:y]))
@@ -1235,7 +1225,6 @@ end
         Fx_buffer = opt_env[:Fx_buffer],
     )
 
-    # Use sum(abs2, x) instead of sum(x .* x) to avoid allocations
     log_likelihood = n * log(sum(abs2, opt_env[:e]))
 
     D = opt_env[:F] - opt_env[:g] * opt_env[:w_transpose]
@@ -1460,12 +1449,10 @@ function fitSpecificBATS(
     opt_env[:e] = zeros(1, n)
     opt_env[:x] = zeros(size(x_nought, 1), n)
 
-    # Pre-allocate buffers for Box-Cox transformations to reduce allocations
     opt_env[:y_vec_buffer] = Vector{Float64}(undef, n)
     opt_env[:x_nought_buffer] = Vector{Float64}(undef, size(x_nought, 1))
     opt_env[:y_transformed_mat] = Matrix{Float64}(undef, 1, n)
 
-    # Pre-allocate buffers for likelihood loop to eliminate allocations
     state_dim = size(x_nought, 1)
     opt_env[:Fx_buffer] = zeros(state_dim)
 

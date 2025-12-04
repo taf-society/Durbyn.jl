@@ -152,7 +152,6 @@ function make_tbats_fmatrix(
     ar_coefs::Union{Vector{Float64},Nothing},
     ma_coefs::Union{Vector{Float64},Nothing},
 )
-    # Pre-calculate dimensions once
     has_beta = !isnothing(beta)
     has_seasonal = !isnothing(seasonal_periods) && !isnothing(k_vector)
     tau = has_seasonal ? 2 * sum(k_vector) : 0
@@ -161,12 +160,10 @@ function make_tbats_fmatrix(
 
     n_beta = has_beta ? 1 : 0
     n_rows = 1 + n_beta + tau + p + q
-    n_cols = n_rows  # F is square
+    n_cols = n_rows
 
-    # Pre-allocate entire matrix as zeros
     F = zeros(n_rows, n_cols)
 
-    # Column/row offsets
     col_level = 1
     col_beta = has_beta ? 2 : 0
     col_seasonal = 1 + n_beta + 1
@@ -179,12 +176,11 @@ function make_tbats_fmatrix(
     row_ar = 1 + n_beta + tau + 1
     row_ma = 1 + n_beta + tau + p + 1
 
-    # Row 1: Level equation
     F[row_level, col_level] = 1.0
     if has_beta
         F[row_level, col_beta] = small_phi
     end
-    # Seasonal columns are zero (already)
+    
     if p > 0
         for i in 1:p
             F[row_level, col_ar + i - 1] = alpha * ar_coefs[i]
@@ -196,11 +192,10 @@ function make_tbats_fmatrix(
         end
     end
 
-    # Row 2: Beta/trend equation (if present)
     if has_beta
         F[row_beta, col_level] = 0.0
         F[row_beta, col_beta] = small_phi
-        # Seasonal columns are zero
+        
         if p > 0
             for i in 1:p
                 F[row_beta, col_ar + i - 1] = beta * ar_coefs[i]
@@ -213,9 +208,7 @@ function make_tbats_fmatrix(
         end
     end
 
-    # Seasonal rows
     if has_seasonal
-        # Build the A matrix (block diagonal of Ai matrices)
         pos = 0
         for (m, k) in zip(seasonal_periods, k_vector)
             if m == 2
@@ -233,7 +226,6 @@ function make_tbats_fmatrix(
             pos += block_size
         end
 
-        # AR/MA terms in seasonal rows
         if p > 0 && !isnothing(gamma_bold_matrix)
             gb_ar = gamma_bold_matrix' * ar_coefs
             for i in 1:tau
@@ -248,27 +240,25 @@ function make_tbats_fmatrix(
         end
     end
 
-    # AR rows
     if p > 0
-        # First AR row has ar_coefs
         for i in 1:p
             F[row_ar, col_ar + i - 1] = ar_coefs[i]
         end
-        # MA coefs in first AR row
+
         if q > 0
             for i in 1:q
                 F[row_ar, col_ma + i - 1] = ma_coefs[i]
             end
         end
-        # Identity shift for remaining AR rows
+        
         for i in 2:p
             F[row_ar + i - 1, col_ar + i - 2] = 1.0
         end
     end
 
-    # MA rows
+    
     if q > 0
-        # Identity shift for MA rows (row 2 onwards)
+        
         for i in 2:q
             F[row_ma + i - 1, col_ma + i - 2] = 1.0
         end
@@ -285,14 +275,12 @@ function make_tbats_wmatrix(
     ma_coefs::Union{Vector{Float64},Nothing},
     tau::Int,
 )
-    # Pre-calculate total size to avoid reallocations
     n_phi = isnothing(small_phi) ? 0 : 1
-    n_seasonal = tau  # tau = 2 * sum(k_vector) already
+    n_seasonal = tau
     n_ar = isnothing(ar_coefs) ? 0 : length(ar_coefs)
     n_ma = isnothing(ma_coefs) ? 0 : length(ma_coefs)
     total_size = 1 + n_phi + n_seasonal + n_ar + n_ma
 
-    # Pre-allocate and fill with indexed assignment
     w_transpose = Vector{Float64}(undef, total_size)
     idx = 1
 
@@ -306,7 +294,6 @@ function make_tbats_wmatrix(
 
     if !isnothing(k_vector) && tau > 0
         for k in k_vector
-            # ones(k) followed by zeros(k)
             for _ in 1:k
                 w_transpose[idx] = 1.0
                 idx += 1
@@ -543,7 +530,6 @@ function check_admissibility_tbats(
         (small_phi < 0.8 || small_phi > 1.0) && return false
     end
 
-    # Check AR coefficients - avoid findall allocation
     if ar_coefs !== nothing
         p = 0
         @inbounds for i in eachindex(ar_coefs)
@@ -558,14 +544,12 @@ function check_admissibility_tbats(
                 coeffs[i + 1] = -ar_coefs[i]
             end
             rts = roots(Polynomial(coeffs))
-            # Check minimum abs without allocating
             @inbounds for r in rts
                 abs(r) < RAD && return false
             end
         end
     end
 
-    # Check MA coefficients - avoid findall allocation
     if ma_coefs !== nothing
         q = 0
         @inbounds for i in eachindex(ma_coefs)
@@ -586,7 +570,6 @@ function check_admissibility_tbats(
         end
     end
 
-    # Check eigenvalues - avoid abs.() allocation
     vals = eigvals(D)
     @inbounds for v in vals
         abs(v) >= RAD && return false
@@ -780,14 +763,12 @@ function fitSpecificTBATS(
     opt_env[:e] = zeros(1, n)
     opt_env[:x] = zeros(size(x_nought, 1), n)
 
-    # Pre-allocate buffers for box_cox! to eliminate allocations in optimization loops
     opt_env[:box_cox_buffer_x] = zeros(size(x_nought, 1))
     opt_env[:box_cox_buffer_y] = zeros(n)
 
-    # Pre-allocate buffers for likelihood loop to eliminate ~48MB allocations per iteration
     state_dim = size(x_nought, 1)
-    opt_env[:Fx_buffer] = zeros(state_dim)       # Buffer for F * x result
-    opt_env[:g_scaled] = zeros(state_dim)        # Buffer for g * e scalar multiplication
+    opt_env[:Fx_buffer] = zeros(state_dim)
+    opt_env[:g_scaled] = zeros(state_dim)
 
     if use_box_cox
         x_nought_untransformed = inv_box_cox(x_nought; lambda=lambda)
@@ -980,7 +961,6 @@ function calc_likelihood_tbats(
     ar_coefs = paramz.ar_coefs
     ma_coefs = paramz.ma_coefs
 
-    # Use pre-allocated buffer for box_cox to eliminate allocations
     box_cox!(opt_env[:box_cox_buffer_x], vec(opt_env[:x_nought_untransformed]), 1; lambda=box_cox_parameter)
     x_nought = reshape(opt_env[:box_cox_buffer_x], :, 1)
 
@@ -1002,12 +982,10 @@ function calc_likelihood_tbats(
     opt_env[:gamma_bold_matrix] = g_result.gamma_bold_matrix
     opt_env[:F] = F
 
-    # Use pre-allocated buffer for y transformation
     box_cox!(opt_env[:box_cox_buffer_y], vec(opt_env[:y]), 1; lambda=box_cox_parameter)
     n = size(opt_env[:y], 2)
     transformed_y = opt_env[:box_cox_buffer_y]
 
-    # Cache references to avoid repeated dictionary lookups
     w_t = opt_env[:w_transpose]
     g = opt_env[:g]
     y_hat = opt_env[:y_hat]
@@ -1015,13 +993,10 @@ function calc_likelihood_tbats(
     x = opt_env[:x]
     Fx_buf = opt_env[:Fx_buffer]
 
-    # Optimized loop using in-place operations to eliminate allocations
     @inbounds for t = 1:n
         if t == 1
-            # Use dot product instead of matrix multiply (returns scalar, no allocation)
             y_hat[1, t] = dot(w_t, view(x_nought, :, 1))
             e[1, t] = transformed_y[t] - y_hat[1, t]
-            # Use mul! for F * x_nought, then add g * e in-place
             mul!(Fx_buf, F, view(x_nought, :, 1))
             @. x[:, t] = Fx_buf + g * e[1, t]
         else
@@ -1032,7 +1007,6 @@ function calc_likelihood_tbats(
         end
     end
 
-    # Use sum(abs2, ...) and generator to avoid allocations
     log_likelihood = n * log(sum(abs2, e)) - 2 * (box_cox_parameter - 1) * sum(log(yi) for yi in opt_env[:y])
 
     D = opt_env[:F] - opt_env[:g] * opt_env[:w_transpose]
@@ -1106,7 +1080,6 @@ function calc_likelihood_tbats_notransform(
 
     n = size(opt_env[:y], 2)
 
-    # Cache references to avoid repeated dictionary lookups
     w_t = opt_env[:w_transpose]
     g = opt_env[:g]
     y_hat = opt_env[:y_hat]
@@ -1115,13 +1088,10 @@ function calc_likelihood_tbats_notransform(
     y_data = opt_env[:y]
     Fx_buf = opt_env[:Fx_buffer]
 
-    # Optimized loop using in-place operations to eliminate allocations
     @inbounds for t = 1:n
         if t == 1
-            # Use dot product instead of matrix multiply (returns scalar, no allocation)
             y_hat[1, t] = dot(w_t, view(x_nought, :, 1))
             e[1, t] = y_data[1, t] - y_hat[1, t]
-            # Use mul! for F * x_nought, then add g * e in-place
             mul!(Fx_buf, F, view(x_nought, :, 1))
             @. x[:, t] = Fx_buf + g * e[1, t]
         else
@@ -1286,7 +1256,7 @@ descriptor `TBATS(omega, {p,q}, phi, <m1,k1>,...,<mJ,kJ>)`.
 """
 function tbats(
     y::AbstractVector{<:Real},
-    m::Union{Vector{Int},Nothing} = nothing;          # seasonal.periods
+    m::Union{Vector{Int},Nothing} = nothing;
     use_box_cox::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
     use_trend::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
     use_damped_trend::Union{Bool,AbstractVector{Bool},Nothing} = nothing,

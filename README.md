@@ -81,8 +81,6 @@ For complete documentation, see the [Grammar Guide](https://taf-society.github.i
   instead of $O(m)$ where $k \ll m$. See the [TBATS documentation](https://taf-society.github.io/Durbyn.jl/dev/tbats/)
   for full mathematical details, usage examples, and references.
 
-  > ⚠️ **PERFORMANCE NOTICE**: TBATS is currently **not optimized** and will run significantly slower than expected. This is a known limitation under active development. Optimization improvements are planned for future releases. Please do not report performance-related issues at this time.
-
 ---
 
 ## Formula Interface (Primary Usage)

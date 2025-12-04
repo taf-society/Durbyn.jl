@@ -785,28 +785,53 @@ function check_admissibility(
         (small_phi < 0.8 || small_phi > 1.0) && return false
     end
 
+    # Check AR coefficients - avoid findall allocation
     if ar_coefs !== nothing
-        idx = findall(x -> abs(x) > EPS, ar_coefs)
-        if !isempty(idx)
-            p = maximum(idx)
-            coeffs = [1.0; -ar_coefs[1:p]]
+        p = 0
+        @inbounds for i in eachindex(ar_coefs)
+            if abs(ar_coefs[i]) > EPS
+                p = i
+            end
+        end
+        if p > 0
+            coeffs = Vector{Float64}(undef, p + 1)
+            coeffs[1] = 1.0
+            @inbounds for i in 1:p
+                coeffs[i + 1] = -ar_coefs[i]
+            end
             rts = roots(Polynomial(coeffs))
-            minimum(abs.(rts)) < RAD && return false
+            @inbounds for r in rts
+                abs(r) < RAD && return false
+            end
         end
     end
 
+    # Check MA coefficients - avoid findall allocation
     if ma_coefs !== nothing
-        idx = findall(x -> abs(x) > EPS, ma_coefs)
-        if !isempty(idx)
-            q = maximum(idx)
-            coeffs = [1.0; ma_coefs[1:q]]
+        q = 0
+        @inbounds for i in eachindex(ma_coefs)
+            if abs(ma_coefs[i]) > EPS
+                q = i
+            end
+        end
+        if q > 0
+            coeffs = Vector{Float64}(undef, q + 1)
+            coeffs[1] = 1.0
+            @inbounds for i in 1:q
+                coeffs[i + 1] = ma_coefs[i]
+            end
             rts = roots(Polynomial(coeffs))
-            minimum(abs.(rts)) < RAD && return false
+            @inbounds for r in rts
+                abs(r) < RAD && return false
+            end
         end
     end
 
-    vals = eigvals(Matrix{Float64}(D))
-    all(abs.(vals) .< RAD) || return false
+    # Check eigenvalues - avoid abs.() allocation
+    vals = eigvals(D)
+    @inbounds for v in vals
+        abs(v) >= RAD && return false
+    end
 
     return true
 end

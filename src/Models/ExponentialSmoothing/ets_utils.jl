@@ -549,7 +549,7 @@ function initparam(
         end
     end
 
-    return OrderedDict("alpha" => alpha, "beta" => beta, "gamma" => gamma, "phi" => phi)
+    return (alpha=alpha, beta=beta, gamma=gamma, phi=phi)
 end
 
 function admissible(
@@ -1206,15 +1206,15 @@ function holt_winters_conventional(
         starting_points = Float64[]
 
         if select[1] > 0
-            push!(starting_points, optim_start["alpha"])
+            push!(starting_points, optim_start.alpha)
         end
 
         if select[2] > 0
-            push!(starting_points, optim_start["beta"])
+            push!(starting_points, optim_start.beta)
         end
 
         if select[3] > 0
-            push!(starting_points, optim_start["gamma"])
+            push!(starting_points, optim_start.gamma)
         end
 
         parscale = max.(abs.(starting_points), 0.1)
@@ -1530,10 +1530,10 @@ function optim_ets_base(
     initial_params,
     options)
 
-    init_alpha = initial_params["alpha"]
-    init_beta = initial_params["beta"]
-    init_gamma = initial_params["gamma"]
-    init_phi = initial_params["phi"]
+    init_alpha = initial_params.alpha
+    init_beta = initial_params.beta
+    init_gamma = initial_params.gamma
+    init_phi = initial_params.phi
     opt_alpha = !isnan(init_alpha)
     opt_beta = !isnan(init_beta)
     opt_gamma = !isnan(init_gamma)
@@ -1663,20 +1663,20 @@ function etsmodel(
         nothing_as_nan = true,
     )
 
-    if !isnan(par["alpha"])
-        alpha = par["alpha"]
+    if !isnan(par.alpha)
+        alpha = par.alpha
     end
 
-    if !isnan(par["beta"])
-        beta = par["beta"]
+    if !isnan(par.beta)
+        beta = par.beta
     end
 
-    if !isnan(par["gamma"])
-        gamma = par["gamma"]
+    if !isnan(par.gamma)
+        gamma = par.gamma
     end
 
-    if !isnan(par["phi"])
-        phi = par["phi"]
+    if !isnan(par.phi)
+        phi = par.phi
     end
 
     if !check_param(alpha, beta, gamma, phi, lower, upper, bounds, m)
@@ -1689,7 +1689,7 @@ function etsmodel(
     init_state = initialize_states(y, m, trendtype, seasontype)
     nstate = length(init_state)
     initial_params = par
-    par = [par["alpha"], par["beta"], par["gamma"], par["phi"]]
+    par = [par.alpha, par.beta, par.gamma, par.phi]
     par = na_omit(par)
     par = vcat(par, init_state)
 
@@ -1738,16 +1738,16 @@ function etsmodel(
             vcat(states, m * (seasontype == "M") - sum(states[(2+(trendtype!="N")):nstate]))
     end
 
-    if !isnan(initial_params["alpha"])
+    if !isnan(initial_params.alpha)
         alpha = fit_par["alpha"]
     end
-    if !isnan(initial_params["beta"])
+    if !isnan(initial_params.beta)
         beta = fit_par["beta"]
     end
-    if !isnan(initial_params["gamma"])
+    if !isnan(initial_params.gamma)
         gamma = fit_par["gamma"]
     end
-    if !isnan(initial_params["phi"])
+    if !isnan(initial_params.phi)
         phi = fit_par["phi"]
     end
 
@@ -1931,6 +1931,7 @@ function ets_refit(
             loglik,
             model.initstate,
             states,
+            nothing,
             model.SSE,
             sigma2,
             m,

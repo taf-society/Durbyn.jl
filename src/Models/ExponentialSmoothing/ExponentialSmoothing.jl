@@ -7,7 +7,6 @@ import Statistics: mean
 using Plots
 using Polynomials
 using Distributions
-import DataStructures: OrderedDict
 
 # Internal modules
 import ..Utils: is_constant, match_arg, na_action, na_omit, check_component

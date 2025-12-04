@@ -10,7 +10,6 @@ import LinearAlgebra: rank
 using Plots
 using Polynomials
 using Distributions
-import DataStructures: OrderedDict
 import Tables
 
 # Internal modules

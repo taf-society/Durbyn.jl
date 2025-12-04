@@ -478,7 +478,7 @@ function compute_arima_likelihood( y::Vector{Float64}, model::ArimaStateSpace, u
             else
                 predict_covariance_with_diff!(Pnew, P, r, d, p, q, rd, phi, delta, theta, mm)
             end
-            P .= Pnew
+            copyto!(P, Pnew)
         end
     end
 

@@ -699,6 +699,11 @@ function fitSpecificTBATS(
     opt_env[:box_cox_buffer_x] = zeros(size(x_nought, 1))
     opt_env[:box_cox_buffer_y] = zeros(n)
 
+    # Pre-allocate buffers for likelihood loop to eliminate ~48MB allocations per iteration
+    state_dim = size(x_nought, 1)
+    opt_env[:Fx_buffer] = zeros(state_dim)       # Buffer for F * x result
+    opt_env[:g_scaled] = zeros(state_dim)        # Buffer for g * e scalar multiplication
+
     if use_box_cox
         x_nought_untransformed = inv_box_cox(x_nought; lambda=lambda)
         opt_env[:x_nought_untransformed] = x_nought_untransformed
@@ -915,17 +920,30 @@ function calc_likelihood_tbats(
     # Use pre-allocated buffer for y transformation
     box_cox!(opt_env[:box_cox_buffer_y], vec(opt_env[:y]), 1; lambda=box_cox_parameter)
     n = size(opt_env[:y], 2)
-    mat_transformed_y = reshape(opt_env[:box_cox_buffer_y], 1, n)
+    transformed_y = opt_env[:box_cox_buffer_y]
 
-    for t = 1:n
+    # Cache references to avoid repeated dictionary lookups
+    w_t = opt_env[:w_transpose]
+    g = opt_env[:g]
+    y_hat = opt_env[:y_hat]
+    e = opt_env[:e]
+    x = opt_env[:x]
+    Fx_buf = opt_env[:Fx_buffer]
+
+    # Optimized loop using in-place operations to eliminate allocations
+    @inbounds for t = 1:n
         if t == 1
-            opt_env[:y_hat][:, t] = opt_env[:w_transpose] * x_nought[:, 1]
-            opt_env[:e][:, t] = mat_transformed_y[:, t] - opt_env[:y_hat][:, t]
-            opt_env[:x][:, t] = F * x_nought[:, 1] + opt_env[:g] * opt_env[:e][1, t]
+            # Use dot product instead of matrix multiply (returns scalar, no allocation)
+            y_hat[1, t] = dot(w_t, view(x_nought, :, 1))
+            e[1, t] = transformed_y[t] - y_hat[1, t]
+            # Use mul! for F * x_nought, then add g * e in-place
+            mul!(Fx_buf, F, view(x_nought, :, 1))
+            @. x[:, t] = Fx_buf + g * e[1, t]
         else
-            opt_env[:y_hat][:, t] = opt_env[:w_transpose] * opt_env[:x][:, t-1]
-            opt_env[:e][:, t] = mat_transformed_y[:, t] - opt_env[:y_hat][:, t]
-            opt_env[:x][:, t] = F * opt_env[:x][:, t-1] + opt_env[:g] * opt_env[:e][1, t]
+            y_hat[1, t] = dot(w_t, view(x, :, t-1))
+            e[1, t] = transformed_y[t] - y_hat[1, t]
+            mul!(Fx_buf, F, view(x, :, t-1))
+            @. x[:, t] = Fx_buf + g * e[1, t]
         end
     end
 
@@ -1002,19 +1020,33 @@ function calc_likelihood_tbats_notransform(
 
     n = size(opt_env[:y], 2)
 
-    for t = 1:n
+    # Cache references to avoid repeated dictionary lookups
+    w_t = opt_env[:w_transpose]
+    g = opt_env[:g]
+    y_hat = opt_env[:y_hat]
+    e = opt_env[:e]
+    x = opt_env[:x]
+    y_data = opt_env[:y]
+    Fx_buf = opt_env[:Fx_buffer]
+
+    # Optimized loop using in-place operations to eliminate allocations
+    @inbounds for t = 1:n
         if t == 1
-            opt_env[:y_hat][:, t] = opt_env[:w_transpose] * x_nought[:, 1]
-            opt_env[:e][:, t] = opt_env[:y][:, t] - opt_env[:y_hat][:, t]
-            opt_env[:x][:, t] = F * x_nought[:, 1] + opt_env[:g] * opt_env[:e][1, t]
+            # Use dot product instead of matrix multiply (returns scalar, no allocation)
+            y_hat[1, t] = dot(w_t, view(x_nought, :, 1))
+            e[1, t] = y_data[1, t] - y_hat[1, t]
+            # Use mul! for F * x_nought, then add g * e in-place
+            mul!(Fx_buf, F, view(x_nought, :, 1))
+            @. x[:, t] = Fx_buf + g * e[1, t]
         else
-            opt_env[:y_hat][:, t] = opt_env[:w_transpose] * opt_env[:x][:, t-1]
-            opt_env[:e][:, t] = opt_env[:y][:, t] - opt_env[:y_hat][:, t]
-            opt_env[:x][:, t] = F * opt_env[:x][:, t-1] + opt_env[:g] * opt_env[:e][1, t]
+            y_hat[1, t] = dot(w_t, view(x, :, t-1))
+            e[1, t] = y_data[1, t] - y_hat[1, t]
+            mul!(Fx_buf, F, view(x, :, t-1))
+            @. x[:, t] = Fx_buf + g * e[1, t]
         end
     end
 
-    log_likelihood = n * log(sum(opt_env[:e] .* opt_env[:e]))
+    log_likelihood = n * log(sum(e .* e))
 
     D = opt_env[:F] - opt_env[:g] * opt_env[:w_transpose]
     opt_env[:D] = D

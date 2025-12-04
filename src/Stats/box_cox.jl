@@ -163,6 +163,47 @@ function box_cox(x::AbstractVector{<:Number}, m::Int; lambda::Union{String,Numbe
 end
 
 """
+    box_cox!(output::AbstractVector, x::AbstractVector, m::Int; lambda::Real)
+
+In-place version of box_cox that writes to a pre-allocated output buffer.
+Identical mathematical behavior but eliminates intermediate allocations.
+
+# Arguments
+- `output::AbstractVector`: Pre-allocated output buffer
+- `x::AbstractVector`: Input vector
+- `m::Int`: Frequency parameter (kept for API consistency)
+- `lambda::Real`: Transformation parameter (must be numeric, not "auto")
+
+# Returns
+Tuple of (output, lambda) where output contains the transformed values.
+
+# Note
+This is a performance optimization that avoids ~6MB of allocations per call.
+Use this in tight loops where box_cox is called repeatedly.
+"""
+function box_cox!(output::AbstractVector, x::AbstractVector, m::Int; lambda::Real)
+    if lambda < 0
+        copyto!(output, x)
+        @inbounds for i in eachindex(output)
+            if output[i] < 0
+                output[i] = NaN
+            end
+        end
+        x_work = output
+    else
+        x_work = x
+    end
+
+    if lambda == 0
+        @. output = log(x_work)
+    else
+        @. output = (sign(x_work) * abs(x_work)^lambda - 1) / lambda
+    end
+
+    return output, lambda
+end
+
+"""
     inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing}=false,
     fvar::Union{Nothing,Number,AbstractArray,Dict,NamedTuple}=nothing)
 

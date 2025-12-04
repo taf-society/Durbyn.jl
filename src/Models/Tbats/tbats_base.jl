@@ -152,101 +152,126 @@ function make_tbats_fmatrix(
     ar_coefs::Union{Vector{Float64},Nothing},
     ma_coefs::Union{Vector{Float64},Nothing},
 )
-    F = ones(1, 1)
-    !isnothing(beta) && (F = hcat(F, small_phi))
-
-    if !isnothing(seasonal_periods) && !isnothing(k_vector)
-        tau = 2 * sum(k_vector)
-        F = hcat(F, zeros(1, tau))
-    end
-
+    # Pre-calculate dimensions once
+    has_beta = !isnothing(beta)
+    has_seasonal = !isnothing(seasonal_periods) && !isnothing(k_vector)
+    tau = has_seasonal ? 2 * sum(k_vector) : 0
     p = isnothing(ar_coefs) ? 0 : length(ar_coefs)
     q = isnothing(ma_coefs) ? 0 : length(ma_coefs)
 
-    p > 0 && (F = hcat(F, alpha .* ar_coefs'))
-    q > 0 && (F = hcat(F, alpha .* ma_coefs'))
+    n_beta = has_beta ? 1 : 0
+    n_rows = 1 + n_beta + tau + p + q
+    n_cols = n_rows  # F is square
 
-    if !isnothing(beta)
-        beta_row = [0.0 small_phi]
-        if !isnothing(seasonal_periods) && !isnothing(k_vector)
-            tau = 2 * sum(k_vector)
-            beta_row = hcat(beta_row, zeros(1, tau))
+    # Pre-allocate entire matrix as zeros
+    F = zeros(n_rows, n_cols)
+
+    # Column/row offsets
+    col_level = 1
+    col_beta = has_beta ? 2 : 0
+    col_seasonal = 1 + n_beta + 1
+    col_ar = 1 + n_beta + tau + 1
+    col_ma = 1 + n_beta + tau + p + 1
+
+    row_level = 1
+    row_beta = has_beta ? 2 : 0
+    row_seasonal = 1 + n_beta + 1
+    row_ar = 1 + n_beta + tau + 1
+    row_ma = 1 + n_beta + tau + p + 1
+
+    # Row 1: Level equation
+    F[row_level, col_level] = 1.0
+    if has_beta
+        F[row_level, col_beta] = small_phi
+    end
+    # Seasonal columns are zero (already)
+    if p > 0
+        for i in 1:p
+            F[row_level, col_ar + i - 1] = alpha * ar_coefs[i]
         end
-        p > 0 && (beta_row = hcat(beta_row, beta .* ar_coefs'))
-        q > 0 && (beta_row = hcat(beta_row, beta .* ma_coefs'))
-        F = vcat(F, beta_row)
+    end
+    if q > 0
+        for i in 1:q
+            F[row_level, col_ma + i - 1] = alpha * ma_coefs[i]
+        end
     end
 
-    if !isnothing(seasonal_periods) && !isnothing(k_vector)
-        tau = 2 * sum(k_vector)
-        seasonal_rows = zeros(tau, 1)
-        !isnothing(beta) && (seasonal_rows = hcat(seasonal_rows, zeros(tau, 1)))
+    # Row 2: Beta/trend equation (if present)
+    if has_beta
+        F[row_beta, col_level] = 0.0
+        F[row_beta, col_beta] = small_phi
+        # Seasonal columns are zero
+        if p > 0
+            for i in 1:p
+                F[row_beta, col_ar + i - 1] = beta * ar_coefs[i]
+            end
+        end
+        if q > 0
+            for i in 1:q
+                F[row_beta, col_ma + i - 1] = beta * ma_coefs[i]
+            end
+        end
+    end
 
-        A = zeros(tau, tau)
-        pos = 1
-        for (i, (m, k)) in enumerate(zip(seasonal_periods, k_vector))
+    # Seasonal rows
+    if has_seasonal
+        # Build the A matrix (block diagonal of Ai matrices)
+        pos = 0
+        for (m, k) in zip(seasonal_periods, k_vector)
             if m == 2
                 Ci = zeros(1, 1)
-                Si = make_si_matrix(k, Float64(m))
-                Ai = make_ai_matrix(Ci, Si, k)
             else
                 Ci = make_ci_matrix(k, Float64(m))
-                Si = make_si_matrix(k, Float64(m))
-                Ai = make_ai_matrix(Ci, Si, k)
             end
+            Si = make_si_matrix(k, Float64(m))
+            Ai = make_ai_matrix(Ci, Si, k)
 
             block_size = 2k
-            A[pos:(pos+block_size-1), pos:(pos+block_size-1)] = Ai
+            r_start = row_seasonal + pos
+            c_start = col_seasonal + pos
+            F[r_start:(r_start+block_size-1), c_start:(c_start+block_size-1)] = Ai
             pos += block_size
         end
 
-        seasonal_rows = hcat(seasonal_rows, A)
-
-        p > 0 && (seasonal_rows = hcat(seasonal_rows, gamma_bold_matrix' * ar_coefs))
-        q > 0 && (seasonal_rows = hcat(seasonal_rows, gamma_bold_matrix' * ma_coefs))
-
-        F = vcat(F, seasonal_rows)
+        # AR/MA terms in seasonal rows
+        if p > 0 && !isnothing(gamma_bold_matrix)
+            gb_ar = gamma_bold_matrix' * ar_coefs
+            for i in 1:tau
+                F[row_seasonal + i - 1, col_ar] = gb_ar[i]
+            end
+        end
+        if q > 0 && !isnothing(gamma_bold_matrix)
+            gb_ma = gamma_bold_matrix' * ma_coefs
+            for i in 1:tau
+                F[row_seasonal + i - 1, col_ma] = gb_ma[i]
+            end
+        end
     end
 
+    # AR rows
     if p > 0
-        ar_rows = zeros(p, 1)
-        !isnothing(beta) && (ar_rows = hcat(ar_rows, zeros(p, 1)))
-        if !isnothing(seasonal_periods) && !isnothing(k_vector)
-            tau = 2 * sum(k_vector)
-            ar_rows = hcat(ar_rows, zeros(p, tau))
+        # First AR row has ar_coefs
+        for i in 1:p
+            F[row_ar, col_ar + i - 1] = ar_coefs[i]
         end
-
-        ar_part =
-            p > 1 ?
-            vcat(ar_coefs', hcat(Matrix{Float64}(I, p - 1, p - 1), zeros(p - 1, 1))) :
-            ar_coefs'
-        ar_rows = hcat(ar_rows, ar_part)
-
+        # MA coefs in first AR row
         if q > 0
-            ma_in_ar = zeros(p, q)
-            ma_in_ar[1, :] = ma_coefs
-            ar_rows = hcat(ar_rows, ma_in_ar)
+            for i in 1:q
+                F[row_ar, col_ma + i - 1] = ma_coefs[i]
+            end
         end
-
-        F = vcat(F, ar_rows)
+        # Identity shift for remaining AR rows
+        for i in 2:p
+            F[row_ar + i - 1, col_ar + i - 2] = 1.0
+        end
     end
 
+    # MA rows
     if q > 0
-        ma_rows = zeros(q, 1)
-        !isnothing(beta) && (ma_rows = hcat(ma_rows, zeros(q, 1)))
-        if !isnothing(seasonal_periods) && !isnothing(k_vector)
-            tau = 2 * sum(k_vector)
-            ma_rows = hcat(ma_rows, zeros(q, tau))
+        # Identity shift for MA rows (row 2 onwards)
+        for i in 2:q
+            F[row_ma + i - 1, col_ma + i - 2] = 1.0
         end
-        p > 0 && (ma_rows = hcat(ma_rows, zeros(q, p)))
-
-        ma_part =
-            q > 1 ?
-            vcat(zeros(1, q), hcat(Matrix{Float64}(I, q - 1, q - 1), zeros(q - 1, 1))) :
-            zeros(1, q)
-        ma_rows = hcat(ma_rows, ma_part)
-
-        F = vcat(F, ma_rows)
     end
 
     return F
@@ -260,18 +285,52 @@ function make_tbats_wmatrix(
     ma_coefs::Union{Vector{Float64},Nothing},
     tau::Int,
 )
-    w_transpose = [1.0]
-    !isnothing(small_phi) && push!(w_transpose, small_phi)
+    # Pre-calculate total size to avoid reallocations
+    n_phi = isnothing(small_phi) ? 0 : 1
+    n_seasonal = tau  # tau = 2 * sum(k_vector) already
+    n_ar = isnothing(ar_coefs) ? 0 : length(ar_coefs)
+    n_ma = isnothing(ma_coefs) ? 0 : length(ma_coefs)
+    total_size = 1 + n_phi + n_seasonal + n_ar + n_ma
+
+    # Pre-allocate and fill with indexed assignment
+    w_transpose = Vector{Float64}(undef, total_size)
+    idx = 1
+
+    w_transpose[idx] = 1.0
+    idx += 1
+
+    if !isnothing(small_phi)
+        w_transpose[idx] = small_phi
+        idx += 1
+    end
 
     if !isnothing(k_vector) && tau > 0
         for k in k_vector
-            append!(w_transpose, ones(k))
-            append!(w_transpose, zeros(k))
+            # ones(k) followed by zeros(k)
+            for _ in 1:k
+                w_transpose[idx] = 1.0
+                idx += 1
+            end
+            for _ in 1:k
+                w_transpose[idx] = 0.0
+                idx += 1
+            end
         end
     end
 
-    !isnothing(ar_coefs) && append!(w_transpose, ar_coefs)
-    !isnothing(ma_coefs) && append!(w_transpose, ma_coefs)
+    if !isnothing(ar_coefs)
+        for c in ar_coefs
+            w_transpose[idx] = c
+            idx += 1
+        end
+    end
+
+    if !isnothing(ma_coefs)
+        for c in ma_coefs
+            w_transpose[idx] = c
+            idx += 1
+        end
+    end
 
     w_transpose_mat = reshape(w_transpose, 1, :)
     return (w_transpose = w_transpose_mat, w = w_transpose_mat')
@@ -484,28 +543,54 @@ function check_admissibility_tbats(
         (small_phi < 0.8 || small_phi > 1.0) && return false
     end
 
+    # Check AR coefficients - avoid findall allocation
     if ar_coefs !== nothing
-        idx = findall(x -> abs(x) > EPS, ar_coefs)
-        if !isempty(idx)
-            p = maximum(idx)
-            coeffs = [1.0; -ar_coefs[1:p]]
+        p = 0
+        @inbounds for i in eachindex(ar_coefs)
+            if abs(ar_coefs[i]) > EPS
+                p = i
+            end
+        end
+        if p > 0
+            coeffs = Vector{Float64}(undef, p + 1)
+            coeffs[1] = 1.0
+            @inbounds for i in 1:p
+                coeffs[i + 1] = -ar_coefs[i]
+            end
             rts = roots(Polynomial(coeffs))
-            minimum(abs.(rts)) < RAD && return false
+            # Check minimum abs without allocating
+            @inbounds for r in rts
+                abs(r) < RAD && return false
+            end
         end
     end
 
+    # Check MA coefficients - avoid findall allocation
     if ma_coefs !== nothing
-        idx = findall(x -> abs(x) > EPS, ma_coefs)
-        if !isempty(idx)
-            q = maximum(idx)
-            coeffs = [1.0; ma_coefs[1:q]]
+        q = 0
+        @inbounds for i in eachindex(ma_coefs)
+            if abs(ma_coefs[i]) > EPS
+                q = i
+            end
+        end
+        if q > 0
+            coeffs = Vector{Float64}(undef, q + 1)
+            coeffs[1] = 1.0
+            @inbounds for i in 1:q
+                coeffs[i + 1] = ma_coefs[i]
+            end
             rts = roots(Polynomial(coeffs))
-            minimum(abs.(rts)) < RAD && return false
+            @inbounds for r in rts
+                abs(r) < RAD && return false
+            end
         end
     end
 
-    vals = eigvals(Matrix{Float64}(D))
-    all(abs.(vals) .< RAD) || return false
+    # Check eigenvalues - avoid abs.() allocation
+    vals = eigvals(D)
+    @inbounds for v in vals
+        abs(v) >= RAD && return false
+    end
 
     return true
 end
@@ -947,7 +1032,8 @@ function calc_likelihood_tbats(
         end
     end
 
-    log_likelihood = n * log(sum(opt_env[:e] .^ 2)) - 2 * (box_cox_parameter - 1) * sum(log.(opt_env[:y]))
+    # Use sum(abs2, ...) and generator to avoid allocations
+    log_likelihood = n * log(sum(abs2, e)) - 2 * (box_cox_parameter - 1) * sum(log(yi) for yi in opt_env[:y])
 
     D = opt_env[:F] - opt_env[:g] * opt_env[:w_transpose]
     opt_env[:D] = D

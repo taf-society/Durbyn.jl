@@ -497,6 +497,7 @@ end
     tau::Int = 0,
     p::Int = 0,
     q::Int = 0,
+    Fx_buffer::Union{Nothing,AbstractVector} = nothing,
 )
 
     adjBeta = (beta_v === nothing) ? 0 : 1
@@ -729,15 +730,33 @@ end
         end
 
     else
-        @views y_hat[:, 1] .= w_transpose * x_nought[:, 1]
-        e[1, 1] = y[1, 1] - y_hat[1, 1]
-        @views x[:, 1] .= F * x_nought[:, 1] .+ g .* e[1, 1]
+        # Non-seasonal path: use optimized operations with buffer if available
+        if Fx_buffer !== nothing
+            # Optimized path using mul! and dot
+            y_hat[1, 1] = dot(view(w_transpose, 1, :), view(x_nought, :, 1))
+            e[1, 1] = y[1, 1] - y_hat[1, 1]
+            mul!(Fx_buffer, F, view(x_nought, :, 1))
+            @. x[:, 1] = Fx_buffer + g * e[1, 1]
 
-        @inbounds for t = 1:(nT-1)
-            col_t = t + 1
-            @views y_hat[:, col_t] .= w_transpose * x[:, t]
-            e[1, col_t] = y[1, col_t] - y_hat[1, col_t]
-            @views x[:, col_t] .= F * x[:, t] .+ g .* e[1, col_t]
+            @inbounds for t = 1:(nT-1)
+                col_t = t + 1
+                y_hat[1, col_t] = dot(view(w_transpose, 1, :), view(x, :, t))
+                e[1, col_t] = y[1, col_t] - y_hat[1, col_t]
+                mul!(Fx_buffer, F, view(x, :, t))
+                @. x[:, col_t] = Fx_buffer + g * e[1, col_t]
+            end
+        else
+            # Fallback path without buffer
+            @views y_hat[:, 1] .= w_transpose * x_nought[:, 1]
+            e[1, 1] = y[1, 1] - y_hat[1, 1]
+            @views x[:, 1] .= F * x_nought[:, 1] .+ g .* e[1, 1]
+
+            @inbounds for t = 1:(nT-1)
+                col_t = t + 1
+                @views y_hat[:, col_t] .= w_transpose * x[:, t]
+                e[1, col_t] = y[1, col_t] - y_hat[1, col_t]
+                @views x[:, col_t] .= F * x[:, t] .+ g .* e[1, col_t]
+            end
         end
     end
 
@@ -1017,8 +1036,9 @@ end
         ma_coefs = nothing
     end
 
-    x_nought_vec, lambda = box_cox(vec(opt_env[:x_nought_untransformed]), 1; lambda=box_cox_parameter)
-    x_nought = reshape(x_nought_vec, :, 1)
+    # Use pre-allocated buffer for box_cox to eliminate allocations
+    box_cox!(opt_env[:x_nought_buffer], vec(opt_env[:x_nought_untransformed]), 1; lambda=box_cox_parameter)
+    x_nought = reshape(opt_env[:x_nought_buffer], :, 1)
 
     w = make_wmatrix(small_phi, seasonal_periods, ar_coefs, ma_coefs)
     g = make_gmatrix(alpha, beta_v, gamma_vector, seasonal_periods, p, q)
@@ -1043,9 +1063,10 @@ end
     opt_env[:gamma_bold_matrix] = g.gamma_bold_matrix
     opt_env[:F] = F
 
-    y_transformed_vec, lambda = box_cox(vec(opt_env[:y]), 1; lambda=box_cox_parameter)
+    # Use pre-allocated buffer for y transformation
+    box_cox!(opt_env[:y_vec_buffer], vec(opt_env[:y]), 1; lambda=box_cox_parameter)
     n = size(opt_env[:y], 2)
-    mat_transformed_y = reshape(y_transformed_vec, 1, n)
+    mat_transformed_y = reshape(opt_env[:y_vec_buffer], 1, n)
 
     calc_bats_faster(
         mat_transformed_y,
@@ -1061,6 +1082,7 @@ end
         tau = tau,
         p = p,
         q = q,
+        Fx_buffer = opt_env[:Fx_buffer],
     )
 
     # Use sum(abs2, x) instead of sum(x .^ 2) to avoid allocations
@@ -1185,6 +1207,7 @@ end
         tau = tau,
         p = p,
         q = q,
+        Fx_buffer = opt_env[:Fx_buffer],
     )
 
     # Use sum(abs2, x) instead of sum(x .* x) to avoid allocations
@@ -1416,6 +1439,10 @@ function fitSpecificBATS(
     opt_env[:y_vec_buffer] = Vector{Float64}(undef, n)
     opt_env[:x_nought_buffer] = Vector{Float64}(undef, size(x_nought, 1))
     opt_env[:y_transformed_mat] = Matrix{Float64}(undef, 1, n)
+
+    # Pre-allocate buffers for likelihood loop to eliminate allocations
+    state_dim = size(x_nought, 1)
+    opt_env[:Fx_buffer] = zeros(state_dim)
 
     tau = seasonal_periods === nothing ? 0 : sum(seasonal_periods)
 

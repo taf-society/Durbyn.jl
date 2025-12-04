@@ -1548,7 +1548,7 @@ cn = ["xreg1"]                       # exogenous name(s)
 ncxreg = 1
 
 nm = prep_coefs(arma, coef, cn, ncxreg)
-
+```
 # Output: NamedMatrix with columns ["ar1", "ar2", "ma1", "xreg1"]
 """
 function prep_coefs(arma::Vector{Int}, coef::AbstractArray, cn::Vector{String}, ncxreg::Int)

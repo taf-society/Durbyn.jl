@@ -695,6 +695,10 @@ function fitSpecificTBATS(
     opt_env[:e] = zeros(1, n)
     opt_env[:x] = zeros(size(x_nought, 1), n)
 
+    # Pre-allocate buffers for box_cox! to eliminate allocations in optimization loops
+    opt_env[:box_cox_buffer_x] = zeros(size(x_nought, 1))
+    opt_env[:box_cox_buffer_y] = zeros(n)
+
     if use_box_cox
         x_nought_untransformed = inv_box_cox(x_nought; lambda=lambda)
         opt_env[:x_nought_untransformed] = x_nought_untransformed
@@ -886,8 +890,9 @@ function calc_likelihood_tbats(
     ar_coefs = paramz.ar_coefs
     ma_coefs = paramz.ma_coefs
 
-    x_nought_vec, lambda = box_cox(vec(opt_env[:x_nought_untransformed]), 1; lambda=box_cox_parameter)
-    x_nought = reshape(x_nought_vec, :, 1)
+    # Use pre-allocated buffer for box_cox to eliminate allocations
+    box_cox!(opt_env[:box_cox_buffer_x], vec(opt_env[:x_nought_untransformed]), 1; lambda=box_cox_parameter)
+    x_nought = reshape(opt_env[:box_cox_buffer_x], :, 1)
 
     w = make_tbats_wmatrix(small_phi, k_vector, ar_coefs, ma_coefs, tau)
     g_result = make_tbats_gmatrix(alpha, beta_v, gamma_one_v, gamma_two_v, k_vector, p, q)
@@ -907,9 +912,10 @@ function calc_likelihood_tbats(
     opt_env[:gamma_bold_matrix] = g_result.gamma_bold_matrix
     opt_env[:F] = F
 
-    y_transformed_vec, lambda = box_cox(vec(opt_env[:y]), 1; lambda=box_cox_parameter)
+    # Use pre-allocated buffer for y transformation
+    box_cox!(opt_env[:box_cox_buffer_y], vec(opt_env[:y]), 1; lambda=box_cox_parameter)
     n = size(opt_env[:y], 2)
-    mat_transformed_y = reshape(y_transformed_vec, 1, n)
+    mat_transformed_y = reshape(opt_env[:box_cox_buffer_y], 1, n)
 
     for t = 1:n
         if t == 1

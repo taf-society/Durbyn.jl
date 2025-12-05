@@ -1121,7 +1121,7 @@ Returns
 A symmetric matrix of size `r*r`, where `r = max(length(phi), length(theta) + 1)`.
 """
 function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
-                                          theta::AbstractVector{<:Real};
+                                          theta::AbstractVector{<:Real},
                                           tol::Real = eps(Float64))
 
     φ = Float64.(phi)
@@ -1132,42 +1132,46 @@ function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
     r = max(p, q + 1)
 
     ttheta = zeros(Float64, r + q)
-    ttheta[1] = 1.0
-    for i in 1:q
-        ttheta[1 + i] = θ[i]
+    @inbounds ttheta[1] = 1.0
+    @inbounds for i in 1:q
+        ttheta[i + 1] = θ[i]
     end
 
     P = zeros(Float64, r, r)
 
     if p > 0
         r2 = max(p + q, p + 1)
+
         tphi = Vector{Float64}(undef, p + 1)
-        tphi[1] = 1.0
-        for i in 1:p
-            tphi[1 + i] = -φ[i]
+        @inbounds tphi[1] = 1.0
+        @inbounds for i in 1:p
+            tphi[i + 1] = -φ[i]
         end
+
         Γ = zeros(Float64, r2, r2)
 
-        for j0 in 0:(r2-1)
+        @inbounds for j0 in 0:(r2-1)
+            j_idx = j0 + 1
             for i0 in j0:(r2-1)
                 d = i0 - j0
                 if d <= p
-                    Γ[j0+1, i0+1] += tphi[d+1]
+                    Γ[j_idx, i0 + 1] += tphi[d + 1]
                 end
             end
         end
 
-        for i0 in 0:(r2-1)
+        @inbounds for i0 in 0:(r2-1)
+            i_idx = i0 + 1
             for j0 in 1:(r2-1)
                 s = i0 + j0
                 if s <= p
-                    Γ[j0+1, i0+1] += tphi[s+1]
+                    Γ[j0 + 1, i_idx] += tphi[s + 1]
                 end
             end
         end
 
         g = zeros(Float64, r2)
-        g[1] = 1.0
+        @inbounds g[1] = 1.0
         u = let
             ok = true
             κ = Inf
@@ -1184,78 +1188,114 @@ function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
             end
         end
 
-        for i0 in 0:(r-1)
+        @inbounds for i0 in 0:(r-1)
+            i_idx = i0 + 1
+            φ_i_base = i0 + 1
+            k_max = p - 1 - i0
+
             for j0 in i0:(r-1)
+                j_idx = j0 + 1
+                φ_j_base = j0 + 1
+                m_max = p - 1 - j0
                 acc = 0.0
-                for k0 in 0:((p-1)-i0)
-                    for L0 in k0:(k0+q)
-                        tLk = ttheta[(L0 - k0) + 1]
-                        for m0 in 0:((p-1)-j0)
-                            for n0 in m0:(m0+q)
-                                tnm = ttheta[(n0 - m0) + 1]
-                                acc += φ[i0 + k0 + 1] * φ[j0 + m0 + 1] *
-                                       tLk * tnm *
-                                       u[abs(L0 - n0) + 1]
+
+                for k0 in 0:k_max
+                    φ_ik = φ[φ_i_base + k0]
+                    L_start = k0
+                    L_end = k0 + q
+
+                    for L0 in L_start:L_end
+                        tLk = ttheta[L0 - k0 + 1]
+                        φ_ik_tLk = φ_ik * tLk
+
+                        for m0 in 0:m_max
+                            φ_jm = φ[φ_j_base + m0]
+                            φ_product = φ_ik_tLk * φ_jm
+                            n_start = m0
+                            n_end = m0 + q
+
+                            for n0 in n_start:n_end
+                                tnm = ttheta[n0 - m0 + 1]
+                                u_idx = abs(L0 - n0) + 1
+                                acc += φ_product * tnm * u[u_idx]
                             end
                         end
                     end
                 end
-                P[i0+1, j0+1] += acc
+                P[i_idx, j_idx] += acc
             end
         end
 
         rrz = zeros(Float64, q)
         if q > 0
-            for i0 in 0:(q-1)
-                val = ttheta[i0 + 1] 
+            @inbounds for i0 in 0:(q-1)
+                i_idx = i0 + 1
+                val = ttheta[i_idx]
                 jstart = max(0, i0 - p)
                 for j0 in jstart:(i0-1)
-                    val -= rrz[j0 + 1] * tphi[(i0 - j0) + 1]
+                    val -= rrz[j0 + 1] * tphi[i0 - j0 + 1]
                 end
-                rrz[i0 + 1] = val
+                rrz[i_idx] = val
             end
         end
 
-        for i0 in 0:(r-1)
+        @inbounds for i0 in 0:(r-1)
+            i_idx = i0 + 1
+            k_max_i = p - 1 - i0
+
             for j0 in i0:(r-1)
+                j_idx = j0 + 1
+                k_max_j = p - 1 - j0
                 acc = 0.0
 
-                for k0 in 0:((p-1)-i0)
-                    for L0 in (k0+1):(k0+q)
-                        if j0 + L0 < q + 1
-                            acc += φ[i0 + k0 + 1] *
-                                   ttheta[(j0 + L0) + 1] *
-                                   rrz[(L0 - k0 - 1) + 1]
-                        end
-                    end
-                end
-                for k0 in 0:((p-1)-j0)
-                    for L0 in (k0+1):(k0+q)
-                        if i0 + L0 < q + 1
-                            acc += φ[j0 + k0 + 1] *
-                                   ttheta[(i0 + L0) + 1] *
-                                   rrz[(L0 - k0 - 1) + 1]
+                for k0 in 0:k_max_i
+                    φ_ik = φ[i0 + k0 + 1]
+                    L_start = k0 + 1
+                    L_end = k0 + q
+
+                    for L0 in L_start:L_end
+                        j0_L0 = j0 + L0
+                        if j0_L0 < q + 1
+                            acc += φ_ik * ttheta[j0_L0 + 1] * rrz[L0 - k0]
                         end
                     end
                 end
 
-                P[i0+1, j0+1] += acc
+                for k0 in 0:k_max_j
+                    φ_jk = φ[j0 + k0 + 1]
+                    L_start = k0 + 1
+                    L_end = k0 + q
+
+                    for L0 in L_start:L_end
+                        i0_L0 = i0 + L0
+                        if i0_L0 < q + 1
+                            acc += φ_jk * ttheta[i0_L0 + 1] * rrz[L0 - k0]
+                        end
+                    end
+                end
+
+                P[i_idx, j_idx] += acc
             end
         end
     end
 
-    for i0 in 0:(r-1)
+    @inbounds for i0 in 0:(r-1)
+        i_idx = i0 + 1
         for j0 in i0:(r-1)
+            j_idx = j0 + 1
+            k_max = q - j0
             acc = 0.0
-            for k0 in 0:(q - j0)
-                acc += ttheta[(i0 + k0) + 1] * ttheta[(j0 + k0) + 1]
+            @simd for k0 in 0:k_max
+                acc += ttheta[i0 + k0 + 1] * ttheta[j0 + k0 + 1]
             end
-            P[i0+1, j0+1] += acc
+            P[i_idx, j_idx] += acc
         end
     end
 
-    for i in 1:r, j in (i+1):r
-        P[j, i] = P[i, j]
+    @inbounds for i in 1:r
+        for j in (i+1):r
+            P[j, i] = P[i, j]
+        end
     end
 
     return P

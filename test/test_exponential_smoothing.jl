@@ -66,7 +66,7 @@ using Durbyn.TableOps
             # Auto-selection with damping consideration
             fit_damped_auto = ets(ap, 12, "ZZZ"; damped=nothing)
             fc_damped_auto = forecast(fit_damped_auto, h = 12)
-            plot(fc_damped_auto)
+            # plot(fc_damped_auto)  # Requires Plots.jl
             @test fit_damped_auto isa ETS
 
             # fit_damped_auto = ets(ap[1:5], 1, "ZZZ"; damped=nothing)
@@ -78,7 +78,7 @@ using Durbyn.TableOps
         @testset "Fixed smoothing parameters" begin
             fit_fixed = ets(ap, 12, "AAN"; alpha=0.3, beta=0.1)
             fc__fixed = forecast(fit_fixed, h = 12)
-            plot(fc__fixed)
+            # plot(fc__fixed)  # Requires Plots.jl
             @test fit_fixed isa ETS
         end
 
@@ -92,7 +92,7 @@ using Durbyn.TableOps
             # Auto lambda selection
             fit_auto_lambda = ets(ap, 12, "AAN"; lambda="auto")
             fc_auto_lambda = forecast(fit_auto_lambda, h = 15)
-            plot(fc_auto_lambda)
+            # plot(fc_auto_lambda)  # Requires Plots.jl
             @test fit_auto_lambda isa ETS
             @test fit_auto_lambda.lambda !== nothing
             @test length(fc_auto_lambda.mean) == 15
@@ -112,7 +112,7 @@ using Durbyn.TableOps
         @testset "Forecasting from ETS model" begin
             fit = ets(ap, 12, "AAA")
             fc = forecast(fit; h=27)
-            plot(fc)
+            # plot(fc)  # Requires Plots.jl
             @test fc isa Forecast
             @test length(fc.mean) ==27
             fc_levels = forecast(fit; h=12, level=[80, 95])
@@ -165,7 +165,7 @@ using Durbyn.TableOps
         @testset "Box-Cox transformation" begin
             fit_lambda = es_ses(ap, 12; lambda=0.5, biasadj=true)
             fc = forecast(fit_lambda, h = 12)
-            plot(fc)
+            # plot(fc)  # Requires Plots.jl
             @test fit_lambda isa SES
             @test fit_lambda.lambda == 0.5
             @test fit_lambda.biasadj == true
@@ -219,8 +219,8 @@ using Durbyn.TableOps
             fit_simple2 = es_holt(ap; initial="simple")
             fc1 = forecast(fit_simple1, h = 12)
             fc2 = forecast(fit_simple2, h = 12)
-            plot(fc1)
-            plot(fc2)
+            # plot(fc1)  # Requires Plots.jl
+            # plot(fc2)  # Requires Plots.jl
             @test all(fc1.mean - fc2.mean .< 1)
             @test fit_simple1 isa Holt
             @test fit_simple2 isa Holt
@@ -239,7 +239,7 @@ using Durbyn.TableOps
         @testset "Forecasting from Holt" begin
             fit = es_holt(ap, 12)
             fc = forecast(fit; h=12)
-            plot(fc)
+            # plot(fc)  # Requires Plots.jl
             @test fc isa Forecast
             @test length(fc.mean) == 12
             # Holt forecasts should show linear trend
@@ -251,7 +251,7 @@ using Durbyn.TableOps
         @testset "Additive seasonality" begin
             fit = es_holt_winters(ap, 12; seasonal="additive")
             fc = forecast(fit, h = 65)
-            plot(fc)
+            # plot(fc)  # Requires Plots.jl
             @test length(fc.mean) == 65
             @test fit isa HoltWinters
             @test occursin("additive", fit.method)
@@ -261,7 +261,7 @@ using Durbyn.TableOps
         @testset "Multiplicative seasonality" begin
             fit = es_holt_winters(ap, 12; seasonal="multiplicative")
             fc = forecast(fit, h = 34)
-            plot(fc)
+            # plot(fc)  # Requires Plots.jl
             @test length(fc.mean) == 34
             @test fit isa HoltWinters
             @test occursin("multiplicative", fit.method)
@@ -270,7 +270,7 @@ using Durbyn.TableOps
         @testset "Damped trend" begin
             fit_damped = es_holt_winters(ap, 12; damped=true)
             fc = forecast(fit_damped, h = 13)
-            plot(fc)
+            # plot(fc)  # Requires Plots.jl
             @test length(fc.mean)== 13
             @test fit_damped isa HoltWinters
             @test occursin("Damped", fit_damped.method)
@@ -279,7 +279,7 @@ using Durbyn.TableOps
         @testset "Exponential trend with multiplicative season" begin
             fit = es_holt_winters(ap, 12; seasonal="multiplicative", exponential=false)
             fc = forecast(fit, h = 12)
-            plot(fc)
+            # plot(fc)  # Requires Plots.jl
             @test fit isa HoltWinters
         end
 
@@ -291,7 +291,7 @@ using Durbyn.TableOps
         @testset "Simple initialization" begin
             fit_simple = es_holt_winters(ap, 12; initial="simple")
             fc = forecast(fit_simple, h = 12)
-            plot(fc)
+            # plot(fc)  # Requires Plots.jl
             @test fit_simple isa HoltWinters
         end
 

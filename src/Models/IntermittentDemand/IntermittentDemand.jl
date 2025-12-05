@@ -1,6 +1,5 @@
 module IntermittentDemand
 using Statistics
-using Plots
 import Base: show
 import Statistics: mean
 

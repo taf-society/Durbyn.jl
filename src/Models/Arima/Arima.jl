@@ -7,7 +7,6 @@ import Statistics: mean
 import LinearAlgebra: rank
 
 # External packages
-using Plots
 using Polynomials
 using Distributions
 import Tables

@@ -1,6 +1,5 @@
 module Generics
 
-using Plots
 import Base: show, summary
 include("fit.jl")
 include("forecast.jl")

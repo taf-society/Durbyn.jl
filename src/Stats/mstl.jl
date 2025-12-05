@@ -283,6 +283,12 @@ end
 
 Multi-panel plot for `MSTLResult` using Plots.jl.
 
+Requires loading Plots.jl first:
+```julia
+using Plots
+plot(mstl_result)
+```
+
 Panels (from top):
   1. Data (reconstructed)
   2..(1+S) Seasonal(p) for each period p in `res.m`
@@ -291,72 +297,6 @@ Panels (from top):
 
 Keyword arguments are forwarded to `Plots.plot!`.
 """
-function plot(res::MSTLResult; labels=nothing,
-              col_range::Any="lightgray",
-              main::Union{Nothing,String}=nothing,
-              range_bars::Bool=true,
-              kwargs...)
-
-    @assert !isnothing(Base.find_package("Plots")) "Plots.jl is required for plot(::MSTLResult)."
-    @eval using Plots
-
-    S = isempty(res.seasonals) ? zeros(eltype(res.data), length(res.data)) :
-                                 reduce(+, res.seasonals)
-    data = res.trend .+ S .+ res.remainder
-
-    series = Vector{AbstractVector}(undef, 2 + length(res.seasonals) + 1)
-    names  = Vector{String}(undef, length(series))
-
-    series[1] = data
-    names[1]  = "Data"
-    for (i, p) in enumerate(res.m)
-        series[1+i] = res.seasonals[i]
-        names[1+i]  = "Seasonal($p)"
-    end
-    series[end-1] = res.trend
-    names[end-1]  = "Trend"
-    series[end]   = res.remainder
-    names[end]    = "Remainder"
-
-    if !isnothing(labels)
-        @assert length(labels) == length(series) "labels length must match number of panels ($(length(series)))."
-        names = labels
-    end
-
-    n = length(res.data)
-    nplot = length(series)
-    
-    rx  = map(extrema, series)
-    rng = [r[2] - r[1] for r in rx]
-    barh = range_bars ? minimum(rng) / 2 : 0.0
-
-    plt = Plots.plot(layout=(nplot, 1), legend=false; kwargs...)
-    for i in 1:nplot
-        Plots.plot!(plt[i], series[i], ylabel=names[i], seriestype=:line; kwargs...)
-
-        if range_bars && barh > 0
-            yr = rx[i]
-            ymid = (yr[1] + yr[2]) / 2
-            dx = 0.02 * n
-            xb = [n - dx, n - dx, n - 0.4dx, n - 0.4dx]
-            yb = [ymid - barh, ymid + barh, ymid + barh, ymid - barh]
-            Plots.plot!(plt[i], xb, yb, fill=(col_range, 0.5), linecolor=:transparent)
-        end
-
-        if names[i] == "Remainder" || startswith(names[i], "Seasonal(")
-            Plots.hline!(plt[i], [0.0], color=:black, linestyle=:dash)
-        end
-
-        if i == 1 && !isnothing(main)
-            Plots.plot!(plt[i], title=main)
-        end
-
-        if i < nplot
-            Plots.plot!(plt[i], xticks=:none)
-        end
-    end
-
-    Plots.xlabel!(plt[nplot], "index")
-    Plots.display(plt)
-    return plt
+function plot(res::MSTLResult; kwargs...)
+    error("Plotting MSTLResult requires a plotting backend. Load Plots.jl first:\n\n  using Plots\n  plot(mstl_result)")
 end

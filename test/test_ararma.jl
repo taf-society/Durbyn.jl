@@ -18,7 +18,7 @@ using Durbyn.Ararma
         @test !isnan(fit.bic)
         @test !isnan(fit.loglik)
         fc = forecast(fit, h = 12)
-        plot(fc)
+        # plot(fc)  # Requires Plots.jl
     end
 
     @testset "ararma() - Custom AR/MA orders" begin
@@ -29,7 +29,7 @@ using Durbyn.Ararma
         @test length(fit_21.best_phi) == 2
         @test length(fit_21.best_theta) == 1
         fc = forecast(fit_21, h = 12)
-        plot(fc)
+        # plot(fc)  # Requires Plots.jl
 
         fit_32 = ararma(ap; p=3, q=2)
         @test fit_32 isa ArarmaModel
@@ -38,7 +38,7 @@ using Durbyn.Ararma
         @test length(fit_32.best_phi) == 3
         @test length(fit_32.best_theta) == 2
         fc = forecast(fit_32, h = 12)
-        plot(fc)
+        # plot(fc)  # Requires Plots.jl
     end
 
     @testset "ararma() - AR-only model (q=0)" begin
@@ -48,7 +48,7 @@ using Durbyn.Ararma
         @test fit_ar.ma_order == 0
         @test length(fit_ar.best_theta) == 0
         fc = forecast(fit_ar, h = 12)
-        plot(fc)
+        # plot(fc)  # Requires Plots.jl
     end
 
     @testset "ararma() - MA-only model (p=0)" begin
@@ -59,7 +59,7 @@ using Durbyn.Ararma
         @test length(fit_ma.best_phi) == 0
         @test length(fit_ma.best_theta) == 2
         fc = forecast(fit_ma, h = 12)
-        plot(fc)
+        # plot(fc)  # Requires Plots.jl
     end
 
     @testset "ararma() - Custom max_ar_depth and max_lag" begin
@@ -69,7 +69,7 @@ using Durbyn.Ararma
         @test all(fit.best_lag .<= 15)
         @test length(fit.gamma) == 21  # max_lag + 1
         fc = forecast(fit, h = 12)
-        plot(fc)
+        # plot(fc)  # Requires Plots.jl
     end
 
     @testset "ararma() - Model components" begin

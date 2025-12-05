@@ -4,7 +4,6 @@ using LinearAlgebra
 import Statistics: mean
 
 # External packages
-using Plots
 using Polynomials
 using Distributions
 

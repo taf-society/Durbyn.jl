@@ -1,7 +1,6 @@
 module Stats
 import Base: show, summary
 import Statistics: mean, std, quantile, minimum, maximum, var
-using Plots
 import LinearAlgebra: diag, dot
 
 using ..Optimize

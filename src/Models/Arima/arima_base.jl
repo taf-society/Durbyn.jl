@@ -123,7 +123,7 @@ fit.arma             # [p, q, P, Q, s, d, D]
 fit.coef             # parameter table with names
 fit.residuals        # innovations
 fit.model            # state-space representation
-````
+```
 
 """
 mutable struct ArimaFit

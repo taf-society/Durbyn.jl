@@ -1094,7 +1094,7 @@ function compute_q0_covariance_matrix(phi::AbstractArray, theta::AbstractArray)
 end
 
 """
-    getQ0bis(phi, theta, tol)
+    compute_q0_bis_covariance_matrix(phi, theta, tol)
 
 Compute the initial covariance matrix for the AR component of an ARIMA model
 using the Rossignol (2011) method.
@@ -1120,8 +1120,145 @@ Returns
 -------
 A symmetric matrix of size `r*r`, where `r = max(length(phi), length(theta) + 1)`.
 """
-function getQ0bis(phi::AbstractArray, theta::AbstractArray, tol::Real)
-    return compute_q0_covariance_matrix(phi, theta)
+function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
+                                          theta::AbstractVector{<:Real};
+                                          tol::Real = eps(Float64))
+
+    φ = Float64.(phi)
+    θ = Float64.(theta)
+
+    p = length(φ)
+    q = length(θ)
+    r = max(p, q + 1)
+
+    ttheta = zeros(Float64, r + q)
+    ttheta[1] = 1.0
+    for i in 1:q
+        ttheta[1 + i] = θ[i]
+    end
+
+    P = zeros(Float64, r, r)
+
+    if p > 0
+        r2 = max(p + q, p + 1)
+        tphi = Vector{Float64}(undef, p + 1)
+        tphi[1] = 1.0
+        for i in 1:p
+            tphi[1 + i] = -φ[i]
+        end
+        Γ = zeros(Float64, r2, r2)
+
+        for j0 in 0:(r2-1)
+            for i0 in j0:(r2-1)
+                d = i0 - j0
+                if d <= p
+                    Γ[j0+1, i0+1] += tphi[d+1]
+                end
+            end
+        end
+
+        for i0 in 0:(r2-1)
+            for j0 in 1:(r2-1)
+                s = i0 + j0
+                if s <= p
+                    Γ[j0+1, i0+1] += tphi[s+1]
+                end
+            end
+        end
+
+        g = zeros(Float64, r2)
+        g[1] = 1.0
+        u = let
+            ok = true
+            κ = Inf
+            try
+                κ = cond(Γ)
+            catch
+                ok = false
+            end
+
+            if ok && isfinite(κ) && κ < 1/tol
+                Γ \ g
+            else
+                (Γ + tol * I) \ g
+            end
+        end
+
+        for i0 in 0:(r-1)
+            for j0 in i0:(r-1)
+                acc = 0.0
+                for k0 in 0:((p-1)-i0)
+                    for L0 in k0:(k0+q)
+                        tLk = ttheta[(L0 - k0) + 1]
+                        for m0 in 0:((p-1)-j0)
+                            for n0 in m0:(m0+q)
+                                tnm = ttheta[(n0 - m0) + 1]
+                                acc += φ[i0 + k0 + 1] * φ[j0 + m0 + 1] *
+                                       tLk * tnm *
+                                       u[abs(L0 - n0) + 1]
+                            end
+                        end
+                    end
+                end
+                P[i0+1, j0+1] += acc
+            end
+        end
+
+        rrz = zeros(Float64, q)
+        if q > 0
+            for i0 in 0:(q-1)
+                val = ttheta[i0 + 1] 
+                jstart = max(0, i0 - p)
+                for j0 in jstart:(i0-1)
+                    val -= rrz[j0 + 1] * tphi[(i0 - j0) + 1]
+                end
+                rrz[i0 + 1] = val
+            end
+        end
+
+        for i0 in 0:(r-1)
+            for j0 in i0:(r-1)
+                acc = 0.0
+
+                for k0 in 0:((p-1)-i0)
+                    for L0 in (k0+1):(k0+q)
+                        if j0 + L0 < q + 1
+                            acc += φ[i0 + k0 + 1] *
+                                   ttheta[(j0 + L0) + 1] *
+                                   rrz[(L0 - k0 - 1) + 1]
+                        end
+                    end
+                end
+                for k0 in 0:((p-1)-j0)
+                    for L0 in (k0+1):(k0+q)
+                        if i0 + L0 < q + 1
+                            acc += φ[j0 + k0 + 1] *
+                                   ttheta[(i0 + L0) + 1] *
+                                   rrz[(L0 - k0 - 1) + 1]
+                        end
+                    end
+                end
+
+                P[i0+1, j0+1] += acc
+            end
+        end
+    end
+
+    for i0 in 0:(r-1)
+        for j0 in i0:(r-1)
+            acc = 0.0
+            for k0 in 0:(q - j0)
+                acc += ttheta[(i0 + k0) + 1] * ttheta[(j0 + k0) + 1]
+            end
+            P[i0+1, j0+1] += acc
+        end
+    end
+
+    for i in 1:r, j in (i+1):r
+        P[j, i] = P[i, j]
+    end
+
+    return P
 end
 
 """
@@ -1296,7 +1433,7 @@ This function mirrors the structure and logic of the corresponding C function us
 by high-level ARIMA fitting routines.
 
 The initial state covariance matrix `Pn` is computed either by `compute_q0_covariance_matrix` (for `SSinit="Gardner1980"`)
-or by `getQ0bis` (for `SSinit="Rossignol2011"`).
+or by `compute_q0_bis_covariance_matrix` (for `SSinit="Rossignol2011"`).
 
 # Arguments
 - `phi::Vector{Float64}`: Non-seasonal AR coefficients.
@@ -1360,7 +1497,7 @@ function initialize_arima_state(phi::Vector{Float64}, theta::Vector{Float64}, De
         if SSinit == "Gardner1980"
             Pn[1:r, 1:r] = compute_q0_covariance_matrix(phi, theta)
         elseif SSinit == "Rossignol2011"
-            Pn[1:r, 1:r] = getQ0bis(phi, theta, tol)
+            Pn[1:r, 1:r] = compute_q0_bis_covariance_matrix(phi, theta, tol)
         else
             throw(ArgumentError("Invalid value for SSinit: $SSinit"))
         end
@@ -1588,7 +1725,7 @@ function update_arima(mod::ArimaStateSpace, phi, theta; ss_g=true)
         if ss_g
             mod.Pn[1:r, 1:r] .= compute_q0_covariance_matrix(phi, theta)
         else
-            mod.Pn[1:r, 1:r] .= getQ0bis(phi, theta, 0.0)
+            mod.Pn[1:r, 1:r] .= compute_q0_bis_covariance_matrix(phi, theta, 0.0)
         end
     else
         if p > 0

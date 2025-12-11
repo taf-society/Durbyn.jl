@@ -58,7 +58,7 @@ For complete documentation, see the [Grammar Guide](https://taf-society.github.i
 ### Key Components
 
 - **Formula Interface** — Declarative model specification using `@formula` for
-  ARIMA, BATS, and ETS models (`ArimaSpec`, `BatsSpec`, `EtsSpec`, `SesSpec`, `HoltSpec`, etc.)
+  ARIMA, BATS, TBATS, and ETS models (`ArimaSpec`, `BatsSpec`, `TbatsSpec`, `EtsSpec`, `SesSpec`, `HoltSpec`, etc.)
 - `Durbyn.ModelSpecs` — Formula-based model specifications with `PanelData` support,
   grouped fitting, and `forecast_table` for tidy outputs
 - `Durbyn.TableOps` — Lightweight, Tables.jl-friendly data wrangling helpers
@@ -78,7 +78,8 @@ For complete documentation, see the [Grammar Guide](https://taf-society.github.i
   for seasonal components, enabling handling of **non-integer seasonal periods** (e.g., 52.18
   weeks/year), **very long cycles** (e.g., 5-minute data with daily and weekly patterns),
   and **dual calendar effects** (e.g., Gregorian + Hijri). Computational efficiency: $O(k)$
-  instead of $O(m)$ where $k \ll m$. See the [TBATS documentation](https://taf-society.github.io/Durbyn.jl/dev/tbats/)
+  instead of $O(m)$ where $k \ll m$. **Supports both formula interface** (`TbatsSpec(@formula(...))`)
+  **and direct API** for flexible usage. See the [TBATS documentation](https://taf-society.github.io/Durbyn.jl/dev/tbats/)
   for full mathematical details, usage examples, and references.
 
 ---
@@ -129,12 +130,13 @@ fc = forecast(fitted, h = 7, newdata = newdata)
 models = model(
     ArimaSpec(@formula(value = p() + q() + P() + Q() + d() + D())),
     BatsSpec(@formula(value = bats(seasonal_periods=12))),
+    TbatsSpec(@formula(value = tbats(seasonal_periods=12))),
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),
     SesSpec(@formula(value = ses())),
     HoltSpec(@formula(value = holt(damped=true))),
     HoltWintersSpec(@formula(value = hw(seasonal="multiplicative")); m = 12),
     CrostonSpec(@formula(value = croston(method="sba"))),  # Bias-corrected Croston
-    names = ["arima", "bats", "ets_auto", "ses", "holt_damped", "hw_mul", "croston_sba"]
+    names = ["arima", "bats", "tbats", "ets_auto", "ses", "holt_damped", "hw_mul", "croston_sba"]
 )
 
 fitted = fit(models, panel)       # each spec fitted to every series
@@ -187,12 +189,13 @@ glimpse(panel)
 models = model(
     ArimaSpec(@formula(value = p() + q())),
     BatsSpec(@formula(value = bats(seasonal_periods=12))),
+    TbatsSpec(@formula(value = tbats(seasonal_periods=12))),
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),
     SesSpec(@formula(value = ses())),
     HoltSpec(@formula(value = holt(damped=true))),
     HoltWintersSpec(@formula(value = hw(seasonal="multiplicative")); m=12),
     CrostonSpec(@formula(value = croston(method="sba"))),  # Syntetos-Boylan Approximation
-    names=["arima", "bats", "ets_auto", "ses", "holt_damped", "hw_mul", "croston_sba"]
+    names=["arima", "bats", "tbats", "ets_auto", "ses", "holt_damped", "hw_mul", "croston_sba"]
 )
 
 # Fit all models to all series
@@ -508,9 +511,10 @@ models = model(
     ArarSpec(@formula(value = arar())),
     ArarmaSpec(@formula(value = p() + q())),
     BatsSpec(@formula(value = bats(seasonal_periods=12))),
+    TbatsSpec(@formula(value = tbats(seasonal_periods=12))),
     ArimaSpec(@formula(value = p() + q() + P() + Q())),
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z"))),
-    names = ["arar", "ararma", "bats", "arima", "ets"]
+    names = ["arar", "ararma", "bats", "tbats", "arima", "ets"]
 )
 
 # Fit all models to all groups

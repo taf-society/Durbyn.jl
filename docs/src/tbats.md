@@ -163,9 +163,102 @@ where $c_j$ depends on the model's transition matrix $F$ and error vector $g$.
 
 ---
 
-## Julia Implementation
+## Usage in Durbyn
 
-### Basic Usage
+Durbyn provides two interfaces for TBATS: the **classic API** with direct function calls and the **grammar interface** for declarative model specification.
+
+### Grammar Interface (Recommended)
+
+The grammar interface provides a unified, declarative way to specify TBATS models using `@formula` and `TbatsSpec`:
+
+```julia
+using Durbyn
+using Durbyn.ModelSpecs
+
+# Create sample data with weekly seasonality (non-integer period)
+n = 156  # 3 years of weekly data
+t = 1:n
+data = (sales = 100.0 .+ 10.0 .* sin.(2π .* t ./ 52.18) .+ 2.0 .* randn(n),)
+
+# Basic TBATS with defaults (automatic component selection)
+spec = TbatsSpec(@formula(sales = tbats()))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# TBATS with non-integer weekly seasonality (52.18 weeks/year)
+spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# TBATS with multiple seasonal periods (daily + yearly)
+# Example: hourly data with daily (24h) and yearly (8766h ≈ 365.25 days)
+spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=[24, 8766])))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# TBATS with explicit Fourier orders
+spec = TbatsSpec(@formula(sales = tbats(
+    seasonal_periods=[7, 365.25],
+    k=[3, 10]  # 3 harmonics for weekly, 10 for yearly
+)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# TBATS with specific component selection
+spec = TbatsSpec(@formula(sales = tbats(
+    seasonal_periods=52.18,
+    use_box_cox=true,
+    use_trend=true,
+    use_damped_trend=false,
+    use_arma_errors=true
+)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h = 12)
+
+# Additional options at fit time
+fitted = fit(spec, data, bc_lower=0.0, bc_upper=1.5, biasadj=true)
+```
+
+**Panel Data Support:**
+
+```julia
+# Create panel data (Tables.jl compatible)
+n_per_group = 104  # 2 years of weekly data per group
+groups = ["A", "B", "C"]
+
+tbl = (
+    product = repeat(groups, inner=n_per_group),
+    sales = vcat([
+        100.0 .+ 10.0 .* sin.(2π .* (1:n_per_group) ./ 52) .+ 2.0 .* randn(n_per_group)
+        for _ in groups
+    ]...)
+)
+
+# Fit TBATS to each product separately
+spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+fitted = fit(spec, tbl, groupby = :product)
+fc = forecast(fitted, h = 12)
+```
+
+**Model Comparison:**
+
+```julia
+# Compare TBATS with BATS and other models
+models = model(
+    TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18))),  # Non-integer period
+    BatsSpec(@formula(sales = bats(seasonal_periods=52))),        # Integer period only
+    ArimaSpec(@formula(sales = p() + q() + P() + Q())),
+    EtsSpec(@formula(sales = e("Z") + t("Z") + s("Z"))),
+    names = ["tbats", "bats", "arima", "ets"]
+)
+
+fitted = fit(models, data)
+fc = forecast(fitted, h = 12)
+```
+
+### Classic API
+
+For direct usage without the grammar interface:
 
 ```julia
 using Durbyn
@@ -177,6 +270,37 @@ model = tbats(y, m)
 
 fc = forecast(model, h=20)
 ```
+
+### Formula Interface (Direct)
+
+You can also use the formula interface directly without `TbatsSpec`:
+
+```julia
+using Durbyn
+
+data = (sales = randn(156) .+ 100,)
+formula = @formula(sales = tbats(seasonal_periods=52.18))
+fit = tbats(formula, data)  # Works with Tables.jl compatible data
+fc = forecast(fit, h = 12)
+```
+
+### Key keyword arguments
+
+**Grammar arguments (in `@formula`):**
+
+- `seasonal_periods`: `Real` or `Vector{Real}` specifying seasonal period(s) - **can be non-integer**
+- `k`: `Int` or `Vector{Int}` specifying Fourier orders (harmonics per season)
+- `use_box_cox`, `use_trend`, `use_damped_trend`, `use_arma_errors`: `Bool` or `nothing` to auto-select
+
+**Fit-time arguments:**
+
+- `bc_lower`, `bc_upper`: bounds for the Box–Cox search when enabled
+- `biasadj`: apply bias correction during inverse Box–Cox transformation
+- `model`: pass a previous `TBATSModel` to refit the same structure to new data
+
+---
+
+## Julia Implementation (Array Interface)
 
 ### Function Signature
 

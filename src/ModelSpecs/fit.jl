@@ -1400,3 +1400,173 @@ function fit(spec::BatsSpec, panel::PanelData; kwargs...)
 
     return fit(spec, panel.data; pairs(kwdict)...)
 end
+
+"""
+    fit(spec::TbatsSpec, data; groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+
+Fit a TBATS model specification to data (single series or grouped).
+
+TBATS (Trigonometric seasonality, Box-Cox transformation, ARMA errors, Trend and
+Seasonal components) uses Fourier-based seasonal representation, enabling non-integer
+seasonal periods and efficient handling of very long seasonal cycles.
+
+# Arguments
+- `spec::TbatsSpec` - TBATS model specification created with `@formula`
+- `data` - Tables.jl-compatible data (NamedTuple, DataFrame, CSV.File, etc.)
+
+# Keyword Arguments
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+- Additional kwargs passed to underlying `tbats` function:
+  - `bc_lower::Real=0.0` - Lower bound for Box-Cox lambda search
+  - `bc_upper::Real=1.0` - Upper bound for Box-Cox lambda search
+  - `biasadj::Bool=false` - Bias-adjusted inverse Box-Cox transformation
+  - `model=nothing` - Previous TBATS model to refit
+
+# Returns
+- If `groupby=nothing`: `FittedTbats` - Single fitted model
+- If `groupby` specified: `GroupedFittedModels` - Fitted models for each group
+
+# Examples
+```julia
+# Single series fit with defaults
+spec = TbatsSpec(@formula(sales = tbats()))
+fitted = fit(spec, data)
+
+# With non-integer seasonal period (weekly data, yearly seasonality)
+spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+fitted = fit(spec, data)
+
+# With multiple seasonal periods
+spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=[7, 365.25])))
+fitted = fit(spec, data)
+
+# With explicit Fourier orders
+spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10])))
+fitted = fit(spec, data)
+
+# With custom Box-Cox bounds
+spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18, use_box_cox=true)))
+fitted = fit(spec, data, bc_lower=0.0, bc_upper=1.5)
+
+# Grouped data fit (panel data)
+spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+fitted = fit(spec, data, groupby = [:product, :location])
+
+# Parallel grouped fitting with error collection
+fitted = fit(spec, data, groupby=:product, parallel=true, fail_fast=false)
+```
+
+# See Also
+- [`TbatsSpec`](@ref)
+- [`forecast`](@ref)
+- [`BatsSpec`](@ref) - BATS specification (integer seasonal periods only)
+"""
+function fit(spec::TbatsSpec, data;
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           groupby=groupby,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           kwargs...)
+    end
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    target_data = tbl[target_col]
+    if !(target_data isa AbstractVector)
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' must be a vector, got $(typeof(target_data))"
+        ))
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Tbats_mod = getfield(parent_mod, :Tbats)
+    tbats_fit = Tbats_mod.tbats(spec.formula, data; pairs(fit_options)...)
+
+    return FittedTbats(
+        spec,
+        tbats_fit,
+        target_col,
+        tbl
+    )
+end
+
+"""
+    forecast(fitted::FittedTbats; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+
+Generate forecasts from a fitted TBATS model.
+
+# Arguments
+- `fitted::FittedTbats` - Fitted TBATS model from `fit(TbatsSpec, data)`
+
+# Keyword Arguments
+- `h::Int` - Forecast horizon (number of periods ahead)
+- `level::Vector{<:Real}` - Confidence levels for prediction intervals (default [80, 95])
+- `fan::Bool` - Generate fan chart with multiple levels (default false)
+- `biasadj::Union{Bool, Nothing}` - Bias adjustment for Box-Cox back-transformation
+- Additional kwargs passed to underlying `forecast` function
+
+# Returns
+`Forecast` object containing point forecasts and prediction intervals
+
+# Examples
+```julia
+spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+fitted = fit(spec, data)
+
+# 12-period ahead forecast
+fc = forecast(fitted, h = 12)
+
+# Custom confidence levels
+fc = forecast(fitted, h = 12, level = [90, 95, 99])
+
+# Fan chart
+fc = forecast(fitted, h = 12, fan = true)
+
+# With bias adjustment
+fc = forecast(fitted, h = 12, biasadj = true)
+
+# Access forecast components
+fc.mean        # Point forecasts
+fc.lower       # Lower bounds for each level
+fc.upper       # Upper bounds for each level
+fc.level       # Confidence levels
+```
+
+# See Also
+- [`TbatsSpec`](@ref)
+- [`fit`](@ref)
+"""
+function forecast(fitted::FittedTbats; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+    parent_mod = parentmodule(@__MODULE__)
+    Generics_mod = getfield(parent_mod, :Generics)
+
+    return Generics_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
+end
+
+function fit(spec::TbatsSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+
+    return fit(spec, panel.data; pairs(kwdict)...)
+end

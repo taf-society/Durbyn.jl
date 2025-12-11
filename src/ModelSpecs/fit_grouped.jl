@@ -615,3 +615,77 @@ function fit_grouped(spec::BatsSpec, data;
 
     return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, 1, parallel, fail_fast, builder)
 end
+
+"""
+    fit_grouped(spec::TbatsSpec, data; groupby, parallel=true, fail_fast=false, kwargs...)
+
+Fit a TBATS model specification to grouped (panel) data.
+
+TBATS (Trigonometric seasonality, Box-Cox transformation, ARMA errors, Trend and
+Seasonal components) uses Fourier-based seasonal representation, enabling non-integer
+seasonal periods and efficient handling of very long seasonal cycles.
+
+# Arguments
+- `spec::TbatsSpec` - TBATS model specification
+- `data` - Tables.jl-compatible data
+
+# Keyword Arguments
+- `groupby::Union{Symbol, Vector{Symbol}}` - Column(s) to group by
+- `parallel::Bool` - Use parallel processing (default true)
+- `fail_fast::Bool` - Stop on first error (default false)
+- Additional kwargs passed to underlying `tbats` function
+
+# Returns
+`GroupedFittedModels` containing fitted models for each group
+
+# Examples
+```julia
+# Fit TBATS to each product
+spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+fitted = fit_grouped(spec, data, groupby=:product)
+
+# Multiple grouping columns
+fitted = fit_grouped(spec, data, groupby=[:region, :product])
+
+# Sequential fitting (no parallelism)
+fitted = fit_grouped(spec, data, groupby=:product, parallel=false)
+
+# Continue on errors
+fitted = fit_grouped(spec, data, groupby=:product, fail_fast=false)
+```
+
+# See Also
+- [`TbatsSpec`](@ref)
+- [`fit`](@ref)
+- [`GroupedFittedModels`](@ref)
+"""
+function fit_grouped(spec::TbatsSpec, data;
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+
+    tbl = Tables.columntable(data)
+
+    groupby_cols = groupby isa Symbol ? [groupby] : collect(groupby)
+    target_col = spec.formula.target
+
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+    parent_mod = parentmodule(@__MODULE__)
+    Tbats_mod = getfield(parent_mod, :Tbats)
+
+    builder = function(group_data)
+        tbats_fit = Tbats_mod.tbats(spec.formula, group_data; pairs(fit_options)...)
+        return FittedTbats(spec, tbats_fit, target_col, group_data)
+    end
+
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, 1, parallel, fail_fast, builder)
+end

@@ -189,6 +189,40 @@ struct BatsTerm <: AbstractTerm
 end
 
 """
+    TbatsTerm <: AbstractTerm
+
+Represents a TBATS model specification term in a formula.
+
+TBATS (Trigonometric seasonality, Box-Cox transformation, ARMA errors, Trend and
+Seasonal components) extends BATS by using Fourier representation for seasonal
+components, enabling non-integer seasonal periods and efficient handling of long cycles.
+
+# Fields
+- `seasonal_periods::Union{Vector{<:Real}, Real, Nothing}` - Seasonal period(s), can be non-integer (e.g., 52.18)
+- `k::Union{Vector{Int}, Int, Nothing}` - Fourier order(s) per seasonal period (nothing = auto-select)
+- `use_box_cox::Union{Bool, Nothing}` - Whether to use Box-Cox transformation (nothing = automatic selection)
+- `use_trend::Union{Bool, Nothing}` - Whether to include trend component (nothing = automatic selection)
+- `use_damped_trend::Union{Bool, Nothing}` - Whether to use damped trend (nothing = automatic selection)
+- `use_arma_errors::Union{Bool, Nothing}` - Whether to include ARMA error structure (nothing = default true)
+
+# Examples
+```julia
+# Created via tbats() function in formulas
+@formula(sales = tbats(seasonal_periods=52.18))
+@formula(sales = tbats(seasonal_periods=[7, 365.25]))
+@formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10]))
+```
+"""
+struct TbatsTerm <: AbstractTerm
+    seasonal_periods::Union{Vector{<:Real}, Real, Nothing}
+    k::Union{Vector{Int}, Int, Nothing}
+    use_box_cox::Union{Bool, Nothing}
+    use_trend::Union{Bool, Nothing}
+    use_damped_trend::Union{Bool, Nothing}
+    use_arma_errors::Union{Bool, Nothing}
+end
+
+"""
     VarTerm <: AbstractTerm
 
 Represents an exogenous variable to be used as a regressor in the model.
@@ -671,6 +705,105 @@ function bats(; seasonal_periods::Union{Int, Vector{Int}, Nothing}=nothing,
 end
 
 """
+    tbats(; seasonal_periods, k, use_box_cox, use_trend, use_damped_trend, use_arma_errors)
+
+Specify a TBATS model in a formula. TBATS (Trigonometric seasonality, Box-Cox
+transformation, ARMA errors, Trend and Seasonal components) uses Fourier-based
+seasonal representation, enabling:
+- Non-integer seasonal periods (e.g., 52.18 weeks per year)
+- Very long seasonal cycles (hundreds or thousands of periods)
+- Multiple complex seasonalities (daily + weekly + yearly)
+- Dual calendar effects (e.g., Gregorian + Hijri calendars)
+
+# Arguments
+- `seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing` - Seasonal period(s).
+  Can be non-integer (e.g., 52.18 for weekly data with yearly seasonality).
+  Use a vector for multiple seasonalities: `[7, 365.25]`
+- `k::Union{Int, Vector{Int}, Nothing}=nothing` - Fourier order(s) per seasonal period.
+  Controls complexity of the seasonal shape. Higher k captures more complex patterns
+  but increases computation. If `nothing`, auto-selected via AIC.
+  Must match length of `seasonal_periods` if both are vectors.
+- `use_box_cox::Union{Bool, Nothing}=nothing` - Box-Cox variance stabilization.
+  `true`/`false` forces selection; `nothing` tries both, selects by AIC.
+- `use_trend::Union{Bool, Nothing}=nothing` - Include trend component (ℓ_t + φb_t).
+  `nothing` tries both options and selects by AIC.
+- `use_damped_trend::Union{Bool, Nothing}=nothing` - Use damped trend (φ < 1).
+  Ignored if `use_trend=false`. `nothing` tries both.
+- `use_arma_errors::Union{Bool, Nothing}=nothing` - Model residuals with ARMA(p,q).
+  Orders auto-selected via AIC when enabled. Defaults to true if nothing.
+
+# Returns
+`TbatsTerm` for use in formula specification.
+
+# Examples
+```julia
+# Auto-select everything
+@formula(sales = tbats())
+
+# Weekly data with yearly seasonality (52.18 weeks/year)
+@formula(demand = tbats(seasonal_periods=52.18))
+
+# Multiple seasonalities: daily (7) and yearly (365.25)
+@formula(sales = tbats(seasonal_periods=[7, 365.25]))
+
+# With explicit Fourier orders (3 for weekly, 10 for yearly)
+@formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10]))
+
+# Dual calendar (Gregorian + Hijri)
+@formula(sales = tbats(seasonal_periods=[365.25, 354.37]))
+
+# Force Box-Cox and damped trend
+@formula(sales = tbats(seasonal_periods=52.18, use_box_cox=true, use_damped_trend=true))
+
+# Full specification
+@formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10],
+                       use_box_cox=true, use_trend=true,
+                       use_damped_trend=false, use_arma_errors=true))
+```
+
+# See Also
+- [`bats`](@ref) - BATS model (integer seasonal periods only)
+- [`TbatsTerm`](@ref) - Term type created by this function
+"""
+function tbats(; seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing,
+                k::Union{Int, Vector{Int}, Nothing}=nothing,
+                use_box_cox::Union{Bool, Nothing}=nothing,
+                use_trend::Union{Bool, Nothing}=nothing,
+                use_damped_trend::Union{Bool, Nothing}=nothing,
+                use_arma_errors::Union{Bool, Nothing}=nothing)
+
+    # Validate seasonal_periods
+    if !isnothing(seasonal_periods)
+        if seasonal_periods isa Real
+            seasonal_periods > 0 || throw(ArgumentError(
+                "seasonal_periods must be positive, got $(seasonal_periods)"))
+        else
+            all(m -> m > 0, seasonal_periods) || throw(ArgumentError(
+                "All seasonal_periods must be positive"))
+        end
+    end
+
+    # Validate k (Fourier orders)
+    if !isnothing(k)
+        if k isa Int
+            k >= 1 || throw(ArgumentError("k must be >= 1, got $(k)"))
+        else
+            all(ki -> ki >= 1, k) || throw(ArgumentError("All k values must be >= 1"))
+        end
+    end
+
+    # Validate k matches seasonal_periods length if both provided
+    if !isnothing(k) && !isnothing(seasonal_periods)
+        k_len = k isa Int ? 1 : length(k)
+        m_len = seasonal_periods isa Real ? 1 : length(seasonal_periods)
+        k_len == m_len || throw(ArgumentError(
+            "Length of k ($(k_len)) must match length of seasonal_periods ($(m_len))"))
+    end
+
+    return TbatsTerm(seasonal_periods, k, use_box_cox, use_trend, use_damped_trend, use_arma_errors)
+end
+
+"""
     e(code::AbstractString = "Z")
 
 Specify the error component in an ETS model.
@@ -1009,7 +1142,8 @@ function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:Abstra
                 throw(ArgumentError("Formula may contain only one $(T) term."))
             selected = term
         elseif term isa EtsComponentTerm || term isa EtsDriftTerm || term isa ArimaOrderTerm ||
-               term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm || term isa BatsTerm
+               term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm || term isa BatsTerm ||
+               term isa TbatsTerm
             throw(ArgumentError("Formula term $(term) is not compatible with $(T)."))
         elseif term !== nothing
             throw(ArgumentError("Unsupported term $(term) in formula for $(T)."))

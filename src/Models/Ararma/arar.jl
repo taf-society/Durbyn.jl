@@ -93,7 +93,7 @@ This method is useful for short or nonstationary time series, especially when co
 ```julia
 y = randn(100)
 model = arar(y)
-````
+```
 
 Use the resulting `ARAR` model with `forecast(model, h, ...)`, `fitted(model)`, and `residuals(model)` for analysis and prediction.
 
@@ -104,10 +104,14 @@ function arar(y::AbstractArray; max_ar_depth::Union{Int, Nothing}=nothing, max_l
     max_ar_depth, max_lag = setup_params(y, max_ar_depth = max_ar_depth, max_lag = max_lag)
     for _ in 1:3
         n = length(y)
+        
+        if n <= max(15, max_ar_depth) + 1
+            break
+        end
         ϕ = map(τ -> sum(y[(τ + 1):n] .* y[1:(n - τ)]) / sum(y[1:(n - τ)].^2), 1:15)
         err = map(τ -> sum((y[(τ + 1):n] - ϕ[τ] * y[1:(n - τ)]).^2) / sum(y[(τ + 1):n].^2), 1:15)
         τ = argmin(err)
-        
+
         if err[τ] <= 8/n || (ϕ[τ] >= 0.93 && τ > 2)
             y = y[(τ + 1):n] .- ϕ[τ] * y[1:(n - τ)]
             Ψ = [Ψ; zeros(τ)] .- ϕ[τ] .* [zeros(τ); Ψ]
@@ -118,7 +122,7 @@ function arar(y::AbstractArray; max_ar_depth::Union{Int, Nothing}=nothing, max_l
             A[2, 2] = sum(y[1:(n - 2)].^2)
             b = [sum(y[3:n] .* y[2:(n - 1)]), sum(y[3:n] .* y[1:(n - 2)])]
             ϕ_2 = (A' * A) \ (A' * b)
-            y = y[3:n] .- ϕ_2[1] * y[2:(n - 1)] .- ϕ_2[2] * y[1:(n - 2)]
+                        y = y[3:n] .- ϕ_2[1] * y[2:(n - 1)] .- ϕ_2[2] * y[1:(n - 2)]
             Ψ = vcat(Ψ, 0.0, 0.0) .- ϕ_2[1] .* vcat(0.0, Ψ, 0.0) .- ϕ_2[2] .* vcat(0.0, 0.0, Ψ)
         else
             break
@@ -242,6 +246,7 @@ Computes the residuals (observed - fitted) from a fitted `ARAR` model.
 y = randn(120)
 model = arar(y)
 resid = residuals(model)
+```
 """
 function residuals(model::ARAR)
     y = model.y
@@ -298,6 +303,7 @@ fc = forecast(model, 12, level = [80, 95])
 
 println("Forecast mean:", fc.mean)
 println("95% upper bound:", fc.upper[2])
+```
 """
 function forecast(model::ARAR; h::Int, level::Vector{Int}=[80, 95])
     i, j, k = model.best_lag[2:end]

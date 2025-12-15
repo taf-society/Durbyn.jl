@@ -272,10 +272,10 @@ models = model(
 fitted = fit(models, panel)       # each spec fitted to every series
 fc     = forecast(fitted, h = 12) # ForecastModelCollection
 
-forecast_table(fc)                # stacked tidy table with model_name column
+as_table(fc)                # stacked tidy table with model_name column
 ```
 
-`forecast_table` stacks every model (and group) with a `model_name` column, so downstream comparisons stay tidy. You can filter to a specific model or pivot wider using `Durbyn.TableOps` functions, or use other Julia packages like `DataFrames.jl`, `DataFramesMeta.jl`, or `Query.jl`.
+`as_table` stacks every model (and group) with a `model_name` column, so downstream comparisons stay tidy. You can filter to a specific model or pivot wider using `Durbyn.TableOps` functions, or use other Julia packages like `DataFrames.jl`, `DataFramesMeta.jl`, or `Query.jl`.
 
 ---
 
@@ -338,7 +338,7 @@ fitted = fit(models, panel)
 fc = forecast(fitted, h=12)
 
 # 7. Convert to tidy table format
-fc_tbl = forecast_table(fc)
+fc_tbl = as_table(fc)
 glimpse(fc_tbl)
 
 # 8. Calculate accuracy metrics across all models and series
@@ -665,7 +665,7 @@ fitted = fit(models, panel)
 fc = forecast(fitted, h = 12)
 
 # Convert to tidy table
-fc_table = forecast_table(fc)
+fc_table = as_table(fc)
 
 # Compare accuracy
 acc = accuracy(fc, test_data)
@@ -727,7 +727,7 @@ models = model(
 )
 fitted = fit(models, df, groupby = :store)
 fc = forecast(fitted, h = 12)
-fc_tbl = forecast_table(fc)
+fc_tbl = as_table(fc)
 ```
 
 ---
@@ -892,7 +892,7 @@ fitted = fit(spec, panel)
 fc = forecast(fitted, h = 12)
 
 # Convert to tidy table for analysis
-fc_table = forecast_table(fc)
+fc_table = as_table(fc)
 glimpse(fc_table)
 ```
 
@@ -951,7 +951,7 @@ plot(fc, series = "product_123", actual = test_data)
 **Integration tips:**
 - Croston works seamlessly with `PanelData` for multi-product forecasting
 - Combine with other methods in `ModelCollection` for comprehensive comparison
-- Use `forecast_table()` for tidy output ready for downstream analysis
+- Use `as_table()` for tidy output ready for downstream analysis
 - The Croston grammar integrates with all Durbyn workflows—single series, grouped data, and model comparison
 
 ### References
@@ -984,5 +984,5 @@ plot(fc, series = "product_123", actual = test_data)
 - Use `PanelData` to encapsulate grouping, date, and seasonal period information
 - Specifications are reusable—define once, fit to multiple datasets
 - Keywords in `fit()` override those stored in the spec
-- `forecast_table()` provides tidy output for downstream analysis and visualization
+- `as_table()` provides tidy output for downstream analysis and visualization
 - Combine multiple specs in a `ModelCollection` for easy model comparison

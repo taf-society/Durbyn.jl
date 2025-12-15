@@ -914,11 +914,11 @@ function glimpse(io::IO, gt::GroupedTable; maxrows::Integer = 5, maxgroups::Inte
 end
 
 function glimpse(data::ForecastModelCollection; maxrows::Integer = 5, include_failures::Bool = false, io::IO = stdout)
-    tbl = forecast_table(data; include_failures=include_failures)
+    tbl = as_table(data; include_failures=include_failures)
     return glimpse(io, tbl; maxrows=maxrows)
 end
 
 function glimpse(io::IO, data::ForecastModelCollection; maxrows::Integer = 5, include_failures::Bool = false)
-    tbl = forecast_table(data; include_failures=include_failures)
+    tbl = as_table(data; include_failures=include_failures)
     return glimpse(io, tbl; maxrows=maxrows)
 end

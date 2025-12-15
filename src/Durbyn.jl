@@ -41,7 +41,7 @@ import .Grammar: e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
 import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, TbatsSpec, BatsSpec, FittedEts
 import .ModelSpecs: SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
 import .ModelSpecs: CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection
-import .ModelSpecs: ForecastModelCollection, model, PanelData, forecast_table
+import .ModelSpecs: ForecastModelCollection, model, PanelData, as_table
 import .ModelSpecs: GroupedFittedModels, GroupedForecasts, successful_models, failed_groups
 import .Arima: arima, arima_rjh, auto_arima, ArimaFit, PDQ
 import .Ararma: ARAR, ArarmaModel, arar, ararma, auto_ararma
@@ -60,7 +60,7 @@ export AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec,
 export SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
 export BatsSpec, FittedBats, TbatsSpec, FittedTbats
 export CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection, ForecastModelCollection
-export model, PanelData, forecast_table
+export model, PanelData, as_table
 export GroupedFittedModels, GroupedForecasts, successful_models, failed_groups
 export arima, arima_rjh, auto_arima, ArimaFit, PDQ
 export ARAR, ArarmaModel, ararma, auto_ararma

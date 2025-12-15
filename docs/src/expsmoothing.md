@@ -323,7 +323,7 @@ end
 # Plot forecasts (if plotting is available)
 plot(fc)
 
-fc_tbl = forecast_table(fc)
+fc_tbl = as_table(fc)
 glimpse(fc_tbl)
 
 ```
@@ -401,7 +401,7 @@ fitted = fit(spec, panel)
 fc = forecast(fitted, h = 12)
 
 # Get tidy forecast table
-fc_tbl = forecast_table(fc)
+fc_tbl = as_table(fc)
 
 glimpse(fc_tbl)
 

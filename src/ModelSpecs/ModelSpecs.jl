@@ -66,7 +66,7 @@ export ModelCollection, FittedModelCollection, ForecastModelCollection
 export GroupedFittedModels, GroupedForecasts
 export PanelData
 
-export model, extract_metrics, forecast_table
+export model, extract_metrics, as_table
 export successful_models, failed_groups, errors
 
 include("abstract.jl")

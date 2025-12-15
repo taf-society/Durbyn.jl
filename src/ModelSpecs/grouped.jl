@@ -433,7 +433,7 @@ function _extract_interval_value(x, step::Int, idx::Int, horizon::Int)
     end
 end
 
-function forecast_table(fc::Forecast)
+function as_table(fc::Forecast)
     mean_vec = fc.mean
     horizon = length(mean_vec)
     steps = collect(1:horizon)
@@ -470,7 +470,7 @@ function forecast_table(fc::Forecast)
     return NamedTuple{Tuple(column_syms)}(Tuple(column_vals))
 end
 
-function forecast_table(fc::GroupedForecasts; include_failures::Bool = false)
+function as_table(fc::GroupedForecasts; include_failures::Bool = false)
     group_keys = fc.groups
     isempty(group_keys) && throw(ArgumentError("GroupedForecasts has no groups."))
 
@@ -605,7 +605,7 @@ function _finalize_column(vec::Vector{Any})
     end
 end
 
-function forecast_table(collection::ForecastModelCollection; include_failures::Bool = false)
+function as_table(collection::ForecastModelCollection; include_failures::Bool = false)
     tables = NamedTuple[]
     ordered_cols = Symbol[]
 
@@ -614,7 +614,7 @@ function forecast_table(collection::ForecastModelCollection; include_failures::B
         table = nothing
         if result isa GroupedForecasts
             try
-                table = forecast_table(result; include_failures=include_failures)
+                table = as_table(result; include_failures=include_failures)
             catch err
                 if include_failures
                     table = (model_name = [name], status = [:error], message = [string(err)])
@@ -623,7 +623,7 @@ function forecast_table(collection::ForecastModelCollection; include_failures::B
                 end
             end
         elseif result isa Forecast
-            table = forecast_table(result)
+            table = as_table(result)
         elseif result isa Exception
             if include_failures
                 table = (model_name = [name], status = [:error], message = [string(result)])
@@ -672,6 +672,23 @@ function forecast_table(collection::ForecastModelCollection; include_failures::B
     finalized = Tuple(_finalize_column(columns_data[col]) for col in ordered_cols)
     return NamedTuple{Tuple(ordered_cols)}(finalized)
 end
+
+Tables.istable(::Type{<:Forecast}) = true
+Tables.columnaccess(::Type{<:Forecast}) = true
+Tables.columns(fc::Forecast) = as_table(fc)
+Tables.schema(fc::Forecast) = Tables.schema(as_table(fc))
+
+
+Tables.istable(::Type{<:GroupedForecasts}) = true
+Tables.columnaccess(::Type{<:GroupedForecasts}) = true
+Tables.columns(fc::GroupedForecasts) = as_table(fc)
+Tables.schema(fc::GroupedForecasts) = Tables.schema(as_table(fc))
+
+
+Tables.istable(::Type{<:ForecastModelCollection}) = true
+Tables.columnaccess(::Type{<:ForecastModelCollection}) = true
+Tables.columns(fc::ForecastModelCollection) = as_table(fc)
+Tables.schema(fc::ForecastModelCollection) = Tables.schema(as_table(fc))
 
 
 function Base.show(io::IO, ::MIME"text/plain", fc::GroupedForecasts)

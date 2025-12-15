@@ -99,7 +99,7 @@ fitted = fit(models, panel)
 fc = forecast(fitted, h=12)
 
 # 7. Convert to tidy table format
-fc_tbl = forecast_table(fc)
+fc_tbl = as_table(fc)
 glimpse(fc_tbl)
 
 # 8. Calculate accuracy metrics across all models and series

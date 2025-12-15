@@ -60,7 +60,7 @@ For complete documentation, see the [Grammar Guide](https://taf-society.github.i
 - **Formula Interface** — Declarative model specification using `@formula` for
   ARIMA, BATS, TBATS, and ETS models (`ArimaSpec`, `BatsSpec`, `TbatsSpec`, `EtsSpec`, `SesSpec`, `HoltSpec`, etc.)
 - `Durbyn.ModelSpecs` — Formula-based model specifications with `PanelData` support,
-  grouped fitting, and `forecast_table` for tidy outputs
+  grouped fitting, and `as_table` for tidy outputs
 - `Durbyn.TableOps` — Lightweight, Tables.jl-friendly data wrangling helpers
   (`pivot_longer`, `arrange`, `groupby`, `summarise`, `mutate`, …) plus `glimpse` utilities, see the [Table Operations](https://taf-society.github.io/Durbyn.jl/dev/tableops/) in the docs,
 - `Durbyn.ExponentialSmoothing`, `Durbyn.Arima`, `Durbyn.Ararma`,
@@ -142,7 +142,7 @@ models = model(
 fitted = fit(models, panel)       # each spec fitted to every series
 fc     = forecast(fitted, h = 12) # ForecastModelCollection
 
-fc_tbl = forecast_table(fc) # stacked tidy table with model_name column
+fc_tbl = as_table(fc) # stacked tidy table with model_name column
 
 ```
 
@@ -205,7 +205,7 @@ fitted = fit(models, panel)
 fc = forecast(fitted, h=12)
 
 # Convert to tidy table format
-fc_tbl = forecast_table(fc)
+fc_tbl = as_table(fc)
 
 glimpse(fc_tbl)
 
@@ -371,7 +371,7 @@ fitted = fit(spec, panel)  # Automatically parallelized
 fc = forecast(fitted, h = 12)
 
 # Analyze results
-fc_table = forecast_table(fc)
+fc_table = as_table(fc)
 glimpse(fc_table)
 ```
 

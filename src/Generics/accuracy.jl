@@ -17,7 +17,7 @@ Works with all forecast types:
 - Single `Forecast` from `forecast(fitted_model, h=...)`
 - `ForecastModelCollection` from `forecast(fitted_collection, h=...)`
 - `GroupedForecasts` from panel/grouped data
-- Forecast tables from `forecast_table()`
+- Forecast tables from `as_table()`
 - Raw vectors
 
 # Arguments

@@ -123,7 +123,7 @@ fitted = fit(spec, panel)
 fc = forecast(fitted, h = 12)
 
 # Get tidy forecast table
-tbl = forecast_table(fc)
+tbl = as_table(fc)
 glimpse(tbl)
 ```
 
@@ -346,7 +346,7 @@ fitted = fit(models, panel)
 fc = forecast(fitted, h=12)
 
 # Convert to tidy table format
-fc_tbl = forecast_table(fc)
+fc_tbl = as_table(fc)
 glimpse(fc_tbl)
 ```
 

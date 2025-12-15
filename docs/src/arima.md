@@ -281,7 +281,7 @@ fitted = fit(spec, panel)
 fc = forecast(fitted, h = 12)
 
 # Get tidy forecast table
-tbl = forecast_table(fc)
+tbl = as_table(fc)
 
 # Optional: Save forecasts to CSV
 # CSV.write("forecasts.csv", tbl)
@@ -314,7 +314,7 @@ plot(fc, series=[best, worst], facet=true, actual=test)
 **Panel data features:**
 - Fits model separately to each group
 - Returns structured output for all series
-- `forecast_table` creates tidy format for analysis
+- `as_table` creates tidy format for analysis
 - Efficient for hundreds or thousands of series
 
 ## Example 6: Panel Data with Grouping Variables
@@ -338,7 +338,7 @@ fitted = fit(spec, data,
 fc = forecast(fitted, h = 7)
 
 # Filter forecasts for specific groups
-tbl = forecast_table(fc)
+tbl = as_table(fc)
 
 ```
 

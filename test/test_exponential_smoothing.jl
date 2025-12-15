@@ -418,7 +418,7 @@ using Durbyn.TableOps
         fc_collection = forecast(fitted_collection; h = 6)
         @test fc_collection isa ForecastModelCollection
 
-        tbl = forecast_table(fc_collection)
+        tbl = as_table(fc_collection)
         @test :model_name in propertynames(tbl)
         @test length(getfield(tbl, :model_name)) > 0
 

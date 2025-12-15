@@ -32,6 +32,9 @@ General-purpose optimization interface matching R's `optim()` function.
   - `maxit::Int`: Maximum iterations (default: method-dependent)
   - `abstol::Float64`: Absolute convergence tolerance
   - `reltol::Float64`: Relative convergence tolerance (default: √eps)
+  - `gtol::Float64=0.0`: **Julia enhancement** - Gradient norm tolerance for BFGS.
+    When gtol > 0, convergence is declared if ||∇f(x)|| < gtol * max(1, |f(x)|).
+    Based on first-order optimality condition. Recommended: 1e-5 to 1e-8.
   - `alpha::Float64=1.0`: Nelder-Mead reflection coefficient
   - `beta::Float64=0.5`: Nelder-Mead contraction coefficient
   - `gamma::Float64=2.0`: Nelder-Mead expansion coefficient
@@ -134,7 +137,7 @@ function optim(par::Vector{Float64}, fn::Function;
     lower_vec = lower isa Float64 ? fill(lower, npar) : lower
     upper_vec = upper isa Float64 ? fill(upper, npar) : upper
 
-    # Default control parameters (matching R)
+    # Default control parameters (matching R, with Julia enhancements)
     con = Dict{String,Any}(
         "trace" => 0,
         "fnscale" => 1.0,
@@ -143,6 +146,7 @@ function optim(par::Vector{Float64}, fn::Function;
         "maxit" => (method == "Nelder-Mead" ? 500 : 100),
         "abstol" => -Inf,
         "reltol" => sqrt(eps(Float64)),
+        "gtol" => 0.0,
         "alpha" => 1.0,
         "beta" => 0.5,
         "gamma" => 2.0,
@@ -258,6 +262,7 @@ function _optim_bfgs(par, fn, gr, con, parscale)
     opts = BFGSOptions(
         abstol = con["abstol"],
         reltol = con["reltol"],
+        gtol = con["gtol"],
         trace = con["trace"] > 0,
         maxit = con["maxit"],
         nREPORT = con["REPORT"]

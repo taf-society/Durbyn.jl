@@ -1,10 +1,23 @@
 """
     BFGS Quasi-Newton Optimizer
 
-Line-for-line port of the C `vmmin` from R's `stats::optim`.
+Based on the C `vmmin` from R's `stats::optim`, with Julia enhancements.
 
-Implements the BFGS quasi-Newton optimization algorithm exactly as in the C code,
+Implements the BFGS quasi-Newton optimization algorithm following R's C code,
 including all edge cases, constants, and iteration logic.
+
+## Julia Enhancement: Gradient Norm Convergence
+
+This implementation adds an optional gradient norm convergence check (`gtol` parameter)
+based on the first-order necessary condition for optimality: ∇f(x*) = 0.
+
+When `gtol > 0`, convergence is declared if:
+    ||∇f(x)|| < gtol * max(1, |f(x)|)
+
+This enhancement:
+- Is mathematically sound (standard in scipy, MATLAB, Julia Optim.jl)
+- Helps convergence on flat surfaces where R's vmmin may iterate until maxit
+- Is disabled by default (gtol = 0) for R compatibility
 
 This implementation supports both analytical and numerical gradients (via
 `numgrad_with_cache!`) and is compatible with standard gradient-based
@@ -23,6 +36,10 @@ Options for BFGS quasi-Newton optimization.
 Fields:
 - `abstol::Float64` — Absolute convergence tolerance (default: -Inf, disabled)
 - `reltol::Float64` — Relative convergence tolerance (default: √eps)
+- `gtol::Float64` — Gradient norm tolerance for first-order optimality (default: 0, disabled).
+  When `gtol > 0`, convergence is declared if `||∇f(x)|| < gtol * max(1, |f(x)|)`.
+  This is a Julia enhancement over R's vmmin, based on the first-order necessary
+  condition for optimality (∇f(x*) = 0). Helps convergence on flat surfaces.
 - `trace::Bool` — Print iteration progress (default: false)
 - `maxit::Int` — Maximum iterations (default: 100)
 - `nREPORT::Int` — Reporting frequency when trace=true (default: 10)
@@ -30,6 +47,7 @@ Fields:
 Base.@kwdef struct BFGSOptions
     abstol::Float64 = -Inf
     reltol::Float64 = sqrt(eps(Float64))
+    gtol::Float64 = 0.0
     trace::Bool = false
     maxit::Int = 100
     nREPORT::Int = 10
@@ -196,9 +214,12 @@ function bfgsmin(
 )
     abstol = options.abstol
     reltol = options.reltol
+    gtol = options.gtol
     trace = options.trace
     maxit = options.maxit
     nREPORT = options.nREPORT
+
+    converged_gradient = false
 
     n0 = length(x0)
     l = findall(mask)
@@ -363,6 +384,24 @@ function bfgsmin(
             println("iter", lpad(iter, 4), " value ", fval)
         end
 
+        # Julia enhancement: gradient norm convergence check
+        # Based on first-order optimality condition: ∇f(x*) = 0
+        if gtol > 0.0
+            grad_norm_sq = 0.0
+            @inbounds for i in 1:n
+                grad_norm_sq += workspace.gvec[l[i]]^2
+            end
+            grad_norm = sqrt(grad_norm_sq)
+            # Relative tolerance: ||∇f|| < gtol * max(1, |f|)
+            if grad_norm < gtol * max(1.0, abs(Fmin))
+                converged_gradient = true
+                if trace
+                    println("converged: gradient norm ", grad_norm, " < ", gtol * max(1.0, abs(Fmin)))
+                end
+                break
+            end
+        end
+
         if iter >= maxit
             break
         end
@@ -376,14 +415,14 @@ function bfgsmin(
 
     if trace
         println("final  value ", Fmin, " ")
-        if iter < maxit
+        if iter < maxit || converged_gradient
             println("converged")
         else
             println("stopped after ", iter, " iterations")
         end
     end
 
-    fail = (iter < maxit) ? 0 : 1
+    fail = (iter < maxit || converged_gradient) ? 0 : 1
 
     return (
         x_opt = copy(b),

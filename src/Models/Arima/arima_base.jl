@@ -2023,6 +2023,14 @@ function arima(
             ctrl = copy(optim_control)
             ctrl["parscale"] = parscale
 
+            if !haskey(ctrl, "maxit")
+                ctrl["maxit"] = 500
+            end
+            
+            if !haskey(ctrl, "gtol")
+                ctrl["gtol"] = 1e-6
+            end
+
             opt = optim(
                 init[mask],
                 p -> armaCSS(p);
@@ -2079,6 +2087,14 @@ function arima(
             else
                 ctrl = copy(optim_control)
                 ctrl["parscale"] = parscale
+
+                if !haskey(ctrl, "maxit")
+                    ctrl["maxit"] = 500
+                end
+
+                if !haskey(ctrl, "gtol")
+                    ctrl["gtol"] = 1e-6
+                end
 
                 opt = optim(
                     init[mask],
@@ -2142,6 +2158,14 @@ function arima(
         else
             ctrl = copy(optim_control)
             ctrl["parscale"] = parscale
+
+            if !haskey(ctrl, "maxit")
+                ctrl["maxit"] = 500
+            end
+
+            if !haskey(ctrl, "gtol")
+                ctrl["gtol"] = 1e-6
+            end
 
             opt = optim(
                 init[mask],

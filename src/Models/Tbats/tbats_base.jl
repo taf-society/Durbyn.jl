@@ -227,15 +227,20 @@ function make_tbats_fmatrix(
         end
 
         if p > 0 && !isnothing(gamma_bold_matrix)
-            gb_ar = gamma_bold_matrix' * ar_coefs
-            for i in 1:tau
-                F[row_seasonal + i - 1, col_ar] = gb_ar[i]
+            B = gamma_bold_matrix' * reshape(ar_coefs, 1, :)
+            for j in 1:p
+                for i in 1:tau
+                    F[row_seasonal + i - 1, col_ar + j - 1] = B[i, j]
+                end
             end
         end
         if q > 0 && !isnothing(gamma_bold_matrix)
-            gb_ma = gamma_bold_matrix' * ma_coefs
-            for i in 1:tau
-                F[row_seasonal + i - 1, col_ma] = gb_ma[i]
+            
+            C = gamma_bold_matrix' * reshape(ma_coefs, 1, :)
+            for j in 1:q
+                for i in 1:tau
+                    F[row_seasonal + i - 1, col_ma + j - 1] = C[i, j]
+                end
             end
         end
     end

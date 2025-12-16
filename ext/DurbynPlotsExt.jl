@@ -4,7 +4,7 @@ using Durbyn
 using Plots
 import Tables
 
-import Durbyn: plot, Forecast
+import Durbyn: plot, Forecast, ACFResult, PACFResult
 
 function Durbyn.plot(forecast::Durbyn.Generics.Forecast; show_fitted=true, show_residuals=false)
     n_history = length(forecast.x)
@@ -788,6 +788,128 @@ function Durbyn.plot(res::Durbyn.Stats.MSTLResult; labels=nothing,
     Plots.xlabel!(plt[nplot], "index")
     Plots.display(plt)
     return plt
+end
+
+"""
+    plot(result::ACFResult; main=nothing, kwargs...)
+
+Plot the autocorrelation function with confidence bands.
+
+# Arguments
+- `result::ACFResult`: ACF result from `acf()` function
+- `main::Union{Nothing,String}=nothing`: Optional plot title
+- `kwargs...`: Additional arguments passed to Plots.jl
+
+# Example
+```julia
+using Plots
+result = acf(y, 12)
+plot(result)
+```
+"""
+function Durbyn.plot(result::Durbyn.Stats.ACFResult; main::Union{Nothing,String}=nothing, kwargs...)
+    lags = result.lags
+    values = result.values
+    ci = result.ci
+    m = result.m
+
+    title_text = isnothing(main) ? "ACF" : main
+
+    p = Plots.plot(
+        framestyle=:box,
+        grid=true,
+        gridstyle=:dash,
+        gridalpha=0.3,
+        legend=false,
+        title=title_text,
+        xlabel="Lag",
+        ylabel="ACF",
+        size=(700, 400),
+        left_margin=5Plots.mm,
+        bottom_margin=5Plots.mm;
+        kwargs...
+    )
+
+    # Confidence bands
+    Plots.hline!(p, [ci, -ci], color=:blue, linestyle=:dash, linewidth=1, alpha=0.6)
+    Plots.hline!(p, [0], color=:black, linewidth=0.5)
+
+    # Vertical lines at seasonal lags
+    for k in 1:div(maximum(lags), m)
+        if k * m <= maximum(lags)
+            Plots.vline!(p, [k * m], color=:gray, linestyle=:dot, linewidth=0.5, alpha=0.5)
+        end
+    end
+
+    # ACF bars (sticks)
+    for (i, lag) in enumerate(lags)
+        color = abs(values[i]) > ci ? :red : :steelblue
+        Plots.plot!(p, [lag, lag], [0, values[i]], color=color, linewidth=2)
+        Plots.scatter!(p, [lag], [values[i]], color=color, markersize=3)
+    end
+
+    return p
+end
+
+"""
+    plot(result::PACFResult; main=nothing, kwargs...)
+
+Plot the partial autocorrelation function with confidence bands.
+
+# Arguments
+- `result::PACFResult`: PACF result from `pacf()` function
+- `main::Union{Nothing,String}=nothing`: Optional plot title
+- `kwargs...`: Additional arguments passed to Plots.jl
+
+# Example
+```julia
+using Plots
+result = pacf(y, 12)
+plot(result)
+```
+"""
+function Durbyn.plot(result::Durbyn.Stats.PACFResult; main::Union{Nothing,String}=nothing, kwargs...)
+    lags = result.lags
+    values = result.values
+    ci = result.ci
+    m = result.m
+
+    title_text = isnothing(main) ? "PACF" : main
+
+    p = Plots.plot(
+        framestyle=:box,
+        grid=true,
+        gridstyle=:dash,
+        gridalpha=0.3,
+        legend=false,
+        title=title_text,
+        xlabel="Lag",
+        ylabel="PACF",
+        size=(700, 400),
+        left_margin=5Plots.mm,
+        bottom_margin=5Plots.mm;
+        kwargs...
+    )
+
+    # Confidence bands
+    Plots.hline!(p, [ci, -ci], color=:blue, linestyle=:dash, linewidth=1, alpha=0.6)
+    Plots.hline!(p, [0], color=:black, linewidth=0.5)
+
+    # Vertical lines at seasonal lags
+    for k in 1:div(maximum(lags), m)
+        if k * m <= maximum(lags)
+            Plots.vline!(p, [k * m], color=:gray, linestyle=:dot, linewidth=0.5, alpha=0.5)
+        end
+    end
+
+    # PACF bars (sticks)
+    for (i, lag) in enumerate(lags)
+        color = abs(values[i]) > ci ? :red : :steelblue
+        Plots.plot!(p, [lag, lag], [0, values[i]], color=color, linewidth=2)
+        Plots.scatter!(p, [lag], [values[i]], color=color, markersize=3)
+    end
+
+    return p
 end
 
 end

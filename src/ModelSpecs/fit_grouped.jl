@@ -689,3 +689,96 @@ function fit_grouped(spec::TbatsSpec, data;
 
     return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, 1, parallel, fail_fast, builder)
 end
+
+"""
+    fit_grouped(spec::ThetaSpec, data; m, groupby, datecol, parallel=true, fail_fast=false, kwargs...)
+
+Fit a Theta model specification to grouped (panel) data.
+
+The Theta method decomposes a time series into "theta lines" capturing long-term
+trend and short-term dynamics, then combines their forecasts. Supports four variants:
+STM (Simple), OTM (Optimized), DSTM (Dynamic Simple), DOTM (Dynamic Optimized).
+
+# Arguments
+- `spec::ThetaSpec` - Theta model specification
+- `data` - Tables.jl-compatible data
+
+# Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (required if not in spec)
+- `groupby::Union{Symbol, Vector{Symbol}}` - Column(s) to group by
+- `datecol::Union{Symbol, Nothing}=nothing` - Date column (excluded from processing)
+- `parallel::Bool` - Use parallel processing (default true)
+- `fail_fast::Bool` - Stop on first error (default false)
+- Additional kwargs passed to underlying `theta` or `auto_theta` function
+
+# Returns
+`GroupedFittedModels` containing fitted models for each group
+
+# Examples
+```julia
+# Fit Theta to each product
+spec = ThetaSpec(@formula(sales = theta()))
+fitted = fit_grouped(spec, data, m=12, groupby=:product)
+
+# Multiple grouping columns
+fitted = fit_grouped(spec, data, m=12, groupby=[:region, :product])
+
+# Sequential fitting (no parallelism)
+fitted = fit_grouped(spec, data, m=12, groupby=:product, parallel=false)
+
+# Continue on errors
+fitted = fit_grouped(spec, data, m=12, groupby=:product, fail_fast=false)
+
+# Specific model variant
+spec = ThetaSpec(@formula(sales = theta(model=:OTM)))
+fitted = fit_grouped(spec, data, m=12, groupby=:product)
+```
+
+"""
+function fit_grouped(spec::ThetaSpec, data;
+                     m::Union{Int, Nothing} = nothing,
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+
+    tbl = Tables.columntable(data)
+
+    groupby_cols = groupby isa Symbol ? [groupby] : collect(groupby)
+    target_col = spec.formula.target
+
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    seasonal_period = if !isnothing(m)
+        m
+    elseif !isnothing(spec.m)
+        spec.m
+    else
+        throw(ArgumentError(
+            "Seasonal period 'm' must be specified either in ThetaSpec or as kwarg to fit(). " *
+            "Example: fit(spec, data, m=12, groupby=[:product]). Use m=1 for non-seasonal data."
+        ))
+    end
+
+    if seasonal_period < 1
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+    end
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+    parent_mod = parentmodule(@__MODULE__)
+    Theta_mod = getfield(parent_mod, :Theta)
+
+    builder = function(group_data)
+        theta_fit = Theta_mod.theta(spec.formula, group_data; m=seasonal_period, pairs(fit_options)...)
+        return FittedTheta(spec, theta_fit, target_col, group_data, seasonal_period)
+    end
+
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
+end

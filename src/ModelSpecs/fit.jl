@@ -1570,3 +1570,181 @@ function fit(spec::TbatsSpec, panel::PanelData; kwargs...)
 
     return fit(spec, panel.data; pairs(kwdict)...)
 end
+
+"""
+    fit(spec::ThetaSpec, data; m=nothing, groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+
+Fit a Theta model specification to data (single series or grouped).
+
+The Theta method decomposes a time series into "theta lines" capturing long-term
+trend and short-term dynamics, then combines their forecasts. Supports four variants:
+STM (Simple), OTM (Optimized), DSTM (Dynamic Simple), DOTM (Dynamic Optimized).
+
+# Arguments
+- `spec::ThetaSpec` - Theta model specification created with `@formula`
+- `data` - Tables.jl-compatible data (NamedTuple, DataFrame, CSV.File, etc.)
+
+# Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (required if not specified in spec)
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
+- `datecol::Union{Symbol, Nothing}` - Date/time column (excluded from processing)
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+- Additional kwargs passed to underlying `theta` or `auto_theta` function
+
+# Returns
+- If `groupby=nothing`: `FittedTheta` - Single fitted model
+- If `groupby` specified: `GroupedFittedModels` - Fitted models for each group
+
+# Examples
+```julia
+# Single series fit with auto model selection
+spec = ThetaSpec(@formula(sales = theta()))
+fitted = fit(spec, data, m=12)
+
+# Specific model variant
+spec = ThetaSpec(@formula(sales = theta(model=:OTM)))
+fitted = fit(spec, data, m=12)
+
+# With fixed parameters
+spec = ThetaSpec(@formula(sales = theta(model=:OTM, alpha=0.3)))
+fitted = fit(spec, data, m=12)
+
+# Panel data fit
+spec = ThetaSpec(@formula(sales = theta()))
+fitted = fit(spec, data, m=12, groupby=[:product, :region])
+
+# Parallel grouped fitting with error collection
+fitted = fit(spec, data, m=12, groupby=:product, parallel=true, fail_fast=false)
+```
+"""
+function fit(spec::ThetaSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m=m,
+                           groupby=groupby,
+                           datecol=datecol,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           kwargs...)
+    end
+
+    seasonal_period = if !isnothing(m)
+        m
+    elseif !isnothing(spec.m)
+        spec.m
+    else
+        throw(ArgumentError(
+            "Seasonal period 'm' must be specified either in ThetaSpec or as kwarg to fit(). " *
+            "Example: fit(spec, data, m=12) or ThetaSpec(..., m=12). Use m=1 for non-seasonal data."
+        ))
+    end
+
+    if seasonal_period < 1
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+    end
+
+    fit_options = merge(spec.options, Dict{Symbol, Any}(kwargs))
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    target_data = tbl[target_col]
+    if !(target_data isa AbstractVector)
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' must be a vector, got $(typeof(target_data))"
+        ))
+    end
+
+    el = Base.nonmissingtype(eltype(target_data))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_data))"))
+
+    parent_mod = parentmodule(@__MODULE__)
+    Theta_mod = getfield(parent_mod, :Theta)
+    theta_fit = Theta_mod.theta(spec.formula, data; m=seasonal_period, pairs(fit_options)...)
+
+    return FittedTheta(
+        spec,
+        theta_fit,
+        target_col,
+        tbl,
+        seasonal_period
+    )
+end
+
+"""
+    forecast(fitted::FittedTheta; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+
+Generate forecasts from a fitted Theta model.
+
+# Arguments
+- `fitted::FittedTheta` - Fitted Theta model from `fit(ThetaSpec, data)`
+
+# Keyword Arguments
+- `h::Int` - Forecast horizon (number of periods ahead)
+- `level::Vector{<:Real}` - Confidence levels for prediction intervals (default [80, 95])
+- Additional kwargs passed to underlying `forecast` function
+
+# Returns
+`Forecast` object containing point forecasts and prediction intervals
+
+# Examples
+```julia
+spec = ThetaSpec(@formula(sales = theta()))
+fitted = fit(spec, data, m=12)
+
+# 12-period ahead forecast
+fc = forecast(fitted, h=12)
+
+# Custom confidence levels
+fc = forecast(fitted, h=12, level=[90, 95, 99])
+
+# Access forecast components
+fc.mean        # Point forecasts
+fc.lower       # Lower bounds for each level
+fc.upper       # Upper bounds for each level
+fc.level       # Confidence levels
+```
+
+"""
+function forecast(fitted::FittedTheta; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for Theta forecasts; Theta models do not support exogenous regressors."
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Generics_mod = getfield(parent_mod, :Generics)
+
+    level_int = Int.(level)
+    return Generics_mod.forecast(fitted.fit; h=h, level=level_int, kwargs...)
+end
+
+function fit(spec::ThetaSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = panel.m
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end

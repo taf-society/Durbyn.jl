@@ -62,7 +62,7 @@ export p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, Ara
 export e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
 export AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, FittedEts
 export SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
-export BatsSpec, FittedBats, TbatsSpec, FittedTbats
+export BatsSpec, FittedBats, TbatsSpec, FittedTbats, ThetaSpec, FittedTheta
 export CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection, ForecastModelCollection
 export model, PanelData, as_table
 export GroupedFittedModels, GroupedForecasts, successful_models, failed_groups

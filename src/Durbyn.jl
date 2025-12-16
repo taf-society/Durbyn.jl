@@ -16,6 +16,7 @@ include("Models/IntermittentDemand/IntermittentDemand.jl")
 include("Models/Ararma/Ararma.jl")
 include("Models/Bats/Bats.jl")
 include("Models/Tbats/Tbats.jl")
+include("Models/Theta/Theta.jl")
 
 
 using .Utils
@@ -31,6 +32,7 @@ using .Arima
 using .IntermittentDemand
 using .Bats
 using .Tbats
+using .Theta
 
 import .Utils: air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
 import .Utils: Formula, parse_formula, compile, model_matrix, model_frame
@@ -47,7 +49,9 @@ import .Arima: arima, arima_rjh, auto_arima, ArimaFit, PDQ
 import .Ararma: ARAR, ArarmaModel, arar, ararma, auto_ararma
 import .Bats: bats, BATSModel
 import .Tbats: tbats, TBATSModel
+import .Theta: theta, auto_theta, ThetaFit, ThetaModelType, STM, OTM, DSTM, DOTM
 import .TableOps: select, query, arrange, groupby, mutate, summarise, summarize, pivot_longer, pivot_wider, glimpse, GroupedTable
+import .Stats: acf, pacf, ACFResult, PACFResult
 
 export air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
 export Formula, parse_formula, compile, model_matrix, model_frame
@@ -66,7 +70,9 @@ export arima, arima_rjh, auto_arima, ArimaFit, PDQ
 export ARAR, ArarmaModel, ararma, auto_ararma
 export bats, BATSModel
 export tbats, TBATSModel
+export theta, auto_theta, ThetaFit, ThetaModelType, STM, OTM, DSTM, DOTM
 export select, query, arrange, groupby, mutate, summarise, summarize, pivot_longer, pivot_wider, glimpse, GroupedTable
+export acf, pacf, ACFResult, PACFResult
 
 include("glimpse_extensions.jl")
 

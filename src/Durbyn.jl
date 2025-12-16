@@ -38,7 +38,7 @@ import .Utils: air_passengers, NamedMatrix, get_elements, get_vector, align_colu
 import .Utils: Formula, parse_formula, compile, model_matrix, model_frame
 import .Generics: plot, fitted, residuals, summary, predict, forecast, fit, accuracy, list_series
 import .Optimize: NelderMeadOptions
-import .Grammar: p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm
+import .Grammar: p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm, ThetaTerm
 import .Grammar: e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
 import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, TbatsSpec, BatsSpec, FittedEts
 import .ModelSpecs: SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
@@ -58,7 +58,7 @@ export Formula, parse_formula, compile, model_matrix, model_frame
 export plot, fitted, residuals, summary, predict, forecast, fit, accuracy, list_series
 export coef, coefficients, coefs
 export NelderMeadOptions
-export p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm
+export p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm, ThetaTerm
 export e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
 export AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, FittedEts
 export SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters

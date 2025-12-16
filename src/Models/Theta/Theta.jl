@@ -27,11 +27,14 @@ using Statistics
 using LinearAlgebra
 using Random: MersenneTwister, randn
 using Distributions: Normal, quantile as dist_quantile
+using Tables
 
 import ..Utils: is_constant
 import ..Optimize: optim
 import ..Stats: acf, decompose
 import ..Generics: forecast, Forecast
+import ..Grammar: theta 
+using ..Grammar: ModelFormula, ThetaTerm, _extract_single_term
 
 export theta, auto_theta, ThetaFit, ThetaModelType
 export STM, OTM, DSTM, DOTM
@@ -689,13 +692,13 @@ function compute_prediction_intervals(fit::ThetaFit, h::Int, level::Vector{Int};
 end
 
 """
-    forecast(fit::ThetaFit, h; level=[80, 95]) -> Forecast
+    forecast(fit::ThetaFit; h, level=[80, 95]) -> Forecast
 
 Generate forecasts from a fitted Theta model.
 
 # Arguments
 - `fit`: A fitted `ThetaFit` object
-- `h`: Forecast horizon
+- `h::Int`: Forecast horizon (keyword argument)
 - `level`: Confidence levels for prediction intervals (default: [80, 95])
 
 # Returns
@@ -704,13 +707,13 @@ A `Forecast` object containing point forecasts and prediction intervals.
 # Example
 ```julia
 fit = auto_theta(y, 12)
-fc = forecast(fit, 24)
+fc = forecast(fit, h=24)
 fc.mean        # Point forecasts
 fc.lower[1]    # 80% lower bounds
 fc.upper[2]    # 95% upper bounds
 ```
 """
-function forecast(fit::ThetaFit, h::Int; level::Vector{Int}=[80, 95])
+function forecast(fit::ThetaFit; h::Int, level::Vector{Int}=[80, 95])
     T = Float64
     n = length(fit.y)
 
@@ -757,5 +760,8 @@ function forecast(fit::ThetaFit, h::Int; level::Vector{Int}=[80, 95])
         fit.residuals
     )
 end
+
+# Formula interface
+include("theta_formula_interface.jl")
 
 end

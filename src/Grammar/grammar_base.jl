@@ -223,6 +223,38 @@ struct TbatsTerm <: AbstractTerm
 end
 
 """
+    ThetaTerm <: AbstractTerm
+
+Represents a Theta model specification term in a formula.
+
+The Theta method decomposes a time series into "theta lines" capturing long-term
+trend and short-term dynamics, then combines their forecasts. Supports four variants:
+STM, OTM, DSTM, DOTM.
+
+# Fields
+- `model_type::Union{Symbol, Nothing}` - Model variant: :STM, :OTM, :DSTM, :DOTM, or nothing (auto-select)
+- `alpha::Union{Float64, Nothing}` - Smoothing parameter (0 < α < 1), nothing = optimize
+- `theta::Union{Float64, Nothing}` - Theta parameter (≥ 1), nothing = optimize/fixed based on model
+- `decomposition_type::Union{String, Nothing}` - Seasonal adjustment: "multiplicative", "additive", or nothing (auto)
+- `nmse::Union{Int, Nothing}` - Steps for multi-step MSE calculation (1-30)
+
+# Examples
+```julia
+@formula(sales = theta())                           # Auto-select best variant
+@formula(sales = theta(model=:OTM))                 # Optimized Theta Model
+@formula(sales = theta(model=:STM, alpha=0.3))      # Simple Theta with fixed alpha
+@formula(sales = theta(decomposition="additive"))   # Force additive decomposition
+```
+"""
+struct ThetaTerm <: AbstractTerm
+    model_type::Union{Symbol, Nothing}
+    alpha::Union{Float64, Nothing}
+    theta::Union{Float64, Nothing}
+    decomposition_type::Union{String, Nothing}
+    nmse::Union{Int, Nothing}
+end
+
+"""
     VarTerm <: AbstractTerm
 
 Represents an exogenous variable to be used as a regressor in the model.
@@ -803,6 +835,108 @@ function tbats(; seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing,
     return TbatsTerm(seasonal_periods, k, use_box_cox, use_trend, use_damped_trend, use_arma_errors)
 end
 
+
+const _THETA_VALID_MODELS = (:STM, :OTM, :DSTM, :DOTM)
+
+"""
+    theta(; model=nothing, alpha=nothing, theta_param=nothing,
+          decomposition=nothing, nmse=nothing)
+
+Specify a Theta forecasting model in a formula.
+
+The Theta method decomposes a series into theta lines capturing long-term trend
+and short-term dynamics, then combines their forecasts.
+
+# Arguments
+- `model::Union{Symbol, Nothing}=nothing` - Model variant:
+  - `:STM` - Simple Theta (θ=2 fixed, α optimized)
+  - `:OTM` - Optimized Theta (both θ and α optimized)
+  - `:DSTM` - Dynamic Simple Theta (θ=2, dynamic trend estimation)
+  - `:DOTM` - Dynamic Optimized Theta (dynamic + optimized)
+  - `nothing` - Auto-select best variant by MSE
+- `alpha::Union{Real, Nothing}=nothing` - Smoothing parameter (0 < α < 1).
+  `nothing` = optimize automatically
+- `theta_param::Union{Real, Nothing}=nothing` - Theta parameter (≥ 1).
+  Ignored for STM/DSTM (fixed at 2). `nothing` = optimize for OTM/DOTM
+- `decomposition::Union{String, Nothing}=nothing` - Seasonal decomposition:
+  - `"multiplicative"` - Multiply seasonal factors (default for positive data)
+  - `"additive"` - Add seasonal factors
+  - `nothing` - Auto-detect based on data characteristics
+- `nmse::Union{Int, Nothing}=nothing` - Steps for multi-step MSE (1-30, default: 3)
+
+# Returns
+`ThetaTerm` for use in formula specification.
+
+# Examples
+```julia
+# Auto-select best model variant
+@formula(sales = theta())
+
+# Specific model variant
+@formula(demand = theta(model=:OTM))
+@formula(demand = theta(model=:STM))
+
+# With fixed smoothing parameter
+@formula(sales = theta(model=:OTM, alpha=0.2))
+
+# Force seasonal decomposition type
+@formula(sales = theta(decomposition="additive"))
+
+# Full specification
+@formula(sales = theta(model=:DOTM, decomposition="multiplicative", nmse=5))
+```
+
+# See Also
+- [`ThetaTerm`](@ref) - Term type created by this function
+"""
+function theta(; model::Union{Symbol, Nothing}=nothing,
+                alpha::Union{Real, Nothing}=nothing,
+                theta_param::Union{Real, Nothing}=nothing,
+                decomposition::Union{AbstractString, Symbol, Nothing}=nothing,
+                nmse::Union{Int, Nothing}=nothing)
+
+    
+    if !isnothing(model)
+        model ∈ _THETA_VALID_MODELS || throw(ArgumentError(
+            "model must be one of $(_THETA_VALID_MODELS), got :$(model)"))
+    end
+
+    
+    alpha_f = nothing
+    if !isnothing(alpha)
+        alpha_f = Float64(alpha)
+        (0 < alpha_f < 1) || throw(ArgumentError(
+            "alpha must be in (0, 1), got $(alpha)"))
+    end
+
+    
+    theta_f = nothing
+    if !isnothing(theta_param)
+        theta_f = Float64(theta_param)
+        theta_f >= 1 || throw(ArgumentError(
+            "theta_param must be >= 1, got $(theta_param)"))
+
+        
+        if model ∈ (:STM, :DSTM)
+            @warn "theta_param is ignored for $(model) (fixed at 2.0)"
+        end
+    end
+
+    decomp_str = nothing
+    if !isnothing(decomposition)
+        decomp_str = lowercase(String(decomposition))
+        decomp_str ∈ ("multiplicative", "additive") || throw(ArgumentError(
+            "decomposition must be \"multiplicative\" or \"additive\", got \"$(decomposition)\""))
+    end
+
+    if !isnothing(nmse)
+        (1 <= nmse <= 30) || throw(ArgumentError(
+            "nmse must be between 1 and 30, got $(nmse)"))
+    end
+
+    return ThetaTerm(model, alpha_f, theta_f, decomp_str, nmse)
+end
+
 """
     e(code::AbstractString = "Z")
 
@@ -1143,7 +1277,7 @@ function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:Abstra
             selected = term
         elseif term isa EtsComponentTerm || term isa EtsDriftTerm || term isa ArimaOrderTerm ||
                term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm || term isa BatsTerm ||
-               term isa TbatsTerm
+               term isa TbatsTerm || term isa ThetaTerm
             throw(ArgumentError("Formula term $(term) is not compatible with $(T)."))
         elseif term !== nothing
             throw(ArgumentError("Unsupported term $(term) in formula for $(T)."))
@@ -1264,6 +1398,30 @@ function Base.show(io::IO, term::BatsTerm)
         print(io, "bats()")
     else
         print(io, "bats(", join(args, ", "), ")")
+    end
+end
+
+function Base.show(io::IO, term::ThetaTerm)
+    args = String[]
+    if !isnothing(term.model_type)
+        push!(args, "model=:$(term.model_type)")
+    end
+    if !isnothing(term.alpha)
+        push!(args, "alpha=$(term.alpha)")
+    end
+    if !isnothing(term.theta)
+        push!(args, "theta_param=$(term.theta)")
+    end
+    if !isnothing(term.decomposition_type)
+        push!(args, "decomposition=\"$(term.decomposition_type)\"")
+    end
+    if !isnothing(term.nmse)
+        push!(args, "nmse=$(term.nmse)")
+    end
+    if isempty(args)
+        print(io, "theta()")
+    else
+        print(io, "theta(", join(args, ", "), ")")
     end
 end
 

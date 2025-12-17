@@ -65,6 +65,7 @@ For complete documentation, see the [Grammar Guide](https://taf-society.github.i
   (`pivot_longer`, `arrange`, `groupby`, `summarise`, `mutate`, …) plus `glimpse` utilities, see the [Table Operations](https://taf-society.github.io/Durbyn.jl/dev/tableops/) in the docs,
 - `Durbyn.ExponentialSmoothing`, `Durbyn.Arima`, `Durbyn.Ararma`,
   `Durbyn.IntermittentDemand` — Base model engines for array interface
+- **Theta models (STM, OTM, DSTM, DOTM)** — Dynamic Optimised Theta method (Fiorucci et al., 2016) with seasonal decomposition, multi-step MSE objective (`nmse`), and automatic variant selection via `theta()`. See the [Theta guide](https://taf-society.github.io/Durbyn.jl/dev/theta/).
 - **BATS (Box-Cox, ARMA errors, Trend, Seasonal)** — Multi-seasonal state-space
   models following De Livera, Hyndman & Snyder (2011) for complex seasonal patterns
   with **integer seasonal periods**. Suitable for series with multiple integer cycles
@@ -122,7 +123,24 @@ newdata = (temperature = rand(7), promotion = rand(0:1, 7))
 fc = forecast(fitted, h = 7, newdata = newdata)
 ```
 
-### Example 3: Fitting Multiple Models Together
+### Example 3: Theta (Dynamic Optimised)
+
+```julia
+using Durbyn, Durbyn.Grammar
+
+data = (demand = rand(80),)
+
+spec = ThetaSpec(@formula(demand = theta(
+    model = :DOTM,
+    decomposition = "multiplicative",
+    nmse = 5    # optimise on 1–5 step SSE
+)))
+
+fitted = fit(spec, data, m = 12)
+fc = forecast(fitted, h = 12)
+```
+
+### Example 4: Fitting Multiple Models Together
 
 ```julia
 
@@ -146,7 +164,7 @@ fc_tbl = as_table(fc) # stacked tidy table with model_name column
 
 ```
 
-### Example 4: Panel Data (Models and Multiple Time Series)
+### Example 5: Panel Data (Models and Multiple Time Series)
 
 ```julia
 using Durbyn

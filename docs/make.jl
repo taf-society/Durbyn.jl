@@ -22,6 +22,7 @@ makedocs(
         "User Guide" => Any[
             "Grammar"                => "grammar.md",
             "Exponential Smoothing" => "expsmoothing.md",
+            "Theta"                  => "theta.md",
             "BATS"                   => "bats.md",
             "TBATS"                  => "tbats.md",
             "Intermittent Demand"   => "intermittent.md",

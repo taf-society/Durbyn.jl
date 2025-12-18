@@ -22,7 +22,7 @@ $$y_t^{(\omega)} = \begin{cases}
 \ln(y_t), & \omega = 0
 \end{cases}$$
 
-where $\omega \in [0, 1]$ is the Box-Cox parameter estimated from the data.
+where ``\omega \in [0, 1]`` is the Box-Cox parameter estimated from the data.
 
 ---
 
@@ -35,12 +35,12 @@ The TBATS model is represented in innovations form with the following components
 $$y_t^{(\omega)} = \ell_{t-1} + \phi b_{t-1} + \sum_{i=1}^{T} s_{i,t-1} + d_t$$
 
 where:
-- $\ell_t$ is the local level
-- $b_t$ is the trend component
-- $\phi$ is the damping parameter ($0 < \phi \leq 1$)
-- $s_{i,t}$ is the $i$-th seasonal component
-- $d_t$ is the ARMA error term
-- $T$ is the number of seasonal periods
+- ``\ell_t`` is the local level
+- ``b_t`` is the trend component
+- ``\phi`` is the damping parameter (``0 < \phi \leq 1``)
+- ``s_{i,t}`` is the ``i``-th seasonal component
+- ``d_t`` is the ARMA error term
+- ``T`` is the number of seasonal periods
 
 #### **State Equations**
 
@@ -48,21 +48,21 @@ where:
 
 $$\ell_t = \ell_{t-1} + \phi b_{t-1} + \alpha d_t$$
 
-where $\alpha$ is the level smoothing parameter.
+where ``\alpha`` is the level smoothing parameter.
 
 **Trend Component:**
 
 $$b_t = \phi b_{t-1} + \beta d_t$$
 
-where $\beta$ is the trend smoothing parameter and $\phi$ controls damping.
+where ``\beta`` is the trend smoothing parameter and ``\phi`` controls damping.
 
 **Trigonometric Seasonal Components:**
 
-For each seasonal period $m_i$ with $k_i$ Fourier harmonics:
+For each seasonal period ``m_i`` with ``k_i`` Fourier harmonics:
 
 $$s_{i,t} = \sum_{j=1}^{k_i} \left[ s_{i,j,t}^{(1)} \cos(\lambda_{i,j} t) + s_{i,j,t}^{(2)} \sin(\lambda_{i,j} t) \right]$$
 
-where $\lambda_{i,j} = \frac{2\pi j}{m_i}$ is the $j$-th harmonic frequency.
+where ``\lambda_{i,j} = \frac{2\pi j}{m_i}`` is the ``j``-th harmonic frequency.
 
 **Harmonic State Evolution:**
 
@@ -85,18 +85,18 @@ s_{i,j,t-1}^{(2)}
 \gamma_{2,i}
 \end{pmatrix} d_t$$
 
-where $\gamma_{1,i}$ and $\gamma_{2,i}$ are smoothing parameters for the seasonal component.
+where ``\gamma_{1,i}`` and ``\gamma_{2,i}`` are smoothing parameters for the seasonal component.
 
 **ARMA Error Component:**
 
 $$d_t = \sum_{k=1}^p \varphi_k d_{t-k} + \varepsilon_t + \sum_{\ell=1}^q \theta_\ell \varepsilon_{t-\ell}$$
 
 where:
-- $p$ is the AR order
-- $q$ is the MA order
-- $\varphi_k$ are AR coefficients
-- $\theta_\ell$ are MA coefficients
-- $\varepsilon_t \sim \mathcal{N}(0, \sigma^2)$
+- ``p`` is the AR order
+- ``q`` is the MA order
+- ``\varphi_k`` are AR coefficients
+- ``\theta_\ell`` are MA coefficients
+- ``\varepsilon_t \sim \mathcal{N}(0, \sigma^2)``
 
 ---
 
@@ -105,12 +105,12 @@ where:
 | Feature | BATS | TBATS |
 |---------|------|-------|
 | Seasonal periods | Integer only | Non-integer allowed |
-| State dimension | $m_i$ states per season | $2k_i$ states per season |
+| State dimension | ``m_i`` states per season | ``2k_i`` states per season |
 | Max seasonal period | ~350 (computational limit) | Unlimited (via Fourier) |
 | Dual calendars | Not feasible | Fully supported |
-| Storage | $O(m)$ | $O(k)$, typically $k \ll m$ |
+| Storage | ``O(m)`` | ``O(k)``, typically ``k \ll m`` |
 
-**Example:** For weekly seasonality ($m = 52$), BATS needs 52 states, while TBATS with $k=2$ harmonics needs only 4 states.
+**Example:** For weekly seasonality (``m = 52``), BATS needs 52 states, while TBATS with ``k=2`` harmonics needs only 4 states.
 
 ---
 
@@ -140,7 +140,7 @@ s_{i,j,t}^{(1)} \\
 s_{i,j,t}^{(2)}
 \end{pmatrix}$$
 
-where $R(\lambda)$ is the rotation matrix.
+where ``R(\lambda)`` is the rotation matrix.
 
 **Point Forecast (Transformed Scale):**
 
@@ -155,11 +155,11 @@ $$\hat{y}_{t+h} = \begin{cases}
 
 **Forecast Variance:**
 
-The $h$-step ahead forecast variance is:
+The ``h``-step ahead forecast variance is:
 
 $$\text{Var}(\hat{y}_{t+h}) = \sigma^2 \sum_{j=0}^{h-1} c_j^2$$
 
-where $c_j$ depends on the model's transition matrix $F$ and error vector $g$.
+where ``c_j`` depends on the model's transition matrix ``F`` and error vector ``g``.
 
 ---
 
@@ -369,10 +369,10 @@ A `TBATSModel` struct containing:
 
 The implementation automatically selects:
 
-1. **Fourier orders ($k_i$)** for each seasonal period via AIC
-   - Starts with $k=1$
-   - For small periods ($m \leq 12$): searches downward from $k = \lfloor(m-1)/2\rfloor$
-   - For large periods ($m > 12$): uses step-up/step-down search around $k \in \{5,6,7\}$
+1. **Fourier orders (``k_i``)** for each seasonal period via AIC
+   - Starts with ``k=1``
+   - For small periods (``m \leq 12``): searches downward from ``k = \lfloor(m-1)/2\rfloor``
+   - For large periods (``m > 12``): uses step-up/step-down search around ``k \in \{5,6,7\}``
 
 2. **ARMA orders** using `auto_arima` on residuals
 
@@ -577,29 +577,29 @@ println("States: ", size(model.seed_states, 1))
 ### State Space Dimension
 
 For a TBATS model with:
-- Trend: 2 states ($\ell_t$, $b_t$)
-- $T$ seasonal components with Fourier orders $k_1, \ldots, k_T$: $2\sum_{i=1}^T k_i$ states
-- ARMA($p$, $q$): $p + q$ states
+- Trend: 2 states (``\ell_t``, ``b_t``)
+- ``T`` seasonal components with Fourier orders ``k_1, \ldots, k_T``: ``2\sum_{i=1}^T k_i`` states
+- ARMA(``p``, ``q``): ``p + q`` states
 
-**Total states:** $2 + 2\sum k_i + p + q$
+**Total states:** ``2 + 2\sum k_i + p + q``
 
 **Example:**
-- Daily ($m=288$, $k=5$): 10 states
-- Weekly ($m=2016$, $k=7$): 14 states
-- Total: $2 + 10 + 14 = 26$ states
+- Daily (``m=288``, ``k=5``): 10 states
+- Weekly (``m=2016``, ``k=7``): 14 states
+- Total: ``2 + 10 + 14 = 26`` states
 
-Compare to BATS: $2 + 288 + 2016 = 2306$ states!
+Compare to BATS: ``2 + 288 + 2016 = 2306`` states!
 
 ### Choosing Fourier Orders
 
-The implementation automatically selects $k_i$ via AIC, but general guidelines:
+The implementation automatically selects ``k_i`` via AIC, but general guidelines:
 
-- **Short periods** ($m < 12$): use $k \approx m/2$
-- **Medium periods** ($m = 12$ to $100$): use $k \in [3, 10]$
-- **Long periods** ($m > 100$): use $k \in [5, 15]$
-- **Very long periods** ($m > 1000$): use $k \in [10, 20]$
+- **Short periods** (``m < 12``): use ``k \approx m/2``
+- **Medium periods** (``m = 12`` to ``100``): use ``k \in [3, 10]``
+- **Long periods** (``m > 100``): use ``k \in [5, 15]``
+- **Very long periods** (``m > 1000``): use ``k \in [10, 20]``
 
-Higher $k$ captures more complex seasonal shapes but increases computation.
+Higher ``k`` captures more complex seasonal shapes but increases computation.
 
 ---
 
@@ -615,7 +615,7 @@ Higher $k$ captures more complex seasonal shapes but increases computation.
 
 - **Seasonal periods:** 169 (daily), 845 (weekly)
 - **BATS states:** 1014
-- **TBATS states:** 24 (with $k_1=5$, $k_2=7$)
+- **TBATS states:** 24 (with ``k_1=5``, ``k_2=7``)
 - **Result:** 40× reduction in state dimension with better forecasts
 
 ### 3. Turkish Electricity Consumption
@@ -632,8 +632,8 @@ Higher $k$ captures more complex seasonal shapes but increases computation.
 |----------|----------|-----------|
 | Integer seasonal period | ✓ | ✓ |
 | Non-integer seasonal period | ✗ | ✓ |
-| Short seasonal period ($m < 50$) | ✓ | ✓ |
-| Long seasonal period ($m > 350$) | ✗ | ✓ |
+| Short seasonal period (``m < 50``) | ✓ | ✓ |
+| Long seasonal period (``m > 350``) | ✗ | ✓ |
 | Multiple integer seasons | ✓ | ✓ |
 | Dual calendars | ✗ | ✓ |
 | Memory-constrained | ✗ | ✓ |

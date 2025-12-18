@@ -16,6 +16,17 @@ four variants discussed by Fiorucci et al. (2016):
 Seasonality is handled with additive or multiplicative decomposition prior to fitting
 (auto-detected unless specified).
 
+### Variant Selection Guide
+
+| Variant | Best for | Trade-off |
+|---------|----------|-----------|
+| **STM** | Quick baseline forecasts | Fast but less flexible (fixed θ=2) |
+| **OTM** | Series where θ≠2 improves fit | Better accuracy, slightly slower |
+| **DSTM** | Non-stationary trend patterns | Adapts to changing trends |
+| **DOTM** | Complex series with evolving dynamics | Most flexible, best for longer series |
+
+Use `theta()` with no model argument to let Durbyn auto-select the best variant via in-sample MSE.
+
 ---
 
 ## Formula Interface (primary usage)
@@ -131,6 +142,12 @@ Y_t = \mu_t + \varepsilon_t, \qquad
 \ell_t = \alpha Y_t + (1-\alpha)\ell_{t-1}.
 ```
 
+The ``h``-step-ahead forecast from origin ``n``:
+
+```math
+\widehat{Y}_{n+h\mid n} = \ell_n + \left(1-\tfrac{1}{\theta}\right)\!\left[(1-\alpha)^n A_n + \left[(h-1) + \tfrac{1-(1-\alpha)^{n+1}}{\alpha}\right]B_n\right].
+```
+
 Dynamic variants update regression coefficients each period:
 
 ```math
@@ -151,7 +168,23 @@ Parameters are estimated by SSE / Gaussian likelihood:
 l = -\tfrac{n}{2}\log(\mathrm{SSE}/n) - \tfrac{n}{2}(1+\log 2\pi).
 ```
 
-The mapping to SES with drift (Theorem 2) is ``b = (1-\tfrac{1}{\theta})B_n`` and
+### Prediction intervals
+
+The conditional variance for ``h``-step-ahead forecasts:
+
+```math
+\mathrm{Var}\!\left[Y_{n+h} \mid Y_1,\ldots,Y_n\right] = \left[1 + (h-1)\alpha^2\right]\sigma^2,
+```
+
+yielding prediction intervals:
+
+```math
+\widehat{Y}_{n+h\mid n} \pm z_{1-a/2}\sqrt{\left[1 + (h-1)\alpha^2\right]\sigma^2}.
+```
+
+### Connection to SES with drift
+
+The mapping to SES with drift (Theorem 2 in Fiorucci et al.) is ``b = (1-\tfrac{1}{\theta})B_n`` and
 ``\ell^{**}_0 = \ell_0 + (1-\tfrac{1}{\theta})A_n``.
 
 ---

@@ -121,7 +121,7 @@ plot(fc2)
 fit3 = ets(ap, 12, "ZZZ"; damped=nothing, lambda="auto", biasadj=true)
 fc3 = forecast(fit3, h=12)
 plot(fc3)
-````
+```
 """
 function ets(
     y::AbstractArray,

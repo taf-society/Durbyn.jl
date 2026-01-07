@@ -251,11 +251,11 @@ function predict_covariance_nodiff!(Pnew::Matrix{Float64}, P::Matrix{Float64},
                 tmp = tmp + P[i+1, j+1]
             end
 
-            if i <= p && j < r - 1
+            if i <= p && j <= r - 1
                 tmp = tmp + phi[i] * P[j+1, 1]
             end
 
-            if j <= p && i < r - 1
+            if j <= p && i <= r - 1
                 tmp = tmp + phi[j] * P[i+1, 1]
             end
 
@@ -432,9 +432,12 @@ function compute_arima_likelihood( y::Vector{Float64}, model::ArimaStateSpace, u
     phi = model.phi
     theta = model.theta
     delta = model.Delta
+    # Use references (not copies) to match R's in-place modification behavior.
+    # R's ARIMA_Like (arima.c:613) uses: double *a = REAL(sa), *P = REAL(sP), *Pnew = REAL(sPn)
+    # This modifies mod$a, mod$P, and mod$Pn in place during Kalman filtering.
     a = model.a
-    P = copy(model.P)
-    Pnew = copy(model.Pn)
+    P = model.P
+    Pnew = model.Pn
 
     n = length(y)
     rd = length(a)
@@ -472,7 +475,10 @@ function compute_arima_likelihood( y::Vector{Float64}, model::ArimaStateSpace, u
             end
         end
 
-        if l > update_start
+        # Note: l is 1-indexed in Julia, but update_start follows R's 0-indexed convention
+        # R uses: if (l > sUP) with l starting at 0
+        # So we need: l > update_start + 1 to match R's behavior
+        if l > update_start + 1
             if d == 0
                 predict_covariance_nodiff!(Pnew, P, r, p, q, phi, theta)
             else

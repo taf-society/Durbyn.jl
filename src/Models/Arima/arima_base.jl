@@ -297,30 +297,31 @@ function predict_covariance_with_diff!(Pnew::Matrix{Float64}, P::Matrix{Float64}
     end
 
     # Step 2: Pnew = mm * Tᵀ
+    # Note: R uses column-major order, so indices are transposed compared to naive reading
     @inbounds for i in 1:r
         for j in 1:rd
             tmp = 0.0
             if i <= p
-                tmp = tmp + phi[i] * mm[1, j]
+                tmp = tmp + phi[i] * mm[j, 1]
             end
             if i < r
-                tmp = tmp + mm[i+1, j]
+                tmp = tmp + mm[j, i+1]
             end
-            Pnew[i, j] = tmp
+            Pnew[j, i] = tmp
         end
     end
 
     @inbounds for j in 1:rd
-        tmp = mm[1, j]
+        tmp = mm[j, 1]
         for k in 1:d
-            tmp = tmp + delta[k] * mm[r+k, j]
+            tmp = tmp + delta[k] * mm[j, r+k]
         end
-        Pnew[r+1, j] = tmp
+        Pnew[j, r+1] = tmp
     end
 
     @inbounds for i in 2:d
         for j in 1:rd
-            Pnew[r+i, j] = mm[r+i-1, j]
+            Pnew[j, r+i] = mm[j, r+i-1]
         end
     end
 
@@ -466,25 +467,29 @@ function compute_arima_likelihood( y::Vector{Float64}, model::ArimaStateSpace, u
     @inbounds for l = 1:n
         state_prediction!(anew, a, p, r, d, rd, phi, delta)
 
-        if !isnan(y[l])
-            kalman_update!(y[l], anew, delta, Pnew, M, d, r, rd, a, P, give_resid, rsResid, l, ssq, sumlog, nu)
-        else
-            a .= anew
-            if give_resid
-                rsResid[l] = NaN
-            end
-        end
-
-        # Note: l is 1-indexed in Julia, but update_start follows R's 0-indexed convention
+        # Covariance prediction BEFORE Kalman update (matching R's ARIMA_Like order)
         # R uses: if (l > sUP) with l starting at 0
-        # So we need: l > update_start + 1 to match R's behavior
+        # So we need: l > update_start + 1 to match R's behavior (since Julia is 1-indexed)
+        # R computes Pnew = T*P*T' + V, then uses Pnew in the Kalman update
         if l > update_start + 1
             if d == 0
                 predict_covariance_nodiff!(Pnew, P, r, p, q, phi, theta)
             else
                 predict_covariance_with_diff!(Pnew, P, r, d, p, q, rd, phi, delta, theta, mm)
             end
+            # NOTE: Don't copy Pnew to P here! The Kalman update will set P = Pnew - M*M'/gain
+        end
+
+        if !isnan(y[l])
+            # Kalman update uses Pnew and sets P = Pnew - M*M'/gain (filtered covariance)
+            kalman_update!(y[l], anew, delta, Pnew, M, d, r, rd, a, P, give_resid, rsResid, l, ssq, sumlog, nu)
+        else
+            # For missing observations: a = anew, P = Pnew (R lines 726-728)
+            a .= anew
             copyto!(P, Pnew)
+            if give_resid
+                rsResid[l] = NaN
+            end
         end
     end
 
@@ -1860,12 +1865,9 @@ function arima(
         trarma = transform_arima_parameters(par, arma, trans)
         xxi = copy(x)
 
-        #Z = upARIMA(mod, trarma[1], trarma[2])
-        Z = update_arima(mod, trarma[1], trarma[2]; ss_g=SS_G)
-
-        try
-            #Z = upARIMA(mod, trarma[1], trarma[2])
-            Z = update_arima(mod, trarma[1], trarma[2]; ss_g=SS_G)
+        # Update state-space model with new parameters (protected by try-catch)
+        Z = try
+            update_arima(mod, trarma[1], trarma[2]; ss_g=SS_G)
         catch e
             @warn "Updating arima failed $e"
             return typemax(Float64)
@@ -1876,8 +1878,19 @@ function arima(
         end
         resss = compute_arima_likelihood(xxi, Z, 0, false)
 
-        s2 = resss[1] / resss[3]
-        return 0.5 * (log(s2) + resss[2] / resss[3])
+        # Safety checks to avoid NaN/Inf in optimization
+        nu = resss[3]
+        if nu <= 0
+            return typemax(Float64)
+        end
+
+        s2 = resss[1] / nu
+        if s2 <= 0 || !isfinite(s2)
+            return typemax(Float64)
+        end
+
+        result = 0.5 * (log(s2) + resss[2] / nu)
+        return isfinite(result) ? result : typemax(Float64)
     end
     # Conditional sum of squares objective
     function armaCSS(p)
@@ -1891,7 +1904,15 @@ function arima(
         end
 
         ross = compute_css_residuals(x_in, arma, trarma[1], trarma[2], ncond)
-        return 0.5 * log(ross[:sigma2])
+        sigma2 = ross[:sigma2]
+
+        # Safety check for log of non-positive value
+        if sigma2 <= 0 || !isfinite(sigma2)
+            return typemax(Float64)
+        end
+
+        result = 0.5 * log(sigma2)
+        return isfinite(result) ? result : typemax(Float64)
     end
     
     n = length(x)
@@ -2184,6 +2205,81 @@ function arima(
                 minimizer = opt.par,
                 minimum = opt.value,
             )
+
+            # Try alternative MA starting points if ML didn't improve significantly
+            # This helps escape local minima that CSS can find
+            if arma[2] > 0 && method == "CSS-ML"
+                best_res = res
+
+                # Try perturbed MA starting points
+                ma_start_idx = arma[1] + 1
+                ma_end_idx = arma[1] + arma[2]
+
+                for ma_scale in [0.5, 0.25, 0.75, 0.0]  # Try scaling MA towards zero
+                    init_alt = copy(init)
+                    init_alt[ma_start_idx:ma_end_idx] .*= ma_scale
+
+                    # Re-transform and re-initialize for alternative starting point
+                    if transform_pars
+                        init_alt_trans = inverse_arima_parameter_transform(init_alt, arma)
+                        if arma[2] > 0
+                            ind = (arma[1]+1):(arma[1]+arma[2])
+                            init_alt_trans[ind] .= ma_invert(init_alt_trans[ind])
+                        end
+                    else
+                        init_alt_trans = init_alt
+                    end
+
+                    trarma_alt = transform_arima_parameters(init_alt_trans, arma, transform_pars)
+                    mod_alt = initialize_arima_state(
+                        trarma_alt[1], trarma_alt[2], Delta;
+                        kappa = kappa, SSinit = SSinit,
+                    )
+
+                    # Define alternative armafn that uses mod_alt
+                    function armafn_alt(p, trans)
+                        par = copy(coef)
+                        par[mask] = p
+                        trarma_local = transform_arima_parameters(par, arma, trans)
+                        Z = try
+                            update_arima(mod_alt, trarma_local[1], trarma_local[2]; ss_g=SS_G)
+                        catch
+                            return typemax(Float64)
+                        end
+                        xxi = ncxreg > 0 ? x .- xreg * par[narma+1:narma+ncxreg] : copy(x)
+                        resss = compute_arima_likelihood(xxi, Z, 0, false)
+                        nu = resss[3]
+                        if nu <= 0; return typemax(Float64); end
+                        s2 = resss[1] / nu
+                        if s2 <= 0 || !isfinite(s2); return typemax(Float64); end
+                        result = 0.5 * (log(s2) + resss[2] / nu)
+                        return isfinite(result) ? result : typemax(Float64)
+                    end
+
+                    opt_alt = try
+                        optim(
+                            init_alt_trans[mask],
+                            p -> armafn_alt(p, transform_pars);
+                            method = optim_method,
+                            control = ctrl,
+                        )
+                    catch
+                        nothing
+                    end
+
+                    if !isnothing(opt_alt) && opt_alt.convergence == 0 && opt_alt.value < best_res.minimum - 1e-6
+                        best_res = (
+                            converged = true,
+                            minimizer = opt_alt.par,
+                            minimum = opt_alt.value,
+                        )
+                        # Update mod to the better one for subsequent use
+                        mod = mod_alt
+                    end
+                end
+
+                res = best_res
+            end
         end
 
         if !res.converged
@@ -2208,7 +2304,7 @@ function arima(
             end
 
             if any(coef[mask] .!= res.minimizer)
-                old_convergence = res.converged
+                _old_convergence = res.converged  # Preserved for potential future use
 
                 ctrl = copy(optim_control)
                 ctrl["parscale"] = parscale
@@ -2302,7 +2398,7 @@ function arima(
         y,
         fitted,
         arima_coef,
-        sum(resid .^ 2) / n_used,
+        sigma2,
         var,
         mask,
         loglik,
@@ -2343,8 +2439,6 @@ function kalman_forecast(n_ahead::Int, mod::ArimaStateSpace; update::Bool=false)
     a = copy(mod.a)
     P = copy(mod.P)
     Pnew = copy(mod.Pn)
-    Tmat = mod.T
-    V = mod.V
     h = mod.h
 
     p = length(phi)
@@ -2362,21 +2456,29 @@ function kalman_forecast(n_ahead::Int, mod::ArimaStateSpace; update::Bool=false)
     mm = d > 0 ? zeros(rd, rd) : nothing
 
     for l in 1:n_ahead
+        # 1. State prediction: a = T * a
         state_prediction!(anew, a, p, r, d, rd, phi, delta)
         a .= anew
 
+        # 2. Forecast value
         fc = dot(Z, a)
         forecasts[l] = fc
 
+        # 3. Covariance prediction: Pnew = T * P * T' + V
+        # R's KalmanFore does this BEFORE computing variance
         if d == 0
             predict_covariance_nodiff!(Pnew, P, r, p, q, phi, theta)
         else
             predict_covariance_with_diff!(Pnew, P, r, d, p, q, rd, phi, delta, theta, mm)
         end
-        P .= Pnew
 
-        tmpvar = h + dot(Z, P, Z)
+        # 4. Compute variance using Pnew (predicted covariance), matching R's KalmanFore
+        # R: tmp = h; for(i,j) tmp += Z[i] * Z[j] * Pnew[i,j]; se[l] = tmp
+        tmpvar = h + dot(Z, Pnew, Z)
         variances[l] = tmpvar
+
+        # 5. Update P for next iteration
+        P .= Pnew
     end
 
     result = (pred = forecasts, var = variances)

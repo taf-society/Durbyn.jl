@@ -91,7 +91,7 @@ end
 get_pdq(x) = hasproperty(x, :p) ? (x.p, x.d, x.q) : (x[1], x[2], x[3])
 get_sum(x) = hasproperty(x, :p) ? x.p + x.d + x.q : sum(x)
 
-function arima_trace_str(order::PDQ, seasonal::PDQ, m::Int, constant::Bool)
+function arima_trace_str(order::PDQ, seasonal::PDQ, m::Int, constant::Bool; ic_value::Real = Inf)
     (p, d, q) = get_pdq(order)
     (P, D, Q) = get_pdq(seasonal)
     seasonal_part = get_sum(seasonal) > 0 && m > 0 ? "($P,$D,$Q)[$m]" : ""
@@ -104,8 +104,15 @@ function arima_trace_str(order::PDQ, seasonal::PDQ, m::Int, constant::Bool)
     else
         mean_str = "                   "
     end
+    ic_str = if isnan(ic_value)
+        "NaN"
+    elseif isfinite(ic_value)
+        string(round(ic_value, digits = 3))
+    else
+        "Inf"
+    end
     # Combine all parts, pad to fixed width
-    s = " ARIMA($(p),$(d),$(q))$(seasonal_part)$(mean_str) : Inf"
+    s = " ARIMA($(p),$(d),$(q))$(seasonal_part)$(mean_str) : $(ic_str)"
 
     return s
 end
@@ -241,8 +248,6 @@ function fit_custom_arima(
             fit.aic, fit.bic, fit.aicc, fit.ic = Inf, Inf, Inf, Inf
         end
 
-        fit.sigma2 = sum(skipmissing((fit.residuals) .^ 2)) / (nstar - npar + 1)
-
         minroot = 2.0
 
         # AR roots
@@ -306,7 +311,7 @@ function fit_custom_arima(
 
         if trace
             println()
-            println(arima_trace_str(order, seasonal, m, constant))
+            println(arima_trace_str(order, seasonal, m, constant; ic_value = fit.ic))
         end
         return fit
     else

@@ -459,12 +459,15 @@ function auto_arima(
 
     k = 2
 
+   
     if max_p > 0 || max_P > 0
+        pp = max_p > 0 ? 1 : 0
+        PP = m > 1 && max_P > 0 ? 1 : 0
         fit = fit_custom_arima(
             x,
             m;
-            order = PDQ(0, d, 0),
-            seasonal = PDQ(0, D, 0),
+            order = PDQ(pp, d, 0),
+            seasonal = PDQ(PP, D, 0),
             constant = constant,
             ic = ic,
             trace = trace,
@@ -474,20 +477,16 @@ function auto_arima(
             method = method,
             kwargs...,
         )
+        result = setrow!(result, k + 1, (pp, d, 0, PP, D, 0, constant, fit.ic))
+
+        if fit.ic < bestfit.ic
+            bestfit = fit
+            p = pp
+            P = PP
+            q, Q = 0, 0
+        end
+        k += 1
     end
-
-    pp = max_p > 0 ? 1 : 0
-    PP = m > 1 && max_P > 0 ? 1 : 0
-    result = setrow!(result, k + 1, (pp, d, 0, PP, D, 0, constant, fit.ic))
-
-    if fit.ic < bestfit.ic
-        bestfit = fit
-        p = max_p > 0 ? 1 : 0
-        P = m > 1 && max_P > 0 ? 1 : 0
-        q, Q = 0, 0
-    end
-
-    k += 1
     # Basic MA model
     if max_q > 0 || max_Q > 0
         qq = max_q > 0 ? 1 : 0

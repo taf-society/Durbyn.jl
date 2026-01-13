@@ -297,14 +297,8 @@ function fit_custom_arima(
                 end
             end
         end
-        bad_variances = try
-            any(isnan.(sqrt.(diag(fit.var_coef))))
-        catch
-            true
-        end
-
-        # Avoid bad models
-        if minroot < 1 + 1e-2 || bad_variances
+       
+        if minroot < 1 + 1e-2
             fit.ic = Inf
         end
         fit.xreg = xreg

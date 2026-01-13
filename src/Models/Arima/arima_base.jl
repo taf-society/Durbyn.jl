@@ -28,6 +28,56 @@ mutable struct ArimaStateSpace
     Pn::AbstractMatrix
 end
 
+"""
+    KalmanWorkspace
+
+Pre-allocated workspace arrays for Kalman filter computations in compute_arima_likelihood.
+Reusing this workspace across multiple likelihood evaluations avoids repeated allocations
+during optimization, significantly improving performance.
+
+# Fields
+- `anew::Vector{Float64}`: State prediction workspace (length rd)
+- `M::Vector{Float64}`: Kalman gain workspace (length rd)
+- `mm::Union{Matrix{Float64},Nothing}`: Covariance workspace (rd × rd), or nothing if d == 0
+- `rsResid::Union{Vector{Float64},Nothing}`: Residuals workspace (length n), or nothing if not needed
+
+# Constructor
+    KalmanWorkspace(rd::Int, n::Int, d::Int, give_resid::Bool)
+
+Creates a workspace with appropriately sized arrays.
+"""
+mutable struct KalmanWorkspace
+    anew::Vector{Float64}
+    M::Vector{Float64}
+    mm::Union{Matrix{Float64},Nothing}
+    rsResid::Union{Vector{Float64},Nothing}
+end
+
+function KalmanWorkspace(rd::Int, n::Int, d::Int, give_resid::Bool)
+    anew = zeros(rd)
+    M = zeros(rd)
+    mm = d > 0 ? zeros(rd, rd) : nothing
+    rsResid = give_resid ? zeros(n) : nothing
+    return KalmanWorkspace(anew, M, mm, rsResid)
+end
+
+"""
+    reset!(ws::KalmanWorkspace)
+
+Reset workspace arrays to zero for reuse.
+"""
+function reset!(ws::KalmanWorkspace)
+    fill!(ws.anew, 0.0)
+    fill!(ws.M, 0.0)
+    if !isnothing(ws.mm)
+        fill!(ws.mm, 0.0)
+    end
+    if !isnothing(ws.rsResid)
+        fill!(ws.rsResid, 0.0)
+    end
+    return ws
+end
+
 function show(io::IO, s::ArimaStateSpace)
     println(io, "ArimaStateSpace:")
     println(io, "  phi   (AR coefficients):         ", s.phi)
@@ -428,7 +478,13 @@ A `Dict` with keys:
 
 """
 # Tested and it is safe. Possible improvement potatial.
-function compute_arima_likelihood( y::Vector{Float64}, model::ArimaStateSpace, update_start::Int, give_resid::Bool,)
+function compute_arima_likelihood(
+    y::Vector{Float64},
+    model::ArimaStateSpace,
+    update_start::Int,
+    give_resid::Bool;
+    workspace::Union{KalmanWorkspace,Nothing}=nothing
+)
 
     phi = model.phi
     theta = model.theta
@@ -451,40 +507,34 @@ function compute_arima_likelihood( y::Vector{Float64}, model::ArimaStateSpace, u
     sumlog = Ref(0.0)
     nu = Ref(0)
 
-    anew = zeros(rd)
-    M = zeros(rd)
-    if d > 0
-        mm = zeros(rd, rd)
+    if isnothing(workspace)
+        anew = zeros(rd)
+        M = zeros(rd)
+        mm = d > 0 ? zeros(rd, rd) : nothing
+        rsResid = give_resid ? zeros(n) : nothing
     else
-        mm = nothing
-    end
-
-    if give_resid
-        rsResid = zeros(n)
-    else
-        rsResid = nothing
+        # Reset workspace arrays for reuse
+        reset!(workspace)
+        anew = workspace.anew
+        M = workspace.M
+        mm = workspace.mm
+        rsResid = workspace.rsResid
     end
     @inbounds for l = 1:n
         state_prediction!(anew, a, p, r, d, rd, phi, delta)
 
-        # Covariance prediction BEFORE Kalman update (matching R's ARIMA_Like order)
-        # R uses: if (l > sUP) with l starting at 0
-        # So we need: l > update_start + 1 to match R's behavior (since Julia is 1-indexed)
-        # R computes Pnew = T*P*T' + V, then uses Pnew in the Kalman update
         if l > update_start + 1
             if d == 0
                 predict_covariance_nodiff!(Pnew, P, r, p, q, phi, theta)
             else
                 predict_covariance_with_diff!(Pnew, P, r, d, p, q, rd, phi, delta, theta, mm)
             end
-            # NOTE: Don't copy Pnew to P here! The Kalman update will set P = Pnew - M*M'/gain
         end
 
         if !isnan(y[l])
-            # Kalman update uses Pnew and sets P = Pnew - M*M'/gain (filtered covariance)
+            
             kalman_update!(y[l], anew, delta, Pnew, M, d, r, rd, a, P, give_resid, rsResid, l, ssq, sumlog, nu)
         else
-            # For missing observations: a = anew, P = Pnew (R lines 726-728)
             a .= anew
             copyto!(P, Pnew)
             if give_resid
@@ -532,7 +582,7 @@ Notes
 This function mutates its `new` argument.  A working copy of the first
 `p` elements is used internally to avoid aliasing.
 """
-# Tested and it is safe. Possible improvement potatial.
+
 function transform_unconstrained_to_ar_params!(
     p::Int,
     raw::AbstractVector,
@@ -585,7 +635,7 @@ Returns
 A dense `n*n` matrix of `Float64` where `n = length(x)`.  Elements
 outside the blocks corresponding to AR parameters are zero.
 """
-# The function is tested works as expected
+
 function compute_arima_transform_gradient(x::AbstractArray, arma::AbstractArray)
     eps = 1e-3
     mp, mq, msp = arma[1:3]
@@ -1852,6 +1902,8 @@ function arima(
     method = match_arg(method, ["CSS-ML", "ML", "CSS"])
     SS_G = SSinit == "Gardner1980"
 
+    kalman_ws = Ref{Union{KalmanWorkspace,Nothing}}(nothing)
+
     # State-space likelihood
     function compute_state_space_likelihood(y, model)
         # Delegate to the Kalman filter based likelihood computation.
@@ -1876,7 +1928,7 @@ function arima(
         if ncxreg > 0
             xxi = xxi .- xreg * par[narma+1 : narma+ncxreg]
         end
-        resss = compute_arima_likelihood(xxi, Z, 0, false)
+        resss = compute_arima_likelihood(xxi, Z, 0, false; workspace=kalman_ws[])
 
         # Safety checks to avoid NaN/Inf in optimization
         nu = resss[3]
@@ -2020,21 +2072,20 @@ function arima(
         end
 
         if method == "ML"
-            p, d, q = arma[1:3]
+            p = arma[1]  # non-seasonal AR order
+            P = arma[3]  # seasonal AR order
             if p > 0
                 if !ar_check(init[1:p])
                     error("non-stationary AR part")
                 end
             end
-            if q > 0
-                sa_start = p + d + 1
-                sa_stop = p + d + q
+            if P > 0
+                # Seasonal AR params are at positions (p + q + 1) : (p + q + P)
+                sa_start = arma[1] + arma[2] + 1
+                sa_stop = arma[1] + arma[2] + P
                 if !ar_check(init[sa_start:sa_stop])
                     error("non-stationary seasonal AR part")
                 end
-            end
-            if transform_pars
-                init = inverse_arima_parameter_transform(init, arma)
             end
         end
     else
@@ -2053,9 +2104,15 @@ function arima(
             if !haskey(ctrl, "maxit")
                 ctrl["maxit"] = 500
             end
-            
+
             if !haskey(ctrl, "gtol")
                 ctrl["gtol"] = 1e-6
+            end
+
+            # Use larger step size for numerical gradient.
+            if !haskey(ctrl, "ndeps")
+                nparams = sum(mask)
+                ctrl["ndeps"] = fill(1e-2, nparams)
             end
 
             opt = optim(
@@ -2118,10 +2175,14 @@ function arima(
                 if !haskey(ctrl, "maxit")
                     ctrl["maxit"] = 500
                 end
-
-                if !haskey(ctrl, "gtol")
-                    ctrl["gtol"] = 1e-6
+                if !haskey(ctrl, "ndeps")
+                    nparams = sum(mask)
+                    ctrl["ndeps"] = fill(1e-2, nparams)
                 end
+
+                # Note: Do NOT set gtol here - R's vmmin doesn't have gradient norm convergence
+                # Setting gtol > 0 causes early termination at local minima
+                # If user hasn't specified gtol, leave it at default (0) to match R
 
                 opt = optim(
                     init[mask],
@@ -2175,6 +2236,11 @@ function arima(
             SSinit = SSinit,
         )
 
+        # Initialize Kalman workspace after mod is created (for optimization reuse)
+        rd = length(mod.a)
+        d_len = length(mod.Delta)
+        kalman_ws[] = KalmanWorkspace(rd, n, d_len, false)
+
         if no_optim
 
             res = (
@@ -2190,8 +2256,10 @@ function arima(
                 ctrl["maxit"] = 500
             end
 
-            if !haskey(ctrl, "gtol")
-                ctrl["gtol"] = 1e-6
+            
+            if !haskey(ctrl, "ndeps")
+                nparams = sum(mask)
+                ctrl["ndeps"] = fill(1e-2, nparams)
             end
 
             opt = optim(
@@ -2205,81 +2273,6 @@ function arima(
                 minimizer = opt.par,
                 minimum = opt.value,
             )
-
-            # Try alternative MA starting points if ML didn't improve significantly
-            # This helps escape local minima that CSS can find
-            if arma[2] > 0 && method == "CSS-ML"
-                best_res = res
-
-                # Try perturbed MA starting points
-                ma_start_idx = arma[1] + 1
-                ma_end_idx = arma[1] + arma[2]
-
-                for ma_scale in [0.5, 0.25, 0.75, 0.0]  # Try scaling MA towards zero
-                    init_alt = copy(init)
-                    init_alt[ma_start_idx:ma_end_idx] .*= ma_scale
-
-                    # Re-transform and re-initialize for alternative starting point
-                    if transform_pars
-                        init_alt_trans = inverse_arima_parameter_transform(init_alt, arma)
-                        if arma[2] > 0
-                            ind = (arma[1]+1):(arma[1]+arma[2])
-                            init_alt_trans[ind] .= ma_invert(init_alt_trans[ind])
-                        end
-                    else
-                        init_alt_trans = init_alt
-                    end
-
-                    trarma_alt = transform_arima_parameters(init_alt_trans, arma, transform_pars)
-                    mod_alt = initialize_arima_state(
-                        trarma_alt[1], trarma_alt[2], Delta;
-                        kappa = kappa, SSinit = SSinit,
-                    )
-
-                    # Define alternative armafn that uses mod_alt
-                    function armafn_alt(p, trans)
-                        par = copy(coef)
-                        par[mask] = p
-                        trarma_local = transform_arima_parameters(par, arma, trans)
-                        Z = try
-                            update_arima(mod_alt, trarma_local[1], trarma_local[2]; ss_g=SS_G)
-                        catch
-                            return typemax(Float64)
-                        end
-                        xxi = ncxreg > 0 ? x .- xreg * par[narma+1:narma+ncxreg] : copy(x)
-                        resss = compute_arima_likelihood(xxi, Z, 0, false)
-                        nu = resss[3]
-                        if nu <= 0; return typemax(Float64); end
-                        s2 = resss[1] / nu
-                        if s2 <= 0 || !isfinite(s2); return typemax(Float64); end
-                        result = 0.5 * (log(s2) + resss[2] / nu)
-                        return isfinite(result) ? result : typemax(Float64)
-                    end
-
-                    opt_alt = try
-                        optim(
-                            init_alt_trans[mask],
-                            p -> armafn_alt(p, transform_pars);
-                            method = optim_method,
-                            control = ctrl,
-                        )
-                    catch
-                        nothing
-                    end
-
-                    if !isnothing(opt_alt) && opt_alt.convergence == 0 && opt_alt.value < best_res.minimum - 1e-6
-                        best_res = (
-                            converged = true,
-                            minimizer = opt_alt.par,
-                            minimum = opt_alt.value,
-                        )
-                        # Update mod to the better one for subsequent use
-                        mod = mod_alt
-                    end
-                end
-
-                res = best_res
-            end
         end
 
         if !res.converged

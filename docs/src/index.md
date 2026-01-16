@@ -355,4 +355,5 @@ MIT License.
   - [Intermittent Demand](intermittent.md) — Croston methods
   - [ARAR/ARARMA](ararma.md) — Memory-shortening algorithms
   - [Statistics](stats.md) — Box-Cox transformations, decomposition (STL, MSTL), unit root tests, ACF/PACF
+  - [Optimization](optimize.md) — Nelder-Mead, BFGS, L-BFGS-B, and Brent optimization algorithms
 - **API Reference** — Complete API documentation

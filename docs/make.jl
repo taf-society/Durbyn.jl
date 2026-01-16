@@ -29,6 +29,7 @@ makedocs(
             "ARIMA"                  => "arima.md",
             "ARAR/ARARMA"            => "ararma.md",
             "Statistics"             => "stats.md",
+            "Optimization"           => "optimize.md",
             "Table Operations"       => "tableops.md",
         ],
         "API Reference" => "api.md",

@@ -354,4 +354,5 @@ MIT License.
   - [TBATS](tbats.md) — Trigonometric BATS for non-integer and very long seasonal periods
   - [Intermittent Demand](intermittent.md) — Croston methods
   - [ARAR/ARARMA](ararma.md) — Memory-shortening algorithms
+  - [Statistics](stats.md) — Box-Cox transformations, decomposition (STL, MSTL), unit root tests, ACF/PACF
 - **API Reference** — Complete API documentation

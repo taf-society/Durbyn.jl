@@ -28,6 +28,7 @@ makedocs(
             "Intermittent Demand"   => "intermittent.md",
             "ARIMA"                  => "arima.md",
             "ARAR/ARARMA"            => "ararma.md",
+            "Statistics"             => "stats.md",
             "Table Operations"       => "tableops.md",
         ],
         "API Reference" => "api.md",

@@ -356,4 +356,5 @@ MIT License.
   - [ARAR/ARARMA](ararma.md) — Memory-shortening algorithms
   - [Statistics](stats.md) — Box-Cox transformations, decomposition (STL, MSTL), unit root tests, ACF/PACF
   - [Optimization](optimize.md) — Nelder-Mead, BFGS, L-BFGS-B, and Brent optimization algorithms
+  - [Utilities](utils.md) — Example datasets, data manipulation helpers, and other utilities
 - **API Reference** — Complete API documentation

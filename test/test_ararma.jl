@@ -26,8 +26,9 @@ using Durbyn.Ararma
         @test fit_21 isa ArarmaModel
         @test fit_21.ar_order == 2
         @test fit_21.ma_order == 1
-        @test length(fit_21.best_phi) == 2
-        @test length(fit_21.best_theta) == 1
+        @test length(fit_21.lag_phi) == 4  # Always 4 coeffs from lag selection
+        @test length(fit_21.arma_phi) == 2  # p coeffs from ARMA stage
+        @test length(fit_21.arma_theta) == 1  # q coeffs from ARMA stage
         fc = forecast(fit_21, h = 12)
         # plot(fc)  # Requires Plots.jl
 
@@ -35,8 +36,9 @@ using Durbyn.Ararma
         @test fit_32 isa ArarmaModel
         @test fit_32.ar_order == 3
         @test fit_32.ma_order == 2
-        @test length(fit_32.best_phi) == 3
-        @test length(fit_32.best_theta) == 2
+        @test length(fit_32.lag_phi) == 4  # Always 4 coeffs from lag selection
+        @test length(fit_32.arma_phi) == 3  # p coeffs from ARMA stage
+        @test length(fit_32.arma_theta) == 2  # q coeffs from ARMA stage
         fc = forecast(fit_32, h = 12)
         # plot(fc)  # Requires Plots.jl
     end
@@ -46,7 +48,7 @@ using Durbyn.Ararma
         @test fit_ar isa ArarmaModel
         @test fit_ar.ar_order == 4
         @test fit_ar.ma_order == 0
-        @test length(fit_ar.best_theta) == 0
+        @test length(fit_ar.arma_theta) == 0
         fc = forecast(fit_ar, h = 12)
         # plot(fc)  # Requires Plots.jl
     end
@@ -56,8 +58,8 @@ using Durbyn.Ararma
         @test fit_ma isa ArarmaModel
         @test fit_ma.ar_order == 0
         @test fit_ma.ma_order == 2
-        @test length(fit_ma.best_phi) == 0
-        @test length(fit_ma.best_theta) == 2
+        @test length(fit_ma.arma_phi) == 0
+        @test length(fit_ma.arma_theta) == 2
         fc = forecast(fit_ma, h = 12)
         # plot(fc)  # Requires Plots.jl
     end

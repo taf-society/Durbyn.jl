@@ -142,8 +142,9 @@ fitted = fit(spec, data)
 fitted.fit.ar_order       # AR order
 fitted.fit.ma_order       # MA order
 fitted.fit.best_lag       # Selected AR lags
-fitted.fit.best_phi       # AR coefficients
-fitted.fit.best_theta     # MA coefficients
+fitted.fit.lag_phi        # Lag-selection AR coefficients (4 terms)
+fitted.fit.arma_phi       # ARMA-stage AR coefficients (p terms)
+fitted.fit.arma_theta     # ARMA-stage MA coefficients (q terms)
 fitted.fit.sigma2         # Residual variance
 fitted.fit.aic            # AIC
 fitted.fit.bic            # BIC
@@ -225,12 +226,13 @@ function Base.show(io::IO, ::MIME"text/plain", fitted::FittedArarma)
     println(io, "FittedArarma")
     println(io, "  Model: ARARMA($(p),$(q))")
     println(io, "  Selected AR lags: ", fitted.fit.best_lag)
+    println(io, "  Lag-selection AR coefficients: ", round.(fitted.fit.lag_phi, digits=4))
 
-    if !isempty(fitted.fit.best_phi)
-        println(io, "  AR coefficients (ϕ): ", round.(fitted.fit.best_phi, digits=4))
+    if !isempty(fitted.fit.arma_phi)
+        println(io, "  ARMA AR coefficients (ϕ): ", round.(fitted.fit.arma_phi, digits=4))
     end
-    if !isempty(fitted.fit.best_theta)
-        println(io, "  MA coefficients (θ): ", round.(fitted.fit.best_theta, digits=4))
+    if !isempty(fitted.fit.arma_theta)
+        println(io, "  ARMA MA coefficients (θ): ", round.(fitted.fit.arma_theta, digits=4))
     end
 
     if !isnothing(fitted.fit.aic)

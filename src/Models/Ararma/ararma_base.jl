@@ -4,40 +4,44 @@
 Struct holding the fitted ARARMA model.
 
 # Fields
-- `psi::Vector{Float64}`  
+- `psi::Vector{Float64}`
   Composite AR prefilter polynomial (Ψ) accumulated during the
   non-stationary AR reduction stage (ARAR). Encodes the composed filters used
   to remove long-memory/persistent behavior before the short-memory ARMA fit.
 
-- `Sbar::Float64`  
-  Sample mean used to form the AR intercept  
-  (`c = (1 - sum(phi)) * Sbar`).
+- `Sbar::Float64`
+  Sample mean used to form the AR intercept
+  (`c = (1 - sum(lag_phi)) * Sbar`).
 
-- `gamma::Vector{Float64}`  
+- `gamma::Vector{Float64}`
   Sample autocovariances `γ(0:max_lag)` of the
   prefiltered & demeaned series, used for selecting the best AR lags.
 
-- `best_phi::Vector{Float64}`  
-  AR coefficients (ϕ) associated with the chosen lag
-  tuple in `best_lag`. Up to four terms.
+- `lag_phi::Vector{Float64}`
+  AR coefficients (4 terms) associated with the chosen lag
+  tuple in `best_lag` from the Yule-Walker equations. Used to build the
+  composite filter xi via `compute_xi(psi, lag_phi, best_lag)`.
 
-- `sigma2::Float64`  
+- `sigma2::Float64`
   Innovation variance (σ²) from the short-memory ARMA(p, q) stage.
 
-- `best_lag::Tuple{Int, Int, Int, Int}`  
+- `best_lag::Tuple{Int, Int, Int, Int}`
   Selected AR lag tuple `(1, i, j, k)` minimizing
   the implied variance proxy in the AR stage.
 
-- `y_original::Vector{Float64}`  
+- `y_original::Vector{Float64}`
   The original input series. Fitted values and residuals are aligned back to this.
 
-- `best_theta::Vector{Float64}`  
+- `arma_phi::Vector{Float64}`
+  AR coefficients from the ARMA(p, q) fit on AR residuals.
+
+- `arma_theta::Vector{Float64}`
   MA coefficients (θ) from the ARMA(p, q) fit on AR residuals.
 
-- `ma_order::Int`, `ar_order::Int`  
+- `ma_order::Int`, `ar_order::Int`
   Orders `q` and `p` used in the ARMA stage.
 
-- `aic::Float64`, `bic::Float64`, `loglik::Float64`  
+- `aic::Float64`, `bic::Float64`, `loglik::Float64`
   Information criteria (AIC, BIC) and log-likelihood from the ARMA stage.
 
 """
@@ -45,11 +49,12 @@ struct ArarmaModel
     psi::Vector{Float64}
     Sbar::Float64
     gamma::Vector{Float64}
-    best_phi::Vector{Float64}
+    lag_phi::Vector{Float64}
     sigma2::Float64
     best_lag::Tuple{Int, Int, Int, Int}
     y_original::Vector{Float64}
-    best_theta::Vector{Float64}
+    arma_phi::Vector{Float64}
+    arma_theta::Vector{Float64}
     ma_order::Int
     ar_order::Int
     aic::Float64
@@ -63,8 +68,9 @@ function Base.show(io::IO, model::ArarmaModel)
     println(io, "Number of observations: ", length(model.y_original))
     println(io, "Model order: ARARMA($(model.ar_order), $(model.ma_order))")
     println(io, "Selected AR lags: ", model.best_lag)
-    println(io, "ARMA-stage AR coefficients (ϕ): ", round.(model.best_phi, digits=4))
-    println(io, "ARMA-stage MA coefficients (θ): ", round.(model.best_theta, digits=4))
+    println(io, "Yule-Walker AR coefficients: ", round.(model.lag_phi, digits=4))
+    println(io, "ARMA-stage AR coefficients (ϕ): ", round.(model.arma_phi, digits=4))
+    println(io, "ARMA-stage MA coefficients (θ): ", round.(model.arma_theta, digits=4))
     println(io, "Innovation variance (σ²): ", round(model.sigma2, digits=4))
     println(io, "Mean of shortened series (S̄): ", round(model.Sbar, digits=4))
     println(io, "Length of memory-shortening filter (Ψ): ", length(model.psi))
@@ -97,6 +103,21 @@ function compute_xi(Ψ::Vector{Float64}, ϕ::Vector{Float64}, lags::NTuple{4, In
     return xi
 end
 
+"""
+    is_arma_stable(ϕ, θ) -> Bool
+
+Check if ARMA coefficients satisfy stability constraints.
+Returns true if sum(|ϕ|) < 1 and sum(|θ|) < 1.
+"""
+function is_arma_stable(ϕ::Vector{Float64}, θ::Vector{Float64})
+    if !isempty(ϕ) && sum(abs.(ϕ)) >= 1.0
+        return false
+    end
+    if !isempty(θ) && sum(abs.(θ)) >= 1.0
+        return false
+    end
+    return true
+end
 
 # Fits ARMA(p, q) model using MLE, returns (ϕ, θ, σ²).
 # Numerically stable: σ² is log-parametrized.
@@ -119,7 +140,26 @@ function fit_arma(p::Int, q::Int, y::Vector{Float64}, options::NelderMeadOptions
             ma_part = dot(θ, safe_slice(ε, ma_idx))
             ε[t] = y_demeaned[t] - (ar_part + ma_part)
         end
-        return sum(ε.^2) / σ2 + n * log(σ2 + 1e-8)
+        # Use effective sample size (excluding burn-in)
+        n_eff = n - max_lag
+        nll = sum(ε.^2) / σ2 + n_eff * log(σ2 + 1e-8)
+
+        # Log-barrier penalty to enforce stability (sum|coef| < 0.95)
+        sum_phi = sum(abs.(ϕ))
+        sum_theta = sum(abs.(θ))
+        penalty = 0.0
+        if sum_phi > 0.95
+            penalty += 1e6 * (sum_phi - 0.95)^2
+        elseif sum_phi > 0.8
+            penalty -= 100.0 * log(0.95 - sum_phi + 1e-8)
+        end
+        if sum_theta > 0.95
+            penalty += 1e6 * (sum_theta - 0.95)^2
+        elseif sum_theta > 0.8
+            penalty -= 100.0 * log(0.95 - sum_theta + 1e-8)
+        end
+
+        return nll + penalty
     end
     init = [zeros(p + q); log(var(y))]
 
@@ -149,13 +189,13 @@ Fit an **ARARMA** model to a univariate numeric series `y`.
 
 # Algorithm (as implemented)
 
-1. **Adaptive non-stationary AR prefilter (ARAR stage).**  
+1. **Adaptive non-stationary AR prefilter (ARAR stage).**
    Up to three iterations:
    - For delays `τ = 1:15`, fit OLS AR(1) at lag `τ` and score by a relative
-     error criterion. If the score is small enough or the estimated coefficient
-     is strongly persistent (`≥ 0.93` with `τ > 2`), filter the series and
+     error criterion Err(τ). If Err(τ*) ≤ 8/n or the estimated coefficient
+     is strongly persistent (`φ̂(τ*) ≥ 0.9` with `τ > 2`), filter the series and
      compose the filter into `psi`.
-   - If persistence is high but `τ ≤ 2`, fit a 2-lag AR via normal equations,
+   - If persistence is high (`φ̂ ≥ 0.9`) but `τ* ≤ 2`, fit a 2-lag AR instead,
      filter, and update `psi`.
    - Otherwise, stop early.
 
@@ -179,9 +219,9 @@ Fit an **ARARMA** model to a univariate numeric series `y`.
    conditional Gaussian likelihood. Parameterize variance as `log(sigma2)` for
    numerical stability.
 
-6. **Information criteria.**  
-   Compute `loglik`, `AIC = 2k - 2ℓ`, `BIC = log(n)k - 2ℓ`, with `k = p + q`
-   and `n` the effective residual length.
+6. **Information criteria.**
+   Compute `loglik`, `AIC = 2k - 2ℓ`, `BIC = log(n)k - 2ℓ`, with `k = p + q + 1`
+   (including σ²) and `n` the effective residual length.
 
 # Returns
 An [`ArarmaModel`](@ref) bundling fitted values, residuals, and
@@ -191,7 +231,7 @@ forecasting components.
 - Univariate, numeric input with no missing values.
 - Prefilter is capped at three reductions and favors strong persistence.
 - Best-lag search uses up to 4 AR terms `(1,i,j,k)`.
-- The ARMA optimizer does not enforce stationarity/invertibility constraints.
+- The ARMA optimizer uses log-barrier penalties to enforce stability (sum|φ| < 0.95, sum|θ| < 0.95).
 
 # Example
 ```julia
@@ -208,7 +248,7 @@ plot(fc)
 ```
 
 Reference
-Parzen, E. (1985). ARARMA Models for Time Series Analysis and Forecasting.
+Parzen, E. (1982). ARARMA Models for Time Series Analysis and Forecasting.
 Journal of Forecasting, 1(1), 67-82.
 """
 function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int=4, q::Int=1, 
@@ -221,16 +261,16 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
         ϕ = [sum(y[(τ+1):n] .* y[1:(n-τ)]) / sum(y[1:(n-τ)].^2) for τ in 1:15]
         err = [sum((y[(τ+1):n] - ϕ[τ]*y[1:(n-τ)]).^2) / sum(y[(τ+1):n].^2) for τ in 1:15]
         τ = argmin(err)
-        if err[τ] <= 8/n || (ϕ[τ] >= 0.93 && τ > 2)
+        if err[τ] <= 8/n || (ϕ[τ] >= 0.9 && τ > 2)
             y = y[(τ+1):n] .- ϕ[τ] * y[1:(n-τ)]
             Ψ = [Ψ; zeros(τ)] .- ϕ[τ] .* [zeros(τ); Ψ]
-        elseif ϕ[τ] >= 0.93
+        elseif ϕ[τ] >= 0.9
             A = zeros(2,2)
             A[1,1] = sum(y[2:(n-1)].^2)
             A[1,2] = A[2,1] = sum(y[1:(n-2)] .* y[2:(n-1)])
             A[2,2] = sum(y[1:(n-2)].^2)
             b = [sum(y[3:n] .* y[2:(n-1)]), sum(y[3:n] .* y[1:(n-2)])]
-            ϕ_2 = (A' * A) \ (A' * b)
+            ϕ_2 = A \ b
             y = y[3:n] .- ϕ_2[1]*y[2:(n-1)] .- ϕ_2[2]*y[1:(n-2)]
             Ψ = vcat(Ψ, 0.0, 0.0) .- ϕ_2[1]*vcat(0.0, Ψ, 0.0) .- ϕ_2[2]*vcat(0.0, 0.0, Ψ)
         else
@@ -241,7 +281,8 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
     Sbar = mean(y)
     X = y .- Sbar
     n = length(X)
-    gamma = [sum((X[1:(n-i)] .- mean(X)) .* (X[(i+1):n] .- mean(X))) / n for i in 0:max_lag]
+    # Autocovariances of already-demeaned series (no need to demean again)
+    gamma = [sum(X[1:(n-i)] .* X[(i+1):n]) / n for i in 0:max_lag]
 
     best_σ2 = Inf
     best_lag = (1, 0, 0, 0)
@@ -256,7 +297,12 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
         A[2,4] = A[4,2] = gamma[k-i+1]
         A[3,4] = A[4,3] = gamma[k-j+1]
         b .= [gamma[2], gamma[i+1], gamma[j+1], gamma[k+1]]
-        ϕ = (A' * A) \ (A' * b)
+        # Skip singular or near-singular matrices
+        cond_A = cond(A)
+        if !isfinite(cond_A) || cond_A > 1e12
+            continue
+        end
+        ϕ = A \ b
         σ2 = gamma[1] - ϕ[1]*gamma[2] - ϕ[2]*gamma[i+1] - ϕ[3]*gamma[j+1] - ϕ[4]*gamma[k+1]
         if σ2 < best_σ2
             best_σ2 = σ2
@@ -282,13 +328,13 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
 
     arma_resid = residuals[k:end]
     n_eff = length(arma_resid)
-    k_param = p + q 
+    k_param = p + q + 1  # +1 for σ²
 
     loglik = -0.5 * n_eff * (log(2π * σ2_hat) + 1)
     aic = 2 * k_param - 2 * loglik
     bic = log(n_eff) * k_param - 2 * loglik
 
-    return ArarmaModel(Ψ, Sbar, gamma, ϕ_ar, σ2_hat, best_lag, Y, θ_ma, q, p, aic, bic, loglik)
+    return ArarmaModel(Ψ, Sbar, gamma, best_phi, σ2_hat, best_lag, Y, ϕ_ar, θ_ma, q, p, aic, bic, loglik)
 end
 
 
@@ -299,22 +345,49 @@ Returns fitted values for the full ARARMA model.
 """
 function fitted(model::ArarmaModel)
     y = model.y_original
-    xi = compute_xi(model.psi, model.best_phi, model.best_lag)
+    xi = compute_xi(model.psi, model.lag_phi, model.best_lag)
     n = length(y)
     k = length(xi)
+    p = model.ar_order
     q = model.ma_order
-    c = (1 - sum(model.best_phi)) * model.Sbar
-    θ = model.best_theta
+    c = (1 - sum(model.lag_phi)) * model.Sbar
+    ϕ = model.arma_phi
+    θ = model.arma_theta
+
+    # Only use ARMA coefficients if stable
+    use_arma = is_arma_stable(ϕ, θ)
 
     fitted_vals = fill(NaN, n)
-    ε = zeros(n)
+    ar_resid = zeros(n)  # AR-stage residuals
+    ε = zeros(n)         # ARMA innovations
 
+    # First compute AR-only fitted values and residuals
     for t in k:n
         idxs = t .- (1:(k-1))
-        ar_part = -sum(xi[2:k] .* safe_slice(y, idxs)) + c
-        ma_idxs = (t-q):(t-1)
-        ma_part = (t > q) ? dot(θ, reverse(safe_slice(ε, ma_idxs))) : 0.0
-        fitted_vals[t] = ar_part + ma_part
+        ar_pred = -sum(xi[2:k] .* safe_slice(y, idxs)) + c
+        ar_resid[t] = y[t] - ar_pred
+    end
+
+    # Now compute full fitted values incorporating ARMA on AR residuals
+    for t in k:n
+        idxs = t .- (1:(k-1))
+        ar_pred = -sum(xi[2:k] .* safe_slice(y, idxs)) + c
+
+        arma_adj = 0.0
+        if use_arma
+            # AR part of ARMA: applied to AR residuals
+            if t > p
+                ar_idxs = (t-p):(t-1)
+                arma_adj += dot(ϕ, reverse(safe_slice(ar_resid, ar_idxs)))
+            end
+            # MA part of ARMA: applied to innovations
+            if t > q
+                ma_idxs = (t-q):(t-1)
+                arma_adj += dot(θ, reverse(safe_slice(ε, ma_idxs)))
+            end
+        end
+
+        fitted_vals[t] = ar_pred + arma_adj
         ε[t] = y[t] - fitted_vals[t]
     end
     return fitted_vals
@@ -335,16 +408,29 @@ Returns h-step-ahead forecasts and confidence intervals.
 function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
     y = copy(model.y_original)
     n = length(y)
-    xi = compute_xi(model.psi, model.best_phi, model.best_lag)
+    xi = compute_xi(model.psi, model.lag_phi, model.best_lag)
     k = length(xi)
+    p = model.ar_order
     q = model.ma_order
-    θ = model.best_theta
-    ϕ = model.best_phi
+    ϕ = model.arma_phi
+    θ = model.arma_theta
     σ2 = model.sigma2
     Sbar = model.Sbar
-    c = (1 - sum(ϕ)) * Sbar
+    c = (1 - sum(model.lag_phi)) * Sbar
+
+    # Only use ARMA coefficients if stable
+    use_arma = is_arma_stable(ϕ, θ)
+
+    # Compute historical AR residuals for ARMA AR part
+    ar_resid = zeros(n)
+    for t in k:n
+        idxs = t .- (1:(k-1))
+        ar_pred = -sum(xi[2:k] .* safe_slice(y, idxs)) + c
+        ar_resid[t] = y[t] - ar_pred
+    end
 
     y_ext = [y; zeros(h)]
+    ar_resid_ext = [ar_resid; zeros(h)]
     ε_ext = zeros(n + h)
     forecasts = zeros(h)
 
@@ -352,17 +438,32 @@ function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
         idx = n + t
         idxs = idx .- (1:(k-1))
         ar_part = -sum(xi[2:k] .* safe_slice(y_ext, idxs)) + c
-        ma_idxs = (idx-q):(idx-1)
-        ma_part = (t > q) ? dot(θ[1:q], reverse(safe_slice(ε_ext, ma_idxs))) : 0.0
-        forecasts[t] = ar_part + ma_part
+
+        arma_adj = 0.0
+        if use_arma
+            # AR part of ARMA (decays for future)
+            ar_arma_idxs = (idx-p):(idx-1)
+            arma_adj += dot(ϕ, reverse(safe_slice(ar_resid_ext, ar_arma_idxs)))
+            # MA part of ARMA (only for first q steps)
+            if t <= q
+                ma_idxs = (idx-q):(idx-1)
+                arma_adj += dot(θ, reverse(safe_slice(ε_ext, ma_idxs)))
+            end
+        end
+
+        forecasts[t] = ar_part + arma_adj
         ε_ext[idx] = 0.0
+        ar_resid_ext[idx] = 0.0  # Future AR residuals are zero (unknown)
         y_ext[idx] = forecasts[t]
     end
 
     τ = zeros(h)
     τ[1] = 1.0
+    len_xi = length(xi)
     for j in 2:h
-        τ[j] = -sum(τ[1:j-1] .* xi[j:-1:2])
+        # MA(∞) recursion: τ_j = -Σ τ_{j-i} * ξ_i for i = 1 to min(j-1, len_xi-1)
+        max_i = min(j - 1, len_xi - 1)
+        τ[j] = -sum(τ[j-i] * xi[i+1] for i in 1:max_i)
     end
     se = sqrt.(σ2 .* [sum(τ[1:j].^2) for j in 1:h])
     z = level .|> l -> quantile(Normal(), 0.5 + l/200)
@@ -411,7 +512,7 @@ plot(fc)
 ````
 
 References: 
-Parzen, E. (1985). *ARARMA Models for Time Series Analysis and Forecasting*. Journal of Forecasting, 1(1), 67-82.
+Parzen, E. (1982). *ARARMA Models for Time Series Analysis and Forecasting*. Journal of Forecasting, 1(1), 67-82.
 """
 function auto_ararma(y::Vector{<:Real}; max_p::Int=4, max_q::Int=2, 
     crit::Symbol=:aic, max_ar_depth::Int=26, max_lag::Int=40, 

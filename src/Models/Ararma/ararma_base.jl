@@ -119,9 +119,6 @@ function is_arma_stable(ϕ::Vector{Float64}, θ::Vector{Float64})
     return true
 end
 
-# Fits ARMA(p, q) model using MLE, returns (ϕ, θ, σ²).
-# Numerically stable: σ² is log-parametrized.
-
 function fit_arma(p::Int, q::Int, y::Vector{Float64}, options::NelderMeadOptions=NelderMeadOptions())
     n = length(y)
     μ = mean(y)
@@ -140,11 +137,8 @@ function fit_arma(p::Int, q::Int, y::Vector{Float64}, options::NelderMeadOptions
             ma_part = dot(θ, safe_slice(ε, ma_idx))
             ε[t] = y_demeaned[t] - (ar_part + ma_part)
         end
-        # Use effective sample size (excluding burn-in)
         n_eff = n - max_lag
         nll = sum(ε.^2) / σ2 + n_eff * log(σ2 + 1e-8)
-
-        # Log-barrier penalty to enforce stability (sum|coef| < 0.95)
         sum_phi = sum(abs.(ϕ))
         sum_theta = sum(abs.(θ))
         penalty = 0.0
@@ -281,7 +275,6 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
     Sbar = mean(y)
     X = y .- Sbar
     n = length(X)
-    # Autocovariances of already-demeaned series (no need to demean again)
     gamma = [sum(X[1:(n-i)] .* X[(i+1):n]) / n for i in 0:max_lag]
 
     best_σ2 = Inf
@@ -297,7 +290,6 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
         A[2,4] = A[4,2] = gamma[k-i+1]
         A[3,4] = A[4,3] = gamma[k-j+1]
         b .= [gamma[2], gamma[i+1], gamma[j+1], gamma[k+1]]
-        # Skip singular or near-singular matrices
         cond_A = cond(A)
         if !isfinite(cond_A) || cond_A > 1e12
             continue
@@ -354,33 +346,28 @@ function fitted(model::ArarmaModel)
     ϕ = model.arma_phi
     θ = model.arma_theta
 
-    # Only use ARMA coefficients if stable
     use_arma = is_arma_stable(ϕ, θ)
 
     fitted_vals = fill(NaN, n)
-    ar_resid = zeros(n)  # AR-stage residuals
-    ε = zeros(n)         # ARMA innovations
+    ar_resid = zeros(n)
+    ε = zeros(n)
 
-    # First compute AR-only fitted values and residuals
     for t in k:n
         idxs = t .- (1:(k-1))
         ar_pred = -sum(xi[2:k] .* safe_slice(y, idxs)) + c
         ar_resid[t] = y[t] - ar_pred
     end
 
-    # Now compute full fitted values incorporating ARMA on AR residuals
     for t in k:n
         idxs = t .- (1:(k-1))
         ar_pred = -sum(xi[2:k] .* safe_slice(y, idxs)) + c
 
         arma_adj = 0.0
         if use_arma
-            # AR part of ARMA: applied to AR residuals
             if t > p
                 ar_idxs = (t-p):(t-1)
                 arma_adj += dot(ϕ, reverse(safe_slice(ar_resid, ar_idxs)))
             end
-            # MA part of ARMA: applied to innovations
             if t > q
                 ma_idxs = (t-q):(t-1)
                 arma_adj += dot(θ, reverse(safe_slice(ε, ma_idxs)))
@@ -418,10 +405,8 @@ function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
     Sbar = model.Sbar
     c = (1 - sum(model.lag_phi)) * Sbar
 
-    # Only use ARMA coefficients if stable
     use_arma = is_arma_stable(ϕ, θ)
 
-    # Compute historical AR residuals for ARMA AR part
     ar_resid = zeros(n)
     for t in k:n
         idxs = t .- (1:(k-1))
@@ -441,10 +426,8 @@ function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
 
         arma_adj = 0.0
         if use_arma
-            # AR part of ARMA (decays for future)
             ar_arma_idxs = (idx-p):(idx-1)
             arma_adj += dot(ϕ, reverse(safe_slice(ar_resid_ext, ar_arma_idxs)))
-            # MA part of ARMA (only for first q steps)
             if t <= q
                 ma_idxs = (idx-q):(idx-1)
                 arma_adj += dot(θ, reverse(safe_slice(ε_ext, ma_idxs)))
@@ -453,7 +436,7 @@ function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
 
         forecasts[t] = ar_part + arma_adj
         ε_ext[idx] = 0.0
-        ar_resid_ext[idx] = 0.0  # Future AR residuals are zero (unknown)
+        ar_resid_ext[idx] = 0.0
         y_ext[idx] = forecasts[t]
     end
 
@@ -461,7 +444,6 @@ function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
     τ[1] = 1.0
     len_xi = length(xi)
     for j in 2:h
-        # MA(∞) recursion: τ_j = -Σ τ_{j-i} * ξ_i for i = 1 to min(j-1, len_xi-1)
         max_i = min(j - 1, len_xi - 1)
         τ[j] = -sum(τ[j-i] * xi[i+1] for i in 1:max_i)
     end

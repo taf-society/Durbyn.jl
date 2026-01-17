@@ -257,7 +257,7 @@ plot(fc2)
 
 ---
 
-## ARAR / ARARMA
+## ARAR
 
 ```julia
 using Durbyn
@@ -265,17 +265,28 @@ using Durbyn.Ararma
 
 ap = air_passengers()
 
-arar_model_basic  = arar(ap, max_ar_depth = 13)
-fc   = forecast(arar_model_basic, h = 12)
+arar_model = arar(ap, max_ar_depth = 13)
+fc = forecast(arar_model, h = 12)
 plot(fc)
+```
+
+---
+
+## ARARMA
+
+```julia
+using Durbyn
+using Durbyn.Ararma
+
+ap = air_passengers()
 
 ararma_model = ararma(ap, p = 0, q = 1)
-fc2  = forecast(ararma_model, h = 12)
-plot(fc2)
+fc = forecast(ararma_model, h = 12)
+plot(fc)
 
 auto_ararma_model = auto_ararma(ap)
-fc3  = forecast(auto_ararma_model, h = 12)
-plot(fc3)
+fc2 = forecast(auto_ararma_model, h = 12)
+plot(fc2)
 ```
 
 ---

@@ -1,3 +1,4 @@
+using LinearAlgebra: dot, norm
 
 struct LBFGSBOptions
     m::Int

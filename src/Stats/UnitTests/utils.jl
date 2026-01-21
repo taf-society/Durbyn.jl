@@ -1,4 +1,9 @@
-_skipmissing_to_vec(x) = collect(skipmissing(float.(x)))
+# Filter both missing values and NaN values from a vector
+function _skipmissing_to_vec(x)
+    floats = float.(x)
+    # Filter out both missing and NaN values
+    return collect(v for v in skipmissing(floats) if !isnan(v))
+end
 _isconstant(v::AbstractVector) = is_constant(v)
 
 

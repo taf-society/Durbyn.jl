@@ -1277,7 +1277,8 @@ function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:Abstra
             selected = term
         elseif term isa EtsComponentTerm || term isa EtsDriftTerm || term isa ArimaOrderTerm ||
                term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm || term isa BatsTerm ||
-               term isa TbatsTerm || term isa ThetaTerm
+               term isa TbatsTerm || term isa ThetaTerm || term isa SesTerm || term isa HoltTerm ||
+               term isa HoltWintersTerm || term isa CrostonTerm
             throw(ArgumentError("Formula term $(term) is not compatible with $(T)."))
         elseif term !== nothing
             throw(ArgumentError("Unsupported term $(term) in formula for $(T)."))
@@ -1354,8 +1355,32 @@ function Base.show(io::IO, term::HoltWintersTerm)
     print(io, "hw(", join(args, ", "), ")")
 end
 
-function Base.show(io::IO, ::CrostonTerm)
-    print(io, "croston()")
+function Base.show(io::IO, term::CrostonTerm)
+    args = String[]
+    # Always show method if not the default "hyndman"
+    if term.method != "hyndman"
+        push!(args, "method=\"$(term.method)\"")
+    end
+    if !isnothing(term.init_strategy)
+        push!(args, "init_strategy=\"$(term.init_strategy)\"")
+    end
+    if !isnothing(term.number_of_params)
+        push!(args, "number_of_params=$(term.number_of_params)")
+    end
+    if !isnothing(term.cost_metric)
+        push!(args, "cost_metric=\"$(term.cost_metric)\"")
+    end
+    if !isnothing(term.optimize_init)
+        push!(args, "optimize_init=$(term.optimize_init)")
+    end
+    if !isnothing(term.rm_missing)
+        push!(args, "rm_missing=$(term.rm_missing)")
+    end
+    if isempty(args)
+        print(io, "croston()")
+    else
+        print(io, "croston(", join(args, ", "), ")")
+    end
 end
 
 function Base.show(io::IO, term::ArarTerm)
@@ -1398,6 +1423,41 @@ function Base.show(io::IO, term::BatsTerm)
         print(io, "bats()")
     else
         print(io, "bats(", join(args, ", "), ")")
+    end
+end
+
+function Base.show(io::IO, term::TbatsTerm)
+    args = String[]
+    if !isnothing(term.seasonal_periods)
+        if term.seasonal_periods isa Vector
+            push!(args, "seasonal_periods=[$(join(term.seasonal_periods, ", "))]")
+        else
+            push!(args, "seasonal_periods=$(term.seasonal_periods)")
+        end
+    end
+    if !isnothing(term.k)
+        if term.k isa Vector
+            push!(args, "k=[$(join(term.k, ", "))]")
+        else
+            push!(args, "k=$(term.k)")
+        end
+    end
+    if !isnothing(term.use_box_cox)
+        push!(args, "use_box_cox=$(term.use_box_cox)")
+    end
+    if !isnothing(term.use_trend)
+        push!(args, "use_trend=$(term.use_trend)")
+    end
+    if !isnothing(term.use_damped_trend)
+        push!(args, "use_damped_trend=$(term.use_damped_trend)")
+    end
+    if !isnothing(term.use_arma_errors)
+        push!(args, "use_arma_errors=$(term.use_arma_errors)")
+    end
+    if isempty(args)
+        print(io, "tbats()")
+    else
+        print(io, "tbats(", join(args, ", "), ")")
     end
 end
 

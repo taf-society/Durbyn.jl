@@ -62,9 +62,9 @@ function forecast(object::MeanFit, h::Int=10, level::Vector{Float64}=[80.0, 95.0
     
     # Inverse Box-Cox transformation if lambda is provided
     if !isnothing(lambda)
-        f = inv_box_cox.(f, lambda)
-        lower .= inv_box_cox.(lower, lambda)
-        upper .= inv_box_cox.(upper, lambda)
+        f = inv_box_cox(f; lambda=lambda)
+        lower .= inv_box_cox(lower; lambda=lambda)
+        upper .= inv_box_cox(upper; lambda=lambda)
     end
     
     return Dict("mean" => f, "lower" => lower, "upper" => upper, "level" => level, "m" => m)

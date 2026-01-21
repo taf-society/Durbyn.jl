@@ -359,7 +359,10 @@ function optimize_theta_parameters(y::AbstractVector{T}, model_type::ThetaModelT
         return max(mse, T(-1e10))
     end
 
-    result = optim(x0, objective; method="Nelder-Mead",
+    # Use L-BFGS-B for bounded optimization
+    result = optim(x0, objective;
+                   method="L-BFGS-B",
+                   lower=lower, upper=upper,
                    control=Dict("maxit" => 1000))
 
     opt_params = result.par

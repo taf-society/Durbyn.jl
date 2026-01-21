@@ -289,7 +289,20 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
 
     # Convert to internal function signature
     fn_internal(n, x, ex) = fn(x)
-    gr_internal = isnothing(gr) ? nothing : (n, x, ex) -> gr(x)
+
+    # L-BFGS-B requires a gradient function - use numerical gradients if not provided
+    gr_internal = if !isnothing(gr)
+        (n, x, ex) -> gr(x)
+    else
+        # Create numerical gradient function
+        npar = length(par)
+        ndeps = con["ndeps"]
+        cache = NumericalGradientCache(npar)
+        (n, x, ex) -> begin
+            numgrad!(cache.df, cache.xtrial, fn_internal, n, x, ex, ndeps)
+            return cache.df
+        end
+    end
 
     opts = LBFGSBOptions(
         m = con["lmm"],

@@ -906,7 +906,7 @@ function fit(spec::ArimaSpec, panel::PanelData; kwargs...)
         kwdict[:datecol] = panel.date
     end
     if !haskey(kwdict, :m) && !isnothing(panel.m)
-        kwdict[:m] = panel.m
+        kwdict[:m] = resolve_m(panel.m, spec)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end
@@ -920,7 +920,7 @@ function fit(spec::EtsSpec, panel::PanelData; kwargs...)
         kwdict[:datecol] = panel.date
     end
     if !haskey(kwdict, :m) && !isnothing(panel.m)
-        kwdict[:m] = panel.m
+        kwdict[:m] = resolve_m(panel.m, spec)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end
@@ -934,7 +934,7 @@ function fit(spec::SesSpec, panel::PanelData; kwargs...)
         kwdict[:datecol] = panel.date
     end
     if !haskey(kwdict, :m) && !isnothing(panel.m)
-        kwdict[:m] = panel.m
+        kwdict[:m] = resolve_m(panel.m, spec)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end
@@ -948,7 +948,7 @@ function fit(spec::HoltSpec, panel::PanelData; kwargs...)
         kwdict[:datecol] = panel.date
     end
     if !haskey(kwdict, :m) && !isnothing(panel.m)
-        kwdict[:m] = panel.m
+        kwdict[:m] = resolve_m(panel.m, spec)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end
@@ -962,7 +962,7 @@ function fit(spec::HoltWintersSpec, panel::PanelData; kwargs...)
         kwdict[:datecol] = panel.date
     end
     if !haskey(kwdict, :m) && !isnothing(panel.m)
-        kwdict[:m] = panel.m
+        kwdict[:m] = resolve_m(panel.m, spec)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end
@@ -976,7 +976,7 @@ function fit(spec::CrostonSpec, panel::PanelData; kwargs...)
         kwdict[:datecol] = panel.date
     end
     if !haskey(kwdict, :m) && !isnothing(panel.m)
-        kwdict[:m] = panel.m
+        kwdict[:m] = resolve_m(panel.m, spec)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end
@@ -1744,7 +1744,7 @@ function fit(spec::ThetaSpec, panel::PanelData; kwargs...)
         kwdict[:datecol] = panel.date
     end
     if !haskey(kwdict, :m) && !isnothing(panel.m)
-        kwdict[:m] = panel.m
+        kwdict[:m] = resolve_m(panel.m, spec)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end

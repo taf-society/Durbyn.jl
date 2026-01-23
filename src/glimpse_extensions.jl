@@ -44,7 +44,48 @@ function glimpse(io::IO, panel::PanelData; maxrows::Integer = 5)
     println(io, "PanelData glimpse")
     println(io, "  Groups: ", isempty(panel.groups) ? "(none)" : join(string.(panel.groups), ", "))
     println(io, "  Date: ", isnothing(panel.date) ? "(none)" : string(panel.date))
-    println(io, "  Seasonal period m: ", isnothing(panel.m) ? "(not set)" : string(panel.m))
+
+    # Show frequency and m
+    if panel.frequency !== nothing
+        println(io, "  Frequency: ", panel.frequency)
+    end
+    if panel.m !== nothing
+        if panel.m isa Vector
+            println(io, "  Seasonal period(s) m: [", join(panel.m, ", "), "]")
+        else
+            println(io, "  Seasonal period m: ", panel.m)
+        end
+    else
+        println(io, "  Seasonal period m: (not set)")
+    end
+
+    # Show target if set
+    if panel.target !== nothing
+        println(io, "  Target: ", panel.target)
+    end
+
+    # Show preprocessing metadata if any
+    has_preprocessing = panel.time_fill_meta !== nothing ||
+                        panel.target_meta !== nothing ||
+                        !isempty(panel.xreg_meta)
+
+    if has_preprocessing
+        println(io, "  Preprocessing:")
+        if panel.time_fill_meta !== nothing
+            meta = panel.time_fill_meta
+            println(io, "    Time grid: ", meta.n_added, " rows added (step: ", meta.step, ")")
+        end
+        if panel.target_meta !== nothing
+            meta = panel.target_meta
+            pct = round(100 * meta.n_imputed / meta.n_total, digits=1)
+            println(io, "    Target (:", panel.target, "): ", meta.n_imputed, " imputed (", pct, "%) via :", meta.strategy)
+        end
+        for (col, meta) in panel.xreg_meta
+            pct = round(100 * meta.n_imputed / meta.n_total, digits=1)
+            println(io, "    Exog (:", col, "): ", meta.n_imputed, " imputed (", pct, "%) via :", meta.strategy)
+        end
+    end
+
     data = Tables.columntable(panel.data)
     TableOps.glimpse(io, data; maxrows=maxrows)
 end

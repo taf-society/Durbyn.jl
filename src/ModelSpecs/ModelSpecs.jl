@@ -66,6 +66,9 @@ export CrostonSpec, FittedCroston
 export ModelCollection, FittedModelCollection, ForecastModelCollection
 export GroupedFittedModels, GroupedForecasts
 export PanelData
+export ImputationMeta, TimeFillMeta
+export frequency_to_m, resolve_m, supports_multi_seasonality
+export VALID_FREQUENCIES
 
 export model, extract_metrics, as_table
 export successful_models, failed_groups, errors

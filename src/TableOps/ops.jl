@@ -922,3 +922,2015 @@ function glimpse(io::IO, data::ForecastModelCollection; maxrows::Integer = 5, in
     tbl = as_table(data; include_failures=include_failures)
     return glimpse(io, tbl; maxrows=maxrows)
 end
+
+# =============================================================================
+# Additional dplyr-style functions
+# =============================================================================
+
+"""
+    rename(data, specs...)
+
+Rename columns in a table.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `specs...`: Rename specifications as `Pair`s: `:new_name => :old_name`
+
+# Returns
+A `NamedTuple` with renamed columns. Columns not mentioned in `specs` are kept unchanged.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2, 3], b = [4, 5, 6], c = [7, 8, 9])
+
+# Rename single column
+rename(tbl, :x => :a)
+# Output: (x = [1, 2, 3], b = [4, 5, 6], c = [7, 8, 9])
+
+# Rename multiple columns
+rename(tbl, :x => :a, :y => :b)
+# Output: (x = [1, 2, 3], y = [4, 5, 6], c = [7, 8, 9])
+```
+
+See also: [`select`](@ref)
+"""
+function rename(data, specs::Pair{Symbol, Symbol}...)
+    ct = _to_columns(data)
+    isempty(specs) && return ct
+    available = Set(_column_names(ct))
+
+    rename_map = Dict{Symbol, Symbol}()
+    for (new_name, old_name) in specs
+        old_name in available ||
+            throw(ArgumentError("Column '$(old_name)' not found"))
+        rename_map[old_name] = new_name
+    end
+
+    names_out = Symbol[]
+    columns_out = Vector{Any}()
+
+    for name in _column_names(ct)
+        new_name = get(rename_map, name, name)
+        push!(names_out, new_name)
+        push!(columns_out, ct[name])
+    end
+
+    return _assemble(names_out, columns_out)
+end
+
+"""
+    distinct(data, cols...; keep_all::Bool=false)
+
+Remove duplicate rows based on specified columns.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `cols...`: Column names to consider for uniqueness (if empty, uses all columns)
+- `keep_all`: If `true`, keep all columns in output; if `false`, only keep `cols` (default: `false`)
+
+# Returns
+A `NamedTuple` with duplicate rows removed. When duplicates exist, the first occurrence is kept.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 1, 2, 2, 3], b = [1, 1, 2, 3, 3], c = [10, 20, 30, 40, 50])
+
+# Distinct by all columns
+distinct(tbl)
+# Output: (a = [1, 1, 2, 2, 3], b = [1, 1, 2, 3, 3], c = [10, 20, 30, 40, 50])
+
+# Distinct by specific column
+distinct(tbl, :a)
+# Output: (a = [1, 2, 3],)
+
+# Distinct by specific column but keep all columns
+distinct(tbl, :a; keep_all=true)
+# Output: (a = [1, 2, 3], b = [1, 2, 3], c = [10, 30, 50])
+```
+"""
+function distinct(data, cols::Symbol...; keep_all::Bool=false)
+    ct = _to_columns(data)
+    all_names = _column_names(ct)
+    n = _check_lengths(ct)
+
+    key_cols = isempty(cols) ? collect(all_names) : collect(cols)
+
+    for col in key_cols
+        col in all_names ||
+            throw(ArgumentError("Column '$(col)' not found"))
+    end
+
+    seen = Set{Any}()
+    keep_indices = Int[]
+
+    for i in 1:n
+        key = if length(key_cols) == 1
+            ct[key_cols[1]][i]
+        else
+            tuple((ct[c][i] for c in key_cols)...)
+        end
+
+        if !(key in seen)
+            push!(seen, key)
+            push!(keep_indices, i)
+        end
+    end
+
+    output_cols = keep_all || isempty(cols) ? all_names : Tuple(key_cols)
+    names_out = Symbol[]
+    columns_out = Vector{Any}()
+
+    for name in output_cols
+        push!(names_out, name)
+        push!(columns_out, ct[name][keep_indices])
+    end
+
+    return _assemble(names_out, columns_out)
+end
+
+"""
+    bind_rows(tables...)
+
+Combine multiple tables vertically (row-wise).
+
+# Arguments
+- `tables...`: Two or more Tables.jl-compatible data sources
+
+# Returns
+A `NamedTuple` with all rows from all input tables stacked vertically.
+All tables must have the same column names (order can differ).
+Missing columns in some tables will be filled with `missing`.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl1 = (a = [1, 2], b = [3, 4])
+tbl2 = (a = [5, 6], b = [7, 8])
+
+bind_rows(tbl1, tbl2)
+# Output: (a = [1, 2, 5, 6], b = [3, 4, 7, 8])
+
+# With mismatched columns (fills with missing)
+tbl3 = (a = [1, 2], b = [3, 4])
+tbl4 = (a = [5, 6], c = [7, 8])
+bind_rows(tbl3, tbl4)
+# Output: (a = [1, 2, 5, 6], b = Union{Missing, Int64}[3, 4, missing, missing],
+#          c = Union{Missing, Int64}[missing, missing, 7, 8])
+```
+"""
+function bind_rows(tables...)
+    isempty(tables) && return NamedTuple()
+    length(tables) == 1 && return _to_columns(tables[1])
+
+    cts = [_to_columns(t) for t in tables]
+
+    all_cols = Symbol[]
+    col_set = Set{Symbol}()
+    for ct in cts
+        for name in _column_names(ct)
+            if !(name in col_set)
+                push!(all_cols, name)
+                push!(col_set, name)
+            end
+        end
+    end
+
+    total_rows = sum(_nrows(ct) for ct in cts)
+
+    result_cols = Dict{Symbol, Vector{Any}}()
+    for col in all_cols
+        result_cols[col] = Vector{Any}(undef, total_rows)
+    end
+
+    row_offset = 0
+    for ct in cts
+        n = _nrows(ct)
+        ct_names = Set(_column_names(ct))
+        for col in all_cols
+            if col in ct_names
+                for i in 1:n
+                    result_cols[col][row_offset + i] = ct[col][i]
+                end
+            else
+                for i in 1:n
+                    result_cols[col][row_offset + i] = missing
+                end
+            end
+        end
+        row_offset += n
+    end
+
+    names_out = all_cols
+    columns_out = [_finalize_column(result_cols[col]) for col in all_cols]
+
+    return _assemble(names_out, columns_out)
+end
+
+"""
+    ungroup(gt::GroupedTable)
+
+Remove grouping from a `GroupedTable`, returning the underlying data.
+
+# Arguments
+- `gt`: A `GroupedTable` created by `groupby`
+
+# Returns
+A `NamedTuple` containing all the original data without grouping.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (category = ["A", "B", "A", "B"], value = [1, 2, 3, 4])
+gt = groupby(tbl, :category)
+
+# Remove grouping
+ungroup(gt)
+# Output: (category = ["A", "B", "A", "B"], value = [1, 2, 3, 4])
+```
+
+See also: [`groupby`](@ref)
+"""
+ungroup(gt::GroupedTable) = gt.data
+
+# =============================================================================
+# Column selection helpers
+# =============================================================================
+
+"""
+    ColumnSelector
+
+Abstract type for column selection specifications used with `select` and `across`.
+"""
+abstract type ColumnSelector end
+
+"""
+    AllOf <: ColumnSelector
+
+Select columns by a vector of names.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2], b = [3, 4], c = [5, 6])
+select(tbl, all_of([:a, :c]))
+# Output: (a = [1, 2], c = [5, 6])
+```
+"""
+struct AllOf <: ColumnSelector
+    cols::Vector{Symbol}
+end
+
+"""
+    all_of(cols)
+
+Create a column selector that selects columns by name from a vector.
+
+# Arguments
+- `cols`: A vector of column names (as `Symbol`s or `String`s)
+
+# Returns
+An `AllOf` selector for use with `select`.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2], b = [3, 4], c = [5, 6])
+cols_to_select = [:a, :c]
+select(tbl, all_of(cols_to_select))
+# Output: (a = [1, 2], c = [5, 6])
+```
+"""
+all_of(cols::AbstractVector) = AllOf(Symbol.(cols))
+all_of(cols::Symbol...) = AllOf(collect(cols))
+
+"""
+    Everything <: ColumnSelector
+
+Select all columns.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2], b = [3, 4])
+select(tbl, everything())
+# Output: (a = [1, 2], b = [3, 4])
+```
+"""
+struct Everything <: ColumnSelector end
+
+"""
+    everything()
+
+Create a column selector that selects all columns.
+
+# Returns
+An `Everything` selector for use with `select`.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2], b = [3, 4])
+
+# Useful when combined with other selections to reorder
+select(tbl, :b, everything())  # puts :b first, then all others
+```
+"""
+everything() = Everything()
+
+function _expand_selector(selector::AllOf, available::Tuple)
+    avail_set = Set(available)
+    for col in selector.cols
+        col in avail_set ||
+            throw(ArgumentError("Column '$(col)' not found"))
+    end
+    return selector.cols
+end
+
+function _expand_selector(::Everything, available::Tuple)
+    return collect(available)
+end
+
+function _expand_selector(spec::Symbol, available::Tuple)
+    spec in available ||
+        throw(ArgumentError("Column '$(spec)' not found"))
+    return [spec]
+end
+
+function _expand_selector(spec::Pair, available::Tuple)
+    old_name = Symbol(last(spec))
+    old_name in available ||
+        throw(ArgumentError("Column '$(old_name)' not found"))
+    return [spec]
+end
+
+# Enhanced select to support column selectors
+function select(data, specs::Union{Symbol, Pair, ColumnSelector}...)
+    ct = _to_columns(data)
+    isempty(specs) && return ct
+    available = _column_names(ct)
+
+    names_out = Symbol[]
+    columns_out = Vector{Any}()
+    seen = Set{Symbol}()
+
+    for spec in specs
+        expanded = _expand_selector(spec, available)
+        for item in expanded
+            if item isa Pair
+                new_name = Symbol(first(item))
+                old_name = Symbol(last(item))
+            else
+                new_name = Symbol(item)
+                old_name = Symbol(item)
+            end
+            if !(old_name in seen)
+                push!(seen, old_name)
+                push!(names_out, new_name)
+                push!(columns_out, ct[old_name])
+            end
+        end
+    end
+
+    return _assemble(names_out, columns_out)
+end
+
+"""
+    Across
+
+Specification for applying functions across multiple columns in `mutate` or `summarise`.
+"""
+struct Across
+    cols::Union{Vector{Symbol}, ColumnSelector}
+    fns::Vector{Pair{Symbol, Function}}
+end
+
+"""
+    across(cols, fns...)
+
+Apply functions across multiple columns.
+
+# Arguments
+- `cols`: Column specification (vector of symbols, `all_of(...)`, or `everything()`)
+- `fns...`: One or more `Pair`s of `:name => function` to apply to each column
+
+# Returns
+An `Across` specification for use with `mutate` or `summarise`.
+
+# Examples
+```julia
+using Durbyn.TableOps
+using Statistics
+
+tbl = (a = [1.0, 2.0, 3.0], b = [4.0, 5.0, 6.0], group = ["x", "x", "y"])
+
+# Apply mean to multiple columns in summarise
+gt = groupby(tbl, :group)
+summarise(gt, across([:a, :b], :mean => mean))
+# Output: (group = ["x", "y"], a_mean = [1.5, 3.0], b_mean = [4.5, 6.0])
+
+# Multiple functions
+summarise(gt, across([:a, :b], :mean => mean, :sum => sum))
+
+# With everything() selector (excludes grouping columns automatically)
+summarise(gt, across(everything(), :mean => mean))
+```
+"""
+function across(cols::Union{AbstractVector, ColumnSelector}, fns::Pair{Symbol, <:Function}...)
+    col_spec = cols isa AbstractVector ? Symbol.(cols) : cols
+    return Across(col_spec, collect(fns))
+end
+
+across(cols::Symbol, fns::Pair{Symbol, <:Function}...) = across([cols], fns...)
+
+function _expand_across_cols(ac::Across, available::Tuple)
+    if ac.cols isa Vector{Symbol}
+        avail_set = Set(available)
+        for col in ac.cols
+            col in avail_set ||
+                throw(ArgumentError("Column '$(col)' not found"))
+        end
+        return ac.cols
+    else
+        return _expand_selector(ac.cols, available)
+    end
+end
+
+# Extended summarise to support Across
+function summarise(gt::GroupedTable, ac::Across)
+    m = length(gt)
+    keycols = gt.keycols
+    keycol_set = Set(keycols)
+
+    available = _column_names(gt.data)
+    target_cols = [c for c in _expand_across_cols(ac, available) if !(c in keycol_set)]
+
+    key_data = Dict{Symbol, Vector{Any}}()
+    for col in keycols
+        key_data[col] = Vector{Any}(undef, m)
+    end
+
+    for (i, key) in enumerate(gt.keys)
+        for col in keycols
+            key_data[col][i] = key[col]
+        end
+    end
+
+    summary_data = Dict{Symbol, Vector{Any}}()
+    for col in target_cols
+        for (fn_name, _) in ac.fns
+            out_name = Symbol("$(col)_$(fn_name)")
+            summary_data[out_name] = Vector{Any}(undef, m)
+        end
+    end
+
+    for (i, idxs) in enumerate(gt.indices)
+        subgroup = _subset_indices(gt.data, idxs)
+        for col in target_cols
+            for (fn_name, fn) in ac.fns
+                out_name = Symbol("$(col)_$(fn_name)")
+                summary_data[out_name][i] = fn(subgroup[col])
+            end
+        end
+    end
+
+    names_out = Symbol[]
+    cols_out = Vector{Any}()
+
+    for col in keycols
+        push!(names_out, col)
+        push!(cols_out, _finalize_column(key_data[col]))
+    end
+
+    for col in target_cols
+        for (fn_name, _) in ac.fns
+            out_name = Symbol("$(col)_$(fn_name)")
+            push!(names_out, out_name)
+            push!(cols_out, _finalize_column(summary_data[out_name]))
+        end
+    end
+
+    return _assemble(names_out, cols_out)
+end
+
+# Extended mutate to support Across
+function mutate(data, ac::Across)
+    ct = _to_columns(data)
+    available = _column_names(ct)
+    target_cols = _expand_across_cols(ac, available)
+    n = _check_lengths(ct)
+
+    names_out = collect(available)
+    columns = Dict{Symbol, Any}()
+    for name in available
+        columns[name] = ct[name]
+    end
+
+    for col in target_cols
+        for (fn_name, fn) in ac.fns
+            out_name = Symbol("$(col)_$(fn_name)")
+            result = fn(ct[col])
+            if !(result isa AbstractVector)
+                result = fill(result, n)
+            end
+            columns[out_name] = result
+            if !(out_name in names_out)
+                push!(names_out, out_name)
+            end
+        end
+    end
+
+    return NamedTuple{Tuple(names_out)}(Tuple(columns[s] for s in names_out))
+end
+
+# =============================================================================
+# tidyr-style functions
+# =============================================================================
+
+"""
+    separate(data, col::Symbol; into::Vector{Symbol}, sep::Union{String, Regex, Char}=" ", remove::Bool=true, convert::Bool=false)
+
+Separate a character column into multiple columns.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `col`: Column name to separate
+- `into`: Names for the new columns
+- `sep`: Separator pattern (default: `" "`)
+- `remove`: If `true`, remove the input column (default: `true`)
+- `convert`: If `true`, attempt to convert to numeric types (default: `false`)
+
+# Returns
+A `NamedTuple` with the original column split into multiple new columns.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (id = [1, 2, 3], name = ["John Doe", "Jane Smith", "Bob Wilson"])
+
+# Split name into first and last
+separate(tbl, :name; into=[:first, :last], sep=" ")
+# Output: (id = [1, 2, 3], first = ["John", "Jane", "Bob"], last = ["Doe", "Smith", "Wilson"])
+
+# Keep original column
+separate(tbl, :name; into=[:first, :last], sep=" ", remove=false)
+
+# With numeric conversion
+tbl2 = (id = [1, 2], coords = ["10,20", "30,40"])
+separate(tbl2, :coords; into=[:x, :y], sep=",", convert=true)
+# Output: (id = [1, 2], x = [10, 30], y = [20, 40])
+```
+
+See also: [`unite`](@ref)
+"""
+function separate(data, col::Symbol;
+                  into::Vector{Symbol},
+                  sep::Union{String, Regex, Char}=" ",
+                  remove::Bool=true,
+                  convert::Bool=false)
+    ct = _to_columns(data)
+    available = _column_names(ct)
+
+    col in available || throw(ArgumentError("Column '$(col)' not found"))
+
+    n = _check_lengths(ct)
+
+    new_cols = Dict{Symbol, Vector{Any}}()
+    for name in into
+        new_cols[name] = Vector{Any}(undef, n)
+    end
+
+    source_col = ct[col]
+    for i in 1:n
+        val = source_col[i]
+        if ismissing(val)
+            for name in into
+                new_cols[name][i] = missing
+            end
+        else
+            parts = split(string(val), sep)
+            for (j, name) in enumerate(into)
+                if j <= length(parts)
+                    new_cols[name][i] = parts[j]
+                else
+                    new_cols[name][i] = missing
+                end
+            end
+        end
+    end
+
+    if convert
+        for name in into
+            vec = new_cols[name]
+            # Try to convert to numbers
+            all_numeric = true
+            for v in vec
+                if !ismissing(v)
+                    try
+                        parse(Float64, v)
+                    catch
+                        all_numeric = false
+                        break
+                    end
+                end
+            end
+            if all_numeric
+                new_cols[name] = [ismissing(v) ? missing : parse(Float64, v) for v in vec]
+            end
+        end
+    end
+
+    names_out = Symbol[]
+    columns_out = Vector{Any}()
+
+    for name in available
+        if name == col
+            if !remove
+                push!(names_out, name)
+                push!(columns_out, ct[name])
+            end
+            for new_name in into
+                push!(names_out, new_name)
+                push!(columns_out, _finalize_column(new_cols[new_name]))
+            end
+        else
+            push!(names_out, name)
+            push!(columns_out, ct[name])
+        end
+    end
+
+    return _assemble(names_out, columns_out)
+end
+
+"""
+    unite(data, new_col::Symbol, cols::Symbol...; sep::String="_", remove::Bool=true)
+
+Combine multiple columns into a single character column.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `new_col`: Name for the new combined column
+- `cols...`: Columns to combine
+- `sep`: Separator to use between values (default: `"_"`)
+- `remove`: If `true`, remove the input columns (default: `true`)
+
+# Returns
+A `NamedTuple` with the specified columns combined into one.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (id = [1, 2, 3], year = [2020, 2021, 2022], month = [1, 6, 12])
+
+# Combine year and month
+unite(tbl, :date, :year, :month; sep="-")
+# Output: (id = [1, 2, 3], date = ["2020-1", "2021-6", "2022-12"])
+
+# Keep original columns
+unite(tbl, :date, :year, :month; sep="-", remove=false)
+# Output: (id = [1, 2, 3], year = [2020, 2021, 2022], month = [1, 6, 12], date = ["2020-1", "2021-6", "2022-12"])
+```
+
+See also: [`separate`](@ref)
+"""
+function unite(data, new_col::Symbol, cols::Symbol...; sep::String="_", remove::Bool=true)
+    ct = _to_columns(data)
+    available = _column_names(ct)
+    n = _check_lengths(ct)
+
+    cols_list = collect(cols)
+    for col in cols_list
+        col in available || throw(ArgumentError("Column '$(col)' not found"))
+    end
+
+    combined = Vector{Any}(undef, n)
+    for i in 1:n
+        parts = String[]
+        has_missing = false
+        for col in cols_list
+            val = ct[col][i]
+            if ismissing(val)
+                has_missing = true
+                break
+            end
+            push!(parts, string(val))
+        end
+        combined[i] = has_missing ? missing : join(parts, sep)
+    end
+
+    cols_set = Set(cols_list)
+    names_out = Symbol[]
+    columns_out = Vector{Any}()
+
+    inserted = false
+    for name in available
+        if name in cols_set
+            if !inserted
+                push!(names_out, new_col)
+                push!(columns_out, _finalize_column(combined))
+                inserted = true
+            end
+            if !remove
+                push!(names_out, name)
+                push!(columns_out, ct[name])
+            end
+        else
+            push!(names_out, name)
+            push!(columns_out, ct[name])
+        end
+    end
+
+    if !inserted
+        push!(names_out, new_col)
+        push!(columns_out, _finalize_column(combined))
+    end
+
+    return _assemble(names_out, columns_out)
+end
+
+"""
+    fill_missing(data, cols::Symbol...; direction::Symbol=:down)
+
+Fill missing values in columns using the previous or next non-missing value.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `cols...`: Columns to fill (if empty, fills all columns)
+- `direction`: Fill direction - `:down` (default), `:up`, `:downup`, or `:updown`
+
+# Returns
+A `NamedTuple` with missing values filled.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (id = [1, 2, 3, 4, 5],
+       value = [10, missing, missing, 40, missing])
+
+# Fill down (forward fill)
+fill_missing(tbl, :value)
+# Output: (id = [1, 2, 3, 4, 5], value = [10, 10, 10, 40, 40])
+
+# Fill up (backward fill)
+fill_missing(tbl, :value; direction=:up)
+# Output: (id = [1, 2, 3, 4, 5], value = [10, 40, 40, 40, missing])
+
+# Fill both directions (down first, then up)
+fill_missing(tbl, :value; direction=:downup)
+# Output: (id = [1, 2, 3, 4, 5], value = [10, 10, 10, 40, 40])
+```
+"""
+function fill_missing(data, cols::Symbol...; direction::Symbol=:down)
+    ct = _to_columns(data)
+    available = _column_names(ct)
+    _check_lengths(ct)
+
+    direction in (:down, :up, :downup, :updown) ||
+        throw(ArgumentError("direction must be :down, :up, :downup, or :updown"))
+
+    cols_to_fill = isempty(cols) ? collect(available) : collect(cols)
+    cols_set = Set(cols_to_fill)
+
+    for col in cols_to_fill
+        col in available || throw(ArgumentError("Column '$(col)' not found"))
+    end
+
+    function fill_down!(vec)
+        last_valid = nothing
+        for i in 1:length(vec)
+            if !ismissing(vec[i])
+                last_valid = vec[i]
+            elseif last_valid !== nothing
+                vec[i] = last_valid
+            end
+        end
+    end
+
+    function fill_up!(vec)
+        next_valid = nothing
+        for i in length(vec):-1:1
+            if !ismissing(vec[i])
+                next_valid = vec[i]
+            elseif next_valid !== nothing
+                vec[i] = next_valid
+            end
+        end
+    end
+
+    names_out = Symbol[]
+    columns_out = Vector{Any}()
+
+    for name in available
+        if name in cols_set
+            vec = collect(ct[name])
+            if direction == :down
+                fill_down!(vec)
+            elseif direction == :up
+                fill_up!(vec)
+            elseif direction == :downup
+                fill_down!(vec)
+                fill_up!(vec)
+            elseif direction == :updown
+                fill_up!(vec)
+                fill_down!(vec)
+            end
+            push!(names_out, name)
+            push!(columns_out, _finalize_column(vec))
+        else
+            push!(names_out, name)
+            push!(columns_out, ct[name])
+        end
+    end
+
+    return _assemble(names_out, columns_out)
+end
+
+"""
+    complete(data, cols::Symbol...; fill_value=missing)
+
+Complete a data table with all combinations of specified columns.
+
+# Arguments
+- `data`: A Tables.jl-compatible data source
+- `cols...`: Columns to expand (creates all unique combinations)
+- `fill_value`: Value to use for new rows (default: `missing`)
+
+# Returns
+A `NamedTuple` expanded to include all combinations of values in the specified columns.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (year = [2020, 2020, 2021],
+       quarter = [1, 2, 1],
+       value = [100, 200, 150])
+
+# Complete all year-quarter combinations
+complete(tbl, :year, :quarter)
+# Output: (year = [2020, 2020, 2020, 2020, 2021, 2021, 2021, 2021],
+#          quarter = [1, 2, 1, 2, 1, 2, 1, 2],
+#          value = [100, 200, missing, missing, 150, missing, missing, missing])
+
+# With custom fill value
+complete(tbl, :year, :quarter; fill_value=0)
+```
+
+See also: [`fill`](@ref)
+"""
+function complete(data, cols::Symbol...; fill_value=missing)
+    ct = _to_columns(data)
+    available = _column_names(ct)
+    n = _check_lengths(ct)
+
+    cols_list = collect(cols)
+    isempty(cols_list) && return ct
+
+    for col in cols_list
+        col in available || throw(ArgumentError("Column '$(col)' not found"))
+    end
+
+    unique_values = Dict{Symbol, Vector{Any}}()
+    for col in cols_list
+        unique_values[col] = unique(ct[col])
+    end
+
+    function cartesian_product(arrays)
+        if length(arrays) == 1
+            return [[v] for v in arrays[1]]
+        end
+        result = Vector{Vector{Any}}()
+        rest = cartesian_product(arrays[2:end])
+        for v in arrays[1]
+            for r in rest
+                push!(result, vcat([v], r))
+            end
+        end
+        return result
+    end
+
+    all_combos = cartesian_product([unique_values[c] for c in cols_list])
+
+    existing_keys = Set{Vector{Any}}()
+    for i in 1:n
+        key = [ct[c][i] for c in cols_list]
+        push!(existing_keys, key)
+    end
+
+    new_rows = [combo for combo in all_combos if !(combo in existing_keys)]
+
+    total_rows = n + length(new_rows)
+
+    result_cols = Dict{Symbol, Vector{Any}}()
+    for name in available
+        result_cols[name] = Vector{Any}(undef, total_rows)
+        for i in 1:n
+            result_cols[name][i] = ct[name][i]
+        end
+    end
+
+    cols_set = Set(cols_list)
+    for (j, combo) in enumerate(new_rows)
+        row_idx = n + j
+        for (k, col) in enumerate(cols_list)
+            result_cols[col][row_idx] = combo[k]
+        end
+        for name in available
+            if !(name in cols_set)
+                result_cols[name][row_idx] = fill_value
+            end
+        end
+    end
+
+    names_out = collect(available)
+    columns_out = [_finalize_column(result_cols[name]) for name in names_out]
+
+    return _assemble(names_out, columns_out)
+end
+
+# =============================================================================
+# Join functions
+# =============================================================================
+
+"""
+    _resolve_join_keys(left, right, by)
+
+Internal helper to resolve join keys from the `by` specification.
+Returns (left_keys, right_keys) as vectors of Symbols.
+"""
+function _resolve_join_keys(left::NamedTuple, right::NamedTuple, by)
+    left_names = Set(_column_names(left))
+    right_names = Set(_column_names(right))
+
+    if by === nothing
+        # Auto-detect common columns
+        common = intersect(left_names, right_names)
+        isempty(common) && throw(ArgumentError("No common columns found for join. Specify `by` explicitly."))
+        keys = collect(common)
+        return keys, keys
+    elseif by isa Symbol
+        by in left_names || throw(ArgumentError("Column '$(by)' not found in left table"))
+        by in right_names || throw(ArgumentError("Column '$(by)' not found in right table"))
+        return [by], [by]
+    elseif by isa AbstractVector{Symbol}
+        for col in by
+            col in left_names || throw(ArgumentError("Column '$(col)' not found in left table"))
+            col in right_names || throw(ArgumentError("Column '$(col)' not found in right table"))
+        end
+        return collect(by), collect(by)
+    elseif by isa Pair
+        left_key = first(by)
+        right_key = last(by)
+        left_key in left_names || throw(ArgumentError("Column '$(left_key)' not found in left table"))
+        right_key in right_names || throw(ArgumentError("Column '$(right_key)' not found in right table"))
+        return [left_key], [right_key]
+    elseif by isa AbstractVector{<:Pair}
+        left_keys = Symbol[]
+        right_keys = Symbol[]
+        for p in by
+            lk, rk = first(p), last(p)
+            lk in left_names || throw(ArgumentError("Column '$(lk)' not found in left table"))
+            rk in right_names || throw(ArgumentError("Column '$(rk)' not found in right table"))
+            push!(left_keys, lk)
+            push!(right_keys, rk)
+        end
+        return left_keys, right_keys
+    else
+        throw(ArgumentError("Invalid `by` specification. Use Symbol, Vector{Symbol}, Pair, or Vector{Pair}."))
+    end
+end
+
+"""
+    _build_key(ct::NamedTuple, keys::Vector{Symbol}, i::Int)
+
+Build a key tuple from row i using the specified key columns.
+"""
+function _build_key(ct::NamedTuple, keys::Vector{Symbol}, i::Int)
+    if length(keys) == 1
+        return ct[keys[1]][i]
+    else
+        return tuple((ct[k][i] for k in keys)...)
+    end
+end
+
+"""
+    _build_right_index(right::NamedTuple, right_keys::Vector{Symbol})
+
+Build a dictionary mapping key values to row indices in the right table.
+"""
+function _build_right_index(right::NamedTuple, right_keys::Vector{Symbol})
+    n_right = _nrows(right)
+    index = Dict{Any, Vector{Int}}()
+    for i in 1:n_right
+        key = _build_key(right, right_keys, i)
+        if haskey(index, key)
+            push!(index[key], i)
+        else
+            index[key] = [i]
+        end
+    end
+    return index
+end
+
+"""
+    inner_join(left, right; by=nothing, suffix=("_x", "_y"))
+
+Join two tables, keeping only rows with matching keys in both tables.
+
+# Arguments
+- `left`: Left table (Tables.jl-compatible)
+- `right`: Right table (Tables.jl-compatible)
+- `by`: Join specification:
+  - `nothing` (default): Join on all common column names
+  - `Symbol`: Single column name present in both tables
+  - `Vector{Symbol}`: Multiple column names present in both tables
+  - `Pair{Symbol,Symbol}`: Different column names (`:left_col => :right_col`)
+  - `Vector{Pair}`: Multiple pairs for different column names
+- `suffix`: Tuple of suffixes for duplicate non-key columns (default: `("_x", "_y")`)
+
+# Returns
+A `NamedTuple` containing only rows where the key exists in both tables.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3], x = [10, 20, 30])
+right = (id = [2, 3, 4], y = [200, 300, 400])
+
+inner_join(left, right, by=:id)
+# Output: (id = [2, 3], x = [20, 30], y = [200, 300])
+
+# Join on multiple columns
+left2 = (a = [1, 1, 2], b = ["x", "y", "x"], val = [10, 20, 30])
+right2 = (a = [1, 2], b = ["x", "x"], val2 = [100, 200])
+
+inner_join(left2, right2, by=[:a, :b])
+# Output: (a = [1, 2], b = ["x", "x"], val = [10, 30], val2 = [100, 200])
+
+# Join with different column names
+left3 = (id = [1, 2, 3], x = [10, 20, 30])
+right3 = (key = [2, 3, 4], y = [200, 300, 400])
+
+inner_join(left3, right3, by=:id => :key)
+# Output: (id = [2, 3], x = [20, 30], y = [200, 300])
+```
+
+See also: [`left_join`](@ref), [`right_join`](@ref), [`full_join`](@ref)
+"""
+function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", "_y"))
+    ct_left = _to_columns(left)
+    ct_right = _to_columns(right)
+
+    left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
+    right_index = _build_right_index(ct_right, right_keys)
+
+    n_left = _nrows(ct_left)
+    left_names = _column_names(ct_left)
+    right_names = _column_names(ct_right)
+    right_key_set = Set(right_keys)
+
+    # Determine output columns
+    out_names = Symbol[]
+    out_sources = Tuple{Symbol, Int, Symbol}[]  # (name, table (1=left, 2=right), original_name)
+
+    for name in left_names
+        push!(out_names, name)
+        push!(out_sources, (name, 1, name))
+    end
+
+    for name in right_names
+        if name in right_key_set
+            continue  # Skip key columns from right (use left's)
+        end
+        out_name = name
+        if name in left_names
+            out_name = Symbol(string(name) * suffix[2])
+            # Also rename left column
+            idx = findfirst(==(name), out_names)
+            if idx !== nothing
+                out_names[idx] = Symbol(string(name) * suffix[1])
+            end
+        end
+        push!(out_names, out_name)
+        push!(out_sources, (out_name, 2, name))
+    end
+
+    # Build result
+    result_cols = Dict{Symbol, Vector{Any}}()
+    for name in out_names
+        result_cols[name] = Any[]
+    end
+
+    for i in 1:n_left
+        left_key = _build_key(ct_left, left_keys, i)
+        if haskey(right_index, left_key)
+            for j in right_index[left_key]
+                for (out_name, table, orig_name) in out_sources
+                    if table == 1
+                        push!(result_cols[out_name], ct_left[orig_name][i])
+                    else
+                        push!(result_cols[out_name], ct_right[orig_name][j])
+                    end
+                end
+            end
+        end
+    end
+
+    columns_out = [_finalize_column(result_cols[name]) for name in out_names]
+    return _assemble(collect(out_names), columns_out)
+end
+
+"""
+    left_join(left, right; by=nothing, suffix=("_x", "_y"))
+
+Join two tables, keeping all rows from the left table.
+
+# Arguments
+- `left`: Left table (Tables.jl-compatible)
+- `right`: Right table (Tables.jl-compatible)
+- `by`: Join specification (see `inner_join` for details)
+- `suffix`: Tuple of suffixes for duplicate non-key columns (default: `("_x", "_y")`)
+
+# Returns
+A `NamedTuple` containing all rows from `left`, with matching data from `right`.
+Non-matching rows have `missing` for columns from `right`.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3], x = [10, 20, 30])
+right = (id = [2, 3, 4], y = [200, 300, 400])
+
+left_join(left, right, by=:id)
+# Output: (id = [1, 2, 3], x = [10, 20, 30], y = [missing, 200, 300])
+```
+
+See also: [`inner_join`](@ref), [`right_join`](@ref), [`full_join`](@ref)
+"""
+function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", "_y"))
+    ct_left = _to_columns(left)
+    ct_right = _to_columns(right)
+
+    left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
+    right_index = _build_right_index(ct_right, right_keys)
+
+    n_left = _nrows(ct_left)
+    left_names = _column_names(ct_left)
+    right_names = _column_names(ct_right)
+    right_key_set = Set(right_keys)
+
+    # Determine output columns
+    out_names = Symbol[]
+    out_sources = Tuple{Symbol, Int, Symbol}[]
+
+    for name in left_names
+        push!(out_names, name)
+        push!(out_sources, (name, 1, name))
+    end
+
+    right_only_cols = Symbol[]
+    for name in right_names
+        if name in right_key_set
+            continue
+        end
+        out_name = name
+        if name in left_names
+            out_name = Symbol(string(name) * suffix[2])
+            idx = findfirst(==(name), out_names)
+            if idx !== nothing
+                out_names[idx] = Symbol(string(name) * suffix[1])
+            end
+        end
+        push!(out_names, out_name)
+        push!(out_sources, (out_name, 2, name))
+        push!(right_only_cols, out_name)
+    end
+
+    # Build result
+    result_cols = Dict{Symbol, Vector{Any}}()
+    for name in out_names
+        result_cols[name] = Any[]
+    end
+
+    for i in 1:n_left
+        left_key = _build_key(ct_left, left_keys, i)
+        if haskey(right_index, left_key)
+            for j in right_index[left_key]
+                for (out_name, table, orig_name) in out_sources
+                    if table == 1
+                        push!(result_cols[out_name], ct_left[orig_name][i])
+                    else
+                        push!(result_cols[out_name], ct_right[orig_name][j])
+                    end
+                end
+            end
+        else
+            # No match - add left row with missing for right columns
+            for (out_name, table, orig_name) in out_sources
+                if table == 1
+                    push!(result_cols[out_name], ct_left[orig_name][i])
+                else
+                    push!(result_cols[out_name], missing)
+                end
+            end
+        end
+    end
+
+    columns_out = [_finalize_column(result_cols[name]) for name in out_names]
+    return _assemble(collect(out_names), columns_out)
+end
+
+"""
+    right_join(left, right; by=nothing, suffix=("_x", "_y"))
+
+Join two tables, keeping all rows from the right table.
+
+# Arguments
+- `left`: Left table (Tables.jl-compatible)
+- `right`: Right table (Tables.jl-compatible)
+- `by`: Join specification (see `inner_join` for details)
+- `suffix`: Tuple of suffixes for duplicate non-key columns (default: `("_x", "_y")`)
+
+# Returns
+A `NamedTuple` containing all rows from `right`, with matching data from `left`.
+Non-matching rows have `missing` for columns from `left`.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3], x = [10, 20, 30])
+right = (id = [2, 3, 4], y = [200, 300, 400])
+
+right_join(left, right, by=:id)
+# Output: (id = [2, 3, 4], x = [20, 30, missing], y = [200, 300, 400])
+```
+
+See also: [`inner_join`](@ref), [`left_join`](@ref), [`full_join`](@ref)
+"""
+function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", "_y"))
+    # right_join is just left_join with tables swapped
+    # But we need to handle the key column naming carefully
+    ct_left = _to_columns(left)
+    ct_right = _to_columns(right)
+
+    left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
+    left_index = _build_right_index(ct_left, left_keys)
+
+    n_right = _nrows(ct_right)
+    left_names = _column_names(ct_left)
+    right_names = _column_names(ct_right)
+    left_key_set = Set(left_keys)
+
+    # Determine output columns - keys come from right, then left non-keys, then right non-keys
+    out_names = Symbol[]
+    out_sources = Tuple{Symbol, Int, Symbol}[]
+
+    # First add key columns (from right)
+    for (lk, rk) in zip(left_keys, right_keys)
+        push!(out_names, lk)  # Use left key name for consistency
+        push!(out_sources, (lk, 2, rk))
+    end
+
+    # Add left non-key columns
+    for name in left_names
+        if name in left_key_set
+            continue
+        end
+        out_name = name
+        if name in right_names
+            out_name = Symbol(string(name) * suffix[1])
+        end
+        push!(out_names, out_name)
+        push!(out_sources, (out_name, 1, name))
+    end
+
+    # Add right non-key columns
+    right_key_set = Set(right_keys)
+    for name in right_names
+        if name in right_key_set
+            continue
+        end
+        out_name = name
+        if name in left_names
+            out_name = Symbol(string(name) * suffix[2])
+        end
+        push!(out_names, out_name)
+        push!(out_sources, (out_name, 2, name))
+    end
+
+    # Build result
+    result_cols = Dict{Symbol, Vector{Any}}()
+    for name in out_names
+        result_cols[name] = Any[]
+    end
+
+    for j in 1:n_right
+        right_key = _build_key(ct_right, right_keys, j)
+        if haskey(left_index, right_key)
+            for i in left_index[right_key]
+                for (out_name, table, orig_name) in out_sources
+                    if table == 1
+                        push!(result_cols[out_name], ct_left[orig_name][i])
+                    else
+                        push!(result_cols[out_name], ct_right[orig_name][j])
+                    end
+                end
+            end
+        else
+            # No match - add right row with missing for left columns
+            for (out_name, table, orig_name) in out_sources
+                if table == 1
+                    push!(result_cols[out_name], missing)
+                else
+                    push!(result_cols[out_name], ct_right[orig_name][j])
+                end
+            end
+        end
+    end
+
+    columns_out = [_finalize_column(result_cols[name]) for name in out_names]
+    return _assemble(collect(out_names), columns_out)
+end
+
+"""
+    full_join(left, right; by=nothing, suffix=("_x", "_y"))
+
+Join two tables, keeping all rows from both tables.
+
+# Arguments
+- `left`: Left table (Tables.jl-compatible)
+- `right`: Right table (Tables.jl-compatible)
+- `by`: Join specification (see `inner_join` for details)
+- `suffix`: Tuple of suffixes for duplicate non-key columns (default: `("_x", "_y")`)
+
+# Returns
+A `NamedTuple` containing all rows from both tables.
+Non-matching rows have `missing` for columns from the other table.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3], x = [10, 20, 30])
+right = (id = [2, 3, 4], y = [200, 300, 400])
+
+full_join(left, right, by=:id)
+# Output: (id = [1, 2, 3, 4], x = [10, 20, 30, missing], y = [missing, 200, 300, 400])
+```
+
+See also: [`inner_join`](@ref), [`left_join`](@ref), [`right_join`](@ref)
+"""
+function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", "_y"))
+    ct_left = _to_columns(left)
+    ct_right = _to_columns(right)
+
+    left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
+    right_index = _build_right_index(ct_right, right_keys)
+
+    n_left = _nrows(ct_left)
+    n_right = _nrows(ct_right)
+    left_names = _column_names(ct_left)
+    right_names = _column_names(ct_right)
+    right_key_set = Set(right_keys)
+
+    # Determine output columns
+    out_names = Symbol[]
+    out_sources = Tuple{Symbol, Int, Symbol}[]
+
+    for name in left_names
+        push!(out_names, name)
+        push!(out_sources, (name, 1, name))
+    end
+
+    for name in right_names
+        if name in right_key_set
+            continue
+        end
+        out_name = name
+        if name in left_names
+            out_name = Symbol(string(name) * suffix[2])
+            idx = findfirst(==(name), out_names)
+            if idx !== nothing
+                out_names[idx] = Symbol(string(name) * suffix[1])
+            end
+        end
+        push!(out_names, out_name)
+        push!(out_sources, (out_name, 2, name))
+    end
+
+    # Build result
+    result_cols = Dict{Symbol, Vector{Any}}()
+    for name in out_names
+        result_cols[name] = Any[]
+    end
+
+    # Track which right rows have been matched
+    matched_right = Set{Int}()
+
+    # First pass: all left rows
+    for i in 1:n_left
+        left_key = _build_key(ct_left, left_keys, i)
+        if haskey(right_index, left_key)
+            for j in right_index[left_key]
+                push!(matched_right, j)
+                for (out_name, table, orig_name) in out_sources
+                    if table == 1
+                        push!(result_cols[out_name], ct_left[orig_name][i])
+                    else
+                        push!(result_cols[out_name], ct_right[orig_name][j])
+                    end
+                end
+            end
+        else
+            # No match - add left row with missing for right columns
+            for (out_name, table, orig_name) in out_sources
+                if table == 1
+                    push!(result_cols[out_name], ct_left[orig_name][i])
+                else
+                    push!(result_cols[out_name], missing)
+                end
+            end
+        end
+    end
+
+    # Second pass: unmatched right rows
+    left_key_set = Set(left_keys)
+    for j in 1:n_right
+        if j in matched_right
+            continue
+        end
+        for (out_name, table, orig_name) in out_sources
+            if table == 1
+                # For key columns from left, use right's key value
+                if orig_name in left_key_set
+                    key_idx = findfirst(==(orig_name), left_keys)
+                    push!(result_cols[out_name], ct_right[right_keys[key_idx]][j])
+                else
+                    push!(result_cols[out_name], missing)
+                end
+            else
+                push!(result_cols[out_name], ct_right[orig_name][j])
+            end
+        end
+    end
+
+    columns_out = [_finalize_column(result_cols[name]) for name in out_names]
+    return _assemble(collect(out_names), columns_out)
+end
+
+"""
+    semi_join(left, right; by=nothing)
+
+Return rows from `left` that have matching keys in `right`.
+
+Unlike `inner_join`, this does not add columns from `right` - it only filters `left`.
+
+# Arguments
+- `left`: Left table (Tables.jl-compatible)
+- `right`: Right table (Tables.jl-compatible)
+- `by`: Join specification (see `inner_join` for details)
+
+# Returns
+A `NamedTuple` containing rows from `left` where the key exists in `right`.
+Only columns from `left` are returned.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3, 4], x = [10, 20, 30, 40])
+right = (id = [2, 4], y = [200, 400])
+
+semi_join(left, right, by=:id)
+# Output: (id = [2, 4], x = [20, 40])
+```
+
+See also: [`anti_join`](@ref), [`inner_join`](@ref)
+"""
+function semi_join(left, right; by=nothing)
+    ct_left = _to_columns(left)
+    ct_right = _to_columns(right)
+
+    left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
+
+    # Build set of keys present in right
+    n_right = _nrows(ct_right)
+    right_key_set = Set{Any}()
+    for j in 1:n_right
+        key = _build_key(ct_right, right_keys, j)
+        push!(right_key_set, key)
+    end
+
+    # Filter left rows
+    n_left = _nrows(ct_left)
+    keep_indices = Int[]
+    for i in 1:n_left
+        left_key = _build_key(ct_left, left_keys, i)
+        if left_key in right_key_set
+            push!(keep_indices, i)
+        end
+    end
+
+    return _subset_indices(ct_left, keep_indices)
+end
+
+"""
+    anti_join(left, right; by=nothing)
+
+Return rows from `left` that do NOT have matching keys in `right`.
+
+This is the complement of `semi_join`.
+
+# Arguments
+- `left`: Left table (Tables.jl-compatible)
+- `right`: Right table (Tables.jl-compatible)
+- `by`: Join specification (see `inner_join` for details)
+
+# Returns
+A `NamedTuple` containing rows from `left` where the key does NOT exist in `right`.
+Only columns from `left` are returned.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3, 4], x = [10, 20, 30, 40])
+right = (id = [2, 4], y = [200, 400])
+
+anti_join(left, right, by=:id)
+# Output: (id = [1, 3], x = [10, 30])
+```
+
+See also: [`semi_join`](@ref), [`left_join`](@ref)
+"""
+function anti_join(left, right; by=nothing)
+    ct_left = _to_columns(left)
+    ct_right = _to_columns(right)
+
+    left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
+
+    # Build set of keys present in right
+    n_right = _nrows(ct_right)
+    right_key_set = Set{Any}()
+    for j in 1:n_right
+        key = _build_key(ct_right, right_keys, j)
+        push!(right_key_set, key)
+    end
+
+    # Filter left rows - keep those NOT in right
+    n_left = _nrows(ct_left)
+    keep_indices = Int[]
+    for i in 1:n_left
+        left_key = _build_key(ct_left, left_keys, i)
+        if !(left_key in right_key_set)
+            push!(keep_indices, i)
+        end
+    end
+
+    return _subset_indices(ct_left, keep_indices)
+end
+
+# =============================================================================
+# PanelData dispatches - apply operations by group
+# =============================================================================
+
+"""
+    _apply_by_group(panel::PanelData, op::Function)
+
+Internal helper to apply an operation to each group in a PanelData object.
+Returns a new NamedTuple with results from all groups combined.
+"""
+function _apply_by_group(panel::PanelData, op::Function)
+    ct = _to_columns(panel.data)
+    groups = panel.groups
+
+    if isempty(groups)
+        # No grouping - apply to entire dataset
+        return op(ct)
+    end
+
+    gt = groupby(ct, groups...)
+    results = NamedTuple[]
+
+    for idxs in gt.indices
+        subgroup = _subset_indices(ct, idxs)
+        result = op(subgroup)
+        push!(results, result)
+    end
+
+    # Combine all results
+    if isempty(results)
+        return ct
+    end
+
+    return bind_rows(results...)
+end
+
+"""
+    _apply_by_group_to_panel(panel::PanelData, op::Function)
+
+Apply an operation by group and return a new PanelData with same metadata.
+"""
+function _apply_by_group_to_panel(panel::PanelData, op::Function)
+    result_data = _apply_by_group(panel, op)
+    return PanelData(result_data, panel.groups, panel.date, panel.m)
+end
+
+"""
+    query(panel::PanelData, predicate::Function)
+
+Filter rows in a PanelData by group, applying the predicate within each group.
+
+# Arguments
+- `panel`: A PanelData object with grouping columns
+- `predicate`: A function that takes a row (NamedTuple) and returns `Bool`
+
+# Returns
+A new `PanelData` with filtered rows, preserving grouping metadata.
+
+# Examples
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = ["A", "A", "A", "B", "B", "B"],
+        date = [1, 2, 3, 1, 2, 3],
+        value = [10, 20, 30, 100, 200, 300])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Filter rows where value > 15 (applied per group)
+filtered = query(panel, row -> row.value > 15)
+```
+"""
+function query(panel::PanelData, predicate::Function)
+    _apply_by_group_to_panel(panel, ct -> query(ct, predicate))
+end
+
+"""
+    mutate(panel::PanelData; kwargs...)
+
+Add or modify columns in a PanelData, applying transformations within each group.
+
+When using functions that reference group data, the function receives only
+the current group's data, enabling group-relative computations.
+
+# Arguments
+- `panel`: A PanelData object with grouping columns
+- `kwargs...`: Column specifications (same as regular `mutate`)
+
+# Returns
+A new `PanelData` with transformed columns, preserving grouping metadata.
+
+# Examples
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+data = (series = ["A", "A", "A", "B", "B", "B"],
+        date = [1, 2, 3, 1, 2, 3],
+        value = [10, 20, 30, 100, 200, 300])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Add group-relative columns
+result = mutate(panel,
+    group_mean = d -> fill(mean(d.value), length(d.value)),
+    centered = d -> d.value .- mean(d.value))
+```
+"""
+function mutate(panel::PanelData; kwargs...)
+    _apply_by_group_to_panel(panel, ct -> mutate(ct; kwargs...))
+end
+
+"""
+    arrange(panel::PanelData, cols...; rev::Bool=false)
+
+Sort rows within each group of a PanelData.
+
+# Arguments
+- `panel`: A PanelData object with grouping columns
+- `cols...`: Sort specifications (same as regular `arrange`)
+- `rev`: Reverse sort order (default: false)
+
+# Returns
+A new `PanelData` with rows sorted within each group, preserving grouping metadata.
+
+# Examples
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = ["A", "A", "A", "B", "B", "B"],
+        date = [3, 1, 2, 2, 3, 1],
+        value = [30, 10, 20, 200, 300, 100])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Sort by date within each series
+sorted = arrange(panel, :date)
+```
+"""
+function arrange(panel::PanelData, cols...; rev::Bool=false)
+    _apply_by_group_to_panel(panel, ct -> arrange(ct, cols...; rev=rev))
+end
+
+"""
+    select(panel::PanelData, specs...)
+
+Select columns from a PanelData. Grouping columns are always preserved.
+
+# Arguments
+- `panel`: A PanelData object with grouping columns
+- `specs...`: Column specifications (same as regular `select`)
+
+# Returns
+A new `PanelData` with selected columns, preserving grouping metadata.
+Grouping columns are automatically included even if not specified.
+
+# Examples
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = ["A", "A", "B", "B"],
+        date = [1, 2, 1, 2],
+        value = [10, 20, 100, 200],
+        extra = [1, 2, 3, 4])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Select value column (series is automatically kept as grouping column)
+result = select(panel, :value)
+```
+"""
+function select(panel::PanelData, spec1::Union{Symbol, Pair, ColumnSelector}, specs::Union{Symbol, Pair, ColumnSelector}...)
+    ct = _to_columns(panel.data)
+
+    # Ensure grouping columns are included
+    all_specs = [spec1, specs...]
+    group_set = Set(panel.groups)
+
+    # Add grouping columns first if not already in specs
+    final_specs = Any[]
+    for g in panel.groups
+        push!(final_specs, g)
+    end
+
+    for spec in all_specs
+        col_name = spec isa Pair ? Symbol(last(spec)) : (spec isa ColumnSelector ? nothing : Symbol(spec))
+        if col_name === nothing || !(col_name in group_set)
+            push!(final_specs, spec)
+        end
+    end
+
+    result = select(ct, final_specs...)
+    return PanelData(result, panel.groups, panel.date, panel.m)
+end
+
+# Zero-argument select for PanelData - returns just grouping columns
+function select(panel::PanelData)
+    ct = _to_columns(panel.data)
+    result = select(ct, panel.groups...)
+    return PanelData(result, panel.groups, panel.date, panel.m)
+end
+
+"""
+    summarise(panel::PanelData; kwargs...)
+    summarize(panel::PanelData; kwargs...)
+
+Compute summary statistics for each group in a PanelData.
+
+This is equivalent to `groupby(data, groups...) |> gt -> summarise(gt, ...)`,
+but preserves the PanelData structure.
+
+# Arguments
+- `panel`: A PanelData object with grouping columns
+- `kwargs...`: Summary specifications (same as regular `summarise`)
+
+# Returns
+A `NamedTuple` (not PanelData) with one row per group and summary columns.
+
+# Examples
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+data = (series = ["A", "A", "A", "B", "B", "B"],
+        date = [1, 2, 3, 1, 2, 3],
+        value = [10, 20, 30, 100, 200, 300])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Summarise per group
+result = summarise(panel, mean_val = :value => mean, n = d -> length(d.value))
+# Output: (series = ["A", "B"], mean_val = [20.0, 200.0], n = [3, 3])
+```
+"""
+function summarise(panel::PanelData; kwargs...)
+    ct = _to_columns(panel.data)
+    groups = panel.groups
+
+    if isempty(groups)
+        throw(ArgumentError("Cannot summarise PanelData without grouping columns"))
+    end
+
+    gt = groupby(ct, groups...)
+    return summarise(gt; kwargs...)
+end
+
+summarize(panel::PanelData; kwargs...) = summarise(panel; kwargs...)
+
+"""
+    summarise(panel::PanelData, ac::Across)
+
+Apply `across` summary to each group in a PanelData.
+
+# Examples
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+data = (series = ["A", "A", "B", "B"],
+        x = [1.0, 2.0, 3.0, 4.0],
+        y = [10.0, 20.0, 30.0, 40.0])
+
+panel = PanelData(data; groupby=:series)
+
+summarise(panel, across([:x, :y], :mean => mean))
+# Output: (series = ["A", "B"], x_mean = [1.5, 3.5], y_mean = [15.0, 35.0])
+```
+"""
+function summarise(panel::PanelData, ac::Across)
+    ct = _to_columns(panel.data)
+    groups = panel.groups
+
+    if isempty(groups)
+        throw(ArgumentError("Cannot summarise PanelData without grouping columns"))
+    end
+
+    gt = groupby(ct, groups...)
+    return summarise(gt, ac)
+end
+
+"""
+    distinct(panel::PanelData, cols...; keep_all::Bool=false)
+
+Remove duplicate rows within each group of a PanelData.
+
+# Arguments
+- `panel`: A PanelData object with grouping columns
+- `cols...`: Columns to consider for uniqueness
+- `keep_all`: Keep all columns (default: false)
+
+# Returns
+A new `PanelData` with duplicates removed within each group.
+"""
+function distinct(panel::PanelData, cols::Symbol...; keep_all::Bool=false)
+    _apply_by_group_to_panel(panel, ct -> distinct(ct, cols...; keep_all=keep_all))
+end
+
+"""
+    fill_missing(panel::PanelData, cols::Symbol...; direction::Symbol=:down)
+
+Fill missing values within each group of a PanelData.
+
+This is especially useful for time series panel data where you want to
+forward-fill or backward-fill missing values within each series independently.
+
+# Arguments
+- `panel`: A PanelData object with grouping columns
+- `cols...`: Columns to fill
+- `direction`: Fill direction (`:down`, `:up`, `:downup`, `:updown`)
+
+# Returns
+A new `PanelData` with missing values filled within each group.
+
+# Examples
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = ["A", "A", "A", "B", "B", "B"],
+        date = [1, 2, 3, 1, 2, 3],
+        value = [10, missing, 30, missing, 200, missing])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Forward fill within each series
+filled = fill_missing(panel, :value; direction=:down)
+# Series A: [10, 10, 30], Series B: [missing, 200, 200]
+```
+"""
+function fill_missing(panel::PanelData, cols::Symbol...; direction::Symbol=:down)
+    _apply_by_group_to_panel(panel, ct -> fill_missing(ct, cols...; direction=direction))
+end
+
+"""
+    rename(panel::PanelData, specs::Pair{Symbol,Symbol}...)
+
+Rename columns in a PanelData. Updates grouping column references if renamed.
+
+# Arguments
+- `panel`: A PanelData object
+- `specs...`: Rename specifications as `Pair`s: `:new_name => :old_name`
+
+# Returns
+A new `PanelData` with renamed columns and updated metadata.
+"""
+function rename(panel::PanelData, specs::Pair{Symbol,Symbol}...)
+    ct = _to_columns(panel.data)
+    result = rename(ct, specs...)
+
+    # Update group column names if they were renamed
+    rename_map = Dict(last(p) => first(p) for p in specs)
+    new_groups = [get(rename_map, g, g) for g in panel.groups]
+    new_date = panel.date !== nothing ? get(rename_map, panel.date, panel.date) : nothing
+
+    return PanelData(result, new_groups, new_date, panel.m)
+end
+
+"""
+    pivot_longer(panel::PanelData; id_cols=Symbol[], value_cols=Symbol[],
+                 names_to=:variable, values_to=:value)
+
+Pivot a PanelData from wide to long format, preserving panel metadata.
+
+Grouping columns are automatically added to `id_cols`.
+
+# Returns
+A new `PanelData` in long format with updated metadata.
+"""
+function pivot_longer(panel::PanelData;
+                      id_cols::Union{Symbol, AbstractVector{Symbol}} = Symbol[],
+                      value_cols::Union{Symbol, AbstractVector{Symbol}} = Symbol[],
+                      names_to::Symbol = _DEFAULT_NAMES_TO,
+                      values_to::Symbol = _DEFAULT_VALUES_TO)
+    ct = _to_columns(panel.data)
+
+    # Ensure grouping columns are in id_cols
+    ids = id_cols isa Symbol ? Symbol[id_cols] : collect(id_cols)
+    for g in panel.groups
+        if !(g in ids)
+            pushfirst!(ids, g)
+        end
+    end
+
+    result = pivot_longer(ct; id_cols=ids, value_cols=value_cols,
+                          names_to=names_to, values_to=values_to)
+
+    return PanelData(result, panel.groups, panel.date, panel.m)
+end
+
+"""
+    pivot_wider(panel::PanelData; names_from::Symbol, values_from::Symbol,
+                id_cols=Symbol[], fill=missing, sort_names::Bool=false)
+
+Pivot a PanelData from long to wide format, preserving panel metadata.
+
+Grouping columns are automatically added to `id_cols`.
+
+# Returns
+A new `PanelData` in wide format with updated metadata.
+"""
+function pivot_wider(panel::PanelData;
+                     names_from::Symbol,
+                     values_from::Symbol,
+                     id_cols::Union{Symbol, AbstractVector{Symbol}} = Symbol[],
+                     fill = missing,
+                     sort_names::Bool = false)
+    ct = _to_columns(panel.data)
+
+    # Ensure grouping columns are in id_cols
+    ids = id_cols isa Symbol ? Symbol[id_cols] : collect(id_cols)
+    for g in panel.groups
+        if !(g in ids)
+            pushfirst!(ids, g)
+        end
+    end
+
+    result = pivot_wider(ct; names_from=names_from, values_from=values_from,
+                         id_cols=ids, fill=fill, sort_names=sort_names)
+
+    return PanelData(result, panel.groups, panel.date, panel.m)
+end
+
+# Note: glimpse(panel::PanelData) is defined in glimpse_extensions.jl to avoid circular dependencies

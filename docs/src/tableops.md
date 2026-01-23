@@ -4,11 +4,12 @@ The `TableOps` module provides a comprehensive set of data manipulation function
 
 ## Overview
 
-`TableOps` is inspired by popular data manipulation libraries like dplyr (R) and pandas (Python), but designed specifically for Julia's Tables.jl ecosystem. All functions work seamlessly with any Tables.jl-compatible data source, including:
+`TableOps` is inspired by popular data manipulation libraries like dplyr and tidyr (R) and pandas (Python), but designed specifically for Julia's Tables.jl ecosystem. All functions work seamlessly with any Tables.jl-compatible data source, including:
 
 - NamedTuples
 - DataFrames
 - CSV.File objects
+- Arrow.Table objects
 - And many others
 
 ## Getting Started
@@ -31,6 +32,41 @@ tbl = Tables.columntable(retail)
 glimpse(tbl)
 ```
 
+## Function Reference
+
+### Quick Reference Table
+
+| Category | Function | Description |
+|----------|----------|-------------|
+| **Preview** | `glimpse` | Quick data preview with types and samples |
+| **Select** | `select` | Select and rename columns |
+| | `rename` | Rename columns (keep all) |
+| | `all_of` | Select columns by name vector |
+| | `everything` | Select all columns |
+| **Filter** | `query` | Filter rows by predicate |
+| | `distinct` | Remove duplicate rows |
+| **Sort** | `arrange` | Sort rows by columns |
+| **Transform** | `mutate` | Add or modify columns |
+| | `across` | Apply functions across multiple columns |
+| **Group** | `groupby` | Group data by columns |
+| | `ungroup` | Remove grouping |
+| | `summarise` | Aggregate grouped data |
+| **Reshape** | `pivot_longer` | Wide to long format |
+| | `pivot_wider` | Long to wide format |
+| **Combine** | `bind_rows` | Stack tables vertically |
+| **Join** | `inner_join` | Keep only matching rows |
+| | `left_join` | Keep all left rows |
+| | `right_join` | Keep all right rows |
+| | `full_join` | Keep all rows from both |
+| | `semi_join` | Filter left by right keys |
+| | `anti_join` | Filter left by missing right keys |
+| **String** | `separate` | Split column into multiple |
+| | `unite` | Combine columns into one |
+| **Missing** | `fill_missing` | Fill missing values |
+| | `complete` | Complete missing combinations |
+
+---
+
 ## Core Functions
 
 ### `glimpse` - Quick Data Preview
@@ -49,11 +85,18 @@ glimpse(tbl)
 # Table glimpse
 #   Rows: 3
 #   Columns: 4
-#   date                :: String  [2024-01, 2024-02, 2024-03]
+#   date                :: String  ["2024-01", "2024-02", "2024-03"]
 #   A                   :: Int64   [100, 110, 120]
 #   B                   :: Int64   [200, 220, 240]
 #   C                   :: Int64   [300, 330, 360]
 ```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `maxrows` (keyword, default: 5) - Maximum number of sample values to show
+- `io` (keyword, default: stdout) - Output stream
+
+---
 
 ### `select` - Choose and Rename Columns
 
@@ -74,7 +117,43 @@ select(tbl, :name, :age)
 # Rename while selecting
 select(tbl, :employee => :name, :years => :age)
 # Output: (employee = ["Alice", "Bob", "Charlie"], years = [25, 30, 35])
+
+# Mix selection and renaming
+select(tbl, :id, :employee_name => :name)
+# Output: (id = [1, 2, 3], employee_name = ["Alice", "Bob", "Charlie"])
 ```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `specs...` - Column specifications as `Symbol`s or `Pair{Symbol,Symbol}` for renaming
+
+---
+
+### `rename` - Rename Columns
+
+Rename columns while keeping all columns in the table.
+
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2, 3], b = [4, 5, 6], c = [7, 8, 9])
+
+# Rename single column
+rename(tbl, :x => :a)
+# Output: (x = [1, 2, 3], b = [4, 5, 6], c = [7, 8, 9])
+
+# Rename multiple columns
+rename(tbl, :x => :a, :y => :b)
+# Output: (x = [1, 2, 3], y = [4, 5, 6], c = [7, 8, 9])
+```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `specs...` - Rename specifications as `Pair{Symbol,Symbol}`: `:new_name => :old_name`
+
+**Note:** Unlike `select`, `rename` keeps all columns - it only changes names of specified columns.
+
+---
 
 ### `query` - Filter Rows
 
@@ -94,7 +173,54 @@ query(tbl, row -> row.price > 15)
 # Multiple conditions
 query(tbl, row -> row.price > 15 && row.quantity > 30)
 # Output: (product = ["B", "E"], price = [25, 20], quantity = [50, 60])
+
+# Using `in` for categorical filtering
+query(tbl, row -> row.product in ["A", "C", "E"])
+# Output: (product = ["A", "C", "E"], price = [10, 15, 20], quantity = [100, 75, 60])
 ```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `predicate` - A function that takes a row (as NamedTuple) and returns `Bool`
+
+---
+
+### `distinct` - Remove Duplicate Rows
+
+Remove duplicate rows based on specified columns.
+
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 1, 2, 2, 3],
+       b = [1, 1, 2, 3, 3],
+       c = [10, 20, 30, 40, 50])
+
+# Distinct by all columns (removes exact duplicate rows)
+distinct(tbl)
+# Output: (a = [1, 1, 2, 2, 3], b = [1, 1, 2, 3, 3], c = [10, 20, 30, 40, 50])
+# (no duplicates in this case)
+
+# Distinct by specific column - keeps only specified columns
+distinct(tbl, :a)
+# Output: (a = [1, 2, 3],)
+
+# Distinct by specific column but keep all columns
+distinct(tbl, :a; keep_all=true)
+# Output: (a = [1, 2, 3], b = [1, 2, 3], c = [10, 30, 50])
+# (keeps first occurrence of each unique value)
+
+# Distinct by multiple columns
+distinct(tbl, :a, :b)
+# Output: (a = [1, 2, 2, 3], b = [1, 2, 3, 3])
+```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `cols...` - Column names to consider for uniqueness (if empty, uses all columns)
+- `keep_all` (keyword, default: false) - If true, keep all columns; if false, only keep specified columns
+
+---
 
 ### `arrange` - Sort Data
 
@@ -126,6 +252,15 @@ arrange(tbl, :department, :salary => :desc)
 #          salary = [75000, 70000, 60000, 55000])
 ```
 
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `cols...` - Column specifications: `Symbol` for ascending, `Pair` (`:col => :desc`) for descending
+- `rev` (keyword, default: false) - If true, reverse the entire final sort order
+
+**Descending indicators:** `:desc`, `:descending`, `:reverse`, or `false`
+
+---
+
 ### `mutate` - Add or Modify Columns
 
 Create new columns or modify existing ones based on computations.
@@ -151,7 +286,20 @@ mutate(tbl,
 
 # Modify existing column
 mutate(tbl, price = data -> data.price .* 1.1)  # 10% price increase
+
+# Reference previously created columns (sequential evaluation)
+mutate(tbl,
+    revenue = data -> data.price .* data.quantity,
+    revenue_per_unit = data -> data.revenue ./ data.quantity)  # Uses newly created revenue
 ```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `kwargs...` - Named arguments where name is column name and value is either:
+  - A function `data -> Vector` that computes the column
+  - A vector of values (must match row count)
+
+---
 
 ### `groupby` - Group Data
 
@@ -177,7 +325,48 @@ glimpse(gt)
 #     ...
 #   Group 2: (department = "Sales",) (3 rows)
 #     ...
+
+# Group by multiple columns
+sales_data = (region = ["North", "South", "North", "South"],
+              product = ["A", "A", "B", "B"],
+              revenue = [1000, 1500, 2000, 2500])
+
+gt = groupby(sales_data, :region, :product)
+# Output: GroupedTable(4 groups by region, product)
 ```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `cols...` - One or more column names (as `Symbol`s) to group by
+
+**Returns:** A `GroupedTable` object for use with `summarise` or `ungroup`
+
+---
+
+### `ungroup` - Remove Grouping
+
+Remove grouping from a `GroupedTable`, returning the underlying data.
+
+```julia
+using Durbyn.TableOps
+
+tbl = (category = ["A", "B", "A", "B"],
+       value = [1, 2, 3, 4])
+
+gt = groupby(tbl, :category)
+# Output: GroupedTable(2 groups by category)
+
+# Remove grouping
+result = ungroup(gt)
+# Output: (category = ["A", "B", "A", "B"], value = [1, 2, 3, 4])
+```
+
+**Parameters:**
+- `gt` - A `GroupedTable` created by `groupby`
+
+**Returns:** The original `NamedTuple` data without grouping
+
+---
 
 ### `summarise` / `summarize` - Aggregate Data
 
@@ -196,7 +385,6 @@ gt = groupby(tbl, :department)
 # Compute mean salary per department
 stbl = summarise(gt, avg_salary = :salary => mean)
 # Output: (department = ["IT", "Sales"], avg_salary = [72500.0, 60000.0])
-glimpse(stbl)
 
 # Multiple summary statistics
 summarise(gt,
@@ -209,44 +397,162 @@ summarise(gt,
 #          min_salary = [70000, 55000],
 #          max_salary = [75000, 65000],
 #          count = [2, 3])
+
+# Multi-column aggregation
+summarise(gt,
+    salary_range = (:salary,) => col -> maximum(col) - minimum(col))
 ```
+
+**Parameters:**
+- `gt` - A `GroupedTable` created by `groupby`
+- `kwargs...` - Named summary specifications where each value can be:
+  - `:column => function` - Apply function to a specific column
+  - `(:col1, :col2) => function` - Apply function to multiple columns
+  - `data -> scalar` - Function taking the entire group data
+
+**Note:** `summarize` is an alias for `summarise` (American English spelling).
+
+---
+
+## Column Selection Helpers
+
+### `all_of` - Select Columns by Name Vector
+
+Select columns using a vector of column names. Useful when column names are stored in a variable.
+
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2], b = [3, 4], c = [5, 6], d = [7, 8])
+
+# Select columns from a vector
+cols_to_select = [:a, :c]
+select(tbl, all_of(cols_to_select))
+# Output: (a = [1, 2], c = [5, 6])
+
+# Useful for programmatic column selection
+numeric_cols = [:a, :b]
+select(tbl, all_of(numeric_cols))
+# Output: (a = [1, 2], b = [3, 4])
+```
+
+**Parameters:**
+- `cols` - A vector of column names (as `Symbol`s or `String`s)
+
+---
+
+### `everything` - Select All Columns
+
+Select all columns. Useful for reordering columns or combining with other selections.
+
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2], b = [3, 4], c = [5, 6])
+
+# Select all columns
+select(tbl, everything())
+# Output: (a = [1, 2], b = [3, 4], c = [5, 6])
+
+# Reorder: put :c first, then all others
+select(tbl, :c, everything())
+# Output: (c = [5, 6], a = [1, 2], b = [3, 4])
+
+# Reorder: put :b and :c first
+select(tbl, :b, :c, everything())
+# Output: (b = [3, 4], c = [5, 6], a = [1, 2])
+```
+
+**Note:** When combining with other selectors, columns are deduplicated (each column appears only once).
+
+---
+
+### `across` - Apply Functions Across Columns
+
+Apply one or more functions across multiple columns. Used with `mutate` or `summarise`.
+
+```julia
+using Durbyn.TableOps
+using Statistics
+
+# With summarise
+tbl = (group = ["A", "A", "B", "B"],
+       x = [1.0, 2.0, 3.0, 4.0],
+       y = [10.0, 20.0, 30.0, 40.0])
+
+gt = groupby(tbl, :group)
+
+# Apply mean to multiple columns
+summarise(gt, across([:x, :y], :mean => mean))
+# Output: (group = ["A", "B"], x_mean = [1.5, 3.5], y_mean = [15.0, 35.0])
+
+# Multiple functions
+summarise(gt, across([:x, :y], :mean => mean, :sum => sum))
+# Output: (group = ["A", "B"],
+#          x_mean = [1.5, 3.5], x_sum = [3.0, 7.0],
+#          y_mean = [15.0, 35.0], y_sum = [30.0, 70.0])
+
+# With everything() - applies to all non-grouping columns
+summarise(gt, across(everything(), :mean => mean))
+# Output: (group = ["A", "B"], x_mean = [1.5, 3.5], y_mean = [15.0, 35.0])
+
+# With mutate
+tbl2 = (a = [1.0, 2.0, 3.0], b = [4.0, 5.0, 6.0])
+mutate(tbl2, across([:a, :b], :squared => x -> x .^ 2))
+# Output: (a = [1.0, 2.0, 3.0], b = [4.0, 5.0, 6.0],
+#          a_squared = [1.0, 4.0, 9.0], b_squared = [16.0, 25.0, 36.0])
+```
+
+**Parameters:**
+- `cols` - Column specification: vector of symbols, `all_of(...)`, or `everything()`
+- `fns...` - One or more `Pair{Symbol, Function}`: `:name => function`
+
+**Output column naming:** `{original_column}_{function_name}`
+
+---
+
+## Reshape Functions
 
 ### `pivot_longer` - Wide to Long Format
 
 Transform data from wide format to long format by pivoting columns into rows.
 
 ```julia
-using CSV
-using Downloads
-using Tables
-using Durbyn
 using Durbyn.TableOps
 
-# Download and load retail data
-local_path = Downloads.download("https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv")
-retail = CSV.File(local_path)
-tbl = Tables.columntable(retail)
-
-# Preview wide format
-glimpse(tbl)
-
-# Convert from wide to long format
-tbl_long = pivot_longer(tbl, id_cols=:date, names_to=:series, values_to=:value)
-glimpse(tbl_long)
-
-# Example with simpler data
+# Wide format data
 wide = (date = ["2024-01", "2024-02", "2024-03"],
         A = [100, 110, 120],
         B = [200, 220, 240],
         C = [300, 330, 360])
 
+# Convert to long format
 long = pivot_longer(wide, id_cols=:date, names_to=:series, values_to=:value)
-# Output: (date = ["2024-01", "2024-01", "2024-01", "2024-02", "2024-02", "2024-02", "2024-03", "2024-03", "2024-03"],
+# Output: (date = ["2024-01", "2024-01", "2024-01", "2024-02", ...],
 #          series = ["A", "B", "C", "A", "B", "C", "A", "B", "C"],
 #          value = [100, 200, 300, 110, 220, 330, 120, 240, 360])
+
 glimpse(long)
-glimpse(wide)
+# Table glimpse
+#   Rows: 9
+#   Columns: 3
+#   date    :: String  ["2024-01", "2024-01", "2024-01", "2024-02", "2024-02", ...]
+#   series  :: String  ["A", "B", "C", "A", "B", ...]
+#   value   :: Int64   [100, 200, 300, 110, 220, ...]
+
+# Specify which columns to pivot
+pivot_longer(wide, id_cols=:date, value_cols=[:A, :B], names_to=:series, values_to=:value)
+# Only pivots A and B columns, C is excluded
 ```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `id_cols` (keyword) - Column(s) to keep as identifiers (not pivoted)
+- `value_cols` (keyword) - Column(s) to pivot (if empty, all non-id columns)
+- `names_to` (keyword, default: `:variable`) - Name for the column containing original column names
+- `values_to` (keyword, default: `:value`) - Name for the column containing values
+
+---
 
 ### `pivot_wider` - Long to Wide Format
 
@@ -267,22 +573,537 @@ wide = pivot_wider(long, names_from=:series, values_from=:value, id_cols=:date)
 #          B = [200, 220],
 #          C = [300, 330])
 
-glimpse(long)
-glimpse(wide)
-
 # Sort column names alphabetically
 pivot_wider(long, names_from=:series, values_from=:value,
             id_cols=:date, sort_names=true)
 
-# Handle missing values with custom fill
+# Handle missing combinations with custom fill value
 incomplete = (id = [1, 1, 2], category = ["A", "B", "A"], val = [10, 20, 30])
 pivot_wider(incomplete, names_from=:category, values_from=:val, fill=0)
 # Output: (id = [1, 2], A = [10, 30], B = [20, 0])
 ```
 
-## Complete Workflow Example
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `names_from` - Column containing values to become new column names
+- `values_from` - Column containing values to populate new columns
+- `id_cols` (keyword) - Column(s) that uniquely identify each row
+- `fill` (keyword, default: `missing`) - Value for missing combinations
+- `sort_names` (keyword, default: false) - Sort new column names alphabetically
 
-Here's a complete example demonstrating how to chain multiple operations together for a typical data analysis workflow:
+---
+
+## Combine Functions
+
+### `bind_rows` - Stack Tables Vertically
+
+Combine multiple tables by stacking rows. Handles mismatched columns by filling with `missing`.
+
+```julia
+using Durbyn.TableOps
+
+# Tables with same columns
+tbl1 = (a = [1, 2], b = [3, 4])
+tbl2 = (a = [5, 6], b = [7, 8])
+
+bind_rows(tbl1, tbl2)
+# Output: (a = [1, 2, 5, 6], b = [3, 4, 7, 8])
+
+# Tables with different columns
+tbl3 = (a = [1, 2], b = [3, 4])
+tbl4 = (a = [5, 6], c = [7, 8])
+
+bind_rows(tbl3, tbl4)
+# Output: (a = [1, 2, 5, 6],
+#          b = Union{Missing, Int64}[3, 4, missing, missing],
+#          c = Union{Missing, Int64}[missing, missing, 7, 8])
+
+# Multiple tables
+tbl5 = (x = [1], y = [2])
+tbl6 = (x = [3], y = [4])
+tbl7 = (x = [5], y = [6])
+
+bind_rows(tbl5, tbl6, tbl7)
+# Output: (x = [1, 3, 5], y = [2, 4, 6])
+```
+
+**Parameters:**
+- `tables...` - Two or more Tables.jl-compatible data sources
+
+**Note:** Column order is determined by the order columns first appear across all tables.
+
+---
+
+## Join Functions
+
+Join functions combine two tables based on matching key columns. TableOps provides six types of joins to handle different use cases.
+
+### Join Types Overview
+
+| Join Type | Keeps | Use Case |
+|-----------|-------|----------|
+| `inner_join` | Rows matching in **both** tables | Find common records |
+| `left_join` | **All** left rows + matching right | Enrich left data |
+| `right_join` | **All** right rows + matching left | Enrich right data |
+| `full_join` | **All** rows from both tables | Complete union |
+| `semi_join` | Left rows **with** match (no right columns) | Filter by existence |
+| `anti_join` | Left rows **without** match | Find missing records |
+
+### `by` Parameter Specification
+
+All join functions accept a `by` parameter to specify join keys:
+
+```julia
+# Auto-detect common columns
+inner_join(left, right)
+
+# Single column (same name in both)
+inner_join(left, right, by=:id)
+
+# Multiple columns (same names)
+inner_join(left, right, by=[:id, :date])
+
+# Different column names
+inner_join(left, right, by=:left_id => :right_id)
+
+# Multiple different column names
+inner_join(left, right, by=[:id => :key, :date => :timestamp])
+```
+
+---
+
+### `inner_join` - Keep Matching Rows
+
+Return only rows where keys exist in **both** tables.
+
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3], x = [10, 20, 30])
+right = (id = [2, 3, 4], y = [200, 300, 400])
+
+inner_join(left, right, by=:id)
+# Output: (id = [2, 3], x = [20, 30], y = [200, 300])
+# Only ids 2 and 3 are in both tables
+```
+
+**Parameters:**
+- `left` - Left table
+- `right` - Right table
+- `by` (keyword) - Join key specification
+- `suffix` (keyword, default: `("_x", "_y")`) - Suffixes for duplicate column names
+
+---
+
+### `left_join` - Keep All Left Rows
+
+Return all rows from `left`, with matching data from `right`. Non-matching rows have `missing` for right columns.
+
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3], x = [10, 20, 30])
+right = (id = [2, 3, 4], y = [200, 300, 400])
+
+left_join(left, right, by=:id)
+# Output: (id = [1, 2, 3], x = [10, 20, 30], y = [missing, 200, 300])
+# All left rows kept; id=1 has no match, so y is missing
+```
+
+**Use Case:** Enriching a primary dataset with additional information while preserving all original records.
+
+**Parameters:**
+- `left` - Left table (all rows preserved)
+- `right` - Right table (only matching rows included)
+- `by` (keyword) - Join key specification
+- `suffix` (keyword, default: `("_x", "_y")`) - Suffixes for duplicate column names
+
+---
+
+### `right_join` - Keep All Right Rows
+
+Return all rows from `right`, with matching data from `left`. Non-matching rows have `missing` for left columns.
+
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3], x = [10, 20, 30])
+right = (id = [2, 3, 4], y = [200, 300, 400])
+
+right_join(left, right, by=:id)
+# Output: (id = [2, 3, 4], x = [20, 30, missing], y = [200, 300, 400])
+# All right rows kept; id=4 has no match, so x is missing
+```
+
+**Parameters:**
+- `left` - Left table (only matching rows included)
+- `right` - Right table (all rows preserved)
+- `by` (keyword) - Join key specification
+- `suffix` (keyword, default: `("_x", "_y")`) - Suffixes for duplicate column names
+
+---
+
+### `full_join` - Keep All Rows
+
+Return all rows from both tables. Non-matching rows have `missing` for columns from the other table.
+
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3], x = [10, 20, 30])
+right = (id = [2, 3, 4], y = [200, 300, 400])
+
+full_join(left, right, by=:id)
+# Output: (id = [1, 2, 3, 4],
+#          x = [10, 20, 30, missing],
+#          y = [missing, 200, 300, 400])
+# All ids present; missing values where no match
+```
+
+**Use Case:** Creating a complete view of all records from both sources.
+
+**Parameters:**
+- `left` - Left table
+- `right` - Right table
+- `by` (keyword) - Join key specification
+- `suffix` (keyword, default: `("_x", "_y")`) - Suffixes for duplicate column names
+
+---
+
+### `semi_join` - Filter by Existence
+
+Return rows from `left` where the key exists in `right`. No columns from `right` are added.
+
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3, 4], x = [10, 20, 30, 40])
+right = (id = [2, 4], y = [200, 400])
+
+semi_join(left, right, by=:id)
+# Output: (id = [2, 4], x = [20, 40])
+# Only left columns; filtered to ids present in right
+```
+
+**Use Case:** Filtering a table to records that exist in another table (e.g., customers who have orders).
+
+**Parameters:**
+- `left` - Table to filter
+- `right` - Table to check for key existence
+- `by` (keyword) - Join key specification
+
+**Note:** Unlike `inner_join`, no columns from `right` are added to the result.
+
+---
+
+### `anti_join` - Filter by Non-Existence
+
+Return rows from `left` where the key does NOT exist in `right`. No columns from `right` are added.
+
+```julia
+using Durbyn.TableOps
+
+left = (id = [1, 2, 3, 4], x = [10, 20, 30, 40])
+right = (id = [2, 4], y = [200, 400])
+
+anti_join(left, right, by=:id)
+# Output: (id = [1, 3], x = [10, 30])
+# Only left columns; filtered to ids NOT in right
+```
+
+**Use Case:** Finding records that don't have a match (e.g., customers without orders, missing data).
+
+**Parameters:**
+- `left` - Table to filter
+- `right` - Table to check for key non-existence
+- `by` (keyword) - Join key specification
+
+---
+
+### Join Examples
+
+#### Multiple Key Columns
+
+```julia
+using Durbyn.TableOps
+
+orders = (customer_id = [1, 1, 2, 2],
+          product_id = ["A", "B", "A", "C"],
+          quantity = [10, 20, 15, 25])
+
+prices = (customer_id = [1, 2],
+          product_id = ["A", "A"],
+          price = [100.0, 95.0])
+
+inner_join(orders, prices, by=[:customer_id, :product_id])
+# Output: (customer_id = [1, 2], product_id = ["A", "A"],
+#          quantity = [10, 15], price = [100.0, 95.0])
+```
+
+#### Different Column Names
+
+```julia
+using Durbyn.TableOps
+
+employees = (emp_id = [1, 2, 3], name = ["Alice", "Bob", "Charlie"])
+salaries = (employee_key = [1, 2, 4], salary = [50000, 60000, 70000])
+
+left_join(employees, salaries, by=:emp_id => :employee_key)
+# Output: (emp_id = [1, 2, 3], name = ["Alice", "Bob", "Charlie"],
+#          salary = [50000, 60000, missing])
+```
+
+#### Handling Duplicate Column Names
+
+```julia
+using Durbyn.TableOps
+
+df1 = (id = [1, 2], value = [10, 20])
+df2 = (id = [1, 2], value = [100, 200])
+
+inner_join(df1, df2, by=:id)
+# Output: (id = [1, 2], value_x = [10, 20], value_y = [100, 200])
+# Non-key duplicate columns get suffixes
+
+# Custom suffixes
+inner_join(df1, df2, by=:id, suffix=("_left", "_right"))
+# Output: (id = [1, 2], value_left = [10, 20], value_right = [100, 200])
+```
+
+#### One-to-Many Joins
+
+```julia
+using Durbyn.TableOps
+
+customers = (id = [1, 2], name = ["Alice", "Bob"])
+orders = (customer_id = [1, 1, 2], order_id = [101, 102, 103], amount = [50, 75, 100])
+
+left_join(customers, orders, by=:id => :customer_id)
+# Output: (id = [1, 1, 2], name = ["Alice", "Alice", "Bob"],
+#          order_id = [101, 102, 103], amount = [50, 75, 100])
+# Alice appears twice (has 2 orders)
+```
+
+---
+
+## String Functions
+
+### `separate` - Split Column into Multiple
+
+Separate a character column into multiple columns by splitting on a delimiter.
+
+```julia
+using Durbyn.TableOps
+
+# Basic separation
+tbl = (id = [1, 2, 3], name = ["John-Doe", "Jane-Smith", "Bob-Wilson"])
+
+separate(tbl, :name; into=[:first, :last], sep="-")
+# Output: (id = [1, 2, 3],
+#          first = ["John", "Jane", "Bob"],
+#          last = ["Doe", "Smith", "Wilson"])
+
+# Keep original column
+separate(tbl, :name; into=[:first, :last], sep="-", remove=false)
+# Output: (id = [1, 2, 3],
+#          name = ["John-Doe", "Jane-Smith", "Bob-Wilson"],
+#          first = ["John", "Jane", "Bob"],
+#          last = ["Doe", "Smith", "Wilson"])
+
+# With numeric conversion
+tbl2 = (id = [1, 2], coords = ["10,20", "30,40"])
+separate(tbl2, :coords; into=[:x, :y], sep=",", convert=true)
+# Output: (id = [1, 2], x = [10.0, 30.0], y = [20.0, 40.0])
+
+# Using regex separator
+tbl3 = (data = ["a1b", "c2d", "e3f"],)
+separate(tbl3, :data; into=[:letter1, :num, :letter2], sep=r"[0-9]")
+
+# Handling uneven splits (extra parts are dropped, missing parts become missing)
+tbl4 = (text = ["a-b-c", "x-y"],)
+separate(tbl4, :text; into=[:p1, :p2, :p3], sep="-")
+# Output: (p1 = ["a", "x"], p2 = ["b", "y"], p3 = ["c", missing])
+```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `col` - Column name to separate
+- `into` (keyword) - Vector of names for the new columns
+- `sep` (keyword, default: `" "`) - Separator pattern (`String`, `Char`, or `Regex`)
+- `remove` (keyword, default: true) - Remove the input column
+- `convert` (keyword, default: false) - Attempt to convert to numeric types
+
+---
+
+### `unite` - Combine Columns into One
+
+Combine multiple columns into a single character column.
+
+```julia
+using Durbyn.TableOps
+
+tbl = (id = [1, 2, 3],
+       year = [2020, 2021, 2022],
+       month = [1, 6, 12])
+
+# Basic unite
+unite(tbl, :date, :year, :month; sep="-")
+# Output: (id = [1, 2, 3], date = ["2020-1", "2021-6", "2022-12"])
+
+# Keep original columns
+unite(tbl, :date, :year, :month; sep="-", remove=false)
+# Output: (id = [1, 2, 3],
+#          year = [2020, 2021, 2022],
+#          month = [1, 6, 12],
+#          date = ["2020-1", "2021-6", "2022-12"])
+
+# Custom separator
+unite(tbl, :period, :year, :month; sep="/")
+# Output: (id = [1, 2, 3], period = ["2020/1", "2021/6", "2022/12"])
+
+# Multiple columns
+tbl2 = (a = ["x", "y"], b = [1, 2], c = ["!", "?"])
+unite(tbl2, :combined, :a, :b, :c; sep="")
+# Output: (combined = ["x1!", "y2?"],)
+```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `new_col` - Name for the new combined column
+- `cols...` - Columns to combine
+- `sep` (keyword, default: `"_"`) - Separator between values
+- `remove` (keyword, default: true) - Remove the input columns
+
+**Note:** If any value is `missing`, the combined result is `missing`.
+
+---
+
+## Missing Value Functions
+
+### `fill_missing` - Fill Missing Values
+
+Fill missing values using the previous or next non-missing value (forward/backward fill).
+
+```julia
+using Durbyn.TableOps
+
+tbl = (id = [1, 2, 3, 4, 5],
+       value = [10, missing, missing, 40, missing])
+
+# Fill down (forward fill) - default
+fill_missing(tbl, :value)
+# Output: (id = [1, 2, 3, 4, 5], value = [10, 10, 10, 40, 40])
+
+# Fill up (backward fill)
+fill_missing(tbl, :value; direction=:up)
+# Output: (id = [1, 2, 3, 4, 5], value = [10, 40, 40, 40, missing])
+
+# Fill both directions (down first, then up)
+fill_missing(tbl, :value; direction=:downup)
+# Output: (id = [1, 2, 3, 4, 5], value = [10, 10, 10, 40, 40])
+
+# Fill both directions (up first, then down)
+fill_missing(tbl, :value; direction=:updown)
+# Output: (id = [1, 2, 3, 4, 5], value = [10, 40, 40, 40, 40])
+
+# Fill multiple columns
+tbl2 = (a = [1, missing, 3], b = [missing, 2, missing])
+fill_missing(tbl2, :a, :b)
+# Output: (a = [1, 1, 3], b = [missing, 2, 2])
+
+# Fill all columns (no columns specified)
+fill_missing(tbl2)
+# Output: (a = [1, 1, 3], b = [missing, 2, 2])
+```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `cols...` - Columns to fill (if empty, fills all columns)
+- `direction` (keyword, default: `:down`) - Fill direction:
+  - `:down` - Forward fill (last observation carried forward)
+  - `:up` - Backward fill (next observation carried backward)
+  - `:downup` - Forward fill, then backward fill
+  - `:updown` - Backward fill, then forward fill
+
+---
+
+### `complete` - Complete Missing Combinations
+
+Expand a table to include all combinations of specified columns, filling new rows with a default value.
+
+```julia
+using Durbyn.TableOps
+
+tbl = (year = [2020, 2020, 2021],
+       quarter = [1, 2, 1],
+       value = [100, 200, 150])
+
+# Complete all year-quarter combinations
+complete(tbl, :year, :quarter)
+# Output: (year = [2020, 2020, 2021, 2021],
+#          quarter = [1, 2, 1, 2],
+#          value = Union{Missing, Int64}[100, 200, 150, missing])
+
+# With custom fill value
+complete(tbl, :year, :quarter; fill_value=0)
+# Output: (year = [2020, 2020, 2021, 2021],
+#          quarter = [1, 2, 1, 2],
+#          value = [100, 200, 150, 0])
+
+# Useful for time series with gaps
+sales = (month = [1, 3, 4],  # Missing month 2
+         sales = [100, 150, 120])
+complete(sales, :month; fill_value=0)
+# Adds month=2 with sales=0
+```
+
+**Parameters:**
+- `data` - Any Tables.jl-compatible data source
+- `cols...` - Columns to expand (creates all unique combinations)
+- `fill_value` (keyword, default: `missing`) - Value for new rows
+
+**Note:** Original rows are preserved; only missing combinations are added.
+
+---
+
+## Complete Workflow Examples
+
+### Example 1: Basic Data Analysis Pipeline
+
+```julia
+using Durbyn.TableOps
+using Statistics
+
+# Sample employee data
+employees = (
+    department = ["Sales", "IT", "Sales", "IT", "Sales", "HR", "HR"],
+    employee = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace"],
+    salary = [60000, 70000, 55000, 75000, 65000, 50000, 52000],
+    years = [5, 8, 3, 10, 6, 2, 4]
+)
+
+# Step 1: Preview data
+glimpse(employees)
+
+# Step 2: Filter high earners
+filtered = query(employees, row -> row.salary > 55000)
+
+# Step 3: Group by department
+grouped = groupby(filtered, :department)
+
+# Step 4: Compute statistics
+summary = summarise(grouped,
+    avg_salary = :salary => mean,
+    avg_years = :years => mean,
+    headcount = data -> length(data.salary))
+
+# Step 5: Sort by average salary
+result = arrange(summary, :avg_salary => :desc)
+
+glimpse(result)
+```
+
+### Example 2: Time Series Panel Data
 
 ```julia
 using CSV
@@ -296,23 +1117,20 @@ local_path = Downloads.download("https://raw.githubusercontent.com/Akai01/exampl
 retail = CSV.File(local_path)
 tbl = Tables.columntable(retail)
 
-# Step 1: Preview the data
-glimpse(tbl)
-
-# Step 2: Transform from wide to long format
+# Step 1: Transform from wide to long format
 tbl_long = pivot_longer(tbl, id_cols=:date, names_to=:series, values_to=:value)
 glimpse(tbl_long)
 
-# Step 3: Filter to specific series
+# Step 2: Filter to specific series
 tbl_filtered = query(tbl_long, row -> row.series in ["series_10", "series_20", "series_30"])
 
-# Step 4: Add computed columns
+# Step 3: Add computed columns
 tbl_with_log = mutate(tbl_filtered, log_value = data -> log.(data.value))
 
-# Step 5: Group by series
+# Step 4: Group by series
 gt = groupby(tbl_with_log, :series)
 
-# Step 6: Compute summary statistics
+# Step 5: Compute summary statistics
 summary = summarise(gt,
     mean_value = :value => mean,
     std_value = :value => std,
@@ -320,50 +1138,61 @@ summary = summarise(gt,
     max_value = :value => maximum,
     count = data -> length(data.value))
 
-glimpse(summary)
-
-# Step 7: Sort by mean value
+# Step 6: Sort by mean value
 result = arrange(summary, :mean_value => :desc)
 glimpse(result)
 ```
 
-## Chaining Operations
+### Example 3: Data Cleaning with Missing Values
 
-While Julia doesn't have a built-in pipe operator for data manipulation (like R's `%>%` or `|>`), you can chain operations by nesting function calls or using intermediate variables:
+```julia
+using Durbyn.TableOps
+
+# Messy data with missing values and inconsistent formatting
+raw_data = (
+    date = ["2024-01", "2024-02", "2024-03", "2024-04"],
+    region_product = ["North-A", "North-B", "South-A", "South-B"],
+    value = [100, missing, 150, missing]
+)
+
+# Step 1: Separate region and product
+cleaned = separate(raw_data, :region_product; into=[:region, :product], sep="-")
+
+# Step 2: Fill missing values (forward fill)
+filled = fill_missing(cleaned, :value)
+
+# Step 3: Complete all region-product combinations
+completed = complete(filled, :region, :product; fill_value=0)
+
+glimpse(completed)
+```
+
+### Example 4: Using `across` for Multi-Column Operations
 
 ```julia
 using Durbyn.TableOps
 using Statistics
 
-tbl = (department = ["Sales", "IT", "Sales", "IT", "Sales", "HR", "HR"],
-       employee = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace"],
-       salary = [60000, 70000, 55000, 75000, 65000, 50000, 52000],
-       years = [5, 8, 3, 10, 6, 2, 4])
+# Sales data with multiple metrics
+sales = (
+    region = ["North", "North", "South", "South", "East", "East"],
+    product = ["A", "B", "A", "B", "A", "B"],
+    revenue = [1000.0, 1500.0, 2000.0, 2500.0, 1800.0, 2200.0],
+    units = [100.0, 150.0, 200.0, 250.0, 180.0, 220.0],
+    returns = [5.0, 8.0, 10.0, 12.0, 9.0, 11.0]
+)
 
-# Method 1: Nested functions
-result = arrange(
-    summarise(
-        groupby(
-            query(tbl, row -> row.salary > 52000),
-            :department),
-        avg_salary = :salary => mean,
-        avg_years = :years => mean,
-        count = data -> length(data.salary)),
-    :avg_salary => :desc)
+# Compute mean and sum for all numeric columns per region
+gt = groupby(sales, :region)
 
-glimpse(result)
-
-# Method 2: Step by step with intermediate variables (recommended for readability)
-filtered = query(tbl, row -> row.salary > 52000)
-grouped = groupby(filtered, :department)
-summarized = summarise(grouped,
-    avg_salary = :salary => mean,
-    avg_years = :years => mean,
-    count = data -> length(data.salary))
-result = arrange(summarized, :avg_salary => :desc)
+# Apply multiple functions across multiple columns
+result = summarise(gt, across([:revenue, :units, :returns], :mean => mean, :total => sum))
 
 glimpse(result)
+# Output columns: region, revenue_mean, revenue_total, units_mean, units_total, returns_mean, returns_total
 ```
+
+---
 
 ## Working with GroupedTable
 
@@ -392,13 +1221,148 @@ summary = summarise(gt,
     count = data -> length(data.revenue))
 
 glimpse(summary)
+
+# Ungroup to get back to regular table
+ungrouped = ungroup(gt)
 ```
+
+---
+
+## PanelData Operations
+
+TableOps provides special dispatches for `PanelData` objects that automatically apply operations **within each group**. This is particularly useful for time series panel data where you want to perform transformations independently for each series.
+
+### Overview
+
+When you call a TableOps function on a `PanelData` object:
+1. The data is automatically grouped by the panel's grouping columns
+2. The operation is applied to each group independently
+3. Results are combined back into a new `PanelData` with the same metadata
+
+### Supported Operations
+
+| Function | PanelData Behavior |
+|----------|-------------------|
+| `query` | Filter rows within each group |
+| `mutate` | Add/modify columns within each group (group-relative computations) |
+| `arrange` | Sort rows within each group |
+| `select` | Select columns (grouping columns auto-included) |
+| `summarise` | Summarize each group (returns NamedTuple) |
+| `distinct` | Remove duplicates within each group |
+| `fill_missing` | Fill missing values within each group |
+| `rename` | Rename columns (updates group metadata) |
+| `pivot_longer` | Pivot (grouping columns auto-added to id_cols) |
+| `pivot_wider` | Pivot (grouping columns auto-added to id_cols) |
+
+### Example: Group-Relative Computations
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+# Panel data with multiple time series
+data = (series = ["A", "A", "A", "A", "B", "B", "B", "B"],
+        date = [1, 2, 3, 4, 1, 2, 3, 4],
+        value = [10, 20, 30, 40, 100, 200, 300, 400])
+
+panel = PanelData(data; groupby=:series, date=:date, m=12)
+
+# mutate computes within each group
+result = mutate(panel,
+    group_mean = d -> fill(mean(d.value), length(d.value)),
+    centered = d -> d.value .- mean(d.value),
+    pct_of_group = d -> d.value ./ sum(d.value) .* 100)
+
+glimpse(result)
+# Series A: group_mean=25, centered=[-15,-5,5,15], pct=[10,20,30,40]
+# Series B: group_mean=250, centered=[-150,-50,50,150], pct=[10,20,30,40]
+```
+
+### Example: Fill Missing Values Per Series
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+# Panel data with missing values in different positions per series
+data = (series = ["A", "A", "A", "B", "B", "B"],
+        date = [1, 2, 3, 1, 2, 3],
+        value = [10, missing, 30, missing, 200, missing])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Forward fill within each series independently
+filled = fill_missing(panel, :value; direction=:down)
+glimpse(filled)
+# Series A: [10, 10, 30]
+# Series B: [missing, 200, 200]
+```
+
+### Example: Summarize Panel Data
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+data = (series = ["A", "A", "A", "B", "B", "B"],
+        date = [1, 2, 3, 1, 2, 3],
+        value = [10, 20, 30, 100, 200, 300])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Compute statistics per series
+stats = summarise(panel,
+    mean_val = :value => mean,
+    std_val = :value => std,
+    min_val = :value => minimum,
+    max_val = :value => maximum,
+    n = d -> length(d.value))
+
+println(stats)
+# (series = ["A", "B"], mean_val = [20.0, 200.0], ...)
+```
+
+### Example: Sort and Filter Within Groups
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = ["A", "A", "A", "B", "B", "B"],
+        date = [3, 1, 2, 2, 3, 1],
+        value = [30, 10, 20, 200, 300, 100])
+
+panel = PanelData(data; groupby=:series)
+
+# Sort by date within each series
+sorted = arrange(panel, :date)
+glimpse(sorted)
+# Series A: dates [1, 2, 3], values [10, 20, 30]
+# Series B: dates [1, 2, 3], values [100, 200, 300]
+
+# Filter high values per group
+high_values = query(panel, row -> row.value > 15)
+glimpse(high_values)
+# Series A: keeps rows where value > 15
+# Series B: keeps rows where value > 15
+```
+
+### Key Benefits
+
+1. **Automatic grouping**: No need to manually call `groupby` - the panel's groups are used automatically
+2. **Preserved metadata**: Operations return a new `PanelData` with the same grouping columns, date column, and seasonal period
+3. **Group-relative computations**: In `mutate`, functions receive only the current group's data, enabling computations like group means, centering, and percentages
+4. **Independent processing**: Each group is processed independently, which is essential for time series operations like forward-filling
+
+---
 
 ## Tips and Best Practices
 
 1. **Use `glimpse` frequently**: It's a quick way to understand your data's structure and verify transformations.
 
-2. **Predicate functions in `query`**: Keep them simple and readable. For complex filters, break them into logical parts.
+2. **Predicate functions in `query`**: Keep them simple and readable. For complex filters, break them into logical parts or define named functions.
 
 3. **Type stability in `mutate`**: Ensure your computed columns have consistent types across all rows.
 
@@ -412,18 +1376,17 @@ glimpse(summary)
 
 7. **Memory efficiency**: TableOps functions return new `NamedTuple`s, so be mindful of memory when working with very large datasets.
 
-## Function Reference
+8. **Chaining operations**: Use intermediate variables for readability:
+   ```julia
+   # Recommended: Clear and debuggable
+   filtered = query(data, row -> row.x > 0)
+   grouped = groupby(filtered, :category)
+   result = summarise(grouped, mean_x = :x => mean)
+   ```
 
-Core functions provided by TableOps:
+9. **`fill_missing` direction**: Use `:downup` or `:updown` to ensure all missing values are filled when you have missing values at both ends.
 
-- `select` — Select specific columns
-- `query` — Filter rows based on conditions
-- `arrange` — Sort rows by column values
-- `groupby` — Group data by column values
-- `mutate` — Add or transform columns
-- `summarise` / `summarize` — Aggregate grouped data
-- `pivot_longer` — Reshape from wide to long format
-- `pivot_wider` — Reshape from long to wide format
-- `glimpse` — Quick data preview with types and samples
-
-All functions are documented above with examples.
+10. **`complete` for time series**: Use with `fill_missing` to handle gaps in time series data:
+    ```julia
+    data |> x -> complete(x, :date) |> x -> fill_missing(x, :value)
+    ```

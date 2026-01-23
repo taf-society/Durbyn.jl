@@ -5,6 +5,10 @@ using Test
         include("test_utils.jl")
     end
 
+    @testset "TableOps Module" begin
+        include("test_tableops.jl")
+    end
+
     @testset "Stats Module" begin
         include("test_stats.jl")
     end

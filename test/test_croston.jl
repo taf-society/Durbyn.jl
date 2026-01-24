@@ -1,6 +1,6 @@
 using Test
-# Import croston explicitly to avoid ambiguity with Durbyn.Grammar.croston
-import Durbyn.ExponentialSmoothing: croston, CrostonFit, CrostonForecast
+# Import croston with alias to avoid ambiguity with Durbyn.Grammar.croston
+using Durbyn.ExponentialSmoothing: croston as es_croston, CrostonFit, CrostonForecast
 import Durbyn.Generics: forecast, fitted
 
 @testset "Croston Method Tests" begin
@@ -10,9 +10,9 @@ import Durbyn.Generics: forecast, fitted
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
         # Fit model
-        fit1 = croston(demand, 1)
+        fit1 = es_croston(demand, 1)
         fc1 = forecast(fit1, 12)
-        fit2 = croston(demand)
+        fit2 = es_croston(demand)
         fc2 = forecast(fit2, 12)
         # plot(fc1)
         @test fc1.mean == fc2.mean
@@ -25,7 +25,7 @@ import Durbyn.Generics: forecast, fitted
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
         # Fit with fixed smoothing parameter
-        fit = croston(demand, alpha=0.1)
+        fit = es_croston(demand, alpha=0.1)
 
         @test isa(fit, CrostonFit)
         fc = forecast(fit, 12)
@@ -36,7 +36,7 @@ import Durbyn.Generics: forecast, fitted
         # All demands are zero
         demand = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
 
-        fit = croston(demand, 1)
+        fit = es_croston(demand, 1)
 
         @test isa(fit, CrostonFit)
         fc = forecast(fit, 12)
@@ -47,7 +47,7 @@ import Durbyn.Generics: forecast, fitted
     @testset "Croston Fitted Values" begin
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
-        fit = croston(demand, 1)
+        fit = es_croston(demand, 1)
         fitted_vals = fitted(fit)
 
         @test length(fitted_vals) == length(demand)
@@ -61,7 +61,7 @@ import Durbyn.Generics: forecast, fitted
     @testset "Croston Forecast Horizon" begin
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
-        fit = croston(demand, 1)
+        fit = es_croston(demand, 1)
 
         # Different forecast horizons
         fc1 = forecast(fit, 1)
@@ -85,7 +85,7 @@ import Durbyn.Generics: forecast, fitted
                   0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0,
                   0, 0, 0, 0, 0]
 
-        fit = croston(demand, 1)
+        fit = es_croston(demand, 1)
 
         @test isa(fit, CrostonFit)
         @test length(fit.y) > 1  # Multiple non-zero demands
@@ -100,7 +100,7 @@ import Durbyn.Generics: forecast, fitted
     @testset "Croston Inter-demand Intervals" begin
         demand = [5, 0, 0, 3, 0, 0, 0, 7, 0, 4]
 
-        fit = croston(demand)
+        fit = es_croston(demand)
 
         # Check inter-demand intervals
         @test length(fit.tt) > 0
@@ -114,7 +114,7 @@ import Durbyn.Generics: forecast, fitted
     @testset "Croston Model Structure" begin
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
-        fit = croston(demand)
+        fit = es_croston(demand)
 
         # Check that models are fitted
         @test !isnothing(fit.modely)
@@ -129,7 +129,7 @@ import Durbyn.Generics: forecast, fitted
     @testset "Croston Empty Forecast" begin
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
-        fit = croston(demand, 1)
+        fit = es_croston(demand, 1)
 
         # Zero horizon (edge case)
         # Note: This may throw an error depending on implementation
@@ -140,8 +140,8 @@ import Durbyn.Generics: forecast, fitted
         demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
 
         # Fit model twice
-        fit1 = croston(demand, 1, alpha=0.2)
-        fit2 = croston(demand, 1, alpha=0.2)
+        fit1 = es_croston(demand, 1, alpha=0.2)
+        fit2 = es_croston(demand, 1, alpha=0.2)
 
         # Should produce identical results
         fc1 = forecast(fit1, 10)
@@ -154,7 +154,7 @@ import Durbyn.Generics: forecast, fitted
         # Demand starts with non-zero value
         demand = [5, 0, 0, 3, 0, 0, 0, 7, 0, 4, 0, 0]
 
-        fit = croston(demand, 1)
+        fit = es_croston(demand, 1)
 
         @test fit.y[1] == 5
         @test length(fit.y) == 4
@@ -164,7 +164,7 @@ import Durbyn.Generics: forecast, fitted
         # Multiple consecutive non-zero demands
         demand = [0, 0, 5, 3, 2, 0, 0, 0, 7, 0, 4, 0, 0]
 
-        fit = croston(demand, 1)
+        fit = es_croston(demand, 1)
 
         @test length(fit.y) == 5  # Five non-zero demands
 

@@ -2,7 +2,8 @@ using Test
 using Durbyn
 using Statistics
 
-import Durbyn.ExponentialSmoothing: ets, ses, holt, holt_winters, croston
+# Use aliases to avoid conflicts with Durbyn.Grammar versions
+using Durbyn.ExponentialSmoothing: ets, ses as es_ses, holt as es_holt, holt_winters as es_holt_winters, croston as es_croston
 import Durbyn.Generics: forecast, fitted, residuals, accuracy, Forecast
 import Durbyn.Arima: auto_arima, arima
 import Durbyn.Bats: bats
@@ -84,7 +85,7 @@ const SES_MAPE = 8.96
         ap = AirPassengers
 
         @testset "SES forecast values" begin
-            fit = ses(ap, 12)
+            fit = es_ses(ap, 12)
             fc = forecast(fit; h=12)
 
             @test all(fc.mean .== fc.mean[1])
@@ -92,12 +93,12 @@ const SES_MAPE = 8.96
         end
 
         @testset "SES alpha parameter" begin
-            fit = ses(ap, 12)
+            fit = es_ses(ap, 12)
             @test fit.par["alpha"] > 0.8
         end
 
         @testset "SES residuals" begin
-            fit = ses(ap, 12)
+            fit = es_ses(ap, 12)
             @test abs(mean(fit.residuals)) < 5.0
         end
     end
@@ -106,7 +107,7 @@ const SES_MAPE = 8.96
         ap = AirPassengers
 
         @testset "Holt forecast values" begin
-            fit = holt(ap, 12)
+            fit = es_holt(ap, 12)
             fc = forecast(fit; h=12)
 
             @test fc.mean[end] > fc.mean[1]
@@ -117,7 +118,7 @@ const SES_MAPE = 8.96
         end
 
         @testset "Damped Holt" begin
-            fit = holt(ap, 12; damped=true)
+            fit = es_holt(ap, 12; damped=true)
             fc = forecast(fit; h=24)
 
             diff_early = abs(fc.mean[2] - fc.mean[1])
@@ -130,7 +131,7 @@ const SES_MAPE = 8.96
         ap = AirPassengers
 
         @testset "Additive Holt-Winters" begin
-            fit = holt_winters(ap, 12; seasonal="additive")
+            fit = es_holt_winters(ap, 12; seasonal="additive")
             fc = forecast(fit; h=12)
 
             @test all(isfinite.(fc.mean))
@@ -139,7 +140,7 @@ const SES_MAPE = 8.96
         end
 
         @testset "Multiplicative Holt-Winters" begin
-            fit = holt_winters(ap, 12; seasonal="multiplicative")
+            fit = es_holt_winters(ap, 12; seasonal="multiplicative")
             fc = forecast(fit; h=12)
 
             @test all(isfinite.(fc.mean))
@@ -148,7 +149,7 @@ const SES_MAPE = 8.96
         end
 
         @testset "Seasonal pattern preservation" begin
-            fit = holt_winters(ap, 12; seasonal="multiplicative")
+            fit = es_holt_winters(ap, 12; seasonal="multiplicative")
             fc = forecast(fit; h=24)
 
             july_idx = [7, 19]

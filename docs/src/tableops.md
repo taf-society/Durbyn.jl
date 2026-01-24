@@ -106,21 +106,21 @@ Select specific columns from your data, optionally renaming them.
 using Durbyn.TableOps
 
 tbl = (id = [1, 2, 3],
-       name = ["Alice", "Bob", "Charlie"],
+       name = ["Shler", "Rivka", "Dilan"],
        age = [25, 30, 35],
        salary = [50000, 60000, 70000])
 
 # Select specific columns
 select(tbl, :name, :age)
-# Output: (name = ["Alice", "Bob", "Charlie"], age = [25, 30, 35])
+# Output: (name = ["Shler", "Rivka", "Dilan"], age = [25, 30, 35])
 
 # Rename while selecting
 select(tbl, :employee => :name, :years => :age)
-# Output: (employee = ["Alice", "Bob", "Charlie"], years = [25, 30, 35])
+# Output: (employee = ["Shler", "Rivka", "Dilan"], years = [25, 30, 35])
 
 # Mix selection and renaming
 select(tbl, :id, :employee_name => :name)
-# Output: (id = [1, 2, 3], employee_name = ["Alice", "Bob", "Charlie"])
+# Output: (id = [1, 2, 3], employee_name = ["Shler", "Rivka", "Dilan"])
 ```
 
 **Parameters:**
@@ -229,25 +229,25 @@ Sort rows by one or more columns in ascending or descending order.
 ```julia
 using Durbyn.TableOps
 
-tbl = (name = ["Alice", "Bob", "Charlie", "David"],
+tbl = (name = ["Shler", "Rivka", "Dilan", "Moshe"],
        department = ["Sales", "IT", "Sales", "IT"],
        salary = [60000, 70000, 55000, 75000])
 
 # Sort by salary (ascending)
 arrange(tbl, :salary)
-# Output: (name = ["Charlie", "Alice", "Bob", "David"],
+# Output: (name = ["Dilan", "Shler", "Rivka", "Moshe"],
 #          department = ["Sales", "Sales", "IT", "IT"],
 #          salary = [55000, 60000, 70000, 75000])
 
 # Sort by salary (descending)
 arrange(tbl, :salary => :desc)
-# Output: (name = ["David", "Bob", "Alice", "Charlie"],
+# Output: (name = ["Moshe", "Rivka", "Shler", "Dilan"],
 #          department = ["IT", "IT", "Sales", "Sales"],
 #          salary = [75000, 70000, 60000, 55000])
 
 # Multi-column sort: department ascending, then salary descending
 arrange(tbl, :department, :salary => :desc)
-# Output: (name = ["David", "Bob", "Alice", "Charlie"],
+# Output: (name = ["Moshe", "Rivka", "Shler", "Dilan"],
 #          department = ["IT", "IT", "Sales", "Sales"],
 #          salary = [75000, 70000, 60000, 55000])
 ```
@@ -309,7 +309,7 @@ Group rows by unique combinations of values in specified columns.
 using Durbyn.TableOps
 
 tbl = (department = ["Sales", "IT", "Sales", "IT", "Sales"],
-       employee = ["Alice", "Bob", "Charlie", "David", "Eve"],
+       employee = ["Shler", "Rivka", "Dilan", "Moshe", "Jwan"],
        salary = [60000, 70000, 55000, 75000, 65000])
 
 # Group by department
@@ -377,7 +377,7 @@ using Durbyn.TableOps
 using Statistics
 
 tbl = (department = ["Sales", "IT", "Sales", "IT", "Sales"],
-       employee = ["Alice", "Bob", "Charlie", "David", "Eve"],
+       employee = ["Shler", "Rivka", "Dilan", "Moshe", "Jwan"],
        salary = [60000, 70000, 55000, 75000, 65000])
 
 gt = groupby(tbl, :department)
@@ -845,11 +845,11 @@ inner_join(orders, prices, by=[:customer_id, :product_id])
 ```julia
 using Durbyn.TableOps
 
-employees = (emp_id = [1, 2, 3], name = ["Alice", "Bob", "Charlie"])
+employees = (emp_id = [1, 2, 3], name = ["Shler", "Rivka", "Dilan"])
 salaries = (employee_key = [1, 2, 4], salary = [50000, 60000, 70000])
 
 left_join(employees, salaries, by=:emp_id => :employee_key)
-# Output: (emp_id = [1, 2, 3], name = ["Alice", "Bob", "Charlie"],
+# Output: (emp_id = [1, 2, 3], name = ["Shler", "Rivka", "Dilan"],
 #          salary = [50000, 60000, missing])
 ```
 
@@ -875,13 +875,13 @@ inner_join(df1, df2, by=:id, suffix=("_left", "_right"))
 ```julia
 using Durbyn.TableOps
 
-customers = (id = [1, 2], name = ["Alice", "Bob"])
+customers = (id = [1, 2], name = ["Shler", "Rivka"])
 orders = (customer_id = [1, 1, 2], order_id = [101, 102, 103], amount = [50, 75, 100])
 
 left_join(customers, orders, by=:id => :customer_id)
-# Output: (id = [1, 1, 2], name = ["Alice", "Alice", "Bob"],
+# Output: (id = [1, 1, 2], name = ["Shler", "Shler", "Rivka"],
 #          order_id = [101, 102, 103], amount = [50, 75, 100])
-# Alice appears twice (has 2 orders)
+# Shler appears twice (has 2 orders)
 ```
 
 ---
@@ -896,19 +896,19 @@ Separate a character column into multiple columns by splitting on a delimiter.
 using Durbyn.TableOps
 
 # Basic separation
-tbl = (id = [1, 2, 3], name = ["John-Doe", "Jane-Smith", "Bob-Wilson"])
+tbl = (id = [1, 2, 3], name = ["Peshraw-Cohen", "Narin-Levi", "Hawreh-Katz"])
 
 separate(tbl, :name; into=[:first, :last], sep="-")
 # Output: (id = [1, 2, 3],
-#          first = ["John", "Jane", "Bob"],
-#          last = ["Doe", "Smith", "Wilson"])
+#          first = ["Peshraw", "Narin", "Hawreh"],
+#          last = ["Cohen", "Levi", "Katz"])
 
 # Keep original column
 separate(tbl, :name; into=[:first, :last], sep="-", remove=false)
 # Output: (id = [1, 2, 3],
-#          name = ["John-Doe", "Jane-Smith", "Bob-Wilson"],
-#          first = ["John", "Jane", "Bob"],
-#          last = ["Doe", "Smith", "Wilson"])
+#          name = ["Peshraw-Cohen", "Narin-Levi", "Hawreh-Katz"],
+#          first = ["Peshraw", "Narin", "Hawreh"],
+#          last = ["Cohen", "Levi", "Katz"])
 
 # With numeric conversion
 tbl2 = (id = [1, 2], coords = ["10,20", "30,40"])
@@ -1077,7 +1077,7 @@ using Statistics
 # Sample employee data
 employees = (
     department = ["Sales", "IT", "Sales", "IT", "Sales", "HR", "HR"],
-    employee = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace"],
+    employee = ["Shler", "Rivka", "Dilan", "Moshe", "Jwan", "Avraham", "Miriam"],
     salary = [60000, 70000, 55000, 75000, 65000, 50000, 52000],
     years = [5, 8, 3, 10, 6, 2, 4]
 )

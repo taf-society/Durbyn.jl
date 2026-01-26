@@ -1050,11 +1050,15 @@ complete(tbl, :year, :quarter; fill_value=0)
 #          quarter = [1, 2, 1, 2],
 #          value = [100, 200, 150, 0])
 
-# Useful for time series with gaps
-sales = (month = [1, 3, 4],  # Missing month 2
+# Example with product-region combinations
+sales = (product = ["A", "A", "B"],
+         region = ["North", "South", "North"],
          sales = [100, 150, 120])
-complete(sales, :month; fill_value=0)
-# Adds month=2 with sales=0
+complete(sales, :product, :region; fill_value=0)
+# Output: (product = ["A", "A", "B", "B"],
+#          region = ["North", "South", "North", "South"],
+#          sales = [100, 150, 120, 0])
+# Adds missing B-South combination with sales=0
 ```
 
 **Parameters:**

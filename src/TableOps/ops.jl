@@ -271,16 +271,28 @@ function arrange(data, cols...; rev::Bool=false)
         end
         perm = collect(1:n)
         values = [ct[sym] for sym in order_cols]
-        sort!(perm, lt = (a, b) -> begin
+        # Use stable sort with missing-aware comparisons (missing sorts last)
+        sort!(perm, alg=Base.Sort.MergeSort, lt = (a, b) -> begin
             for (vec, desc) in zip(values, descending)
                 va = vec[a]
                 vb = vec[b]
-                if va == vb
+                # Handle missing values: missing sorts last (or first if descending)
+                va_miss = ismissing(va)
+                vb_miss = ismissing(vb)
+                if va_miss && vb_miss
+                    continue  # Both missing, equal
+                elseif va_miss
+                    return desc  # missing last in asc (false), first in desc (true)
+                elseif vb_miss
+                    return !desc  # non-missing before missing in asc (true), after in desc (false)
+                end
+                # Both non-missing: use isequal for proper equality, isless for ordering
+                if isequal(va, vb)
                     continue
                 end
-                return desc ? vb < va : va < vb
+                return desc ? isless(vb, va) : isless(va, vb)
             end
-            return false
+            return false  # All equal, maintain original order (stable)
         end)
     end
     if rev
@@ -499,9 +511,13 @@ function summarise(gt::GroupedTable; kwargs...)
         end
     end
 
+    # Preserve kwargs order by storing names in order
+    summary_names = Symbol[]
     summary_data = Dict{Symbol, Vector{Any}}()
     for (name, _) in pairs(kwargs)
-        summary_data[Symbol(name)] = Vector{Any}(undef, m)
+        sym = Symbol(name)
+        push!(summary_names, sym)
+        summary_data[sym] = Vector{Any}(undef, m)
     end
 
     for (i, idxs) in enumerate(gt.indices)
@@ -517,9 +533,10 @@ function summarise(gt::GroupedTable; kwargs...)
         push!(names, col)
         push!(cols, _finalize_column(key_data[col]))
     end
-    for (name, data) in pairs(summary_data)
+    # Iterate in preserved order, not Dict order
+    for name in summary_names
         push!(names, name)
-        push!(cols, _finalize_column(data))
+        push!(cols, _finalize_column(summary_data[name]))
     end
 
     return _assemble(names, cols)
@@ -581,6 +598,12 @@ function pivot_longer(data;
     ct = _to_columns(data)
     cols = collect(_column_names(ct))
 
+    # Handle empty table case
+    if isempty(cols)
+        # Return empty table with correct schema
+        return NamedTuple{(names_to, values_to)}((String[], Any[]))
+    end
+
     ids = id_cols isa Symbol ? Symbol[id_cols] : collect(id_cols)
     vals = value_cols isa Symbol ? Symbol[value_cols] : collect(value_cols)
 
@@ -595,6 +618,17 @@ function pivot_longer(data;
     end
 
     isempty(vals) && throw(ArgumentError("pivot_longer requires at least one value column"))
+
+    # Check for name collisions between names_to/values_to and id_cols
+    if names_to in ids
+        throw(ArgumentError("names_to='$names_to' conflicts with id column of same name"))
+    end
+    if values_to in ids
+        throw(ArgumentError("values_to='$values_to' conflicts with id column of same name"))
+    end
+    if names_to == values_to
+        throw(ArgumentError("names_to and values_to cannot be the same: '$names_to'"))
+    end
 
     n = _check_lengths(ct)
     total = n * length(vals)
@@ -1441,6 +1475,9 @@ function mutate(data, ac::Across)
             result = fn(ct[col])
             if !(result isa AbstractVector)
                 result = fill(result, n)
+            elseif length(result) != n
+                throw(DimensionMismatch(
+                    "across function '$fn_name' on column '$col' returned vector of length $(length(result)), expected $n"))
             end
             columns[out_name] = result
             if !(out_name in names_out)
@@ -1807,15 +1844,17 @@ function complete(data, cols::Symbol...; fill_value=missing)
         unique_values[col] = unique(ct[col])
     end
 
+    # Use Tuple for cartesian product results (immutable, value-based hashing)
     function cartesian_product(arrays)
         if length(arrays) == 1
-            return [[v] for v in arrays[1]]
+            # Use (v,) to create single-element tuple; Tuple(v) would try to iterate v
+            return [(v,) for v in arrays[1]]
         end
-        result = Vector{Vector{Any}}()
+        result = Vector{Tuple}()
         rest = cartesian_product(arrays[2:end])
         for v in arrays[1]
             for r in rest
-                push!(result, vcat([v], r))
+                push!(result, (v, r...))
             end
         end
         return result
@@ -1823,9 +1862,10 @@ function complete(data, cols::Symbol...; fill_value=missing)
 
     all_combos = cartesian_product([unique_values[c] for c in cols_list])
 
-    existing_keys = Set{Vector{Any}}()
+    # Use Set{Tuple} for proper value-based hashing (Tuple is immutable)
+    existing_keys = Set{Tuple}()
     for i in 1:n
-        key = [ct[c][i] for c in cols_list]
+        key = Tuple(ct[c][i] for c in cols_list)
         push!(existing_keys, key)
     end
 
@@ -2021,7 +2061,10 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
             # Also rename left column
             idx = findfirst(==(name), out_names)
             if idx !== nothing
-                out_names[idx] = Symbol(string(name) * suffix[1])
+                renamed_left = Symbol(string(name) * suffix[1])
+                out_names[idx] = renamed_left
+                # Update the source entry for the left column
+                out_sources[idx] = (renamed_left, 1, name)
             end
         end
         push!(out_names, out_name)
@@ -2112,7 +2155,9 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
             out_name = Symbol(string(name) * suffix[2])
             idx = findfirst(==(name), out_names)
             if idx !== nothing
-                out_names[idx] = Symbol(string(name) * suffix[1])
+                renamed_left = Symbol(string(name) * suffix[1])
+                out_names[idx] = renamed_left
+                out_sources[idx] = (renamed_left, 1, name)
             end
         end
         push!(out_names, out_name)
@@ -2326,7 +2371,9 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
             out_name = Symbol(string(name) * suffix[2])
             idx = findfirst(==(name), out_names)
             if idx !== nothing
-                out_names[idx] = Symbol(string(name) * suffix[1])
+                renamed_left = Symbol(string(name) * suffix[1])
+                out_names[idx] = renamed_left
+                out_sources[idx] = (renamed_left, 1, name)
             end
         end
         push!(out_names, out_name)
@@ -2542,13 +2589,26 @@ function _apply_by_group(panel::PanelData, op::Function)
 end
 
 """
+    _rebuild_panel(panel::PanelData, new_data; groups=panel.groups, date=panel.date)
+
+Create a new PanelData with new data but preserving metadata from the original panel.
+"""
+function _rebuild_panel(panel::PanelData, new_data;
+                        groups::Vector{Symbol}=panel.groups,
+                        date::Union{Symbol, Nothing}=panel.date)
+    return PanelData(new_data, groups, date, panel.m,
+                     panel.frequency, panel.target,
+                     panel.time_fill_meta, panel.target_meta, panel.xreg_meta)
+end
+
+"""
     _apply_by_group_to_panel(panel::PanelData, op::Function)
 
 Apply an operation by group and return a new PanelData with same metadata.
 """
 function _apply_by_group_to_panel(panel::PanelData, op::Function)
     result_data = _apply_by_group(panel, op)
-    return PanelData(result_data, panel.groups, panel.date, panel.m)
+    return _rebuild_panel(panel, result_data)
 end
 
 """
@@ -2701,14 +2761,14 @@ function select(panel::PanelData, spec1::Union{Symbol, Pair, ColumnSelector}, sp
     end
 
     result = select(ct, final_specs...)
-    return PanelData(result, panel.groups, panel.date, panel.m)
+    return _rebuild_panel(panel, result)
 end
 
 # Zero-argument select for PanelData - returns just grouping columns
 function select(panel::PanelData)
     ct = _to_columns(panel.data)
     result = select(ct, panel.groups...)
-    return PanelData(result, panel.groups, panel.date, panel.m)
+    return _rebuild_panel(panel, result)
 end
 
 """
@@ -2862,10 +2922,10 @@ function rename(panel::PanelData, specs::Pair{Symbol,Symbol}...)
 
     # Update group column names if they were renamed
     rename_map = Dict(last(p) => first(p) for p in specs)
-    new_groups = [get(rename_map, g, g) for g in panel.groups]
+    new_groups = Symbol[get(rename_map, g, g) for g in panel.groups]
     new_date = panel.date !== nothing ? get(rename_map, panel.date, panel.date) : nothing
 
-    return PanelData(result, new_groups, new_date, panel.m)
+    return _rebuild_panel(panel, result; groups=new_groups, date=new_date)
 end
 
 """
@@ -2886,18 +2946,16 @@ function pivot_longer(panel::PanelData;
                       values_to::Symbol = _DEFAULT_VALUES_TO)
     ct = _to_columns(panel.data)
 
-    # Ensure grouping columns are in id_cols
+    # Ensure grouping columns are in id_cols, preserving group order
     ids = id_cols isa Symbol ? Symbol[id_cols] : collect(id_cols)
-    for g in panel.groups
-        if !(g in ids)
-            pushfirst!(ids, g)
-        end
-    end
+    # Prepend groups not already in ids, maintaining original group order
+    groups_to_add = [g for g in panel.groups if !(g in ids)]
+    ids = vcat(groups_to_add, ids)
 
     result = pivot_longer(ct; id_cols=ids, value_cols=value_cols,
                           names_to=names_to, values_to=values_to)
 
-    return PanelData(result, panel.groups, panel.date, panel.m)
+    return _rebuild_panel(panel, result)
 end
 
 """
@@ -2919,18 +2977,16 @@ function pivot_wider(panel::PanelData;
                      sort_names::Bool = false)
     ct = _to_columns(panel.data)
 
-    # Ensure grouping columns are in id_cols
+    # Ensure grouping columns are in id_cols, preserving group order
     ids = id_cols isa Symbol ? Symbol[id_cols] : collect(id_cols)
-    for g in panel.groups
-        if !(g in ids)
-            pushfirst!(ids, g)
-        end
-    end
+    # Prepend groups not already in ids, maintaining original group order
+    groups_to_add = [g for g in panel.groups if !(g in ids)]
+    ids = vcat(groups_to_add, ids)
 
     result = pivot_wider(ct; names_from=names_from, values_from=values_from,
                          id_cols=ids, fill=fill, sort_names=sort_names)
 
-    return PanelData(result, panel.groups, panel.date, panel.m)
+    return _rebuild_panel(panel, result)
 end
 
 # Note: glimpse(panel::PanelData) is defined in glimpse_extensions.jl to avoid circular dependencies

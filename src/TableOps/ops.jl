@@ -260,8 +260,12 @@ Sort rows by one or more columns.
 - `data`: A Tables.jl-compatible data source
 - `cols...`: Column specifications:
   - Column names as `Symbol`s for ascending order
+  - `Pair`s like `:col => :asc` for explicit ascending order
   - `Pair`s like `:col => :desc` for descending order
-- `rev`: If `true`, reverse the entire final sort order (default: `false`)
+  - Accepted direction values: `:asc`, `:ascending` (ascending); `:desc`, `:descending`, `:reverse` (descending)
+- `rev`: If `true`, reverse sort direction for all columns (missing values still sort last)
+
+Missing values always sort last, regardless of sort direction.
 
 # Returns
 A `NamedTuple` with rows sorted according to the specified columns.
@@ -292,6 +296,9 @@ function arrange(data, cols...; rev::Bool=false)
     n <= 1 && return ct
     if isempty(cols)
         perm = collect(1:n)
+        if rev
+            perm = reverse(perm)
+        end
     else
         order_cols = Symbol[]
         descending = Bool[]
@@ -299,7 +306,14 @@ function arrange(data, cols...; rev::Bool=false)
             if spec isa Pair
                 col = Symbol(first(spec))
                 dir = last(spec)
-                desc = dir === :desc || dir === :descending || dir === :reverse || dir === false
+                # :asc/:ascending = ascending (false), :desc/:descending/:reverse = descending (true)
+                if dir === :asc || dir === :ascending
+                    desc = false
+                elseif dir === :desc || dir === :descending || dir === :reverse
+                    desc = true
+                else
+                    throw(ArgumentError("Invalid sort direction '$dir'. Use :asc, :ascending, :desc, :descending, or :reverse"))
+                end
             else
                 col = Symbol(spec)
                 desc = false
@@ -309,6 +323,9 @@ function arrange(data, cols...; rev::Bool=false)
             end
             push!(order_cols, col)
             push!(descending, desc)
+        end
+        if rev
+            descending = .!descending
         end
         perm = collect(1:n)
         values = [ct[sym] for sym in order_cols]
@@ -331,13 +348,16 @@ function arrange(data, cols...; rev::Bool=false)
                 if isequal(va, vb)
                     continue
                 end
-                return desc ? isless(vb, va) : isless(va, vb)
+                # Try isless first, fall back to string comparison for incompatible types
+                try
+                    return desc ? isless(vb, va) : isless(va, vb)
+                catch
+                    # Fallback to string comparison for mixed types (e.g., Int vs String)
+                    return desc ? isless(string(vb), string(va)) : isless(string(va), string(vb))
+                end
             end
             return false  # All equal, maintain original order (stable)
         end)
-    end
-    if rev
-        perm = reverse(perm)
     end
     names = _column_names(ct)
     columns = ntuple(i -> ct[names[i]][perm], length(names))
@@ -604,6 +624,9 @@ Transform data from wide format to long format by pivoting columns into rows.
 - `names_to`: Name for the new column containing original column names (default: `:variable`)
 - `values_to`: Name for the new column containing values (default: `:value`)
 
+When both `id_cols` and `value_cols` are empty, all columns are pivoted into values (no id columns).
+`id_cols` and `value_cols` must not overlap.
+
 # Returns
 A `NamedTuple` in long format with:
 - All `id_cols` repeated for each pivoted column
@@ -683,11 +706,19 @@ function pivot_longer(data;
         return NamedTuple{(names_to, values_to)}((String[], Any[]))
     end
 
-    if isempty(ids) && isempty(vals)
-        ids = Symbol[cols[1]]
+    # Check for overlap between id_cols and value_cols before defaults
+    if !isempty(ids) && !isempty(vals)
+        overlap = intersect(Set(ids), Set(vals))
+        if !isempty(overlap)
+            throw(ArgumentError("Columns cannot be both id and value columns: $(collect(overlap))"))
+        end
     end
 
-    if isempty(vals)
+    # When both are empty, treat all columns as value columns (no id columns)
+    # This matches the docstring: "all non-id columns become value columns"
+    if isempty(ids) && isempty(vals)
+        vals = copy(cols)  # All columns become values
+    elseif isempty(vals)
         vals = [c for c in cols if !(c in ids)]
     elseif isempty(ids)
         ids = [c for c in cols if !(c in vals)]
@@ -720,16 +751,16 @@ function pivot_longer(data;
     value_type = promote_type(map(val -> eltype(ct[val]), vals)...)
     value_col = Vector{value_type}(undef, total)
 
+    # Row-major order: for each row, output all value columns
+    # This matches tidyr's pivot_longer behavior
     idx = 1
-    for val in vals
-        column = ct[val]
-        val_name = String(val)
-        for row in 1:n
+    for row in 1:n
+        for val in vals
             for id in ids
                 id_data[id][idx] = ct[id][row]
             end
-            name_col[idx] = val_name
-            value_col[idx] = convert(value_type, column[row])
+            name_col[idx] = String(val)
+            value_col[idx] = convert(value_type, ct[val][row])
             idx += 1
         end
     end
@@ -857,6 +888,7 @@ function pivot_wider(data;
     row_values = Vector{Vector{Any}}()
     name_order = Symbol[]
     name_index = Dict{Symbol, Int}()
+    name_original = Dict{Symbol, Any}()  # Track original value for each Symbol
 
     for i in 1:n
         key_tuple = tuple((ct[id][i] for id in ids)...)
@@ -879,8 +911,15 @@ function pivot_wider(data;
         if !haskey(name_index, name_sym)
             push!(name_order, name_sym)
             name_index[name_sym] = length(name_order)
+            name_original[name_sym] = name_val
             for row_vec in row_values
                 push!(row_vec, _PIVOT_SENTINEL)
+            end
+        else
+            # Check if distinct values stringify to the same Symbol
+            orig = name_original[name_sym]
+            if !isequal(orig, name_val) && typeof(orig) != typeof(name_val)
+                throw(ArgumentError("Distinct values $(repr(orig)) ($(typeof(orig))) and $(repr(name_val)) ($(typeof(name_val))) in names_from column both produce column name ':$(name_sym)'. Ensure names_from values are of consistent type."))
             end
         end
         col_idx = name_index[name_sym]
@@ -1154,7 +1193,9 @@ function distinct(data, cols::Symbol...; keep_all::Bool=false)
             throw(ArgumentError("Column '$(col)' not found"))
     end
 
-    seen = Set{Any}()
+    # Use a Vector with isequal for proper missing/NaN handling
+    # (Set uses == which doesn't work correctly with missing)
+    seen = Any[]
     keep_indices = Int[]
 
     for i in 1:n
@@ -1164,7 +1205,9 @@ function distinct(data, cols::Symbol...; keep_all::Bool=false)
             tuple((ct[c][i] for c in key_cols)...)
         end
 
-        if !(key in seen)
+        # Check if key already seen using isequal (handles missing/NaN correctly)
+        already_seen = any(s -> isequal(s, key), seen)
+        if !already_seen
             push!(seen, key)
             push!(keep_indices, i)
         end
@@ -1913,8 +1956,9 @@ function fill_missing(data, cols::Symbol...; direction::Symbol=:down)
     end
 
     function fill_down!(vec)
+        isempty(vec) && return  # Handle empty vectors
         has_valid = false
-        last_valid = vec[1]  # Placeholder, only used when has_valid is true
+        local last_valid  # Declare without initialization
         for i in 1:length(vec)
             if !ismissing(vec[i])
                 last_valid = vec[i]
@@ -1926,8 +1970,9 @@ function fill_missing(data, cols::Symbol...; direction::Symbol=:down)
     end
 
     function fill_up!(vec)
+        isempty(vec) && return  # Handle empty vectors
         has_valid = false
-        next_valid = vec[end]  # Placeholder, only used when has_valid is true
+        local next_valid  # Declare without initialization
         for i in length(vec):-1:1
             if !ismissing(vec[i])
                 next_valid = vec[i]
@@ -2034,14 +2079,16 @@ function complete(data, cols::Symbol...; fill_value=missing)
 
     all_combos = cartesian_product([unique_values[c] for c in cols_list])
 
-    # Use Set{Tuple} for proper value-based hashing (Tuple is immutable)
-    existing_keys = Set{Tuple}()
+    # Use Vector with isequal for proper missing/NaN handling
+    # (Set uses == which doesn't work correctly with missing)
+    existing_keys = Vector{Tuple}()
     for i in 1:n
         key = Tuple(ct[c][i] for c in cols_list)
         push!(existing_keys, key)
     end
 
-    new_rows = [combo for combo in all_combos if !(combo in existing_keys)]
+    # Filter to combos not in existing keys using isequal
+    new_rows = [combo for combo in all_combos if !any(k -> isequal(k, combo), existing_keys)]
 
     total_rows = n + length(new_rows)
 
@@ -2081,27 +2128,38 @@ end
 
 Internal helper to resolve join keys from the `by` specification.
 Returns (left_keys, right_keys) as vectors of Symbols.
+
+Special cases:
+- `by=nothing`: Auto-detect common columns
+- `by=Symbol[]` or empty vector: Cross join (returns empty key vectors)
 """
 function _resolve_join_keys(left::NamedTuple, right::NamedTuple, by)
-    left_names = Set(_column_names(left))
+    left_cols = _column_names(left)
+    left_names = Set(left_cols)
     right_names = Set(_column_names(right))
 
     if by === nothing
-        # Auto-detect common columns
-        common = intersect(left_names, right_names)
+        # Auto-detect common columns, preserving left table column order for determinism
+        common = [c for c in left_cols if c in right_names]
         isempty(common) && throw(ArgumentError("No common columns found for join. Specify `by` explicitly."))
-        keys = collect(common)
-        return keys, keys
+        return common, common
     elseif by isa Symbol
         by in left_names || throw(ArgumentError("Column '$(by)' not found in left table"))
         by in right_names || throw(ArgumentError("Column '$(by)' not found in right table"))
         return [by], [by]
     elseif by isa AbstractVector{Symbol}
+        # Empty vector = cross join (dplyr behavior)
+        if isempty(by)
+            return Symbol[], Symbol[]
+        end
         for col in by
             col in left_names || throw(ArgumentError("Column '$(col)' not found in left table"))
             col in right_names || throw(ArgumentError("Column '$(col)' not found in right table"))
         end
         return collect(by), collect(by)
+    elseif by isa AbstractVector && isempty(by)
+        # Handle empty vectors of any type (e.g., Any[])
+        return Symbol[], Symbol[]
     elseif by isa Pair
         left_key = first(by)
         right_key = last(by)
@@ -2233,9 +2291,10 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
     _check_lengths(ct_right)
 
     left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
-    right_index = _build_right_index(ct_right, right_keys)
+    is_cross_join = isempty(left_keys)
 
     n_left = _nrows(ct_left)
+    n_right = _nrows(ct_right)
     left_names = _column_names(ct_left)
     right_names = _column_names(ct_right)
     right_key_set = Set(right_keys)
@@ -2278,15 +2337,31 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         result_cols[name] = Any[]
     end
 
-    for i in 1:n_left
-        left_key = _build_key(ct_left, left_keys, i)
-        if haskey(right_index, left_key)
-            for j in right_index[left_key]
+    if is_cross_join
+        # Cross join: every left row pairs with every right row
+        for i in 1:n_left
+            for j in 1:n_right
                 for (out_name, table, orig_name) in out_sources
                     if table == 1
                         push!(result_cols[out_name], ct_left[orig_name][i])
                     else
                         push!(result_cols[out_name], ct_right[orig_name][j])
+                    end
+                end
+            end
+        end
+    else
+        right_index = _build_right_index(ct_right, right_keys)
+        for i in 1:n_left
+            left_key = _build_key(ct_left, left_keys, i)
+            if haskey(right_index, left_key)
+                for j in right_index[left_key]
+                    for (out_name, table, orig_name) in out_sources
+                        if table == 1
+                            push!(result_cols[out_name], ct_left[orig_name][i])
+                        else
+                            push!(result_cols[out_name], ct_right[orig_name][j])
+                        end
                     end
                 end
             end
@@ -2338,9 +2413,10 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
     _check_lengths(ct_right)
 
     left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
-    right_index = _build_right_index(ct_right, right_keys)
+    is_cross_join = isempty(left_keys)
 
     n_left = _nrows(ct_left)
+    n_right = _nrows(ct_right)
     left_names = _column_names(ct_left)
     right_names = _column_names(ct_right)
     right_key_set = Set(right_keys)
@@ -2383,10 +2459,10 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         result_cols[name] = Any[]
     end
 
-    for i in 1:n_left
-        left_key = _build_key(ct_left, left_keys, i)
-        if haskey(right_index, left_key)
-            for j in right_index[left_key]
+    if is_cross_join
+        # Cross join: every left row pairs with every right row
+        for i in 1:n_left
+            for j in 1:n_right
                 for (out_name, table, orig_name) in out_sources
                     if table == 1
                         push!(result_cols[out_name], ct_left[orig_name][i])
@@ -2395,13 +2471,29 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
                     end
                 end
             end
-        else
-            # No match - add left row with missing for right columns
-            for (out_name, table, orig_name) in out_sources
-                if table == 1
-                    push!(result_cols[out_name], ct_left[orig_name][i])
-                else
-                    push!(result_cols[out_name], missing)
+        end
+    else
+        right_index = _build_right_index(ct_right, right_keys)
+        for i in 1:n_left
+            left_key = _build_key(ct_left, left_keys, i)
+            if haskey(right_index, left_key)
+                for j in right_index[left_key]
+                    for (out_name, table, orig_name) in out_sources
+                        if table == 1
+                            push!(result_cols[out_name], ct_left[orig_name][i])
+                        else
+                            push!(result_cols[out_name], ct_right[orig_name][j])
+                        end
+                    end
+                end
+            else
+                # No match - add left row with missing for right columns
+                for (out_name, table, orig_name) in out_sources
+                    if table == 1
+                        push!(result_cols[out_name], ct_left[orig_name][i])
+                    else
+                        push!(result_cols[out_name], missing)
+                    end
                 end
             end
         end
@@ -2454,48 +2546,56 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
     _check_lengths(ct_right)
 
     left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
-    left_index = _build_right_index(ct_left, left_keys)
+    is_cross_join = isempty(left_keys)
+
+    n_left = _nrows(ct_left)
 
     n_right = _nrows(ct_right)
     left_names = _column_names(ct_left)
     right_names = _column_names(ct_right)
     left_key_set = Set(left_keys)
 
-    # Determine output columns - keys come from right, then left non-keys, then right non-keys
+    # Determine output columns - right columns first (preserve order), then left non-keys
     out_names = Symbol[]
     out_sources = Tuple{Symbol, Int, Symbol}[]
 
-    # First add key columns (from right)
+    right_key_set = Set(right_keys)
+    key_map = Dict{Symbol, Symbol}()
     for (lk, rk) in zip(left_keys, right_keys)
-        push!(out_names, lk)  # Use left key name for consistency
-        push!(out_sources, (lk, 2, rk))
+        key_map[rk] = lk
     end
 
-    # Add left non-key columns
+    # Add right columns in original order (keys renamed to left key names)
+    # Track output names to detect collisions
+    seen_out_names = Set{Symbol}()
+    for name in right_names
+        if name in right_key_set
+            out_name = key_map[name]
+        else
+            out_name = name
+            # Check if this non-key column collides with an already-added key name
+            if out_name in seen_out_names
+                out_name = Symbol(string(name) * suffix[2])
+            end
+        end
+        push!(seen_out_names, out_name)
+        push!(out_names, out_name)
+        push!(out_sources, (out_name, 2, name))
+    end
+
+    right_output_set = Set(out_names)
+
+    # Add left non-key columns, suffixing if they collide with right outputs
     for name in left_names
         if name in left_key_set
             continue
         end
         out_name = name
-        if name in right_names
+        if out_name in right_output_set
             out_name = Symbol(string(name) * suffix[1])
         end
         push!(out_names, out_name)
         push!(out_sources, (out_name, 1, name))
-    end
-
-    # Add right non-key columns
-    right_key_set = Set(right_keys)
-    for name in right_names
-        if name in right_key_set
-            continue
-        end
-        out_name = name
-        if name in left_names
-            out_name = Symbol(string(name) * suffix[2])
-        end
-        push!(out_names, out_name)
-        push!(out_sources, (out_name, 2, name))
     end
 
     # Check for duplicate output names
@@ -2507,10 +2607,10 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         result_cols[name] = Any[]
     end
 
-    for j in 1:n_right
-        right_key = _build_key(ct_right, right_keys, j)
-        if haskey(left_index, right_key)
-            for i in left_index[right_key]
+    if is_cross_join
+        # Cross join: every right row pairs with every left row
+        for j in 1:n_right
+            for i in 1:n_left
                 for (out_name, table, orig_name) in out_sources
                     if table == 1
                         push!(result_cols[out_name], ct_left[orig_name][i])
@@ -2519,13 +2619,29 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
                     end
                 end
             end
-        else
-            # No match - add right row with missing for left columns
-            for (out_name, table, orig_name) in out_sources
-                if table == 1
-                    push!(result_cols[out_name], missing)
-                else
-                    push!(result_cols[out_name], ct_right[orig_name][j])
+        end
+    else
+        left_index = _build_right_index(ct_left, left_keys)
+        for j in 1:n_right
+            right_key = _build_key(ct_right, right_keys, j)
+            if haskey(left_index, right_key)
+                for i in left_index[right_key]
+                    for (out_name, table, orig_name) in out_sources
+                        if table == 1
+                            push!(result_cols[out_name], ct_left[orig_name][i])
+                        else
+                            push!(result_cols[out_name], ct_right[orig_name][j])
+                        end
+                    end
+                end
+            else
+                # No match - add right row with missing for left columns
+                for (out_name, table, orig_name) in out_sources
+                    if table == 1
+                        push!(result_cols[out_name], missing)
+                    else
+                        push!(result_cols[out_name], ct_right[orig_name][j])
+                    end
                 end
             end
         end
@@ -2576,7 +2692,7 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
     _check_lengths(ct_right)
 
     left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
-    right_index = _build_right_index(ct_right, right_keys)
+    is_cross_join = isempty(left_keys)
 
     n_left = _nrows(ct_left)
     n_right = _nrows(ct_right)
@@ -2620,15 +2736,10 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         result_cols[name] = Any[]
     end
 
-    # Track which right rows have been matched
-    matched_right = Set{Int}()
-
-    # First pass: all left rows
-    for i in 1:n_left
-        left_key = _build_key(ct_left, left_keys, i)
-        if haskey(right_index, left_key)
-            for j in right_index[left_key]
-                push!(matched_right, j)
+    if is_cross_join
+        # Cross join: every left row pairs with every right row
+        for i in 1:n_left
+            for j in 1:n_right
                 for (out_name, table, orig_name) in out_sources
                     if table == 1
                         push!(result_cols[out_name], ct_left[orig_name][i])
@@ -2637,35 +2748,57 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
                     end
                 end
             end
-        else
-            # No match - add left row with missing for right columns
-            for (out_name, table, orig_name) in out_sources
-                if table == 1
-                    push!(result_cols[out_name], ct_left[orig_name][i])
-                else
-                    push!(result_cols[out_name], missing)
+        end
+    else
+        right_index = _build_right_index(ct_right, right_keys)
+
+        # Track which right rows have been matched
+        matched_right = Set{Int}()
+
+        # First pass: all left rows
+        for i in 1:n_left
+            left_key = _build_key(ct_left, left_keys, i)
+            if haskey(right_index, left_key)
+                for j in right_index[left_key]
+                    push!(matched_right, j)
+                    for (out_name, table, orig_name) in out_sources
+                        if table == 1
+                            push!(result_cols[out_name], ct_left[orig_name][i])
+                        else
+                            push!(result_cols[out_name], ct_right[orig_name][j])
+                        end
+                    end
+                end
+            else
+                # No match - add left row with missing for right columns
+                for (out_name, table, orig_name) in out_sources
+                    if table == 1
+                        push!(result_cols[out_name], ct_left[orig_name][i])
+                    else
+                        push!(result_cols[out_name], missing)
+                    end
                 end
             end
         end
-    end
 
-    # Second pass: unmatched right rows
-    left_key_set = Set(left_keys)
-    for j in 1:n_right
-        if j in matched_right
-            continue
-        end
-        for (out_name, table, orig_name) in out_sources
-            if table == 1
-                # For key columns from left, use right's key value
-                if orig_name in left_key_set
-                    key_idx = findfirst(==(orig_name), left_keys)
-                    push!(result_cols[out_name], ct_right[right_keys[key_idx]][j])
+        # Second pass: unmatched right rows
+        left_key_set = Set(left_keys)
+        for j in 1:n_right
+            if j in matched_right
+                continue
+            end
+            for (out_name, table, orig_name) in out_sources
+                if table == 1
+                    # For key columns from left, use right's key value
+                    if orig_name in left_key_set
+                        key_idx = findfirst(==(orig_name), left_keys)
+                        push!(result_cols[out_name], ct_right[right_keys[key_idx]][j])
+                    else
+                        push!(result_cols[out_name], missing)
+                    end
                 else
-                    push!(result_cols[out_name], missing)
+                    push!(result_cols[out_name], ct_right[orig_name][j])
                 end
-            else
-                push!(result_cols[out_name], ct_right[orig_name][j])
             end
         end
     end
@@ -2984,6 +3117,30 @@ function select(panel::PanelData, spec1::Union{Symbol, Pair, ColumnSelector}, sp
     # Ensure grouping columns are included
     all_specs = [spec1, specs...]
     group_set = Set(panel.groups)
+
+    # Check for renaming specs on structural columns (groups and date)
+    # tsibble philosophy: structural columns require explicit rename()
+    structural_cols = copy(group_set)
+    if panel.date !== nothing
+        push!(structural_cols, panel.date)
+    end
+
+    for spec in all_specs
+        if spec isa Pair
+            # Pair can be :new => :old or :new => transform
+            # For renaming, it's :new => :old where old is a Symbol
+            old_col = last(spec)
+            new_col = first(spec)
+            if old_col isa Symbol && new_col isa Symbol && old_col != new_col
+                if old_col in structural_cols
+                    col_type = old_col in group_set ? "grouping" : "date"
+                    throw(ArgumentError(
+                        "Cannot rename $col_type column :$old_col via select. " *
+                        "Use rename(panel, :$new_col => :$old_col) to rename structural columns."))
+                end
+            end
+        end
+    end
 
     # Add grouping columns first if not already in specs
     final_specs = Any[]

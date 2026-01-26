@@ -880,22 +880,10 @@ end
         @test result.order == [1, 2, 3]
     end
 
-    @testset "mixed types fall back to string comparison" begin
-        # Column with mixed Int and String types - would throw with direct isless
+    @testset "mixed types throw error" begin
+        # Column with mixed Int and String types - should error, not silently fallback
         tbl = (x = Any[1, "b", 2, "a"], y = [1, 2, 3, 4])
-        # Should not throw, uses string fallback
-        result = arrange(tbl, :x)
-        # String comparison: "1" < "2" < "a" < "b"
-        @test result.x == Any[1, 2, "a", "b"]
-        @test result.y == [1, 3, 4, 2]
-    end
-
-    @testset "mixed types descending" begin
-        tbl = (x = Any[1, "b", 2, "a"], y = [1, 2, 3, 4])
-        result = arrange(tbl, :x => :desc)
-        # Descending string comparison: "b" > "a" > "2" > "1"
-        @test result.x == Any["b", "a", 2, 1]
-        @test result.y == [2, 4, 3, 1]
+        @test_throws ArgumentError arrange(tbl, :x)
     end
 end
 
@@ -1552,24 +1540,121 @@ end
 end
 
 # ============================================================================
-# Right join suffix edge case
+# Join key column should not be suffixed
 # ============================================================================
-@testset "right_join suffix edge case" begin
-    @testset "right non-key column collides with output key name" begin
-        # Scenario: join on left.id = right.key
-        # Right has non-key column :id that collides with the output key name
-        left = (id = [1, 2], x = [10, 20])
-        right = (key = [1, 2], id = [100, 200], y = [1000, 2000])
+@testset "join key columns not suffixed when right non-key collides" begin
+    # Scenario: left.id is the key, right has non-key :id
+    # The key column :id should NOT be renamed to :id_x
+    left = (id = [1, 2], x = [10, 20])
+    right = (key = [1, 2], id = [100, 200], y = [1000, 2000])
 
-        # by=[:id => :key] means join left.id = right.key
-        # Output key column will be named :id (from left)
-        # Right's non-key :id should get suffixed to avoid collision
-        result = right_join(left, right, by=[:id => :key])
-        @test haskey(result, :id)      # key column (from left)
-        @test haskey(result, :id_y)    # right non-key (suffixed)
-        @test haskey(result, :x)
-        @test haskey(result, :y)
+    @testset "inner_join preserves key name" begin
+        result = inner_join(left, right, by=[:id => :key])
+        @test haskey(result, :id)       # key column unchanged
+        @test !haskey(result, :id_x)    # key NOT suffixed
+        @test haskey(result, :id_y)     # right non-key suffixed
         @test result.id == [1, 2]
-        @test result.id_y == [100, 200]
+    end
+
+    @testset "left_join preserves key name" begin
+        result = left_join(left, right, by=[:id => :key])
+        @test haskey(result, :id)
+        @test !haskey(result, :id_x)
+        @test haskey(result, :id_y)
+    end
+
+    @testset "right_join preserves key name" begin
+        result = right_join(left, right, by=[:id => :key])
+        @test haskey(result, :id)
+        @test !haskey(result, :id_x)
+        @test haskey(result, :id_y)
+    end
+
+    @testset "full_join preserves key name" begin
+        result = full_join(left, right, by=[:id => :key])
+        @test haskey(result, :id)
+        @test !haskey(result, :id_x)
+        @test haskey(result, :id_y)
+    end
+end
+
+# ============================================================================
+# PanelData select date column handling
+# ============================================================================
+@testset "PanelData select date column handling" begin
+    using Durbyn.ModelSpecs
+
+    @testset "select without date sets panel.date to nothing" begin
+        data = (series = ["A", "A", "B", "B"],
+                date = [1, 2, 1, 2],
+                value = [10, 20, 100, 200])
+        panel = PanelData(data; groupby=:series, date=:date)
+        @test panel.date == :date
+
+        # Select only value (date not included)
+        result = select(panel, :value)
+        @test haskey(result.data, :series)  # group always kept
+        @test haskey(result.data, :value)
+        @test !haskey(result.data, :date)   # date dropped
+        @test result.date === nothing       # metadata updated
+    end
+
+    @testset "select with date preserves panel.date" begin
+        data = (series = ["A", "A", "B", "B"],
+                date = [1, 2, 1, 2],
+                value = [10, 20, 100, 200])
+        panel = PanelData(data; groupby=:series, date=:date)
+
+        result = select(panel, :date, :value)
+        @test haskey(result.data, :date)
+        @test result.date == :date  # metadata preserved
+    end
+
+    @testset "zero-arg select returns grouping columns only" begin
+        data = (series = ["A", "A", "B", "B"],
+                date = [1, 2, 1, 2],
+                value = [10, 20, 100, 200])
+        panel = PanelData(data; groupby=:series, date=:date)
+
+        result = select(panel)
+        @test haskey(result.data, :series)
+        @test !haskey(result.data, :date)
+        @test result.date === nothing
+    end
+
+    @testset "zero-arg select on ungrouped panel throws error" begin
+        data = (date = [1, 2, 3], value = [10, 20, 30])
+        panel = PanelData(data; date=:date)  # no groupby
+        @test isempty(panel.groups)
+
+        @test_throws ArgumentError select(panel)
+    end
+end
+
+# ============================================================================
+# Join duplicate key validation
+# ============================================================================
+@testset "join duplicate key validation" begin
+    @testset "duplicate keys in by vector throws error" begin
+        left = (id = [1, 2], x = [10, 20])
+        right = (id = [1, 2], y = [100, 200])
+
+        @test_throws ArgumentError inner_join(left, right, by=[:id, :id])
+    end
+
+    @testset "duplicate left keys in by pairs throws error" begin
+        left = (a = [1, 2], b = [3, 4], x = [10, 20])
+        right = (c = [1, 2], d = [3, 4], y = [100, 200])
+
+        # Same left key used twice
+        @test_throws ArgumentError inner_join(left, right, by=[:a => :c, :a => :d])
+    end
+
+    @testset "duplicate right keys in by pairs throws error" begin
+        left = (a = [1, 2], b = [3, 4], x = [10, 20])
+        right = (c = [1, 2], d = [3, 4], y = [100, 200])
+
+        # Same right key used twice
+        @test_throws ArgumentError inner_join(left, right, by=[:a => :c, :b => :c])
     end
 end

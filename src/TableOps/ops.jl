@@ -121,7 +121,7 @@ end
 
 Compare two NamedTuples lexicographically using `isless`.
 Handles missing values (sorts last) and provides proper numeric/date ordering.
-Falls back to string comparison for mixed types that can't be compared with `isless`.
+Throws an error for mixed types that can't be compared with `isless`.
 """
 function _namedtuple_lt(a::NamedTuple, b::NamedTuple)
     for i in 1:length(a)
@@ -141,12 +141,13 @@ function _namedtuple_lt(a::NamedTuple, b::NamedTuple)
         if isequal(va, vb)
             continue
         end
-        # Try isless first, fall back to string comparison for incompatible types
+        # isless - error on incompatible types (no silent string fallback)
         try
             return isless(va, vb)
-        catch
-            # Fallback to string comparison for mixed types (e.g., 1 vs "1")
-            return isless(string(va), string(vb))
+        catch e
+            throw(ArgumentError(
+                "Cannot compare values of types $(typeof(va)) and $(typeof(vb)). " *
+                "Column contains mixed types that cannot be ordered."))
         end
     end
     return false  # equal
@@ -348,12 +349,13 @@ function arrange(data, cols...; rev::Bool=false)
                 if isequal(va, vb)
                     continue
                 end
-                # Try isless first, fall back to string comparison for incompatible types
+                # isless - error on incompatible types (no silent string fallback)
                 try
                     return desc ? isless(vb, va) : isless(va, vb)
-                catch
-                    # Fallback to string comparison for mixed types (e.g., Int vs String)
-                    return desc ? isless(string(vb), string(va)) : isless(string(va), string(vb))
+                catch e
+                    throw(ArgumentError(
+                        "Cannot compare values of types $(typeof(va)) and $(typeof(vb)). " *
+                        "Column contains mixed types that cannot be ordered."))
                 end
             end
             return false  # All equal, maintain original order (stable)
@@ -1077,6 +1079,58 @@ function glimpse(io::IO, data::ForecastModelCollection; maxrows::Integer = 5, in
     return glimpse(io, tbl; maxrows=maxrows)
 end
 
+function glimpse(io::IO, panel::PanelData; maxrows::Integer = 5)
+    println(io, "PanelData glimpse")
+    println(io, "  Groups: ", isempty(panel.groups) ? "(none)" : join(string.(panel.groups), ", "))
+    println(io, "  Date: ", isnothing(panel.date) ? "(none)" : string(panel.date))
+
+    # Show frequency and m
+    if panel.frequency !== nothing
+        println(io, "  Frequency: ", panel.frequency)
+    end
+    if panel.m !== nothing
+        if panel.m isa Vector
+            println(io, "  Seasonal period(s) m: [", join(panel.m, ", "), "]")
+        else
+            println(io, "  Seasonal period m: ", panel.m)
+        end
+    else
+        println(io, "  Seasonal period m: (not set)")
+    end
+
+    # Show target if set
+    if panel.target !== nothing
+        println(io, "  Target: ", panel.target)
+    end
+
+    # Show preprocessing metadata if any
+    has_preprocessing = panel.time_fill_meta !== nothing ||
+                        panel.target_meta !== nothing ||
+                        !isempty(panel.xreg_meta)
+
+    if has_preprocessing
+        println(io, "  Preprocessing:")
+        if panel.time_fill_meta !== nothing
+            meta = panel.time_fill_meta
+            println(io, "    Time grid: ", meta.n_added, " rows added (step: ", meta.step, ")")
+        end
+        if panel.target_meta !== nothing
+            meta = panel.target_meta
+            pct = round(100 * meta.n_imputed / meta.n_total, digits=1)
+            println(io, "    Target (:", panel.target, "): ", meta.n_imputed, " imputed (", pct, "%) via :", meta.strategy)
+        end
+        for (col, meta) in panel.xreg_meta
+            pct = round(100 * meta.n_imputed / meta.n_total, digits=1)
+            println(io, "    Exog (:", col, "): ", meta.n_imputed, " imputed (", pct, "%) via :", meta.strategy)
+        end
+    end
+
+    data = Tables.columntable(panel.data)
+    glimpse(io, data; maxrows=maxrows)
+end
+
+glimpse(panel::PanelData; kwargs...) = glimpse(stdout, panel; kwargs...)
+
 # =============================================================================
 # Additional dplyr-style functions
 # =============================================================================
@@ -1193,9 +1247,8 @@ function distinct(data, cols::Symbol...; keep_all::Bool=false)
             throw(ArgumentError("Column '$(col)' not found"))
     end
 
-    # Use a Vector with isequal for proper missing/NaN handling
-    # (Set uses == which doesn't work correctly with missing)
-    seen = Any[]
+    # Julia's Set uses isequal for hashing, so it handles missing/NaN correctly
+    seen = Set{Any}()
     keep_indices = Int[]
 
     for i in 1:n
@@ -1205,9 +1258,7 @@ function distinct(data, cols::Symbol...; keep_all::Bool=false)
             tuple((ct[c][i] for c in key_cols)...)
         end
 
-        # Check if key already seen using isequal (handles missing/NaN correctly)
-        already_seen = any(s -> isequal(s, key), seen)
-        if !already_seen
+        if !(key in seen)
             push!(seen, key)
             push!(keep_indices, i)
         end
@@ -1235,8 +1286,7 @@ Combine multiple tables vertically (row-wise).
 
 # Returns
 A `NamedTuple` with all rows from all input tables stacked vertically.
-All tables must have the same column names (order can differ).
-Missing columns in some tables will be filled with `missing`.
+Tables may have different columns; missing columns will be filled with `missing`.
 
 # Examples
 ```julia
@@ -2079,16 +2129,15 @@ function complete(data, cols::Symbol...; fill_value=missing)
 
     all_combos = cartesian_product([unique_values[c] for c in cols_list])
 
-    # Use Vector with isequal for proper missing/NaN handling
-    # (Set uses == which doesn't work correctly with missing)
-    existing_keys = Vector{Tuple}()
+    # Julia's Set uses isequal for hashing, so it handles missing/NaN correctly
+    existing_keys = Set{Tuple}()
     for i in 1:n
         key = Tuple(ct[c][i] for c in cols_list)
         push!(existing_keys, key)
     end
 
-    # Filter to combos not in existing keys using isequal
-    new_rows = [combo for combo in all_combos if !any(k -> isequal(k, combo), existing_keys)]
+    # Filter to combos not in existing keys
+    new_rows = [combo for combo in all_combos if !(combo in existing_keys)]
 
     total_rows = n + length(new_rows)
 
@@ -2152,6 +2201,10 @@ function _resolve_join_keys(left::NamedTuple, right::NamedTuple, by)
         if isempty(by)
             return Symbol[], Symbol[]
         end
+        # Check for duplicate keys
+        if length(by) != length(Set(by))
+            throw(ArgumentError("Duplicate key columns in `by` specification: $(by)"))
+        end
         for col in by
             col in left_names || throw(ArgumentError("Column '$(col)' not found in left table"))
             col in right_names || throw(ArgumentError("Column '$(col)' not found in right table"))
@@ -2175,6 +2228,13 @@ function _resolve_join_keys(left::NamedTuple, right::NamedTuple, by)
             rk in right_names || throw(ArgumentError("Column '$(rk)' not found in right table"))
             push!(left_keys, lk)
             push!(right_keys, rk)
+        end
+        # Check for duplicate keys
+        if length(left_keys) != length(Set(left_keys))
+            throw(ArgumentError("Duplicate left key columns in `by` specification"))
+        end
+        if length(right_keys) != length(Set(right_keys))
+            throw(ArgumentError("Duplicate right key columns in `by` specification"))
         end
         return left_keys, right_keys
     else
@@ -2308,6 +2368,7 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         push!(out_sources, (name, 1, name))
     end
 
+    left_key_set = Set(left_keys)
     for name in right_names
         if name in right_key_set
             continue  # Skip key columns from right (use left's)
@@ -2315,13 +2376,16 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         out_name = name
         if name in left_names
             out_name = Symbol(string(name) * suffix[2])
-            # Also rename left column
-            idx = findfirst(==(name), out_names)
-            if idx !== nothing
-                renamed_left = Symbol(string(name) * suffix[1])
-                out_names[idx] = renamed_left
-                # Update the source entry for the left column
-                out_sources[idx] = (renamed_left, 1, name)
+            # Only rename left column if it's NOT a key column
+            # Key columns should keep their original names
+            if !(name in left_key_set)
+                idx = findfirst(==(name), out_names)
+                if idx !== nothing
+                    renamed_left = Symbol(string(name) * suffix[1])
+                    out_names[idx] = renamed_left
+                    # Update the source entry for the left column
+                    out_sources[idx] = (renamed_left, 1, name)
+                end
             end
         end
         push!(out_names, out_name)
@@ -2430,6 +2494,7 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         push!(out_sources, (name, 1, name))
     end
 
+    left_key_set = Set(left_keys)
     right_only_cols = Symbol[]
     for name in right_names
         if name in right_key_set
@@ -2438,11 +2503,14 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         out_name = name
         if name in left_names
             out_name = Symbol(string(name) * suffix[2])
-            idx = findfirst(==(name), out_names)
-            if idx !== nothing
-                renamed_left = Symbol(string(name) * suffix[1])
-                out_names[idx] = renamed_left
-                out_sources[idx] = (renamed_left, 1, name)
+            # Only rename left column if it's NOT a key column
+            if !(name in left_key_set)
+                idx = findfirst(==(name), out_names)
+                if idx !== nothing
+                    renamed_left = Symbol(string(name) * suffix[1])
+                    out_names[idx] = renamed_left
+                    out_sources[idx] = (renamed_left, 1, name)
+                end
             end
         end
         push!(out_names, out_name)
@@ -2709,6 +2777,7 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         push!(out_sources, (name, 1, name))
     end
 
+    left_key_set = Set(left_keys)
     for name in right_names
         if name in right_key_set
             continue
@@ -2716,11 +2785,14 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         out_name = name
         if name in left_names
             out_name = Symbol(string(name) * suffix[2])
-            idx = findfirst(==(name), out_names)
-            if idx !== nothing
-                renamed_left = Symbol(string(name) * suffix[1])
-                out_names[idx] = renamed_left
-                out_sources[idx] = (renamed_left, 1, name)
+            # Only rename left column if it's NOT a key column
+            if !(name in left_key_set)
+                idx = findfirst(==(name), out_names)
+                if idx !== nothing
+                    renamed_left = Symbol(string(name) * suffix[1])
+                    out_names[idx] = renamed_left
+                    out_sources[idx] = (renamed_left, 1, name)
+                end
             end
         end
         push!(out_names, out_name)
@@ -3156,14 +3228,25 @@ function select(panel::PanelData, spec1::Union{Symbol, Pair, ColumnSelector}, sp
     end
 
     result = select(ct, final_specs...)
-    return _rebuild_panel(panel, result)
+
+    # Check if date column is in the output; if not, set date to nothing
+    result_names = Set(_column_names(result))
+    new_date = (panel.date !== nothing && panel.date in result_names) ? panel.date : nothing
+
+    return _rebuild_panel(panel, result; date=new_date)
 end
 
 # Zero-argument select for PanelData - returns just grouping columns
 function select(panel::PanelData)
+    if isempty(panel.groups)
+        throw(ArgumentError(
+            "Cannot use zero-argument select on ungrouped PanelData. " *
+            "Use select(panel, cols...) to specify columns explicitly."))
+    end
     ct = _to_columns(panel.data)
     result = select(ct, panel.groups...)
-    return _rebuild_panel(panel, result)
+    # Date column is not included, so set to nothing
+    return _rebuild_panel(panel, result; date=nothing)
 end
 
 """

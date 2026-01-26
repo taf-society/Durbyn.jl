@@ -40,6 +40,10 @@ using Statistics
         @test_throws ArgumentError select(tbl, :x => :nonexistent)
     end
 
+    @testset "duplicate output column error" begin
+        @test_throws ArgumentError select(tbl, :x => :a, :x => :b)
+    end
+
     @testset "single row table" begin
         single = (a = [1], b = [2])
         result = select(single, :b)
@@ -50,6 +54,41 @@ using Statistics
         empty_tbl = (a = Int[], b = Int[])
         result = select(empty_tbl, :a)
         @test result == (a = Int[],)
+    end
+end
+
+# ============================================================================
+# rename() tests
+# ============================================================================
+@testset "rename" begin
+    tbl = (a = [1, 2, 3], b = [4, 5, 6], c = [7, 8, 9])
+
+    @testset "basic rename" begin
+        result = rename(tbl, :x => :a)
+        @test result == (x = [1, 2, 3], b = [4, 5, 6], c = [7, 8, 9])
+    end
+
+    @testset "multiple renames" begin
+        result = rename(tbl, :x => :a, :y => :b)
+        @test result == (x = [1, 2, 3], y = [4, 5, 6], c = [7, 8, 9])
+    end
+
+    @testset "error on missing column" begin
+        @test_throws ArgumentError rename(tbl, :x => :nonexistent)
+    end
+
+    @testset "duplicate output column in specs" begin
+        @test_throws ArgumentError rename(tbl, :x => :a, :x => :b)
+    end
+
+    @testset "duplicate source column in specs" begin
+        # Trying to rename same column twice
+        @test_throws ArgumentError rename(tbl, :x => :a, :y => :a)
+    end
+
+    @testset "rename conflicts with existing column" begin
+        # Renaming :a to :b when :b already exists and isn't renamed
+        @test_throws ArgumentError rename(tbl, :b => :a)
     end
 end
 
@@ -547,6 +586,12 @@ end
         @test_throws ArgumentError pivot_wider(with_missing, names_from=:cat, values_from=:val)
     end
 
+    @testset "error on names_from value conflicts with id_cols" begin
+        # names_from contains value "id" which would conflict with id column
+        conflict_data = (id = [1, 1], cat = ["id", "x"], val = [10, 20])
+        @test_throws ArgumentError pivot_wider(conflict_data, names_from=:cat, values_from=:val, id_cols=:id)
+    end
+
     @testset "empty table" begin
         empty_long = (id = Int[], series = String[], value = Int[])
         wide = pivot_wider(empty_long, names_from=:series, values_from=:value, id_cols=:id)
@@ -839,5 +884,108 @@ end
         result = TableOps._subset_indices(tbl, idxs)
         @test result.a == [3, 1]
         @test result.b == [6, 4]
+    end
+end
+
+# ============================================================================
+# PanelData grouped order tests
+# ============================================================================
+@testset "PanelData grouped order" begin
+    using Durbyn.ModelSpecs
+
+    @testset "PanelData sorts by groups and date at construction" begin
+        # Input data in arbitrary order
+        data = (series = ["B", "A", "B", "A", "B", "A"],
+                date = [1, 1, 2, 2, 3, 3],
+                value = [100, 10, 200, 20, 300, 30])
+        panel = PanelData(data; groupby=:series, date=:date)
+
+        # Data should be sorted by series (alphabetically), then by date
+        @test panel.data.series == ["A", "A", "A", "B", "B", "B"]
+        @test panel.data.date == [1, 2, 3, 1, 2, 3]
+        @test panel.data.value == [10, 20, 30, 100, 200, 300]
+    end
+
+    @testset "mutate preserves grouped order" begin
+        data = (series = ["B", "A", "B", "A", "B", "A"],
+                date = [1, 1, 2, 2, 3, 3],
+                value = [100, 10, 200, 20, 300, 30])
+        panel = PanelData(data; groupby=:series, date=:date)
+
+        result = mutate(panel, doubled = d -> d.value .* 2)
+        # Data remains in grouped order (A's then B's, sorted by date)
+        @test result.data.series == ["A", "A", "A", "B", "B", "B"]
+        @test result.data.value == [10, 20, 30, 100, 200, 300]
+        @test result.data.doubled == [20, 40, 60, 200, 400, 600]
+    end
+
+    @testset "query preserves grouped order" begin
+        data = (series = ["B", "A", "B", "A", "B", "A"],
+                date = [1, 1, 2, 2, 3, 3],
+                value = [100, 10, 200, 20, 300, 30])
+        panel = PanelData(data; groupby=:series, date=:date)
+
+        result = query(panel, r -> r.value > 50)
+        # Filtered data maintains grouped order
+        @test result.data.series == ["B", "B", "B"]
+        @test result.data.value == [100, 200, 300]
+    end
+
+    @testset "arrange reorders within groups" begin
+        data = (series = ["B", "A", "B", "A"],
+                date = [2, 1, 1, 2],
+                value = [200, 10, 100, 20])
+        panel = PanelData(data; groupby=:series, date=:date)
+
+        # Arrange by value (descending within each group)
+        result = arrange(panel, :value; rev=true)
+        # Within each group, values should be descending
+        a_mask = result.data.series .== "A"
+        b_mask = result.data.series .== "B"
+        @test issorted(result.data.value[a_mask], rev=true)
+        @test issorted(result.data.value[b_mask], rev=true)
+    end
+end
+
+# ============================================================================
+# Join duplicate name validation tests
+# ============================================================================
+@testset "join duplicate name validation" begin
+    @testset "inner_join detects suffix collision" begin
+        # Left has x_y and x, right has x
+        # Conflict on x: left x -> x_x, right x -> x_y, but x_y already exists in left!
+        left = (id = [1, 2], x_y = [10, 20], x = [1, 2])
+        right = (id = [1, 2], x = [100, 200])
+        @test_throws ArgumentError inner_join(left, right, by=:id)
+    end
+
+    @testset "left_join detects suffix collision" begin
+        left = (id = [1, 2], x_y = [10, 20], x = [1, 2])
+        right = (id = [1, 2], x = [100, 200])
+        @test_throws ArgumentError left_join(left, right, by=:id)
+    end
+
+    @testset "right_join detects suffix collision" begin
+        # Right has x_x and x, left has x
+        # Conflict on x: left x -> x_x, but x_x already exists in right!
+        left = (id = [1, 2], x = [10, 20])
+        right = (id = [1, 2], x_x = [100, 200], x = [1, 2])
+        @test_throws ArgumentError right_join(left, right, by=:id)
+    end
+
+    @testset "full_join detects suffix collision" begin
+        left = (id = [1, 2], x_y = [10, 20], x = [1, 2])
+        right = (id = [1, 2], x = [100, 200])
+        @test_throws ArgumentError full_join(left, right, by=:id)
+    end
+
+    @testset "joins work with custom suffixes avoiding collision" begin
+        left = (id = [1, 2], x_y = [10, 20], x = [1, 2])
+        right = (id = [1, 2], x = [100, 200])
+        # Using different suffixes that don't collide
+        result = inner_join(left, right, by=:id, suffix=("_left", "_right"))
+        @test haskey(result, :x_y)
+        @test haskey(result, :x_left)
+        @test haskey(result, :x_right)
     end
 end

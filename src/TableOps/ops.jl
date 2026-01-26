@@ -152,6 +152,7 @@ function select(data, specs...)
 
     names_out = Symbol[]
     columns_out = Vector{Any}()
+    seen_output = Set{Symbol}()
 
     for spec in specs
         if spec isa Pair
@@ -163,6 +164,10 @@ function select(data, specs...)
         end
         old_name in available ||
             throw(ArgumentError("Column '$(old_name)' not found"))
+        if new_name in seen_output
+            throw(ArgumentError("Duplicate output column name: '$new_name'"))
+        end
+        push!(seen_output, new_name)
         push!(names_out, new_name)
         push!(columns_out, ct[old_name])
     end
@@ -876,6 +881,14 @@ function pivot_wider(data;
         return _assemble(out_names, out_cols)
     end
 
+    # Check for collisions between names_from values and id_cols
+    id_set = Set(ids)
+    for name_sym in name_order
+        if name_sym in id_set
+            throw(ArgumentError("pivot_wider: generated column name '$name_sym' from names_from conflicts with id column"))
+        end
+    end
+
     for (j, name_sym) in enumerate(name_order)
         col_data = Vector{Any}(undef, row_count)
         for i in 1:row_count
@@ -887,7 +900,7 @@ function pivot_wider(data;
             end
         end
         push!(out_names, name_sym)
-    push!(out_cols, _finalize_column(col_data))
+        push!(out_cols, _finalize_column(col_data))
     end
 
     return _assemble(out_names, out_cols)
@@ -1027,17 +1040,32 @@ function rename(data, specs::Pair{Symbol, Symbol}...)
     available = Set(_column_names(ct))
 
     rename_map = Dict{Symbol, Symbol}()
+    new_names_in_specs = Set{Symbol}()
+    old_names_in_specs = Set{Symbol}()
     for (new_name, old_name) in specs
         old_name in available ||
             throw(ArgumentError("Column '$(old_name)' not found"))
+        if new_name in new_names_in_specs
+            throw(ArgumentError("Duplicate output column name in rename: '$new_name'"))
+        end
+        if old_name in old_names_in_specs
+            throw(ArgumentError("Duplicate source column in rename: '$old_name'"))
+        end
+        push!(new_names_in_specs, new_name)
+        push!(old_names_in_specs, old_name)
         rename_map[old_name] = new_name
     end
 
     names_out = Symbol[]
     columns_out = Vector{Any}()
+    seen_output = Set{Symbol}()
 
     for name in _column_names(ct)
         new_name = get(rename_map, name, name)
+        if new_name in seen_output
+            throw(ArgumentError("Duplicate output column name: '$new_name' (column '$name' would conflict with an earlier column)"))
+        end
+        push!(seen_output, new_name)
         push!(names_out, new_name)
         push!(columns_out, ct[name])
     end
@@ -1346,7 +1374,8 @@ function select(data, specs::Union{Symbol, Pair, ColumnSelector}...)
 
     names_out = Symbol[]
     columns_out = Vector{Any}()
-    seen = Set{Symbol}()
+    seen_source = Set{Symbol}()  # Track source columns to avoid selecting same column twice
+    seen_output = Set{Symbol}()  # Track output names to prevent duplicates
 
     for spec in specs
         expanded = _expand_selector(spec, available)
@@ -1358,8 +1387,12 @@ function select(data, specs::Union{Symbol, Pair, ColumnSelector}...)
                 new_name = Symbol(item)
                 old_name = Symbol(item)
             end
-            if !(old_name in seen)
-                push!(seen, old_name)
+            if !(old_name in seen_source)
+                if new_name in seen_output
+                    throw(ArgumentError("Duplicate output column name: '$new_name'"))
+                end
+                push!(seen_source, old_name)
+                push!(seen_output, new_name)
                 push!(names_out, new_name)
                 push!(columns_out, ct[old_name])
             end
@@ -2016,6 +2049,24 @@ function _build_right_index(right::NamedTuple, right_keys::Vector{Symbol})
 end
 
 """
+    _validate_join_output_names(out_names::Vector{Symbol})
+
+Check for duplicate output column names after join suffix resolution.
+Throws ArgumentError if duplicates are found.
+"""
+function _validate_join_output_names(out_names::Vector{Symbol})
+    if length(out_names) != length(unique(out_names))
+        seen = Set{Symbol}()
+        for name in out_names
+            if name in seen
+                throw(ArgumentError("Join produces duplicate column name '$name'. Consider using different suffixes or renaming columns before joining."))
+            end
+            push!(seen, name)
+        end
+    end
+end
+
+"""
     inner_join(left, right; by=nothing, suffix=("_x", "_y"))
 
 Join two tables, keeping only rows with matching keys in both tables.
@@ -2101,6 +2152,9 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         push!(out_names, out_name)
         push!(out_sources, (out_name, 2, name))
     end
+
+    # Check for duplicate output names
+    _validate_join_output_names(out_names)
 
     # Build result
     result_cols = Dict{Symbol, Vector{Any}}()
@@ -2195,6 +2249,9 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         push!(out_sources, (out_name, 2, name))
         push!(right_only_cols, out_name)
     end
+
+    # Check for duplicate output names
+    _validate_join_output_names(out_names)
 
     # Build result
     result_cols = Dict{Symbol, Vector{Any}}()
@@ -2309,6 +2366,9 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         push!(out_sources, (out_name, 2, name))
     end
 
+    # Check for duplicate output names
+    _validate_join_output_names(out_names)
+
     # Build result
     result_cols = Dict{Symbol, Vector{Any}}()
     for name in out_names
@@ -2410,6 +2470,9 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         push!(out_names, out_name)
         push!(out_sources, (out_name, 2, name))
     end
+
+    # Check for duplicate output names
+    _validate_join_output_names(out_names)
 
     # Build result
     result_cols = Dict{Symbol, Vector{Any}}()
@@ -2592,6 +2655,10 @@ end
 
 Internal helper to apply an operation to each group in a PanelData object.
 Returns a new NamedTuple with results from all groups combined.
+
+Note: PanelData stores data sorted by groups and date, so operations maintain
+grouped order (not original input order). This is intentional for time series
+operations that require data to be organized by group and time.
 """
 function _apply_by_group(panel::PanelData, op::Function)
     ct = _to_columns(panel.data)

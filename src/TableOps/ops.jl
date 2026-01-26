@@ -271,20 +271,20 @@ function arrange(data, cols...; rev::Bool=false)
         end
         perm = collect(1:n)
         values = [ct[sym] for sym in order_cols]
-        # Use stable sort with missing-aware comparisons (missing sorts last)
+        # Use stable sort with missing-aware comparisons (missing always sorts last)
         sort!(perm, alg=Base.Sort.MergeSort, lt = (a, b) -> begin
             for (vec, desc) in zip(values, descending)
                 va = vec[a]
                 vb = vec[b]
-                # Handle missing values: missing sorts last (or first if descending)
+                # Handle missing values: missing always sorts last (regardless of asc/desc)
                 va_miss = ismissing(va)
                 vb_miss = ismissing(vb)
                 if va_miss && vb_miss
                     continue  # Both missing, equal
                 elseif va_miss
-                    return desc  # missing last in asc (false), first in desc (true)
+                    return false  # a (missing) comes after b, so a is NOT less than b
                 elseif vb_miss
-                    return !desc  # non-missing before missing in asc (true), after in desc (false)
+                    return true   # a comes before b (missing), so a IS less than b
                 end
                 # Both non-missing: use isequal for proper equality, isless for ordering
                 if isequal(va, vb)
@@ -598,14 +598,48 @@ function pivot_longer(data;
     ct = _to_columns(data)
     cols = collect(_column_names(ct))
 
-    # Handle empty table case
+    ids = id_cols isa Symbol ? Symbol[id_cols] : collect(id_cols)
+    vals = value_cols isa Symbol ? Symbol[value_cols] : collect(value_cols)
+
+    # Check for duplicate id_cols
+    if length(ids) != length(unique(ids))
+        seen = Set{Symbol}()
+        for id in ids
+            if id in seen
+                throw(ArgumentError("Duplicate id column: '$id'"))
+            end
+            push!(seen, id)
+        end
+    end
+
+    # Check for duplicate value_cols
+    if length(vals) != length(unique(vals))
+        seen = Set{Symbol}()
+        for v in vals
+            if v in seen
+                throw(ArgumentError("Duplicate value column: '$v'"))
+            end
+            push!(seen, v)
+        end
+    end
+
+    # Validate names_to/values_to collision first (applies to all cases)
+    if names_to == values_to
+        throw(ArgumentError("names_to and values_to cannot be the same: '$names_to'"))
+    end
+
+    # Handle empty table case (after basic validation)
     if isempty(cols)
+        # Validate that specified id_cols/value_cols are empty (can't reference non-existent columns)
+        if !isempty(ids)
+            throw(ArgumentError("ID column '$(ids[1])' not found in empty table"))
+        end
+        if !isempty(vals)
+            throw(ArgumentError("Value column '$(vals[1])' not found in empty table"))
+        end
         # Return empty table with correct schema
         return NamedTuple{(names_to, values_to)}((String[], Any[]))
     end
-
-    ids = id_cols isa Symbol ? Symbol[id_cols] : collect(id_cols)
-    vals = value_cols isa Symbol ? Symbol[value_cols] : collect(value_cols)
 
     if isempty(ids) && isempty(vals)
         ids = Symbol[cols[1]]
@@ -625,9 +659,6 @@ function pivot_longer(data;
     end
     if values_to in ids
         throw(ArgumentError("values_to='$values_to' conflicts with id column of same name"))
-    end
-    if names_to == values_to
-        throw(ArgumentError("names_to and values_to cannot be the same: '$names_to'"))
     end
 
     n = _check_lengths(ct)

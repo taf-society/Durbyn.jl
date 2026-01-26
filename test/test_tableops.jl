@@ -422,6 +422,54 @@ end
         long = pivot_longer(empty_wide, id_cols=:id)
         @test isempty(long.id)
     end
+
+    @testset "zero-column table" begin
+        empty_tbl = NamedTuple()
+        result = pivot_longer(empty_tbl)
+        @test haskey(result, :variable)
+        @test haskey(result, :value)
+        @test length(result.variable) == 0
+    end
+
+    @testset "zero-column table with invalid id_cols" begin
+        empty_tbl = NamedTuple()
+        @test_throws ArgumentError pivot_longer(empty_tbl, id_cols=:nonexistent)
+    end
+
+    @testset "zero-column table with invalid value_cols" begin
+        empty_tbl = NamedTuple()
+        @test_throws ArgumentError pivot_longer(empty_tbl, value_cols=[:nonexistent])
+    end
+
+    @testset "names_to == values_to collision" begin
+        tbl = (id = [1, 2], A = [10, 20], B = [30, 40])
+        @test_throws ArgumentError pivot_longer(tbl, id_cols=:id, names_to=:x, values_to=:x)
+    end
+
+    @testset "names_to == values_to collision on empty table" begin
+        empty_tbl = NamedTuple()
+        @test_throws ArgumentError pivot_longer(empty_tbl, names_to=:x, values_to=:x)
+    end
+
+    @testset "names_to conflicts with id_cols" begin
+        tbl = (id = [1, 2], A = [10, 20], B = [30, 40])
+        @test_throws ArgumentError pivot_longer(tbl, id_cols=:id, names_to=:id, values_to=:value)
+    end
+
+    @testset "values_to conflicts with id_cols" begin
+        tbl = (id = [1, 2], A = [10, 20], B = [30, 40])
+        @test_throws ArgumentError pivot_longer(tbl, id_cols=:id, names_to=:series, values_to=:id)
+    end
+
+    @testset "duplicate id_cols error" begin
+        tbl = (id = [1, 2], A = [10, 20], B = [30, 40])
+        @test_throws ArgumentError pivot_longer(tbl, id_cols=[:id, :id])
+    end
+
+    @testset "duplicate value_cols error" begin
+        tbl = (id = [1, 2], A = [10, 20], B = [30, 40])
+        @test_throws ArgumentError pivot_longer(tbl, id_cols=:id, value_cols=[:A, :A])
+    end
 end
 
 # ============================================================================
@@ -683,6 +731,70 @@ end
         tbl = (id = [1, 2, 3], flag = [true, false, true])
         result = query(tbl, row -> row.flag)
         @test result.id == [1, 3]
+    end
+end
+
+# ============================================================================
+# complete() edge case tests
+# ============================================================================
+@testset "complete edge cases" begin
+    @testset "single column" begin
+        tbl = (x = [1, 2, 1], y = [10, 20, 30])
+        result = complete(tbl, :x; fill_value=0)
+        # All unique x values already present, so no rows added
+        @test length(result.x) == 3
+    end
+
+    @testset "single column with missing combo" begin
+        # More meaningful single-column test would need explicit unique values
+        # complete works on existing unique combinations
+        tbl = (cat = ["A", "B", "A"], val = [1, 2, 3])
+        result = complete(tbl, :cat)
+        @test length(result.cat) == 3  # A, B already present
+    end
+
+    @testset "multi-column with missing combo" begin
+        tbl = (a = [1, 1, 2], b = ["x", "y", "x"], val = [10, 20, 30])
+        result = complete(tbl, :a, :b; fill_value=0)
+        @test length(result.a) == 4  # Adds (2, "y") combo
+        # Find the added row
+        added_idx = findfirst(i -> result.a[i] == 2 && result.b[i] == "y", 1:length(result.a))
+        @test added_idx !== nothing
+        @test result.val[added_idx] == 0
+    end
+end
+
+# ============================================================================
+# arrange() edge case tests
+# ============================================================================
+@testset "arrange edge cases" begin
+    @testset "missing values sort to end" begin
+        tbl = (x = [3, 1, missing, 2, missing], y = ["c", "a", "e", "b", "d"])
+        result = arrange(tbl, :x)
+        # Non-missing values should be sorted first
+        @test result.x[1] == 1
+        @test result.x[2] == 2
+        @test result.x[3] == 3
+        # Missing values at end
+        @test ismissing(result.x[4])
+        @test ismissing(result.x[5])
+    end
+
+    @testset "missing values with descending" begin
+        tbl = (x = [3, 1, missing, 2], y = ["c", "a", "e", "b"])
+        result = arrange(tbl, :x => :desc)
+        # Descending: 3, 2, 1, then missing
+        @test result.x[1] == 3
+        @test result.x[2] == 2
+        @test result.x[3] == 1
+        @test ismissing(result.x[4])
+    end
+
+    @testset "stable sort preserves order for equal keys" begin
+        tbl = (key = [1, 1, 1], order = [1, 2, 3])
+        result = arrange(tbl, :key)
+        # Equal keys should maintain original order (stable sort)
+        @test result.order == [1, 2, 3]
     end
 end
 

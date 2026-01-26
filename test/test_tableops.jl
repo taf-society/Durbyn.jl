@@ -302,13 +302,11 @@ end
         @test ismissing(key_ids[4])
     end
 
-    @testset "mixed types fallback to string comparison" begin
+    @testset "mixed types throw error" begin
         # Mixed types (Int and String) that can't be compared with isless
-        # should fallback to string comparison without throwing
+        # should throw an error - no silent string fallback
         tbl = (id = Any[1, "2", 3], val = [10, 20, 30])
-        gt = groupby(tbl, :id)
-        @test length(gt) == 3
-        # Should not throw - uses string fallback
+        @test_throws ArgumentError groupby(tbl, :id)
     end
 end
 

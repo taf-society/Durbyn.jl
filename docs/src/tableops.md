@@ -649,6 +649,9 @@ Join functions combine two tables based on matching key columns. TableOps provid
 | `semi_join` | Left rows **with** match (no right columns) | Filter by existence |
 | `anti_join` | Left rows **without** match | Find missing records |
 
+> **Note:** Joins use Julia's `isequal` semantics for key matching: `missing` matches `missing`
+> and `NaN` matches `NaN`. This differs from SQL where `NULL` never equals `NULL`.
+
 ### `by` Parameter Specification
 
 All join functions accept a `by` parameter to specify join keys:

@@ -280,6 +280,36 @@ end
         gt = groupby(unique_groups, :id)
         @test length(gt) == 3
     end
+
+    @testset "numeric group ordering" begin
+        # Test that numeric groups are sorted numerically, not lexicographically
+        # Lexicographic: 1, 10, 2, 3 vs Numeric: 1, 2, 3, 10
+        tbl = (id = [10, 1, 3, 2], val = [100, 10, 30, 20])
+        gt = groupby(tbl, :id)
+        @test length(gt) == 4
+        # Keys should be in numeric order: 1, 2, 3, 10
+        key_ids = [k.id for k in gt.keys]
+        @test key_ids == [1, 2, 3, 10]
+    end
+
+    @testset "mixed group ordering with missing" begin
+        # Missing values should sort last
+        tbl = (id = [3, missing, 1, 2], val = [30, 0, 10, 20])
+        gt = groupby(tbl, :id)
+        @test length(gt) == 4
+        key_ids = [k.id for k in gt.keys]
+        @test key_ids[1:3] == [1, 2, 3]
+        @test ismissing(key_ids[4])
+    end
+
+    @testset "mixed types fallback to string comparison" begin
+        # Mixed types (Int and String) that can't be compared with isless
+        # should fallback to string comparison without throwing
+        tbl = (id = Any[1, "2", 3], val = [10, 20, 30])
+        gt = groupby(tbl, :id)
+        @test length(gt) == 3
+        # Should not throw - uses string fallback
+    end
 end
 
 # ============================================================================
@@ -987,5 +1017,219 @@ end
         @test haskey(result, :x_y)
         @test haskey(result, :x_left)
         @test haskey(result, :x_right)
+    end
+end
+
+# ============================================================================
+# fill_missing tests
+# ============================================================================
+@testset "fill_missing" begin
+    @testset "basic fill down" begin
+        tbl = (a = [1, missing, missing, 4], b = [missing, 2, missing, missing])
+        result = fill_missing(tbl, :a, direction=:down)
+        @test isequal(result.a, [1, 1, 1, 4])
+        @test isequal(result.b, [missing, 2, missing, missing])  # unchanged
+    end
+
+    @testset "basic fill up" begin
+        tbl = (a = [missing, missing, 3, 4],)
+        result = fill_missing(tbl, :a, direction=:up)
+        @test isequal(result.a, [3, 3, 3, 4])
+    end
+
+    @testset "fill with nothing values - sentinel bug fix" begin
+        # nothing is a valid value distinct from missing
+        tbl = (a = Union{Int, Nothing, Missing}[nothing, missing, 3, missing],)
+        result = fill_missing(tbl, :a, direction=:down)
+        # nothing should propagate like any other value
+        @test result.a[1] === nothing
+        @test result.a[2] === nothing  # filled from nothing above
+        @test result.a[3] == 3
+        @test result.a[4] == 3  # filled from 3 above
+    end
+
+    @testset "fill up with nothing values" begin
+        tbl = (a = Union{Int, Nothing, Missing}[missing, 2, missing, nothing],)
+        result = fill_missing(tbl, :a, direction=:up)
+        @test result.a[1] == 2  # filled from 2 below
+        @test result.a[2] == 2
+        @test result.a[3] === nothing  # filled from nothing below
+        @test result.a[4] === nothing
+    end
+end
+
+# ============================================================================
+# bind_rows column length validation tests
+# ============================================================================
+@testset "bind_rows validation" begin
+    @testset "valid tables bind correctly" begin
+        tbl1 = (a = [1, 2], b = [3, 4])
+        tbl2 = (a = [5, 6], b = [7, 8])
+        result = bind_rows(tbl1, tbl2)
+        @test result.a == [1, 2, 5, 6]
+        @test result.b == [3, 4, 7, 8]
+    end
+
+    @testset "mismatched column lengths in input table" begin
+        bad_tbl = (a = [1, 2, 3], b = [4, 5])  # mismatched lengths
+        good_tbl = (a = [6, 7], b = [8, 9])
+        @test_throws ArgumentError bind_rows(bad_tbl, good_tbl)
+        @test_throws ArgumentError bind_rows(good_tbl, bad_tbl)
+    end
+end
+
+# ============================================================================
+# join column length validation tests
+# ============================================================================
+@testset "join column length validation" begin
+    @testset "inner_join validates column lengths" begin
+        bad_left = (id = [1, 2], x = [10, 20, 30])  # mismatched
+        good_right = (id = [1, 2], y = [100, 200])
+        @test_throws ArgumentError inner_join(bad_left, good_right, by=:id)
+
+        good_left = (id = [1, 2], x = [10, 20])
+        bad_right = (id = [1, 2, 3], y = [100, 200])  # mismatched
+        @test_throws ArgumentError inner_join(good_left, bad_right, by=:id)
+    end
+
+    @testset "left_join validates column lengths" begin
+        bad_tbl = (id = [1, 2], x = [10, 20, 30])
+        good_tbl = (id = [1, 2], y = [100, 200])
+        @test_throws ArgumentError left_join(bad_tbl, good_tbl, by=:id)
+    end
+
+    @testset "right_join validates column lengths" begin
+        bad_tbl = (id = [1, 2], x = [10, 20, 30])
+        good_tbl = (id = [1, 2], y = [100, 200])
+        @test_throws ArgumentError right_join(good_tbl, bad_tbl, by=:id)
+    end
+
+    @testset "full_join validates column lengths" begin
+        bad_tbl = (id = [1, 2], x = [10, 20, 30])
+        good_tbl = (id = [1, 2], y = [100, 200])
+        @test_throws ArgumentError full_join(bad_tbl, good_tbl, by=:id)
+    end
+end
+
+# ============================================================================
+# separate name collision validation tests
+# ============================================================================
+@testset "separate name validation" begin
+    @testset "basic separate works" begin
+        tbl = (id = [1, 2], full_name = ["John_Doe", "Jane_Smith"])
+        result = separate(tbl, :full_name; into=[:first, :last], sep="_")
+        @test result.first == ["John", "Jane"]
+        @test result.last == ["Doe", "Smith"]
+    end
+
+    @testset "duplicate names in into" begin
+        tbl = (id = [1, 2], name = ["a_b", "c_d"])
+        @test_throws ArgumentError separate(tbl, :name; into=[:x, :x], sep="_")
+    end
+
+    @testset "into name conflicts with existing column" begin
+        tbl = (id = [1, 2], name = ["a_b", "c_d"])
+        # :id already exists
+        @test_throws ArgumentError separate(tbl, :name; into=[:id, :last], sep="_")
+    end
+
+    @testset "into can use separated column name with remove=true" begin
+        # When remove=true, the original column is removed, so its name can be reused
+        tbl = (id = [1, 2], name = ["a_b", "c_d"])
+        result = separate(tbl, :name; into=[:name, :suffix], sep="_", remove=true)
+        @test haskey(result, :name)
+        @test result.name == ["a", "c"]
+    end
+end
+
+# ============================================================================
+# unite name collision validation tests
+# ============================================================================
+@testset "unite name validation" begin
+    @testset "basic unite works" begin
+        tbl = (id = [1, 2], year = [2020, 2021], month = [1, 6])
+        result = unite(tbl, :date, :year, :month; sep="-")
+        @test result.date == ["2020-1", "2021-6"]
+        @test !haskey(result, :year)  # removed by default
+        @test !haskey(result, :month)
+    end
+
+    @testset "new_col conflicts with existing column" begin
+        tbl = (id = [1, 2], year = [2020, 2021], month = [1, 6])
+        # :id already exists and won't be removed
+        @test_throws ArgumentError unite(tbl, :id, :year, :month)
+    end
+
+    @testset "new_col can match source column with remove=true" begin
+        tbl = (id = [1, 2], year = [2020, 2021], month = [1, 6])
+        # :year will be removed, so it can be the output name
+        result = unite(tbl, :year, :year, :month; sep="-", remove=true)
+        @test result.year == ["2020-1", "2021-6"]
+    end
+
+    @testset "new_col conflicts with source column when remove=false" begin
+        tbl = (id = [1, 2], year = [2020, 2021], month = [1, 6])
+        # With remove=false, :year stays, so can't use it as output name
+        @test_throws ArgumentError unite(tbl, :year, :year, :month; remove=false)
+    end
+end
+
+# ============================================================================
+# Across output name collision tests
+# ============================================================================
+@testset "Across output name collision" begin
+    @testset "summarise Across collision with group key" begin
+        tbl = (a_mean = ["x", "x", "y"], a = [1, 2, 3], b = [4, 5, 6])
+        gt = groupby(tbl, :a_mean)
+        ac = Across([:a], [:mean => mean])
+        # Output would be :a_mean which collides with group key
+        @test_throws ArgumentError summarise(gt, ac)
+    end
+
+    @testset "summarise Across collision between outputs" begin
+        tbl = (group = ["x", "y"], a = [1, 2], a_sum = [10, 20])
+        gt = groupby(tbl, :group)
+        # If a column :a_sum exists and we compute sum on :a, collision
+        ac = Across([:a], [:sum => sum])
+        @test_throws ArgumentError summarise(gt, ac)
+    end
+
+    @testset "mutate Across collision with existing column" begin
+        tbl = (a = [1, 2, 3], a_abs = [10, 20, 30])
+        ac = Across([:a], [:abs => abs])
+        # Output :a_abs collides with existing column
+        @test_throws ArgumentError mutate(tbl, ac)
+    end
+
+    @testset "valid Across operations work" begin
+        tbl = (a = [1, 2, 3], b = [4, 5, 6])
+        ac = Across([:a, :b], [:sum => sum, :mean => mean])
+        gt = groupby(tbl, Symbol[])  # No grouping
+        result = summarise(gt, ac)
+        @test result.a_sum == [6]
+        @test result.b_sum == [15]
+        @test result.a_mean == [2.0]
+        @test result.b_mean == [5.0]
+    end
+end
+
+# ============================================================================
+# select duplicate source column tests
+# ============================================================================
+@testset "select duplicate source handling" begin
+    @testset "explicit spec errors on duplicate source" begin
+        tbl = (a = [1, 2], b = [3, 4], c = [5, 6])
+        # Selecting :a twice explicitly
+        @test_throws ArgumentError select(tbl, :a, :a)
+        @test_throws ArgumentError select(tbl, :x => :a, :y => :a)
+        @test_throws ArgumentError select(tbl, :a, :x => :a)
+    end
+
+    @testset "selector silently skips already selected" begin
+        tbl = (a = [1, 2], b = [3, 4], c = [5, 6])
+        # everything() after explicit :a should skip :a
+        result = select(tbl, :a, everything())
+        @test collect(keys(result)) == [:a, :b, :c]
+        @test result.a == [1, 2]
     end
 end

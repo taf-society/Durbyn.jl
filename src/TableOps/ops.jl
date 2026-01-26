@@ -117,6 +117,42 @@ function _finalize_column(vec::Vector)
 end
 
 """
+    _namedtuple_lt(a::NamedTuple, b::NamedTuple)
+
+Compare two NamedTuples lexicographically using `isless`.
+Handles missing values (sorts last) and provides proper numeric/date ordering.
+Falls back to string comparison for mixed types that can't be compared with `isless`.
+"""
+function _namedtuple_lt(a::NamedTuple, b::NamedTuple)
+    for i in 1:length(a)
+        va = a[i]
+        vb = b[i]
+        # Handle missing values - sort them last
+        va_miss = ismissing(va)
+        vb_miss = ismissing(vb)
+        if va_miss && vb_miss
+            continue
+        elseif va_miss
+            return false  # a (missing) comes after b
+        elseif vb_miss
+            return true   # a comes before b (missing)
+        end
+        # Use isless for proper type-aware comparison
+        if isequal(va, vb)
+            continue
+        end
+        # Try isless first, fall back to string comparison for incompatible types
+        try
+            return isless(va, vb)
+        catch
+            # Fallback to string comparison for mixed types (e.g., 1 vs "1")
+            return isless(string(va), string(vb))
+        end
+    end
+    return false  # equal
+end
+
+"""
     select(data, specs...)
 
 Select and optionally rename columns from a Tables.jl-compatible data source.
@@ -367,7 +403,8 @@ function groupby(data, cols::AbstractVector{Symbol})
     end
 
     key_list = collect(keys(groups))
-    order = sortperm(key_list, by = string)
+    # Sort using proper comparison (not string-based) for correct numeric/date ordering
+    order = sortperm(key_list, lt = _namedtuple_lt)
     key_list = key_list[order]
     idx_list = [groups[key_list[i]] for i in 1:length(key_list)]
     return GroupedTable(ct, collect(names), key_list, idx_list)
@@ -1182,6 +1219,15 @@ function bind_rows(tables...)
 
     cts = [_to_columns(t) for t in tables]
 
+    # Validate each input table has consistent column lengths
+    for (i, ct) in enumerate(cts)
+        try
+            _check_lengths(ct)
+        catch e
+            throw(ArgumentError("Table $i has mismatched column lengths: $(e.msg)"))
+        end
+    end
+
     all_cols = Symbol[]
     col_set = Set{Symbol}()
     for ct in cts
@@ -1378,6 +1424,8 @@ function select(data, specs::Union{Symbol, Pair, ColumnSelector}...)
     seen_output = Set{Symbol}()  # Track output names to prevent duplicates
 
     for spec in specs
+        # Determine if this is an auto-expanding selector (skip duplicates) or explicit spec (error on duplicates)
+        is_selector = spec isa ColumnSelector
         expanded = _expand_selector(spec, available)
         for item in expanded
             if item isa Pair
@@ -1387,15 +1435,22 @@ function select(data, specs::Union{Symbol, Pair, ColumnSelector}...)
                 new_name = Symbol(item)
                 old_name = Symbol(item)
             end
-            if !(old_name in seen_source)
-                if new_name in seen_output
-                    throw(ArgumentError("Duplicate output column name: '$new_name'"))
+            if old_name in seen_source
+                if is_selector
+                    # Selectors like everything() silently skip already-selected columns
+                    continue
+                else
+                    # Explicit specs error on duplicate source columns
+                    throw(ArgumentError("Source column '$old_name' selected multiple times"))
                 end
-                push!(seen_source, old_name)
-                push!(seen_output, new_name)
-                push!(names_out, new_name)
-                push!(columns_out, ct[old_name])
             end
+            if new_name in seen_output
+                throw(ArgumentError("Duplicate output column name: '$new_name'"))
+            end
+            push!(seen_source, old_name)
+            push!(seen_output, new_name)
+            push!(names_out, new_name)
+            push!(columns_out, ct[old_name])
         end
     end
 
@@ -1483,6 +1538,18 @@ function summarise(gt::GroupedTable, ac::Across)
         end
     end
 
+    # Check for output name collisions
+    seen_names = Set{Symbol}(keycols)
+    for col in target_cols
+        for (fn_name, _) in ac.fns
+            out_name = Symbol("$(col)_$(fn_name)")
+            if out_name in seen_names
+                throw(ArgumentError("Across produces duplicate output column name '$out_name'. Consider renaming columns or functions to avoid collision."))
+            end
+            push!(seen_names, out_name)
+        end
+    end
+
     summary_data = Dict{Symbol, Vector{Any}}()
     for col in target_cols
         for (fn_name, _) in ac.fns
@@ -1533,6 +1600,18 @@ function mutate(data, ac::Across)
         columns[name] = ct[name]
     end
 
+    # Check for output name collisions before computing
+    seen_names = Set{Symbol}(available)
+    for col in target_cols
+        for (fn_name, _) in ac.fns
+            out_name = Symbol("$(col)_$(fn_name)")
+            if out_name in seen_names
+                throw(ArgumentError("Across produces duplicate output column name '$out_name'. Consider renaming columns or functions to avoid collision."))
+            end
+            push!(seen_names, out_name)
+        end
+    end
+
     for col in target_cols
         for (fn_name, fn) in ac.fns
             out_name = Symbol("$(col)_$(fn_name)")
@@ -1544,9 +1623,7 @@ function mutate(data, ac::Across)
                     "across function '$fn_name' on column '$col' returned vector of length $(length(result)), expected $n"))
             end
             columns[out_name] = result
-            if !(out_name in names_out)
-                push!(names_out, out_name)
-            end
+            push!(names_out, out_name)
         end
     end
 
@@ -1603,6 +1680,25 @@ function separate(data, col::Symbol;
     available = _column_names(ct)
 
     col in available || throw(ArgumentError("Column '$(col)' not found"))
+
+    # Check for duplicate names in 'into'
+    if length(into) != length(unique(into))
+        seen = Set{Symbol}()
+        for name in into
+            if name in seen
+                throw(ArgumentError("Duplicate column name in 'into': '$name'"))
+            end
+            push!(seen, name)
+        end
+    end
+
+    # Check for collision with existing columns (excluding the column being separated if remove=true)
+    existing_cols = remove ? Set(c for c in available if c != col) : Set(available)
+    for name in into
+        if name in existing_cols
+            throw(ArgumentError("Output column '$name' conflicts with existing column"))
+        end
+    end
 
     n = _check_lengths(ct)
 
@@ -1715,6 +1811,15 @@ function unite(data, new_col::Symbol, cols::Symbol...; sep::String="_", remove::
         col in available || throw(ArgumentError("Column '$(col)' not found"))
     end
 
+    # Check for collision with existing columns
+    # When remove=true, new_col can match a column being removed
+    # When remove=false, new_col cannot match any existing column
+    cols_set = Set(cols_list)
+    conflicting_cols = remove ? Set(c for c in available if c ∉ cols_set) : Set(available)
+    if new_col in conflicting_cols
+        throw(ArgumentError("Output column '$new_col' conflicts with existing column"))
+    end
+
     combined = Vector{Any}(undef, n)
     for i in 1:n
         parts = String[]
@@ -1730,7 +1835,6 @@ function unite(data, new_col::Symbol, cols::Symbol...; sep::String="_", remove::
         combined[i] = has_missing ? missing : join(parts, sep)
     end
 
-    cols_set = Set(cols_list)
     names_out = Symbol[]
     columns_out = Vector{Any}()
 
@@ -1809,22 +1913,26 @@ function fill_missing(data, cols::Symbol...; direction::Symbol=:down)
     end
 
     function fill_down!(vec)
-        last_valid = nothing
+        has_valid = false
+        last_valid = vec[1]  # Placeholder, only used when has_valid is true
         for i in 1:length(vec)
             if !ismissing(vec[i])
                 last_valid = vec[i]
-            elseif last_valid !== nothing
+                has_valid = true
+            elseif has_valid
                 vec[i] = last_valid
             end
         end
     end
 
     function fill_up!(vec)
-        next_valid = nothing
+        has_valid = false
+        next_valid = vec[end]  # Placeholder, only used when has_valid is true
         for i in length(vec):-1:1
             if !ismissing(vec[i])
                 next_valid = vec[i]
-            elseif next_valid !== nothing
+                has_valid = true
+            elseif has_valid
                 vec[i] = next_valid
             end
         end
@@ -2085,6 +2193,10 @@ Join two tables, keeping only rows with matching keys in both tables.
 # Returns
 A `NamedTuple` containing only rows where the key exists in both tables.
 
+# Note
+Uses Julia's `isequal` semantics for key matching: `missing` matches `missing` and
+`NaN` matches `NaN`. This differs from SQL where `NULL` never equals `NULL`.
+
 # Examples
 ```julia
 using Durbyn.TableOps
@@ -2115,6 +2227,10 @@ See also: [`left_join`](@ref), [`right_join`](@ref), [`full_join`](@ref)
 function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", "_y"))
     ct_left = _to_columns(left)
     ct_right = _to_columns(right)
+
+    # Validate column lengths
+    _check_lengths(ct_left)
+    _check_lengths(ct_right)
 
     left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
     right_index = _build_right_index(ct_right, right_keys)
@@ -2196,6 +2312,10 @@ Join two tables, keeping all rows from the left table.
 A `NamedTuple` containing all rows from `left`, with matching data from `right`.
 Non-matching rows have `missing` for columns from `right`.
 
+# Note
+Uses Julia's `isequal` semantics for key matching: `missing` matches `missing` and
+`NaN` matches `NaN`. This differs from SQL where `NULL` never equals `NULL`.
+
 # Examples
 ```julia
 using Durbyn.TableOps
@@ -2212,6 +2332,10 @@ See also: [`inner_join`](@ref), [`right_join`](@ref), [`full_join`](@ref)
 function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", "_y"))
     ct_left = _to_columns(left)
     ct_right = _to_columns(right)
+
+    # Validate column lengths
+    _check_lengths(ct_left)
+    _check_lengths(ct_right)
 
     left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
     right_index = _build_right_index(ct_right, right_keys)
@@ -2302,6 +2426,10 @@ Join two tables, keeping all rows from the right table.
 A `NamedTuple` containing all rows from `right`, with matching data from `left`.
 Non-matching rows have `missing` for columns from `left`.
 
+# Note
+Uses Julia's `isequal` semantics for key matching: `missing` matches `missing` and
+`NaN` matches `NaN`. This differs from SQL where `NULL` never equals `NULL`.
+
 # Examples
 ```julia
 using Durbyn.TableOps
@@ -2320,6 +2448,10 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
     # But we need to handle the key column naming carefully
     ct_left = _to_columns(left)
     ct_right = _to_columns(right)
+
+    # Validate column lengths
+    _check_lengths(ct_left)
+    _check_lengths(ct_right)
 
     left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
     left_index = _build_right_index(ct_left, left_keys)
@@ -2418,6 +2550,10 @@ Join two tables, keeping all rows from both tables.
 A `NamedTuple` containing all rows from both tables.
 Non-matching rows have `missing` for columns from the other table.
 
+# Note
+Uses Julia's `isequal` semantics for key matching: `missing` matches `missing` and
+`NaN` matches `NaN`. This differs from SQL where `NULL` never equals `NULL`.
+
 # Examples
 ```julia
 using Durbyn.TableOps
@@ -2434,6 +2570,10 @@ See also: [`inner_join`](@ref), [`left_join`](@ref), [`right_join`](@ref)
 function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", "_y"))
     ct_left = _to_columns(left)
     ct_right = _to_columns(right)
+
+    # Validate column lengths
+    _check_lengths(ct_left)
+    _check_lengths(ct_right)
 
     left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
     right_index = _build_right_index(ct_right, right_keys)

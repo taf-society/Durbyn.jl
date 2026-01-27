@@ -5,18 +5,13 @@ This module provides a Domain-Specific Language (DSL) for specifying forecasting
 in a declarative way. The grammar is designed to be extensible and support various
 forecasting methods including ARIMA, exponential smoothing, and ML models.
 
-# Current Implementation
 - ARIMA order specification: p(), q(), P(), Q(), d(), D()
 
-# Planned Extensions
 - Feature engineering: dow(), month(), woy(), lag(), ma(), rollsum(), etc.
 - ML model specification
 - Custom transformations
 """
 
-# ============================================================================
-# Base Grammar Types
-# ============================================================================
 
 """
     AbstractTerm
@@ -65,9 +60,6 @@ struct ArimaOrderTerm <: AbstractTerm
     end
 end
 
-# ============================================================================
-# ETS Grammar Terms
-# ============================================================================
 
 """
     EtsComponentTerm <: AbstractTerm
@@ -295,9 +287,6 @@ Use in formulas as `@formula(y = auto())` (optionally combined with ARIMA terms)
 """
 auto() = AutoVarTerm()
 
-# ============================================================================
-# ARIMA Grammar Functions
-# ============================================================================
 
 """
     p()
@@ -480,9 +469,6 @@ D() = nothing
 D(value::Int) = ArimaOrderTerm(:D, value, value)
 D(min::Int, max::Int) = ArimaOrderTerm(:D, min, max)
 
-# ============================================================================
-# ETS Grammar Functions
-# ============================================================================
 
 const _ETS_ERROR_CODES = Set(["A", "M", "Z"])
 const _ETS_TREND_CODES = Set(["N", "A", "M", "Z"])
@@ -604,10 +590,8 @@ function croston(; method::Union{AbstractString, Symbol} = "hyndman",
                    optimize_init::Union{Bool, Nothing} = nothing,
                    rm_missing::Union{Bool, Nothing} = nothing)
 
-    # Normalize method to lowercase string
     method_str = lowercase(String(method))
 
-    # Validate method
     valid_methods = ("hyndman", "classic", "sba", "sbj")
     if !(method_str in valid_methods)
         throw(ArgumentError(
@@ -615,7 +599,6 @@ function croston(; method::Union{AbstractString, Symbol} = "hyndman",
         ))
     end
 
-    # Validate IntermittentDemand parameters
     if !isnothing(init_strategy)
         init_str = lowercase(String(init_strategy))
         if !(init_str in ("mean", "naive"))
@@ -644,7 +627,6 @@ function croston(; method::Union{AbstractString, Symbol} = "hyndman",
         cost_metric = cost_str
     end
 
-    # Warn if IntermittentDemand parameters are provided for hyndman method
     if method_str == "hyndman" &&
        (!isnothing(init_strategy) || !isnothing(number_of_params) ||
         !isnothing(cost_metric) || !isnothing(optimize_init) || !isnothing(rm_missing))
@@ -724,7 +706,6 @@ function bats(; seasonal_periods::Union{Int, Vector{Int}, Nothing}=nothing,
                use_damped_trend::Union{Bool, Nothing}=nothing,
                use_arma_errors::Union{Bool, Nothing}=nothing)
 
-    # Validate seasonal_periods
     if !isnothing(seasonal_periods)
         if seasonal_periods isa Int
             seasonal_periods > 0 || throw(ArgumentError("seasonal_periods must be positive, got $(seasonal_periods)"))
@@ -804,7 +785,6 @@ function tbats(; seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing,
                 use_damped_trend::Union{Bool, Nothing}=nothing,
                 use_arma_errors::Union{Bool, Nothing}=nothing)
 
-    # Validate seasonal_periods
     if !isnothing(seasonal_periods)
         if seasonal_periods isa Real
             seasonal_periods > 0 || throw(ArgumentError(
@@ -815,7 +795,6 @@ function tbats(; seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing,
         end
     end
 
-    # Validate k (Fourier orders)
     if !isnothing(k)
         if k isa Int
             k >= 1 || throw(ArgumentError("k must be >= 1, got $(k)"))
@@ -824,7 +803,6 @@ function tbats(; seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing,
         end
     end
 
-    # Validate k matches seasonal_periods length if both provided
     if !isnothing(k) && !isnothing(seasonal_periods)
         k_len = k isa Int ? 1 : length(k)
         m_len = seasonal_periods isa Real ? 1 : length(seasonal_periods)
@@ -1002,9 +980,6 @@ function drift(mode::AbstractString)
     end
 end
 
-# ============================================================================
-# Formula Structure
-# ============================================================================
 
 """
     ModelFormula
@@ -1027,9 +1002,6 @@ struct ModelFormula
     terms::Vector{AbstractTerm}
 end
 
-# ============================================================================
-# Operator Overloading for Formula Construction
-# ============================================================================
 
 """
     +(term1::AbstractTerm, term2::AbstractTerm)
@@ -1118,20 +1090,16 @@ macro formula(expr)
     target = expr.args[1]
     rhs = expr.args[2]
 
-    # Convert variable names to Symbols with : prefix for VarTerm
     function process_rhs(ex)
         if ex isa Symbol
             if ex === Symbol(".")
                 return :($(esc(:AutoVarTerm))())
             end
-            # Plain symbol becomes VarTerm - must escape it
             return :($(esc(:VarTerm))($(QuoteNode(ex))))
         elseif ex isa Expr && ex.head == :call
             if ex.args[1] == :+
-                # Process + operator recursively
                 return Expr(:call, :+, [process_rhs(arg) for arg in ex.args[2:end]]...)
             else
-                # Function calls (p(), q(), etc.) pass through - escape them
                 return esc(ex)
             end
         else
@@ -1141,9 +1109,6 @@ macro formula(expr)
 
     processed_rhs = process_rhs(rhs)
 
-    # Always wrap in a vector and create ModelFormula
-    # The + operator already creates vectors, so handle both cases
-    # Filter out nothing values (from d() and D() with no arguments)
     result_expr = quote
         local rhs_result = $processed_rhs
         local terms_vec = if rhs_result isa Vector
@@ -1159,9 +1124,6 @@ macro formula(expr)
     return result_expr
 end
 
-# ============================================================================
-# Formula Compilation
-# ============================================================================
 
 """
     compile_arima_formula(formula::ModelFormula) -> Dict{Symbol, Tuple{Int,Int}}
@@ -1289,9 +1251,6 @@ function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:Abstra
     return selected
 end
 
-# ============================================================================
-# Pretty Printing
-# ============================================================================
 
 function Base.show(io::IO, term::ArimaOrderTerm)
     if term.min == term.max
@@ -1357,7 +1316,6 @@ end
 
 function Base.show(io::IO, term::CrostonTerm)
     args = String[]
-    # Always show method if not the default "hyndman"
     if term.method != "hyndman"
         push!(args, "method=\"$(term.method)\"")
     end

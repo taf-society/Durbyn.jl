@@ -3526,8 +3526,9 @@ A new `PanelData` with duplicates removed within each group.
 """
 function distinct(panel::PanelData, cols::Symbol...; keep_all::Bool=false)
     # Auto-include grouping columns to preserve panel structure
+    # Iterate in reverse so pushfirst! maintains original group order
     cols_list = collect(cols)
-    for g in panel.groups
+    for g in reverse(panel.groups)
         if !(g in cols_list)
             pushfirst!(cols_list, g)
         end

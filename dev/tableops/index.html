@@ -1,5 +1,27 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Table Operations · Durbyn.jl</title><meta name="title" content="Table Operations · Durbyn.jl"/><meta property="og:title" content="Table Operations · Durbyn.jl"/><meta property="twitter:title" content="Table Operations · Durbyn.jl"/><meta name="description" content="Documentation for Durbyn.jl."/><meta property="og:description" content="Documentation for Durbyn.jl."/><meta property="twitter:description" content="Documentation for Durbyn.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/theme.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="Durbyn.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">Durbyn.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../quickstart/">Quick Start</a></li><li><span class="tocitem">User Guide</span><ul><li><a class="tocitem" href="../grammar/">Grammar</a></li><li><a class="tocitem" href="../expsmoothing/">Exponential Smoothing</a></li><li><a class="tocitem" href="../theta/">Theta</a></li><li><a class="tocitem" href="../bats/">BATS</a></li><li><a class="tocitem" href="../tbats/">TBATS</a></li><li><a class="tocitem" href="../intermittent/">Intermittent Demand</a></li><li><a class="tocitem" href="../arima/">ARIMA</a></li><li><a class="tocitem" href="../arar/">ARAR</a></li><li><a class="tocitem" href="../ararma/">ARARMA</a></li><li><a class="tocitem" href="../stats/">Statistics</a></li><li><a class="tocitem" href="../optimize/">Optimization</a></li><li><a class="tocitem" href="../utils/">Utilities</a></li><li class="is-active"><a class="tocitem" href>Table Operations</a><ul class="internal"><li><a class="tocitem" href="#Overview"><span>Overview</span></a></li><li><a class="tocitem" href="#Getting-Started"><span>Getting Started</span></a></li><li><a class="tocitem" href="#Function-Reference"><span>Function Reference</span></a></li><li><a class="tocitem" href="#Core-Functions"><span>Core Functions</span></a></li><li><a class="tocitem" href="#Column-Selection-Helpers"><span>Column Selection Helpers</span></a></li><li><a class="tocitem" href="#Reshape-Functions"><span>Reshape Functions</span></a></li><li><a class="tocitem" href="#Combine-Functions"><span>Combine Functions</span></a></li><li><a class="tocitem" href="#Join-Functions"><span>Join Functions</span></a></li><li><a class="tocitem" href="#String-Functions"><span>String Functions</span></a></li><li><a class="tocitem" href="#Missing-Value-Functions"><span>Missing Value Functions</span></a></li><li><a class="tocitem" href="#Complete-Workflow-Examples"><span>Complete Workflow Examples</span></a></li><li><a class="tocitem" href="#Working-with-GroupedTable"><span>Working with GroupedTable</span></a></li><li><a class="tocitem" href="#PanelData-Operations"><span>PanelData Operations</span></a></li><li><a class="tocitem" href="#Tips-and-Best-Practices"><span>Tips and Best Practices</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">User Guide</a></li><li class="is-active"><a href>Table Operations</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Table Operations</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl/blob/main/docs/src/tableops.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Table-Operations"><a class="docs-heading-anchor" href="#Table-Operations">Table Operations</a><a id="Table-Operations-1"></a><a class="docs-heading-anchor-permalink" href="#Table-Operations" title="Permalink"></a></h1><p>The <code>TableOps</code> module provides a comprehensive set of data manipulation functions for working with Tables.jl-compatible data sources. These functions enable common data wrangling tasks like filtering, grouping, pivoting, and summarizing data.</p><h2 id="Overview"><a class="docs-heading-anchor" href="#Overview">Overview</a><a id="Overview-1"></a><a class="docs-heading-anchor-permalink" href="#Overview" title="Permalink"></a></h2><p><code>TableOps</code> is inspired by popular data manipulation libraries like dplyr and tidyr (R) and pandas (Python), but designed specifically for Julia&#39;s Tables.jl ecosystem. All functions work seamlessly with any Tables.jl-compatible data source, including:</p><ul><li>NamedTuples</li><li>DataFrames</li><li>CSV.File objects</li><li>Arrow.Table objects</li><li>And many others</li></ul><h2 id="Getting-Started"><a class="docs-heading-anchor" href="#Getting-Started">Getting Started</a><a id="Getting-Started-1"></a><a class="docs-heading-anchor-permalink" href="#Getting-Started" title="Permalink"></a></h2><pre><code class="language-julia hljs">using CSV
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Table Operations · Durbyn.jl</title><meta name="title" content="Table Operations · Durbyn.jl"/><meta property="og:title" content="Table Operations · Durbyn.jl"/><meta property="twitter:title" content="Table Operations · Durbyn.jl"/><meta name="description" content="Documentation for Durbyn.jl."/><meta property="og:description" content="Documentation for Durbyn.jl."/><meta property="twitter:description" content="Documentation for Durbyn.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/theme.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="Durbyn.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">Durbyn.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../quickstart/">Quick Start</a></li><li><span class="tocitem">User Guide</span><ul><li><a class="tocitem" href="../grammar/">Grammar</a></li><li><a class="tocitem" href="../expsmoothing/">Exponential Smoothing</a></li><li><a class="tocitem" href="../theta/">Theta</a></li><li><a class="tocitem" href="../bats/">BATS</a></li><li><a class="tocitem" href="../tbats/">TBATS</a></li><li><a class="tocitem" href="../intermittent/">Intermittent Demand</a></li><li><a class="tocitem" href="../arima/">ARIMA</a></li><li><a class="tocitem" href="../arar/">ARAR</a></li><li><a class="tocitem" href="../ararma/">ARARMA</a></li><li><a class="tocitem" href="../stats/">Statistics</a></li><li><a class="tocitem" href="../optimize/">Optimization</a></li><li><a class="tocitem" href="../utils/">Utilities</a></li><li class="is-active"><a class="tocitem" href>Table Operations</a><ul class="internal"><li><a class="tocitem" href="#Overview"><span>Overview</span></a></li><li><a class="tocitem" href="#Time-Series-and-Panel-Data"><span>Time Series and Panel Data</span></a></li><li><a class="tocitem" href="#Getting-Started"><span>Getting Started</span></a></li><li><a class="tocitem" href="#Function-Reference"><span>Function Reference</span></a></li><li><a class="tocitem" href="#Core-Functions"><span>Core Functions</span></a></li><li><a class="tocitem" href="#Column-Selection-Helpers"><span>Column Selection Helpers</span></a></li><li><a class="tocitem" href="#Reshape-Functions"><span>Reshape Functions</span></a></li><li><a class="tocitem" href="#Combine-Functions"><span>Combine Functions</span></a></li><li><a class="tocitem" href="#Join-Functions"><span>Join Functions</span></a></li><li><a class="tocitem" href="#String-Functions"><span>String Functions</span></a></li><li><a class="tocitem" href="#Missing-Value-Functions"><span>Missing Value Functions</span></a></li><li><a class="tocitem" href="#Complete-Workflow-Examples"><span>Complete Workflow Examples</span></a></li><li><a class="tocitem" href="#Working-with-GroupedTable"><span>Working with GroupedTable</span></a></li><li><a class="tocitem" href="#PanelData-Operations"><span>PanelData Operations</span></a></li><li><a class="tocitem" href="#Tips-and-Best-Practices"><span>Tips and Best Practices</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">User Guide</a></li><li class="is-active"><a href>Table Operations</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Table Operations</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl/blob/main/docs/src/tableops.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Table-Operations"><a class="docs-heading-anchor" href="#Table-Operations">Table Operations</a><a id="Table-Operations-1"></a><a class="docs-heading-anchor-permalink" href="#Table-Operations" title="Permalink"></a></h1><p>The <code>TableOps</code> module provides a comprehensive set of data manipulation functions for working with Tables.jl-compatible data sources. These functions enable common data wrangling tasks like filtering, grouping, pivoting, and summarizing data.</p><h2 id="Overview"><a class="docs-heading-anchor" href="#Overview">Overview</a><a id="Overview-1"></a><a class="docs-heading-anchor-permalink" href="#Overview" title="Permalink"></a></h2><p><code>TableOps</code> is inspired by popular data manipulation libraries like dplyr and tidyr (R) and pandas (Python), but designed specifically for Julia&#39;s Tables.jl ecosystem. All functions work seamlessly with any Tables.jl-compatible data source, including:</p><ul><li>NamedTuples</li><li>DataFrames</li><li>CSV.File objects</li><li>Arrow.Table objects</li><li>And many others</li></ul><h2 id="Time-Series-and-Panel-Data"><a class="docs-heading-anchor" href="#Time-Series-and-Panel-Data">Time Series and Panel Data</a><a id="Time-Series-and-Panel-Data-1"></a><a class="docs-heading-anchor-permalink" href="#Time-Series-and-Panel-Data" title="Permalink"></a></h2><p><strong>Durbyn.jl is a forecasting package</strong>, and time series data manipulation is at its core. The <code>TableOps</code> module is designed to work seamlessly with <code>PanelData</code>, a specialized data structure for handling multiple time series (panel/longitudinal data).</p><p>The <code>PanelData</code> interface follows the <strong><a href="https://otexts.com/fpp3/a-tidy-forecasting-workflow.html">tidy forecasting workflow</a></strong> from Hyndman &amp; Athanasopoulos (2021), providing a structured six-step approach:</p><ol><li><strong>Data Preparation</strong> — Load, reshape, and clean data using <code>TableOps</code></li><li><strong>Visualization</strong> — Explore patterns with <code>plot()</code> and <code>glimpse()</code></li><li><strong>Model Specification</strong> — Define models using the formula interface (<code>@formula</code>)</li><li><strong>Model Training</strong> — Fit models with <code>fit()</code>, producing fitted model objects</li><li><strong>Performance Evaluation</strong> — Assess accuracy with <code>accuracy()</code> and diagnostics</li><li><strong>Forecasting</strong> — Generate predictions with <code>forecast()</code>, returning tidy forecast tables</li></ol><h3 id="What-is-PanelData?"><a class="docs-heading-anchor" href="#What-is-PanelData?">What is PanelData?</a><a id="What-is-PanelData?-1"></a><a class="docs-heading-anchor-permalink" href="#What-is-PanelData?" title="Permalink"></a></h3><p><code>PanelData</code> wraps your tabular data with metadata that defines:</p><ul><li><strong>Grouping columns</strong>: Which columns identify individual time series (e.g., <code>:series_id</code>, <code>:store</code>, <code>:product</code>)</li><li><strong>Date column</strong>: Which column contains the time index</li><li><strong>Seasonal period (<code>m</code>)</strong>: The number of observations per seasonal cycle (e.g., 12 for monthly data with yearly seasonality)</li><li><strong>Frequency</strong>: The time frequency (<code>:daily</code>, <code>:weekly</code>, <code>:monthly</code>, <code>:quarterly</code>, <code>:yearly</code>)</li><li><strong>Target column</strong>: The variable to forecast</li></ul><h3 id="Why-PanelData-Matters-for-Forecasting"><a class="docs-heading-anchor" href="#Why-PanelData-Matters-for-Forecasting">Why PanelData Matters for Forecasting</a><a id="Why-PanelData-Matters-for-Forecasting-1"></a><a class="docs-heading-anchor-permalink" href="#Why-PanelData-Matters-for-Forecasting" title="Permalink"></a></h3><p>When working with forecasting, you typically need to:</p><ol><li><strong>Process multiple series independently</strong> - Each series may have different scales, patterns, and missing values</li><li><strong>Preserve time ordering</strong> - Operations should respect the temporal structure</li><li><strong>Handle missing time points</strong> - Gaps in time series need special treatment</li><li><strong>Compute group-relative features</strong> - Features like &quot;deviation from series mean&quot; require within-group calculations</li></ol><p><code>PanelData</code> enables all of this by automatically applying operations <strong>within each group</strong> while preserving the panel structure.</p><h3 id="Quick-Example"><a class="docs-heading-anchor" href="#Quick-Example">Quick Example</a><a id="Quick-Example-1"></a><a class="docs-heading-anchor-permalink" href="#Quick-Example" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+# Create panel data with multiple time series
+data = (
+    series = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
+    date = [1, 2, 3, 4, 1, 2, 3, 4],
+    value = [100, 110, 105, 120, 500, 520, 510, 540]
+)
+
+# Wrap in PanelData - this defines the panel structure
+panel = PanelData(data; groupby=:series, date=:date, m=12)
+
+# Now TableOps functions automatically work within each series
+# Compute series-relative features
+result = mutate(panel,
+    series_mean = d -&gt; fill(mean(d.value), length(d.value)),
+    deviation = d -&gt; d.value .- mean(d.value),
+    pct_change = d -&gt; [missing; diff(d.value) ./ d.value[1:end-1] .* 100]
+)
+
+# Fill missing values within each series (not across series!)
+filled = fill_missing(result, :pct_change; direction=:down)</code></pre><h3 id="When-to-Use-PanelData-vs-Regular-Tables"><a class="docs-heading-anchor" href="#When-to-Use-PanelData-vs-Regular-Tables">When to Use PanelData vs Regular Tables</a><a id="When-to-Use-PanelData-vs-Regular-Tables-1"></a><a class="docs-heading-anchor-permalink" href="#When-to-Use-PanelData-vs-Regular-Tables" title="Permalink"></a></h3><table><tr><th style="text-align: right">Use Case</th><th style="text-align: right">Data Type</th><th style="text-align: right">Why</th></tr><tr><td style="text-align: right">Single time series</td><td style="text-align: right">Regular table</td><td style="text-align: right">No grouping needed</td></tr><tr><td style="text-align: right">Multiple independent series</td><td style="text-align: right"><code>PanelData</code></td><td style="text-align: right">Operations apply per-series</td></tr><tr><td style="text-align: right">Cross-sectional data</td><td style="text-align: right">Regular table</td><td style="text-align: right">No time structure</td></tr><tr><td style="text-align: right">Panel/longitudinal data</td><td style="text-align: right"><code>PanelData</code></td><td style="text-align: right">Groups + time structure</td></tr><tr><td style="text-align: right">Forecasting preparation</td><td style="text-align: right"><code>PanelData</code></td><td style="text-align: right">Preserves metadata for models</td></tr></table><p>For detailed PanelData operations, see the <a href="#paneldata-operations">PanelData Operations</a> section below.</p><hr/><h2 id="Getting-Started"><a class="docs-heading-anchor" href="#Getting-Started">Getting Started</a><a id="Getting-Started-1"></a><a class="docs-heading-anchor-permalink" href="#Getting-Started" title="Permalink"></a></h2><pre><code class="language-julia hljs">using CSV
 using Downloads
 using Tables
 using Durbyn
@@ -70,7 +92,11 @@ query(tbl, row -&gt; row.price &gt; 15 &amp;&amp; row.quantity &gt; 30)
 
 # Using `in` for categorical filtering
 query(tbl, row -&gt; row.product in [&quot;A&quot;, &quot;C&quot;, &quot;E&quot;])
-# Output: (product = [&quot;A&quot;, &quot;C&quot;, &quot;E&quot;], price = [10, 15, 20], quantity = [100, 75, 60])</code></pre><p><strong>Parameters:</strong></p><ul><li><code>data</code> - Any Tables.jl-compatible data source</li><li><code>predicate</code> - A function that takes a row (as NamedTuple) and returns <code>Bool</code></li></ul><hr/><h3 id="distinct-Remove-Duplicate-Rows"><a class="docs-heading-anchor" href="#distinct-Remove-Duplicate-Rows"><code>distinct</code> - Remove Duplicate Rows</a><a id="distinct-Remove-Duplicate-Rows-1"></a><a class="docs-heading-anchor-permalink" href="#distinct-Remove-Duplicate-Rows" title="Permalink"></a></h3><p>Remove duplicate rows based on specified columns.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+# Output: (product = [&quot;A&quot;, &quot;C&quot;, &quot;E&quot;], price = [10, 15, 20], quantity = [100, 75, 60])</code></pre><p><strong>Parameters:</strong></p><ul><li><code>data</code> - Any Tables.jl-compatible data source</li><li><code>predicate</code> - A function that takes a row (as NamedTuple) and returns <code>Bool</code></li></ul><p><strong>Handling Missing Values:</strong> The predicate must return exactly <code>true</code> or <code>false</code>. If your data contains <code>missing</code> values and comparisons might return <code>missing</code>, use <code>coalesce</code>:</p><pre><code class="language-julia hljs"># This throws an error if price contains missing:
+query(tbl, row -&gt; row.price &gt; 15)
+
+# Use coalesce to treat missing as false:
+query(tbl, row -&gt; coalesce(row.price &gt; 15, false))</code></pre><hr/><h3 id="distinct-Remove-Duplicate-Rows"><a class="docs-heading-anchor" href="#distinct-Remove-Duplicate-Rows"><code>distinct</code> - Remove Duplicate Rows</a><a id="distinct-Remove-Duplicate-Rows-1"></a><a class="docs-heading-anchor-permalink" href="#distinct-Remove-Duplicate-Rows" title="Permalink"></a></h3><p>Remove duplicate rows based on specified columns.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
 
 tbl = (a = [1, 1, 2, 2, 3],
        b = [1, 1, 2, 3, 3],
@@ -279,7 +305,7 @@ glimpse(long)
 
 # Specify which columns to pivot
 pivot_longer(wide, id_cols=:date, value_cols=[:A, :B], names_to=:series, values_to=:value)
-# Only pivots A and B columns, C is excluded</code></pre><p><strong>Parameters:</strong></p><ul><li><code>data</code> - Any Tables.jl-compatible data source</li><li><code>id_cols</code> (keyword) - Column(s) to keep as identifiers (not pivoted)</li><li><code>value_cols</code> (keyword) - Column(s) to pivot (if empty, all non-id columns)</li><li><code>names_to</code> (keyword, default: <code>:variable</code>) - Name for the column containing original column names</li><li><code>values_to</code> (keyword, default: <code>:value</code>) - Name for the column containing values</li></ul><hr/><h3 id="pivot_wider-Long-to-Wide-Format"><a class="docs-heading-anchor" href="#pivot_wider-Long-to-Wide-Format"><code>pivot_wider</code> - Long to Wide Format</a><a id="pivot_wider-Long-to-Wide-Format-1"></a><a class="docs-heading-anchor-permalink" href="#pivot_wider-Long-to-Wide-Format" title="Permalink"></a></h3><p>Transform data from long format to wide format by spreading rows into columns.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+# Only pivots A and B columns, C is excluded</code></pre><p><strong>Parameters:</strong></p><ul><li><code>data</code> - Any Tables.jl-compatible data source</li><li><code>id_cols</code> (keyword) - Column(s) to keep as identifiers (not pivoted)</li><li><code>value_cols</code> (keyword) - Column(s) to pivot (if empty, all non-id columns)</li><li><code>names_to</code> (keyword, default: <code>:variable</code>) - Name for the column containing original column names</li><li><code>values_to</code> (keyword, default: <code>:value</code>) - Name for the column containing values</li></ul><p><strong>Column Selection Logic:</strong></p><ul><li>If both <code>id_cols</code> and <code>value_cols</code> are empty: all columns become value columns</li><li>If only <code>id_cols</code> is provided: all other columns become value columns</li><li>If only <code>value_cols</code> is provided: all other columns become id columns</li><li>If both are provided: unspecified columns are added to <code>id_cols</code> (not dropped)</li></ul><hr/><h3 id="pivot_wider-Long-to-Wide-Format"><a class="docs-heading-anchor" href="#pivot_wider-Long-to-Wide-Format"><code>pivot_wider</code> - Long to Wide Format</a><a id="pivot_wider-Long-to-Wide-Format-1"></a><a class="docs-heading-anchor-permalink" href="#pivot_wider-Long-to-Wide-Format" title="Permalink"></a></h3><p>Transform data from long format to wide format by spreading rows into columns.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
 
 # Long format data
 long = (date = [&quot;2024-01&quot;, &quot;2024-01&quot;, &quot;2024-01&quot;, &quot;2024-02&quot;, &quot;2024-02&quot;, &quot;2024-02&quot;],
@@ -448,7 +474,7 @@ separate(tbl3, :data; into=[:letter1, :num, :letter2], sep=r&quot;[0-9]&quot;)
 # Handling uneven splits (extra parts are dropped, missing parts become missing)
 tbl4 = (text = [&quot;a-b-c&quot;, &quot;x-y&quot;],)
 separate(tbl4, :text; into=[:p1, :p2, :p3], sep=&quot;-&quot;)
-# Output: (p1 = [&quot;a&quot;, &quot;x&quot;], p2 = [&quot;b&quot;, &quot;y&quot;], p3 = [&quot;c&quot;, missing])</code></pre><p><strong>Parameters:</strong></p><ul><li><code>data</code> - Any Tables.jl-compatible data source</li><li><code>col</code> - Column name to separate</li><li><code>into</code> (keyword) - Vector of names for the new columns</li><li><code>sep</code> (keyword, default: <code>&quot; &quot;</code>) - Separator pattern (<code>String</code>, <code>Char</code>, or <code>Regex</code>)</li><li><code>remove</code> (keyword, default: true) - Remove the input column</li><li><code>convert</code> (keyword, default: false) - Attempt to convert to numeric types</li></ul><hr/><h3 id="unite-Combine-Columns-into-One"><a class="docs-heading-anchor" href="#unite-Combine-Columns-into-One"><code>unite</code> - Combine Columns into One</a><a id="unite-Combine-Columns-into-One-1"></a><a class="docs-heading-anchor-permalink" href="#unite-Combine-Columns-into-One" title="Permalink"></a></h3><p>Combine multiple columns into a single character column.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+# Output: (p1 = [&quot;a&quot;, &quot;x&quot;], p2 = [&quot;b&quot;, &quot;y&quot;], p3 = [&quot;c&quot;, missing])</code></pre><p><strong>Parameters:</strong></p><ul><li><code>data</code> - Any Tables.jl-compatible data source</li><li><code>col</code> - Column name to separate</li><li><code>into</code> (keyword) - Vector of names for the new columns</li><li><code>sep</code> (keyword, default: <code>&quot; &quot;</code>) - Separator pattern (<code>String</code>, <code>Char</code>, or <code>Regex</code>)</li><li><code>remove</code> (keyword, default: true) - Remove the input column</li><li><code>convert</code> (keyword, default: false) - Attempt to convert to numeric types. Tries <code>Int</code> first, falls back to <code>Float64</code> if needed.</li></ul><hr/><h3 id="unite-Combine-Columns-into-One"><a class="docs-heading-anchor" href="#unite-Combine-Columns-into-One"><code>unite</code> - Combine Columns into One</a><a id="unite-Combine-Columns-into-One-1"></a><a class="docs-heading-anchor-permalink" href="#unite-Combine-Columns-into-One" title="Permalink"></a></h3><p>Combine multiple columns into a single character column.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
 
 tbl = (id = [1, 2, 3],
        year = [2020, 2021, 2022],
@@ -472,7 +498,7 @@ unite(tbl, :period, :year, :month; sep=&quot;/&quot;)
 # Multiple columns
 tbl2 = (a = [&quot;x&quot;, &quot;y&quot;], b = [1, 2], c = [&quot;!&quot;, &quot;?&quot;])
 unite(tbl2, :combined, :a, :b, :c; sep=&quot;&quot;)
-# Output: (combined = [&quot;x1!&quot;, &quot;y2?&quot;],)</code></pre><p><strong>Parameters:</strong></p><ul><li><code>data</code> - Any Tables.jl-compatible data source</li><li><code>new_col</code> - Name for the new combined column</li><li><code>cols...</code> - Columns to combine</li><li><code>sep</code> (keyword, default: <code>&quot;_&quot;</code>) - Separator between values</li><li><code>remove</code> (keyword, default: true) - Remove the input columns</li></ul><p><strong>Note:</strong> If any value is <code>missing</code>, the combined result is <code>missing</code>.</p><hr/><h2 id="Missing-Value-Functions"><a class="docs-heading-anchor" href="#Missing-Value-Functions">Missing Value Functions</a><a id="Missing-Value-Functions-1"></a><a class="docs-heading-anchor-permalink" href="#Missing-Value-Functions" title="Permalink"></a></h2><h3 id="fill_missing-Fill-Missing-Values"><a class="docs-heading-anchor" href="#fill_missing-Fill-Missing-Values"><code>fill_missing</code> - Fill Missing Values</a><a id="fill_missing-Fill-Missing-Values-1"></a><a class="docs-heading-anchor-permalink" href="#fill_missing-Fill-Missing-Values" title="Permalink"></a></h3><p>Fill missing values using the previous or next non-missing value (forward/backward fill).</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+# Output: (combined = [&quot;x1!&quot;, &quot;y2?&quot;],)</code></pre><p><strong>Parameters:</strong></p><ul><li><code>data</code> - Any Tables.jl-compatible data source</li><li><code>new_col</code> - Name for the new combined column</li><li><code>cols...</code> - Columns to combine (at least one required)</li><li><code>sep</code> (keyword, default: <code>&quot;_&quot;</code>) - Separator between values</li><li><code>remove</code> (keyword, default: true) - Remove the input columns</li></ul><p><strong>Note:</strong> If any value is <code>missing</code>, the combined result is <code>missing</code>.</p><hr/><h2 id="Missing-Value-Functions"><a class="docs-heading-anchor" href="#Missing-Value-Functions">Missing Value Functions</a><a id="Missing-Value-Functions-1"></a><a class="docs-heading-anchor-permalink" href="#Missing-Value-Functions" title="Permalink"></a></h2><h3 id="fill_missing-Fill-Missing-Values"><a class="docs-heading-anchor" href="#fill_missing-Fill-Missing-Values"><code>fill_missing</code> - Fill Missing Values</a><a id="fill_missing-Fill-Missing-Values-1"></a><a class="docs-heading-anchor-permalink" href="#fill_missing-Fill-Missing-Values" title="Permalink"></a></h3><p>Fill missing values using the previous or next non-missing value (forward/backward fill).</p><pre><code class="language-julia hljs">using Durbyn.TableOps
 
 tbl = (id = [1, 2, 3, 4, 5],
        value = [10, missing, missing, 40, missing])
@@ -650,61 +676,129 @@ summary = summarise(gt,
 glimpse(summary)
 
 # Ungroup to get back to regular table
-ungrouped = ungroup(gt)</code></pre><hr/><h2 id="PanelData-Operations"><a class="docs-heading-anchor" href="#PanelData-Operations">PanelData Operations</a><a id="PanelData-Operations-1"></a><a class="docs-heading-anchor-permalink" href="#PanelData-Operations" title="Permalink"></a></h2><p>TableOps provides special dispatches for <code>PanelData</code> objects that automatically apply operations <strong>within each group</strong>. This is particularly useful for time series panel data where you want to perform transformations independently for each series.</p><h3 id="Overview-2"><a class="docs-heading-anchor" href="#Overview-2">Overview</a><a class="docs-heading-anchor-permalink" href="#Overview-2" title="Permalink"></a></h3><p>When you call a TableOps function on a <code>PanelData</code> object:</p><ol><li>The data is automatically grouped by the panel&#39;s grouping columns</li><li>The operation is applied to each group independently</li><li>Results are combined back into a new <code>PanelData</code> with the same metadata</li></ol><h3 id="Supported-Operations"><a class="docs-heading-anchor" href="#Supported-Operations">Supported Operations</a><a id="Supported-Operations-1"></a><a class="docs-heading-anchor-permalink" href="#Supported-Operations" title="Permalink"></a></h3><table><tr><th style="text-align: right">Function</th><th style="text-align: right">PanelData Behavior</th></tr><tr><td style="text-align: right"><code>query</code></td><td style="text-align: right">Filter rows within each group</td></tr><tr><td style="text-align: right"><code>mutate</code></td><td style="text-align: right">Add/modify columns within each group (group-relative computations)</td></tr><tr><td style="text-align: right"><code>arrange</code></td><td style="text-align: right">Sort rows within each group</td></tr><tr><td style="text-align: right"><code>select</code></td><td style="text-align: right">Select columns (grouping columns auto-included)</td></tr><tr><td style="text-align: right"><code>summarise</code></td><td style="text-align: right">Summarize each group (returns NamedTuple)</td></tr><tr><td style="text-align: right"><code>distinct</code></td><td style="text-align: right">Remove duplicates within each group</td></tr><tr><td style="text-align: right"><code>fill_missing</code></td><td style="text-align: right">Fill missing values within each group</td></tr><tr><td style="text-align: right"><code>rename</code></td><td style="text-align: right">Rename columns (updates group metadata)</td></tr><tr><td style="text-align: right"><code>pivot_longer</code></td><td style="text-align: right">Pivot (grouping columns auto-added to id_cols)</td></tr><tr><td style="text-align: right"><code>pivot_wider</code></td><td style="text-align: right">Pivot (grouping columns auto-added to id_cols)</td></tr></table><h3 id="Example:-Group-Relative-Computations"><a class="docs-heading-anchor" href="#Example:-Group-Relative-Computations">Example: Group-Relative Computations</a><a id="Example:-Group-Relative-Computations-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Group-Relative-Computations" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn.TableOps
+ungrouped = ungroup(gt)</code></pre><hr/><h2 id="PanelData-Operations"><a class="docs-heading-anchor" href="#PanelData-Operations">PanelData Operations</a><a id="PanelData-Operations-1"></a><a class="docs-heading-anchor-permalink" href="#PanelData-Operations" title="Permalink"></a></h2><p>TableOps provides special dispatches for <code>PanelData</code> objects that automatically apply operations <strong>within each group</strong>. This is essential for time series forecasting where you need to process multiple series independently while preserving the panel structure.</p><h3 id="How-PanelData-Operations-Work"><a class="docs-heading-anchor" href="#How-PanelData-Operations-Work">How PanelData Operations Work</a><a id="How-PanelData-Operations-Work-1"></a><a class="docs-heading-anchor-permalink" href="#How-PanelData-Operations-Work" title="Permalink"></a></h3><p>When you call a TableOps function on a <code>PanelData</code> object:</p><ol><li>The data is automatically grouped by the panel&#39;s grouping columns</li><li>The operation is applied to each group independently</li><li>Results are combined back into a new <code>PanelData</code> with the same metadata</li></ol><p>This differs from regular table operations where the function operates on the entire dataset at once.</p><h3 id="Creating-PanelData"><a class="docs-heading-anchor" href="#Creating-PanelData">Creating PanelData</a><a id="Creating-PanelData-1"></a><a class="docs-heading-anchor-permalink" href="#Creating-PanelData" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn.ModelSpecs
+
+# Basic panel data with grouping and date
+panel = PanelData(data;
+    groupby = :series,           # Column(s) identifying each series
+    date = :date,                # Time index column
+    m = 12                       # Seasonal period (12 = monthly with yearly cycle)
+)
+
+# With frequency (m is inferred automatically)
+panel = PanelData(data;
+    groupby = [:store, :product],  # Multiple grouping columns
+    date = :date,
+    frequency = :monthly           # :daily, :weekly, :monthly, :quarterly, :yearly
+)
+
+# With target column for forecasting
+panel = PanelData(data;
+    groupby = :series,
+    date = :date,
+    frequency = :monthly,
+    target = :sales               # The variable to forecast
+)
+
+# With preprocessing: fill time gaps and impute missing values
+panel = PanelData(data;
+    groupby = :series,
+    date = :date,
+    frequency = :monthly,
+    target = :sales,
+    fill_time = true,             # Fill missing time points
+    target_na = (method = :interpolate,)  # Impute missing target values
+)
+
+# Balanced panel: all groups padded to same global time span
+panel = PanelData(data;
+    groupby = :series,
+    date = :date,
+    frequency = :monthly,
+    fill_time = true,
+    balanced = true               # All groups get same start/end dates
+)</code></pre><h3 id="PanelData-Fields"><a class="docs-heading-anchor" href="#PanelData-Fields">PanelData Fields</a><a id="PanelData-Fields-1"></a><a class="docs-heading-anchor-permalink" href="#PanelData-Fields" title="Permalink"></a></h3><table><tr><th style="text-align: right">Field</th><th style="text-align: right">Type</th><th style="text-align: right">Description</th></tr><tr><td style="text-align: right"><code>data</code></td><td style="text-align: right">Any</td><td style="text-align: right">The underlying table data</td></tr><tr><td style="text-align: right"><code>groups</code></td><td style="text-align: right"><code>Vector{Symbol}</code></td><td style="text-align: right">Columns that identify each series</td></tr><tr><td style="text-align: right"><code>date</code></td><td style="text-align: right"><code>Symbol</code> or <code>nothing</code></td><td style="text-align: right">Time index column</td></tr><tr><td style="text-align: right"><code>m</code></td><td style="text-align: right"><code>Int</code>, <code>Vector{Int}</code>, or <code>nothing</code></td><td style="text-align: right">Seasonal period(s)</td></tr><tr><td style="text-align: right"><code>frequency</code></td><td style="text-align: right"><code>Symbol</code> or <code>nothing</code></td><td style="text-align: right">Time frequency</td></tr><tr><td style="text-align: right"><code>target</code></td><td style="text-align: right"><code>Symbol</code> or <code>nothing</code></td><td style="text-align: right">Target variable for forecasting</td></tr></table><h3 id="Balanced-Panels"><a class="docs-heading-anchor" href="#Balanced-Panels">Balanced Panels</a><a id="Balanced-Panels-1"></a><a class="docs-heading-anchor-permalink" href="#Balanced-Panels" title="Permalink"></a></h3><p>When working with panel data, different groups (series) often have different time spans. For example:</p><ul><li>Store A might have data from January 2024 to December 2024</li><li>Store B might have data from March 2024 to November 2024</li></ul><p>By default, <code>fill_time=true</code> only fills gaps <strong>within each group&#39;s own time span</strong>. This creates an <strong>unbalanced panel</strong> where groups have different numbers of observations.</p><p>The <code>balanced=true</code> option creates a <strong>balanced panel</strong> by padding all groups to the <strong>global time span</strong> (from the earliest date to the latest date across all groups). Groups with shorter histories get <code>missing</code> values for dates outside their original range.</p><h4 id="When-to-Use-Balanced-Panels"><a class="docs-heading-anchor" href="#When-to-Use-Balanced-Panels">When to Use Balanced Panels</a><a id="When-to-Use-Balanced-Panels-1"></a><a class="docs-heading-anchor-permalink" href="#When-to-Use-Balanced-Panels" title="Permalink"></a></h4><table><tr><th style="text-align: right">Scenario</th><th style="text-align: right">Use <code>balanced</code></th><th style="text-align: right">Why</th></tr><tr><td style="text-align: right"><strong>Fixed-effects regression</strong></td><td style="text-align: right">✅ Yes</td><td style="text-align: right">Many panel regression methods require balanced panels</td></tr><tr><td style="text-align: right"><strong>Matrix-based models</strong></td><td style="text-align: right">✅ Yes</td><td style="text-align: right">Models that stack series into matrices need equal lengths</td></tr><tr><td style="text-align: right"><strong>Comparing series statistics</strong></td><td style="text-align: right">✅ Yes</td><td style="text-align: right">Fair comparison requires same observation periods</td></tr><tr><td style="text-align: right"><strong>Cross-sectional aggregation</strong></td><td style="text-align: right">✅ Yes</td><td style="text-align: right">Computing &quot;average across all stores on date X&quot; needs all stores present</td></tr><tr><td style="text-align: right"><strong>Independent forecasting</strong></td><td style="text-align: right">❌ No</td><td style="text-align: right">When forecasting each series independently, unbalanced is fine</td></tr><tr><td style="text-align: right"><strong>Memory-constrained</strong></td><td style="text-align: right">❌ No</td><td style="text-align: right">Balanced panels can be much larger if time spans vary widely</td></tr></table><h4 id="Example:-Balanced-vs-Unbalanced"><a class="docs-heading-anchor" href="#Example:-Balanced-vs-Unbalanced">Example: Balanced vs Unbalanced</a><a id="Example:-Balanced-vs-Unbalanced-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Balanced-vs-Unbalanced" title="Permalink"></a></h4><pre><code class="language-julia hljs">using Durbyn.ModelSpecs
+using Dates
+
+# Store A: Jan 3-5 (3 days), Store B: Jan 1-4 (4 days)
+data = (
+    store = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
+    date = [Date(2024,1,3), Date(2024,1,4), Date(2024,1,5),
+            Date(2024,1,1), Date(2024,1,2), Date(2024,1,3), Date(2024,1,4)],
+    sales = [130, 140, 150, 100, 110, 120, 130]
+)
+
+# Unbalanced: each group keeps its own time span
+panel_unbalanced = PanelData(data;
+    groupby = :store,
+    date = :date,
+    frequency = :daily,
+    fill_time = true
+)
+# Store A: 3 rows (Jan 3-5)
+# Store B: 4 rows (Jan 1-4)
+# Total: 7 rows
+
+# Balanced: all groups padded to global span (Jan 1-5)
+panel_balanced = PanelData(data;
+    groupby = :store,
+    date = :date,
+    frequency = :daily,
+    fill_time = true,
+    balanced = true
+)
+# Store A: 5 rows (Jan 1-5, with missing for Jan 1-2)
+# Store B: 5 rows (Jan 1-5, with missing for Jan 5)
+# Total: 10 rows</code></pre><p>After balancing, Store A has <code>missing</code> sales for January 1-2 (before its data began), and Store B has <code>missing</code> sales for January 5 (after its data ended). You can then use <code>target_na</code> or <code>fill_missing</code> to impute these values if needed.</p><hr/><h3 id="Supported-Operations-Reference"><a class="docs-heading-anchor" href="#Supported-Operations-Reference">Supported Operations Reference</a><a id="Supported-Operations-Reference-1"></a><a class="docs-heading-anchor-permalink" href="#Supported-Operations-Reference" title="Permalink"></a></h3><table><tr><th style="text-align: right">Function</th><th style="text-align: right">PanelData Behavior</th><th style="text-align: right">Returns</th></tr><tr><td style="text-align: right"><code>query</code></td><td style="text-align: right">Filter rows within each group</td><td style="text-align: right"><code>PanelData</code></td></tr><tr><td style="text-align: right"><code>mutate</code></td><td style="text-align: right">Add/modify columns within each group</td><td style="text-align: right"><code>PanelData</code></td></tr><tr><td style="text-align: right"><code>arrange</code></td><td style="text-align: right">Sort rows within each group</td><td style="text-align: right"><code>PanelData</code></td></tr><tr><td style="text-align: right"><code>select</code></td><td style="text-align: right">Select columns (grouping/date columns auto-included)</td><td style="text-align: right"><code>PanelData</code></td></tr><tr><td style="text-align: right"><code>distinct</code></td><td style="text-align: right">Remove duplicates within each group (grouping columns auto-included)</td><td style="text-align: right"><code>PanelData</code></td></tr><tr><td style="text-align: right"><code>fill_missing</code></td><td style="text-align: right">Fill missing values within each group</td><td style="text-align: right"><code>PanelData</code></td></tr><tr><td style="text-align: right"><code>rename</code></td><td style="text-align: right">Rename columns (updates group/date metadata)</td><td style="text-align: right"><code>PanelData</code></td></tr><tr><td style="text-align: right"><code>pivot_longer</code></td><td style="text-align: right">Pivot to long (grouping/date columns auto-added to id_cols)</td><td style="text-align: right"><code>PanelData</code></td></tr><tr><td style="text-align: right"><code>pivot_wider</code></td><td style="text-align: right">Pivot to wide (grouping/date columns auto-added to id_cols)</td><td style="text-align: right"><code>PanelData</code></td></tr><tr><td style="text-align: right"><code>summarise</code></td><td style="text-align: right">Summarize each group (collapses time dimension)</td><td style="text-align: right"><code>NamedTuple</code></td></tr></table><hr/><h3 id="query-Filter-Rows-Per-Series"><a class="docs-heading-anchor" href="#query-Filter-Rows-Per-Series"><code>query</code> - Filter Rows Per Series</a><a id="query-Filter-Rows-Per-Series-1"></a><a class="docs-heading-anchor-permalink" href="#query-Filter-Rows-Per-Series" title="Permalink"></a></h3><p>Filter rows independently within each series based on a predicate.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
+        date = [1, 2, 3, 4, 1, 2, 3, 4],
+        value = [10, 25, 15, 30, 100, 150, 120, 180])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Keep only rows where value &gt; 20 (applied per series)
+filtered = query(panel, row -&gt; row.value &gt; 20)
+glimpse(filtered)
+# Series A: keeps dates 2, 4 (values 25, 30)
+# Series B: keeps all dates (all values &gt; 20)</code></pre><p><strong>Use Case</strong>: Remove outliers, filter to specific time periods, or apply series-specific conditions.</p><hr/><h3 id="mutate-Group-Relative-Feature-Engineering"><a class="docs-heading-anchor" href="#mutate-Group-Relative-Feature-Engineering"><code>mutate</code> - Group-Relative Feature Engineering</a><a id="mutate-Group-Relative-Feature-Engineering-1"></a><a class="docs-heading-anchor-permalink" href="#mutate-Group-Relative-Feature-Engineering" title="Permalink"></a></h3><p>Create new columns with computations that operate within each series. This is essential for creating features like:</p><ul><li>Series-level statistics (mean, std, min, max)</li><li>Deviations from series mean (centering/normalization)</li><li>Lagged values and differences</li><li>Rolling statistics</li><li>Percentage of series total</li></ul><pre><code class="language-julia hljs">using Durbyn.TableOps
 using Durbyn.ModelSpecs
 using Statistics
 
-# Panel data with multiple time series
 data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
         date = [1, 2, 3, 4, 1, 2, 3, 4],
-        value = [10, 20, 30, 40, 100, 200, 300, 400])
+        value = [100, 110, 90, 120, 500, 520, 480, 540])
 
 panel = PanelData(data; groupby=:series, date=:date, m=12)
 
-# mutate computes within each group
+# Feature engineering within each series
 result = mutate(panel,
-    group_mean = d -&gt; fill(mean(d.value), length(d.value)),
+    # Series statistics (broadcast to all rows)
+    series_mean = d -&gt; fill(mean(d.value), length(d.value)),
+    series_std = d -&gt; fill(std(d.value), length(d.value)),
+
+    # Centering and scaling
     centered = d -&gt; d.value .- mean(d.value),
-    pct_of_group = d -&gt; d.value ./ sum(d.value) .* 100)
+    scaled = d -&gt; (d.value .- mean(d.value)) ./ std(d.value),
 
-glimpse(result)
-# Series A: group_mean=25, centered=[-15,-5,5,15], pct=[10,20,30,40]
-# Series B: group_mean=250, centered=[-150,-50,50,150], pct=[10,20,30,40]</code></pre><h3 id="Example:-Fill-Missing-Values-Per-Series"><a class="docs-heading-anchor" href="#Example:-Fill-Missing-Values-Per-Series">Example: Fill Missing Values Per Series</a><a id="Example:-Fill-Missing-Values-Per-Series-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Fill-Missing-Values-Per-Series" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn.TableOps
+    # Percentage of series total
+    pct_of_total = d -&gt; d.value ./ sum(d.value) .* 100,
+
+    # Lagged values
+    lag1 = d -&gt; [missing; d.value[1:end-1]],
+
+    # Differences
+    diff1 = d -&gt; [missing; diff(d.value)],
+
+    # Percent change
+    pct_change = d -&gt; [missing; diff(d.value) ./ d.value[1:end-1] .* 100]
+)
+
+glimpse(result)</code></pre><p><strong>Key Point</strong>: The function receives only the current group&#39;s data, so <code>mean(d.value)</code> computes the mean for that series only, not the global mean.</p><hr/><h3 id="arrange-Sort-Within-Each-Series"><a class="docs-heading-anchor" href="#arrange-Sort-Within-Each-Series"><code>arrange</code> - Sort Within Each Series</a><a id="arrange-Sort-Within-Each-Series-1"></a><a class="docs-heading-anchor-permalink" href="#arrange-Sort-Within-Each-Series" title="Permalink"></a></h3><p>Sort rows by one or more columns within each series independently.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
 using Durbyn.ModelSpecs
 
-# Panel data with missing values in different positions per series
-data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
-        date = [1, 2, 3, 1, 2, 3],
-        value = [10, missing, 30, missing, 200, missing])
-
-panel = PanelData(data; groupby=:series, date=:date)
-
-# Forward fill within each series independently
-filled = fill_missing(panel, :value; direction=:down)
-glimpse(filled)
-# Series A: [10, 10, 30]
-# Series B: [missing, 200, 200]</code></pre><h3 id="Example:-Summarize-Panel-Data"><a class="docs-heading-anchor" href="#Example:-Summarize-Panel-Data">Example: Summarize Panel Data</a><a id="Example:-Summarize-Panel-Data-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Summarize-Panel-Data" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn.TableOps
-using Durbyn.ModelSpecs
-using Statistics
-
-data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
-        date = [1, 2, 3, 1, 2, 3],
-        value = [10, 20, 30, 100, 200, 300])
-
-panel = PanelData(data; groupby=:series, date=:date)
-
-# Compute statistics per series
-stats = summarise(panel,
-    mean_val = :value =&gt; mean,
-    std_val = :value =&gt; std,
-    min_val = :value =&gt; minimum,
-    max_val = :value =&gt; maximum,
-    n = d -&gt; length(d.value))
-
-println(stats)
-# (series = [&quot;A&quot;, &quot;B&quot;], mean_val = [20.0, 200.0], ...)</code></pre><h3 id="Example:-Sort-and-Filter-Within-Groups"><a class="docs-heading-anchor" href="#Example:-Sort-and-Filter-Within-Groups">Example: Sort and Filter Within Groups</a><a id="Example:-Sort-and-Filter-Within-Groups-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Sort-and-Filter-Within-Groups" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn.TableOps
-using Durbyn.ModelSpecs
-
+# Data with dates out of order
 data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
         date = [3, 1, 2, 2, 3, 1],
         value = [30, 10, 20, 200, 300, 100])
@@ -713,15 +807,207 @@ panel = PanelData(data; groupby=:series)
 
 # Sort by date within each series
 sorted = arrange(panel, :date)
-glimpse(sorted)
 # Series A: dates [1, 2, 3], values [10, 20, 30]
 # Series B: dates [1, 2, 3], values [100, 200, 300]
 
-# Filter high values per group
-high_values = query(panel, row -&gt; row.value &gt; 15)
-glimpse(high_values)
-# Series A: keeps rows where value &gt; 15
-# Series B: keeps rows where value &gt; 15</code></pre><h3 id="Key-Benefits"><a class="docs-heading-anchor" href="#Key-Benefits">Key Benefits</a><a id="Key-Benefits-1"></a><a class="docs-heading-anchor-permalink" href="#Key-Benefits" title="Permalink"></a></h3><ol><li><strong>Automatic grouping</strong>: No need to manually call <code>groupby</code> - the panel&#39;s groups are used automatically</li><li><strong>Preserved metadata</strong>: Operations return a new <code>PanelData</code> with the same grouping columns, date column, and seasonal period</li><li><strong>Group-relative computations</strong>: In <code>mutate</code>, functions receive only the current group&#39;s data, enabling computations like group means, centering, and percentages</li><li><strong>Independent processing</strong>: Each group is processed independently, which is essential for time series operations like forward-filling</li></ol><hr/><h2 id="Tips-and-Best-Practices"><a class="docs-heading-anchor" href="#Tips-and-Best-Practices">Tips and Best Practices</a><a id="Tips-and-Best-Practices-1"></a><a class="docs-heading-anchor-permalink" href="#Tips-and-Best-Practices" title="Permalink"></a></h2><ol><li><p><strong>Use <code>glimpse</code> frequently</strong>: It&#39;s a quick way to understand your data&#39;s structure and verify transformations.</p></li><li><p><strong>Predicate functions in <code>query</code></strong>: Keep them simple and readable. For complex filters, break them into logical parts or define named functions.</p></li><li><p><strong>Type stability in <code>mutate</code></strong>: Ensure your computed columns have consistent types across all rows.</p></li><li><p><strong>Group before summarize</strong>: Always create a <code>GroupedTable</code> with <code>groupby</code> before using <code>summarise</code>.</p></li><li><p><strong>Column naming</strong>: Use descriptive names in <code>mutate</code> and <code>summarise</code> to make your data self-documenting.</p></li><li><p><strong>Pivot operations</strong>:</p><ul><li>Use <code>pivot_longer</code> when you need to reshape data for modeling or plotting</li><li>Use <code>pivot_wider</code> when you need to create summary tables or compare values across categories</li></ul></li><li><p><strong>Memory efficiency</strong>: TableOps functions return new <code>NamedTuple</code>s, so be mindful of memory when working with very large datasets.</p></li><li><p><strong>Chaining operations</strong>: Use intermediate variables for readability:</p><pre><code class="language-julia hljs"># Recommended: Clear and debuggable
+# Sort descending
+sorted_desc = arrange(panel, :date =&gt; :desc)
+
+# Multi-column sort
+arrange(panel, :category, :date =&gt; :desc)</code></pre><p><strong>Use Case</strong>: Ensure time ordering after joins or other operations that may scramble row order.</p><hr/><h3 id="select-Select-Columns-(Preserving-Structure)"><a class="docs-heading-anchor" href="#select-Select-Columns-(Preserving-Structure)"><code>select</code> - Select Columns (Preserving Structure)</a><a id="select-Select-Columns-(Preserving-Structure)-1"></a><a class="docs-heading-anchor-permalink" href="#select-Select-Columns-(Preserving-Structure)" title="Permalink"></a></h3><p>Select columns from the panel. <strong>Grouping columns and date column are automatically included</strong> to preserve the panel structure.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;],
+        date = [1, 2, 1, 2],
+        value = [100, 110, 200, 210],
+        extra = [1, 2, 3, 4],
+        temp = [20, 21, 22, 23])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Select value column - series and date are auto-included
+result = select(panel, :value)
+# Result has columns: series, date, value
+
+# Rename while selecting
+result = select(panel, :sales =&gt; :value)
+# Result has columns: series, date, sales
+
+# Attempting to exclude grouping columns throws an error
+# select(panel, :value)  # :series is always included</code></pre><p><strong>Structural Protection</strong>: The panel&#39;s grouping and date columns cannot be accidentally dropped, ensuring the panel structure remains valid.</p><hr/><h3 id="distinct-Unique-Rows-Per-Series"><a class="docs-heading-anchor" href="#distinct-Unique-Rows-Per-Series"><code>distinct</code> - Unique Rows Per Series</a><a id="distinct-Unique-Rows-Per-Series-1"></a><a class="docs-heading-anchor-permalink" href="#distinct-Unique-Rows-Per-Series" title="Permalink"></a></h3><p>Remove duplicate rows within each series. <strong>Grouping columns are automatically included</strong> in the uniqueness check.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
+        category = [&quot;X&quot;, &quot;X&quot;, &quot;Y&quot;, &quot;X&quot;, &quot;X&quot;, &quot;Y&quot;],
+        value = [100, 100, 200, 300, 300, 400])
+
+panel = PanelData(data; groupby=:series)
+
+# Distinct by category within each series
+# (series is auto-included in uniqueness check)
+result = distinct(panel, :category)
+# Series A: keeps one &quot;X&quot; and one &quot;Y&quot;
+# Series B: keeps one &quot;X&quot; and one &quot;Y&quot;
+
+# Keep all columns while deduping
+result = distinct(panel, :category; keep_all=true)</code></pre><hr/><h3 id="fill_missing-Forward/Backward-Fill-Per-Series"><a class="docs-heading-anchor" href="#fill_missing-Forward/Backward-Fill-Per-Series"><code>fill_missing</code> - Forward/Backward Fill Per Series</a><a id="fill_missing-Forward/Backward-Fill-Per-Series-1"></a><a class="docs-heading-anchor-permalink" href="#fill_missing-Forward/Backward-Fill-Per-Series" title="Permalink"></a></h3><p>Fill missing values using previous or next values <strong>within each series</strong>. This prevents values from one series &quot;leaking&quot; into another.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
+        date = [1, 2, 3, 4, 1, 2, 3, 4],
+        value = [10, missing, missing, 40, missing, 200, missing, 400])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Forward fill within each series
+filled_down = fill_missing(panel, :value; direction=:down)
+# Series A: [10, 10, 10, 40]
+# Series B: [missing, 200, 200, 400]  # First value stays missing
+
+# Backward fill
+filled_up = fill_missing(panel, :value; direction=:up)
+# Series A: [10, 40, 40, 40]
+# Series B: [200, 200, 400, 400]
+
+# Forward then backward (fills all if possible)
+filled_both = fill_missing(panel, :value; direction=:downup)
+# Series A: [10, 10, 10, 40]
+# Series B: [200, 200, 200, 400]</code></pre><p><strong>Critical for Time Series</strong>: Without PanelData grouping, forward fill would carry values across series boundaries, corrupting your data.</p><hr/><h3 id="rename-Rename-Columns-(Updating-Metadata)"><a class="docs-heading-anchor" href="#rename-Rename-Columns-(Updating-Metadata)"><code>rename</code> - Rename Columns (Updating Metadata)</a><a id="rename-Rename-Columns-(Updating-Metadata)-1"></a><a class="docs-heading-anchor-permalink" href="#rename-Rename-Columns-(Updating-Metadata)" title="Permalink"></a></h3><p>Rename columns in the panel. If you rename a grouping column or date column, the panel metadata is automatically updated.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (id = [&quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;],
+        time = [1, 2, 1, 2],
+        val = [100, 110, 200, 210])
+
+panel = PanelData(data; groupby=:id, date=:time)
+
+# Rename grouping column
+renamed = rename(panel, :series =&gt; :id)
+# panel.groups is now [:series]
+
+# Rename date column
+renamed = rename(panel, :date =&gt; :time)
+# panel.date is now :date
+
+# Rename regular column
+renamed = rename(panel, :value =&gt; :val)</code></pre><hr/><h3 id="pivot_longer-Wide-to-Long-(Preserving-Structure)"><a class="docs-heading-anchor" href="#pivot_longer-Wide-to-Long-(Preserving-Structure)"><code>pivot_longer</code> - Wide to Long (Preserving Structure)</a><a id="pivot_longer-Wide-to-Long-(Preserving-Structure)-1"></a><a class="docs-heading-anchor-permalink" href="#pivot_longer-Wide-to-Long-(Preserving-Structure)" title="Permalink"></a></h3><p>Pivot from wide to long format. <strong>Grouping and date columns are automatically added to <code>id_cols</code></strong> to preserve the panel structure.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+# Wide format: multiple value columns
+wide_data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;],
+             date = [1, 2, 1, 2],
+             sales = [100, 110, 200, 210],
+             costs = [80, 85, 150, 160])
+
+panel = PanelData(wide_data; groupby=:series, date=:date)
+
+# Pivot sales and costs to long format
+# series and date are auto-included as id_cols
+long = pivot_longer(panel,
+    value_cols = [:sales, :costs],
+    names_to = :metric,
+    values_to = :amount)
+
+glimpse(long)
+# Columns: series, date, metric, amount
+# Each original row becomes 2 rows (one for sales, one for costs)</code></pre><hr/><h3 id="pivot_wider-Long-to-Wide-(Preserving-Structure)"><a class="docs-heading-anchor" href="#pivot_wider-Long-to-Wide-(Preserving-Structure)"><code>pivot_wider</code> - Long to Wide (Preserving Structure)</a><a id="pivot_wider-Long-to-Wide-(Preserving-Structure)-1"></a><a class="docs-heading-anchor-permalink" href="#pivot_wider-Long-to-Wide-(Preserving-Structure)" title="Permalink"></a></h3><p>Pivot from long to wide format. <strong>Grouping and date columns are automatically added to <code>id_cols</code></strong>.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+# Long format
+long_data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
+             date = [1, 1, 2, 2, 1, 1, 2, 2],
+             metric = [&quot;sales&quot;, &quot;costs&quot;, &quot;sales&quot;, &quot;costs&quot;, &quot;sales&quot;, &quot;costs&quot;, &quot;sales&quot;, &quot;costs&quot;],
+             amount = [100, 80, 110, 85, 200, 150, 210, 160])
+
+panel = PanelData(long_data; groupby=:series, date=:date)
+
+# Pivot metric values to columns
+wide = pivot_wider(panel,
+    names_from = :metric,
+    values_from = :amount)
+
+glimpse(wide)
+# Columns: series, date, sales, costs</code></pre><hr/><h3 id="summarise-Aggregate-Per-Series"><a class="docs-heading-anchor" href="#summarise-Aggregate-Per-Series"><code>summarise</code> - Aggregate Per Series</a><a id="summarise-Aggregate-Per-Series-1"></a><a class="docs-heading-anchor-permalink" href="#summarise-Aggregate-Per-Series" title="Permalink"></a></h3><p>Compute summary statistics for each series. <strong>Returns a <code>NamedTuple</code></strong> (not PanelData) since the time dimension is collapsed.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;, &quot;B&quot;],
+        date = [1, 2, 3, 4, 1, 2, 3, 4],
+        value = [100, 110, 90, 120, 500, 520, 480, 540])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Compute statistics per series
+stats = summarise(panel,
+    n = d -&gt; length(d.value),
+    mean_val = :value =&gt; mean,
+    std_val = :value =&gt; std,
+    min_val = :value =&gt; minimum,
+    max_val = :value =&gt; maximum,
+    range_val = d -&gt; maximum(d.value) - minimum(d.value),
+    cv = d -&gt; std(d.value) / mean(d.value)  # Coefficient of variation
+)
+
+glimpse(stats)
+# (series = [&quot;A&quot;, &quot;B&quot;], n = [4, 4], mean_val = [105.0, 510.0], ...)</code></pre><p><strong>Note</strong>: <code>summarise</code> returns a <code>NamedTuple</code>, not <code>PanelData</code>, because the result has one row per series (time dimension is gone).</p><hr/><h3 id="Using-across-with-PanelData"><a class="docs-heading-anchor" href="#Using-across-with-PanelData">Using <code>across</code> with PanelData</a><a id="Using-across-with-PanelData-1"></a><a class="docs-heading-anchor-permalink" href="#Using-across-with-PanelData" title="Permalink"></a></h3><p>Apply the same function(s) across multiple columns within each group.</p><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+data = (series = [&quot;A&quot;, &quot;A&quot;, &quot;B&quot;, &quot;B&quot;],
+        date = [1, 2, 1, 2],
+        sales = [100.0, 110.0, 200.0, 210.0],
+        costs = [80.0, 85.0, 150.0, 160.0],
+        units = [10.0, 11.0, 20.0, 21.0])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Summarize multiple columns
+stats = summarise(panel, across([:sales, :costs, :units], :mean =&gt; mean, :sum =&gt; sum))
+# Result has: series, sales_mean, sales_sum, costs_mean, costs_sum, units_mean, units_sum</code></pre><hr/><h3 id="Complete-Forecasting-Workflow-Example"><a class="docs-heading-anchor" href="#Complete-Forecasting-Workflow-Example">Complete Forecasting Workflow Example</a><a id="Complete-Forecasting-Workflow-Example-1"></a><a class="docs-heading-anchor-permalink" href="#Complete-Forecasting-Workflow-Example" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+# Raw retail data with multiple stores
+raw_data = (
+    store = [&quot;S1&quot;, &quot;S1&quot;, &quot;S1&quot;, &quot;S1&quot;, &quot;S2&quot;, &quot;S2&quot;, &quot;S2&quot;, &quot;S2&quot;],
+    date = [1, 2, 3, 4, 1, 2, 3, 4],
+    sales = [100.0, missing, 120.0, 130.0, 500.0, 520.0, missing, 560.0],
+    promo = [0, 1, 0, 1, 1, 0, 1, 0]
+)
+
+# Step 1: Create PanelData
+panel = PanelData(raw_data; groupby=:store, date=:date, m=12, target=:sales)
+
+# Step 2: Handle missing values per series
+cleaned = fill_missing(panel, :sales; direction=:downup)
+
+# Step 3: Feature engineering within each series
+features = mutate(cleaned,
+    # Lag features
+    sales_lag1 = d -&gt; [missing; d.sales[1:end-1]],
+    sales_lag2 = d -&gt; [missing; missing; d.sales[1:end-2]],
+
+    # Rolling mean (simple 2-period)
+    sales_ma2 = d -&gt; [missing; (d.sales[1:end-1] .+ d.sales[2:end]) ./ 2],
+
+    # Series-level features
+    series_mean = d -&gt; fill(mean(d.sales), length(d.sales)),
+    deviation = d -&gt; d.sales .- mean(d.sales),
+
+    # Trend proxy
+    time_idx = d -&gt; collect(1:length(d.sales))
+)
+
+# Step 4: Filter to rows with complete features
+model_data = query(features, r -&gt; !ismissing(r.sales_lag2))
+
+# Step 5: Summarize for exploration
+summary = summarise(panel,
+    n = d -&gt; length(d.sales),
+    mean_sales = :sales =&gt; x -&gt; mean(skipmissing(x)),
+    total_sales = :sales =&gt; x -&gt; sum(skipmissing(x)))
+
+glimpse(summary)</code></pre><hr/><h3 id="Key-Benefits-of-PanelData-Operations"><a class="docs-heading-anchor" href="#Key-Benefits-of-PanelData-Operations">Key Benefits of PanelData Operations</a><a id="Key-Benefits-of-PanelData-Operations-1"></a><a class="docs-heading-anchor-permalink" href="#Key-Benefits-of-PanelData-Operations" title="Permalink"></a></h3><ol><li><p><strong>Automatic Grouping</strong>: No need to manually <code>groupby</code> - the panel&#39;s group structure is used automatically</p></li><li><p><strong>Preserved Metadata</strong>: Operations return a new <code>PanelData</code> with the same grouping columns, date column, seasonal period, and other metadata</p></li><li><p><strong>Structural Protection</strong>: Grouping and date columns cannot be accidentally dropped by <code>select</code> or <code>distinct</code></p></li><li><p><strong>Group-Relative Computations</strong>: In <code>mutate</code>, functions receive only the current group&#39;s data, enabling proper within-series feature engineering</p></li><li><p><strong>Independent Processing</strong>: Each group is processed independently, preventing data leakage between series (critical for <code>fill_missing</code>)</p></li><li><p><strong>Seamless Forecasting Integration</strong>: The preserved metadata flows directly into Durbyn&#39;s forecasting models</p></li></ol><hr/><h2 id="Tips-and-Best-Practices"><a class="docs-heading-anchor" href="#Tips-and-Best-Practices">Tips and Best Practices</a><a id="Tips-and-Best-Practices-1"></a><a class="docs-heading-anchor-permalink" href="#Tips-and-Best-Practices" title="Permalink"></a></h2><ol><li><p><strong>Use <code>glimpse</code> frequently</strong>: It&#39;s a quick way to understand your data&#39;s structure and verify transformations.</p></li><li><p><strong>Predicate functions in <code>query</code></strong>: Keep them simple and readable. For complex filters, break them into logical parts or define named functions.</p></li><li><p><strong>Type stability in <code>mutate</code></strong>: Ensure your computed columns have consistent types across all rows.</p></li><li><p><strong>Group before summarize</strong>: Always create a <code>GroupedTable</code> with <code>groupby</code> before using <code>summarise</code>.</p></li><li><p><strong>Column naming</strong>: Use descriptive names in <code>mutate</code> and <code>summarise</code> to make your data self-documenting.</p></li><li><p><strong>Pivot operations</strong>:</p><ul><li>Use <code>pivot_longer</code> when you need to reshape data for modeling or plotting</li><li>Use <code>pivot_wider</code> when you need to create summary tables or compare values across categories</li></ul></li><li><p><strong>Memory efficiency</strong>: TableOps functions return new <code>NamedTuple</code>s, so be mindful of memory when working with very large datasets.</p></li><li><p><strong>Chaining operations</strong>: Use intermediate variables for readability:</p><pre><code class="language-julia hljs"># Recommended: Clear and debuggable
 filtered = query(data, row -&gt; row.x &gt; 0)
 grouped = groupby(filtered, :category)
-result = summarise(grouped, mean_x = :x =&gt; mean)</code></pre></li><li><p><strong><code>fill_missing</code> direction</strong>: Use <code>:downup</code> or <code>:updown</code> to ensure all missing values are filled when you have missing values at both ends.</p></li><li><p><strong><code>complete</code> for time series</strong>: Use with <code>fill_missing</code> to handle gaps in time series data:  <code>julia  data |&gt; x -&gt; complete(x, :date) |&gt; x -&gt; fill_missing(x, :value)</code></p></li></ol></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../utils/">« Utilities</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Tuesday 27 January 2026 12:57">Tuesday 27 January 2026</span>. Using Julia version 1.12.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+result = summarise(grouped, mean_x = :x =&gt; mean)</code></pre></li><li><p><strong><code>fill_missing</code> direction</strong>: Use <code>:downup</code> or <code>:updown</code> to ensure all missing values are filled when you have missing values at both ends.</p></li><li><p><strong><code>complete</code> for time series</strong>: Use with <code>fill_missing</code> to handle gaps in time series data:  <code>julia  data |&gt; x -&gt; complete(x, :date) |&gt; x -&gt; fill_missing(x, :value)</code></p></li></ol></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../utils/">« Utilities</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Tuesday 27 January 2026 19:10">Tuesday 27 January 2026</span>. Using Julia version 1.12.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

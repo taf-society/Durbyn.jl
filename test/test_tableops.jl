@@ -1786,3 +1786,51 @@ end
         @test_throws KeyError summarise(gt, bad = :y => sum)
     end
 end
+
+# =============================================================================
+# Cross join eltype preservation
+# =============================================================================
+@testset "cross join eltype preservation" begin
+    left = (a = [1, 2], x = [10, 20])
+    right = (b = [3, 4], y = [30.0, 40.0])
+
+    @testset "left_join cross preserves right column eltype" begin
+        result = left_join(left, right, by=Symbol[])
+        @test eltype(result.y) == Float64  # Not Union{Missing, Float64}
+        @test eltype(result.x) == Int
+    end
+
+    @testset "right_join cross preserves left column eltype" begin
+        result = right_join(left, right, by=Symbol[])
+        @test eltype(result.x) == Int  # Not Union{Missing, Int}
+        @test eltype(result.y) == Float64
+    end
+
+    @testset "full_join cross preserves both column eltypes" begin
+        result = full_join(left, right, by=Symbol[])
+        @test eltype(result.x) == Int  # Not Union{Missing, Int}
+        @test eltype(result.y) == Float64  # Not Union{Missing, Float64}
+    end
+end
+
+# =============================================================================
+# across with inference-failing functions
+# =============================================================================
+@testset "across with median preserves eltype" begin
+    using Statistics
+
+    tbl = (g = [1, 1, 2, 2], x = [1.0, 2.0, 3.0, 4.0])
+    gt = groupby(tbl, :g)
+
+    @testset "median result is Float64 not Any" begin
+        result = summarise(gt, across([:x], :med => median))
+        @test eltype(result.x_med) == Float64
+        @test result.x_med == [1.5, 3.5]
+    end
+
+    @testset "mixed inference-failing and passing functions" begin
+        result = summarise(gt, across([:x], :med => median, :sum => sum))
+        @test eltype(result.x_med) == Float64
+        @test eltype(result.x_sum) == Float64
+    end
+end

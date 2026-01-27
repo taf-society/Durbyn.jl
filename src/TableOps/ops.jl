@@ -2690,13 +2690,14 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         end
     end
 
-    # Preserve eltypes: right columns may have missing when no match
+    # Preserve eltypes: right columns may have missing when no match (but not for cross joins)
     columns_out = Vector{Vector}(undef, length(out_names))
     for (i, name) in enumerate(out_names)
         _, table, orig_name = out_sources[i]
         source_eltype = table == 1 ? eltype(ct_left[orig_name]) : eltype(ct_right[orig_name])
         # Right columns can have missing added when left row has no match
-        hint_eltype = table == 2 ? Union{Missing, source_eltype} : source_eltype
+        # Cross joins have no missing (every left row matches every right row)
+        hint_eltype = (table == 2 && !is_cross_join) ? Union{Missing, source_eltype} : source_eltype
         columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=hint_eltype)
     end
     return _assemble(collect(out_names), columns_out)
@@ -2846,13 +2847,14 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         end
     end
 
-    # Preserve eltypes: left columns may have missing when no match
+    # Preserve eltypes: left columns may have missing when no match (but not for cross joins)
     columns_out = Vector{Vector}(undef, length(out_names))
     for (i, name) in enumerate(out_names)
         _, table, orig_name = out_sources[i]
         source_eltype = table == 1 ? eltype(ct_left[orig_name]) : eltype(ct_right[orig_name])
         # Left columns can have missing added when right row has no match
-        hint_eltype = table == 1 ? Union{Missing, source_eltype} : source_eltype
+        # Cross joins have no missing (every left row matches every right row)
+        hint_eltype = (table == 1 && !is_cross_join) ? Union{Missing, source_eltype} : source_eltype
         columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=hint_eltype)
     end
     return _assemble(collect(out_names), columns_out)
@@ -3014,13 +3016,15 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         end
     end
 
-    # Preserve eltypes: both sides may have missing when no match
+    # Preserve eltypes: both sides may have missing when no match (but not for cross joins)
     columns_out = Vector{Vector}(undef, length(out_names))
     for (i, name) in enumerate(out_names)
         _, table, orig_name = out_sources[i]
         source_eltype = table == 1 ? eltype(ct_left[orig_name]) : eltype(ct_right[orig_name])
         # Both left and right columns can have missing added
-        columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=Union{Missing, source_eltype})
+        # Cross joins have no missing (every left row matches every right row)
+        hint_eltype = is_cross_join ? source_eltype : Union{Missing, source_eltype}
+        columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=hint_eltype)
     end
     return _assemble(collect(out_names), columns_out)
 end

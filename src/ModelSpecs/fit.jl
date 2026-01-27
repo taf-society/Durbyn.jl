@@ -456,16 +456,12 @@ function fit(spec::CrostonSpec, data;
 
     parent_mod = parentmodule(@__MODULE__)
 
-    # Route based on method
     croston_fit = if spec.method == "hyndman"
-        # Use ExponentialSmoothing.croston
         Exp_mod = getfield(parent_mod, :ExponentialSmoothing)
         Exp_mod.croston(target_vector, seasonal_period; pairs(fit_options)...)
     else
-        # Use IntermittentDemand module (classic, sba, sbj)
         ID_mod = getfield(parent_mod, :IntermittentDemand)
 
-        # Build IntermittentDemand parameters
         id_options = Dict{Symbol, Any}()
         id_options[:init_strategy] = something(spec.init_strategy, "mean")
         id_options[:number_of_params] = something(spec.number_of_params, 2)
@@ -473,10 +469,8 @@ function fit(spec::CrostonSpec, data;
         id_options[:optimize_init] = something(spec.optimize_init, true)
         id_options[:rm_missing] = something(spec.rm_missing, false)
 
-        # Merge with user-provided kwargs (user options take precedence)
         merge!(id_options, fit_options)
 
-        # Call the appropriate method
         if spec.method == "classic"
             ID_mod.croston_classic(target_vector; pairs(id_options)...)
         elseif spec.method == "sba"
@@ -891,7 +885,6 @@ fitted.metrics    # Dict of metrics by model name
 ```
 """
 function fit(collection::ModelCollection, data; kwargs...)
-    # Fit each spec
     fitted_models = [fit(spec, data; kwargs...) for spec in collection.specs]
 
     return FittedModelCollection(fitted_models, collection.names)
@@ -1454,7 +1447,6 @@ fitted = fit(spec, data, bc_lower=0.0, bc_upper=1.5)
 spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
 fitted = fit(spec, data, groupby = [:product, :location])
 
-# Parallel grouped fitting with error collection
 fitted = fit(spec, data, groupby=:product, parallel=true, fail_fast=false)
 ```
 
@@ -1602,7 +1594,6 @@ STM (Simple), OTM (Optimized), DSTM (Dynamic Simple), DOTM (Dynamic Optimized).
 spec = ThetaSpec(@formula(sales = theta()))
 fitted = fit(spec, data, m=12)
 
-# Specific model variant
 spec = ThetaSpec(@formula(sales = theta(model=:OTM)))
 fitted = fit(spec, data, m=12)
 
@@ -1610,11 +1601,9 @@ fitted = fit(spec, data, m=12)
 spec = ThetaSpec(@formula(sales = theta(model=:OTM, alpha=0.3)))
 fitted = fit(spec, data, m=12)
 
-# Panel data fit
 spec = ThetaSpec(@formula(sales = theta()))
 fitted = fit(spec, data, m=12, groupby=[:product, :region])
 
-# Parallel grouped fitting with error collection
 fitted = fit(spec, data, m=12, groupby=:product, parallel=true, fail_fast=false)
 ```
 """

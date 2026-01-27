@@ -1,16 +1,12 @@
 using Dates
 
-# =============================================================================
-# Frequency handling
-# =============================================================================
-
 """
 Valid frequency symbols for time series data.
 """
 const VALID_FREQUENCIES = Set([
-    :second, :minute, :halfhour, :hour, :hourly,  # Sub-daily
-    :daily, :day, :businessday, :weekly, :week,   # Daily+
-    :biweekly, :monthly, :month, :quarterly,      # Longer periods
+    :second, :minute, :halfhour, :hour, :hourly,
+    :daily, :day, :businessday, :weekly, :week,
+    :biweekly, :monthly, :month, :quarterly,
     :quarter, :yearly, :year
 ])
 
@@ -27,27 +23,23 @@ Returns the most common seasonality for each frequency.
 """
 function frequency_to_m(frequency::Symbol)
     freq_map = Dict(
-        # Sub-daily
-        :second => 60,      # minute seasonality
-        :minute => 60,      # hour seasonality
-        :halfhour => 48,    # day seasonality (48 half-hours per day)
-        :hour => 24,        # day seasonality
-        :hourly => 24,      # alias
-        # Daily
-        :day => 7,          # week seasonality
-        :daily => 7,        # alias
-        :businessday => 5,  # week seasonality (5 business days)
-        # Weekly+
-        :week => 52,        # year seasonality
-        :weekly => 52,      # alias
-        :biweekly => 26,    # year seasonality
-        # Monthly+
-        :month => 12,       # year seasonality
-        :monthly => 12,     # alias
-        :quarter => 4,      # year seasonality
-        :quarterly => 4,    # alias
-        :year => 1,         # no sub-yearly seasonality
-        :yearly => 1,       # alias
+        :second => 60,
+        :minute => 60,
+        :halfhour => 48,
+        :hour => 24,
+        :hourly => 24,
+        :day => 7,
+        :daily => 7,
+        :businessday => 5,
+        :week => 52,
+        :weekly => 52,
+        :biweekly => 26,
+        :month => 12,
+        :monthly => 12,
+        :quarter => 4,
+        :quarterly => 4,
+        :year => 1,
+        :yearly => 1,
     )
 
     haskey(freq_map, frequency) || throw(ArgumentError(
@@ -70,7 +62,7 @@ function frequency_to_period(frequency::Symbol)
         :hourly => Hour(1),
         :day => Day(1),
         :daily => Day(1),
-        :businessday => Day(1),  # Handled specially in fill_time
+        :businessday => Day(1),
         :week => Week(1),
         :weekly => Week(1),
         :biweekly => Week(2),
@@ -146,9 +138,6 @@ function m_description(m::Int, frequency::Union{Symbol, Nothing})
     return get(desc_map, (frequency, m), "")
 end
 
-# =============================================================================
-# Multi-seasonality support
-# =============================================================================
 
 """
     supports_multi_seasonality(spec) -> Bool
@@ -188,9 +177,6 @@ function resolve_m(m::Vector{Int}, spec)
     end
 end
 
-# =============================================================================
-# Imputation metadata
-# =============================================================================
 
 """
     ImputationMeta
@@ -224,9 +210,6 @@ function Base.show(io::IO, meta::TimeFillMeta)
     print(io, "TimeFillMeta($(meta.n_added) rows added, step=$(meta.step))")
 end
 
-# =============================================================================
-# PanelData struct
-# =============================================================================
 
 """
     PanelData(data; groupby=nothing, date=nothing, m=nothing, frequency=nothing,
@@ -296,24 +279,20 @@ struct PanelData
     date::Union{Symbol, Nothing}
     m::Union{Int, Vector{Int}, Nothing}
 
-    # New fields
     frequency::Union{Symbol, Nothing}
     target::Union{Symbol, Nothing}
 
-    # Preprocessing metadata
     time_fill_meta::Union{TimeFillMeta, Nothing}
     target_meta::Union{ImputationMeta, Nothing}
     xreg_meta::Dict{Symbol, ImputationMeta}
 end
 
-# Helper to normalize groupby argument
 _normalize_groups(::Nothing) = Symbol[]
 _normalize_groups(col::Symbol) = Symbol[col]
 function _normalize_groups(cols::AbstractVector)
     return Symbol[Symbol(c) for c in cols]
 end
 
-# Helper to normalize m argument
 _normalize_m(::Nothing) = nothing
 _normalize_m(m::Int) = m
 _normalize_m(m::Vector{Int}) = m
@@ -338,13 +317,11 @@ function PanelData(data;
     groups = _normalize_groups(groupby)
     m_val = _normalize_m(m)
 
-    # Validate frequency if provided
     if frequency !== nothing && !(frequency in VALID_FREQUENCIES)
         throw(ArgumentError(
             "Unknown frequency :$frequency. Valid frequencies: $(join(sort(collect(VALID_FREQUENCIES)), ", "))"))
     end
 
-    # Derive m from frequency if not provided
     if m_val === nothing && frequency !== nothing
         m_val = frequency_to_m(frequency)
         desc = m_description(m_val, frequency)
@@ -352,35 +329,28 @@ function PanelData(data;
         @info "Seasonal period m=$m_val$desc_str inferred from frequency=:$frequency"
     end
 
-    # Initialize metadata
     time_fill_meta = nothing
     target_meta = nothing
     xreg_meta = Dict{Symbol, ImputationMeta}()
 
-    # Get column table for preprocessing
     ct = Tables.columntable(data)
     processed_data = ct
 
-    # Validate date column exists if specified
     if date !== nothing
         col_names = propertynames(ct)
         date in col_names || throw(ArgumentError("Date column :$date not found in data"))
     end
 
-    # Validate target column exists if specified
     if target !== nothing
         col_names = propertynames(ct)
         target in col_names || throw(ArgumentError("Target column :$target not found in data"))
     end
 
-    # === Preprocessing Pipeline ===
 
-    # 1. Sort by groups and date
     if date !== nothing
         processed_data = _sort_panel_data(processed_data, groups, date)
     end
 
-    # 2. Fill time gaps if requested
     if fill_time
         if date === nothing
             throw(ArgumentError("Cannot fill_time without a date column"))
@@ -395,7 +365,6 @@ function PanelData(data;
         throw(ArgumentError("balanced=true requires fill_time=true"))
     end
 
-    # 3. Fill target gaps if requested
     if target_na !== nothing
         if target === nothing
             throw(ArgumentError("Cannot use target_na without specifying target"))
@@ -405,7 +374,6 @@ function PanelData(data;
             processed_data, groups, target, target_na)
     end
 
-    # 4. Fill exogenous column gaps if requested
     if xreg_na !== nothing
         col_names = propertynames(processed_data)
         for (col, config) in xreg_na
@@ -420,9 +388,6 @@ function PanelData(data;
                      time_fill_meta, target_meta, xreg_meta)
 end
 
-# =============================================================================
-# Preprocessing helper functions
-# =============================================================================
 
 """
 Sort data by groups and date.
@@ -430,13 +395,10 @@ Sort data by groups and date.
 function _sort_panel_data(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol)
     n = length(ct[first(propertynames(ct))])
 
-    # Build sort keys
     sort_cols = vcat(groups, [date])
 
-    # Create sort permutation
     perm = sortperm(1:n, by = i -> Tuple(ct[col][i] for col in sort_cols))
 
-    # Apply permutation to all columns
     col_names = propertynames(ct)
     new_cols = [ct[col][perm] for col in col_names]
 
@@ -454,7 +416,6 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
     col_names = propertynames(ct)
 
     if isempty(groups)
-        # Single series - complete globally
         if balanced
             @warn "balanced=true has no effect without groupby columns"
         end
@@ -462,10 +423,8 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
         min_date, max_date = extrema(dates)
         complete_dates = collect(min_date:period:max_date)
 
-        # Build lookup for existing dates
         date_to_idx = Dict(d => i for (i, d) in enumerate(dates))
 
-        # Create new data with complete dates
         n_complete = length(complete_dates)
         new_cols = Dict{Symbol, Vector}()
 
@@ -489,7 +448,6 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
             new_cols[col] = new_vec
         end
 
-        # Reconstruct in original column order
         result_cols = [new_cols[col] for col in col_names]
         result = NamedTuple{col_names}(Tuple(result_cols))
 
@@ -502,11 +460,8 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
 
         return result, meta
     else
-        # Grouped data - complete per group
-        # Group the data
         group_indices = _group_indices(ct, groups)
 
-        # Compute global bounds if balanced panel requested
         if balanced
             global_min, global_max = extrema(ct[date])
         end
@@ -515,7 +470,6 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
         total_added = 0
 
         for idxs in group_indices
-            # Extract subgroup
             subgroup = NamedTuple{col_names}(Tuple(ct[col][idxs] for col in col_names))
 
             dates = subgroup[date]
@@ -526,7 +480,6 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
             end
             complete_dates = collect(min_date:period:max_date)
 
-            # Build lookup
             date_to_idx = Dict(d => i for (i, d) in enumerate(dates))
 
             n_complete = length(complete_dates)
@@ -534,12 +487,10 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
 
             new_cols[date] = complete_dates
 
-            # Group columns - fill with constant value
             for g in groups
                 new_cols[g] = fill(subgroup[g][1], n_complete)
             end
 
-            # Other columns - missing for new rows
             for col in col_names
                 if col == date || col in groups
                     continue
@@ -564,7 +515,6 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
             total_added += n_complete - length(idxs)
         end
 
-        # Combine all groups
         combined = _vcat_namedtuples(results)
         n_total = length(combined[date])
         meta = TimeFillMeta(total_added, n_total, period)
@@ -590,14 +540,11 @@ function _fill_column_gaps(ct::NamedTuple, groups::Vector{Symbol}, col::Symbol,
     old_vec = ct[col]
     n_total = length(old_vec)
 
-    # Create imputed flag column
     imputed_col = Symbol(string(col) * "_is_imputed")
 
     if isempty(groups)
-        # Single series
         new_vec, is_imputed = _apply_fill_strategy(old_vec, strategy, max_gap)
 
-        # Build new data with imputed column
         new_cols = Vector{Any}(undef, length(col_names) + 1)
         new_col_names = (col_names..., imputed_col)
 
@@ -612,10 +559,8 @@ function _fill_column_gaps(ct::NamedTuple, groups::Vector{Symbol}, col::Symbol,
 
         result = NamedTuple{new_col_names}(Tuple(new_cols))
     else
-        # Grouped data
         group_indices = _group_indices(ct, groups)
 
-        # Initialize result vectors
         result_vec = copy(Vector{Union{Missing, eltype(old_vec)}}(old_vec))
         is_imputed_vec = fill(false, n_total)
 
@@ -626,7 +571,6 @@ function _fill_column_gaps(ct::NamedTuple, groups::Vector{Symbol}, col::Symbol,
             is_imputed_vec[idxs] = is_imp
         end
 
-        # Build new data with imputed column
         new_cols = Vector{Any}(undef, length(col_names) + 1)
         new_col_names = (col_names..., imputed_col)
 
@@ -664,7 +608,6 @@ function _apply_fill_strategy(vec::AbstractVector, strategy::Symbol, max_gap::In
     is_imputed = fill(false, n)
 
     if strategy == :locf || strategy == :down
-        # Last observation carried forward
         last_valid = nothing
         gap_count = 0
 
@@ -682,7 +625,6 @@ function _apply_fill_strategy(vec::AbstractVector, strategy::Symbol, max_gap::In
         end
 
     elseif strategy == :nocb || strategy == :up
-        # Next observation carried backward
         next_valid = nothing
         gap_count = 0
 
@@ -700,14 +642,11 @@ function _apply_fill_strategy(vec::AbstractVector, strategy::Symbol, max_gap::In
         end
 
     elseif strategy == :linear
-        # Linear interpolation
         i = 1
         while i <= n
             if ismissing(result[i])
-                # Find start of gap
                 gap_start = i
 
-                # Find end of gap
                 gap_end = i
                 while gap_end <= n && ismissing(result[gap_end])
                     gap_end += 1
@@ -716,7 +655,6 @@ function _apply_fill_strategy(vec::AbstractVector, strategy::Symbol, max_gap::In
 
                 gap_length = gap_end - gap_start + 1
 
-                # Check bounds and max_gap
                 if gap_start > 1 && gap_end < n && gap_length <= max_gap
                     v1 = result[gap_start - 1]
                     v2 = result[gap_end + 1]
@@ -737,7 +675,6 @@ function _apply_fill_strategy(vec::AbstractVector, strategy::Symbol, max_gap::In
         end
 
     elseif strategy == :zero
-        # Fill with zeros
         for i in 1:n
             if ismissing(result[i])
                 result[i] = zero(nonmissingtype(eltype(vec)))
@@ -759,7 +696,6 @@ Get indices for each group.
 function _group_indices(ct::NamedTuple, groups::Vector{Symbol})
     n = length(ct[first(propertynames(ct))])
 
-    # Build group keys
     group_keys = Dict{Any, Vector{Int}}()
 
     for i in 1:n
@@ -789,9 +725,6 @@ function _vcat_namedtuples(nts::Vector{<:NamedTuple})
     return NamedTuple{col_names}(Tuple(result_cols))
 end
 
-# =============================================================================
-# Accessor functions
-# =============================================================================
 
 """Return the grouping columns."""
 groups(panel::PanelData) = panel.groups
@@ -808,9 +741,6 @@ frequency(panel::PanelData) = panel.frequency
 """Return the target column name."""
 target(panel::PanelData) = panel.target
 
-# =============================================================================
-# Display methods
-# =============================================================================
 
 function Base.show(io::IO, panel::PanelData)
     group_str = isempty(panel.groups) ? "(none)" : join(string.(panel.groups), ", ")
@@ -827,12 +757,10 @@ function Base.show(io::IO, ::MIME"text/plain", panel::PanelData)
     println(io, "PanelData")
     println(io, "─────────")
 
-    # Core info
     group_str = isempty(panel.groups) ? "(none)" : join(string.(panel.groups), ", ")
     println(io, "  Groups: ", group_str)
     println(io, "  Date column: ", isnothing(panel.date) ? "(none)" : string(panel.date))
 
-    # Frequency and m
     if panel.frequency !== nothing
         println(io, "  Frequency: ", format_frequency(panel.frequency))
     end
@@ -846,18 +774,15 @@ function Base.show(io::IO, ::MIME"text/plain", panel::PanelData)
         end
     end
 
-    # Target
     if panel.target !== nothing
         println(io, "  Target: ", panel.target)
     end
 
-    # Data info
     ct = Tables.columntable(panel.data)
     n_rows = length(ct[first(propertynames(ct))])
     n_cols = length(propertynames(ct))
     println(io, "  Data: $n_rows rows × $n_cols columns")
 
-    # Preprocessing metadata
     has_meta = panel.time_fill_meta !== nothing ||
                panel.target_meta !== nothing ||
                !isempty(panel.xreg_meta)
@@ -883,11 +808,4 @@ function Base.show(io::IO, ::MIME"text/plain", panel::PanelData)
     end
 end
 
-# =============================================================================
-# Multi-seasonality trait overrides
-# Note: These are defined here because panel_data.jl is included after the
-# spec files, so the types are available.
-# =============================================================================
-
-# TBATS supports multiple seasonal periods via Fourier representation
 supports_multi_seasonality(::TbatsSpec) = true

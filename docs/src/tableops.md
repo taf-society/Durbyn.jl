@@ -183,6 +183,17 @@ query(tbl, row -> row.product in ["A", "C", "E"])
 - `data` - Any Tables.jl-compatible data source
 - `predicate` - A function that takes a row (as NamedTuple) and returns `Bool`
 
+**Handling Missing Values:**
+The predicate must return exactly `true` or `false`. If your data contains `missing` values and comparisons might return `missing`, use `coalesce`:
+
+```julia
+# This throws an error if price contains missing:
+query(tbl, row -> row.price > 15)
+
+# Use coalesce to treat missing as false:
+query(tbl, row -> coalesce(row.price > 15, false))
+```
+
 ---
 
 ### `distinct` - Remove Duplicate Rows
@@ -551,6 +562,12 @@ pivot_longer(wide, id_cols=:date, value_cols=[:A, :B], names_to=:series, values_
 - `value_cols` (keyword) - Column(s) to pivot (if empty, all non-id columns)
 - `names_to` (keyword, default: `:variable`) - Name for the column containing original column names
 - `values_to` (keyword, default: `:value`) - Name for the column containing values
+
+**Column Selection Logic:**
+- If both `id_cols` and `value_cols` are empty: all columns become value columns
+- If only `id_cols` is provided: all other columns become value columns
+- If only `value_cols` is provided: all other columns become id columns
+- If both are provided: unspecified columns are added to `id_cols` (not dropped)
 
 ---
 
@@ -934,7 +951,7 @@ separate(tbl4, :text; into=[:p1, :p2, :p3], sep="-")
 - `into` (keyword) - Vector of names for the new columns
 - `sep` (keyword, default: `" "`) - Separator pattern (`String`, `Char`, or `Regex`)
 - `remove` (keyword, default: true) - Remove the input column
-- `convert` (keyword, default: false) - Attempt to convert to numeric types
+- `convert` (keyword, default: false) - Attempt to convert to numeric types. Tries `Int` first, falls back to `Float64` if needed.
 
 ---
 
@@ -973,7 +990,7 @@ unite(tbl2, :combined, :a, :b, :c; sep="")
 **Parameters:**
 - `data` - Any Tables.jl-compatible data source
 - `new_col` - Name for the new combined column
-- `cols...` - Columns to combine
+- `cols...` - Columns to combine (at least one required)
 - `sep` (keyword, default: `"_"`) - Separator between values
 - `remove` (keyword, default: true) - Remove the input columns
 

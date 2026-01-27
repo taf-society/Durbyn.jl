@@ -1656,3 +1656,133 @@ end
         @test_throws ArgumentError inner_join(left, right, by=[:a => :c, :b => :c])
     end
 end
+
+# ============================================================================
+# groupby duplicate column validation
+# ============================================================================
+@testset "groupby duplicate column validation" begin
+    @testset "duplicate grouping columns throws error" begin
+        tbl = (a = [1, 2, 3], b = [4, 5, 6])
+        @test_throws ArgumentError groupby(tbl, :a, :a)
+    end
+
+    @testset "duplicate in vector form throws error" begin
+        tbl = (a = [1, 2, 3], b = [4, 5, 6])
+        @test_throws ArgumentError groupby(tbl, [:a, :b, :a])
+    end
+end
+
+# ============================================================================
+# Empty PanelData operations preserve schema
+# ============================================================================
+@testset "empty PanelData operations preserve schema" begin
+    using Durbyn.ModelSpecs
+
+    @testset "mutate on empty grouped panel adds columns" begin
+        # Create empty panel with groups
+        data = (series = String[], date = Int[], value = Float64[])
+        panel = PanelData(data; groupby=:series, date=:date)
+        @test length(panel.data.series) == 0
+
+        # mutate should still add the new column
+        result = mutate(panel, doubled = d -> d.value .* 2)
+        @test haskey(result.data, :doubled)
+        @test length(result.data.series) == 0  # still empty
+    end
+
+    @testset "select on empty grouped panel works" begin
+        data = (series = String[], date = Int[], value = Float64[], extra = Int[])
+        panel = PanelData(data; groupby=:series, date=:date)
+
+        result = select(panel, :value)
+        @test haskey(result.data, :series)  # group kept
+        @test haskey(result.data, :value)
+        @test !haskey(result.data, :extra)  # not selected
+    end
+end
+
+# ============================================================================
+# bind_rows preserves eltypes for empty tables
+# ============================================================================
+@testset "bind_rows preserves eltypes" begin
+    @testset "empty tables preserve element type" begin
+        t1 = (a = Int[], b = Float64[])
+        t2 = (a = Int[], b = Float64[])
+        result = bind_rows(t1, t2)
+
+        @test eltype(result.a) == Int
+        @test eltype(result.b) == Float64
+        @test length(result.a) == 0
+    end
+
+    @testset "mixed empty and non-empty preserves type" begin
+        t1 = (a = Int[],)
+        t2 = (a = [1, 2, 3],)
+        result = bind_rows(t1, t2)
+
+        @test eltype(result.a) == Int
+        @test result.a == [1, 2, 3]
+    end
+
+    @testset "type promotion across tables" begin
+        t1 = (a = Int[1, 2],)
+        t2 = (a = Float64[3.0, 4.0],)
+        result = bind_rows(t1, t2)
+
+        # Should promote to Float64
+        @test eltype(result.a) <: AbstractFloat
+    end
+
+    @testset "missing columns get Union{Missing, T} eltype" begin
+        # Table 1 has :a (Int, empty), Table 2 has :b (Int, non-empty)
+        t1 = (a = Int[],)
+        t2 = (b = [1],)
+        result = bind_rows(t1, t2)
+
+        # Both columns should be Union{Missing, Int}
+        @test eltype(result.a) == Union{Missing, Int}
+        @test eltype(result.b) == Union{Missing, Int}
+        @test isequal(result.a, [missing])
+        @test result.b == [1]
+    end
+end
+
+# ============================================================================
+# summarise on empty grouped data preserves eltypes
+# ============================================================================
+@testset "summarise empty grouped data" begin
+    @testset "key columns preserve eltype" begin
+        tbl = (x = Int[], y = Float64[])
+        gt = groupby(tbl, :x)
+        result = summarise(gt, total = :y => sum)
+
+        @test eltype(result.x) == Int
+        @test length(result.x) == 0
+    end
+
+    @testset "summary columns infer eltype from function" begin
+        tbl = (x = Int[], y = Int[])
+        gt = groupby(tbl, :x)
+        result = summarise(gt, total = :y => sum)
+
+        # sum on empty Int[] returns Int (0)
+        @test eltype(result.total) == Int
+    end
+
+    @testset "mean on empty Float64 infers Float64" begin
+        using Statistics
+        tbl = (x = Int[], y = Float64[])
+        gt = groupby(tbl, :x)
+        result = summarise(gt, avg = :y => mean)
+
+        @test eltype(result.avg) == Float64
+    end
+
+    @testset "invalid column throws error on empty data" begin
+        tbl = (g = Int[], x = Float64[])
+        gt = groupby(tbl, :g)
+
+        # :y does not exist - should throw KeyError even on empty data
+        @test_throws KeyError summarise(gt, bad = :y => sum)
+    end
+end

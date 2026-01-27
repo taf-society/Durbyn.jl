@@ -404,6 +404,12 @@ end
 
 function groupby(data, cols::AbstractVector{Symbol})
     isempty(cols) && throw(ArgumentError("groupby requires at least one grouping column"))
+
+    # Check for duplicate grouping columns
+    if length(cols) != length(Set(cols))
+        throw(ArgumentError("Duplicate grouping columns: $(cols)"))
+    end
+
     ct = _to_columns(data)
     n = _check_lengths(ct)
 
@@ -515,6 +521,42 @@ function _compute_summary(spec, subgroup::NamedTuple)
 end
 
 """
+    _infer_summary_type(spec, data::NamedTuple) -> Type
+
+Attempt to infer the return type of a summary specification on empty data.
+Falls back to Any if type cannot be determined.
+Throws KeyError for invalid column names (validation errors should propagate).
+"""
+function _infer_summary_type(spec, data::NamedTuple)
+    if spec isa Pair
+        col = first(spec)
+        func = last(spec)
+        if col isa Symbol
+            # Validate column exists (throws KeyError if not)
+            col in propertynames(data) || throw(KeyError(col))
+            # Try calling func on empty typed vector
+            col_eltype = eltype(data[col])
+            empty_col = Vector{col_eltype}()
+            try
+                result = func(empty_col)
+                return typeof(result)
+            catch
+                # Function call failed (e.g., mean on empty), fall back to Any
+                return Any
+            end
+        elseif col isa Tuple
+            # Validate all columns exist
+            for c in col
+                c in propertynames(data) || throw(KeyError(c))
+            end
+            return Any  # Complex multi-column specs fall back to Any
+        end
+    end
+    # For functions on full group, fall back to Any
+    return Any
+end
+
+"""
     summarise(gt::GroupedTable; kwargs...)
     summarize(gt::GroupedTable; kwargs...)
 
@@ -595,12 +637,24 @@ function summarise(gt::GroupedTable; kwargs...)
     cols = Vector{Any}()
     for col in keycols
         push!(names, col)
-        push!(cols, _finalize_column(key_data[col]))
+        if m == 0
+            # Empty result: preserve eltype from original data
+            original_eltype = eltype(gt.data[col])
+            push!(cols, Vector{original_eltype}())
+        else
+            push!(cols, _finalize_column(key_data[col]))
+        end
     end
     # Iterate in preserved order, not Dict order
-    for name in summary_names
+    for (name, spec) in zip(summary_names, [kwargs[Symbol(n)] for n in summary_names])
         push!(names, name)
-        push!(cols, _finalize_column(summary_data[name]))
+        if m == 0
+            # Try to infer return type for empty data
+            result_type = _infer_summary_type(spec, gt.data)
+            push!(cols, Vector{result_type}())
+        else
+            push!(cols, _finalize_column(summary_data[name]))
+        end
     end
 
     return _assemble(names, cols)
@@ -1323,20 +1377,46 @@ function bind_rows(tables...)
 
     all_cols = Symbol[]
     col_set = Set{Symbol}()
+    col_eltypes = Dict{Symbol, Type}()
+
     for ct in cts
         for name in _column_names(ct)
             if !(name in col_set)
                 push!(all_cols, name)
                 push!(col_set, name)
             end
+            # Track eltype from input columns
+            col_eltype = eltype(ct[name])
+            if haskey(col_eltypes, name)
+                # Promote types when same column appears in multiple tables
+                col_eltypes[name] = promote_type(col_eltypes[name], col_eltype)
+            else
+                col_eltypes[name] = col_eltype
+            end
+        end
+    end
+
+    # Columns that don't appear in all tables need Union{..., Missing}
+    for col in all_cols
+        appears_in_all = all(col in Set(_column_names(ct)) for ct in cts)
+        if !appears_in_all
+            col_eltypes[col] = Union{col_eltypes[col], Missing}
         end
     end
 
     total_rows = sum(_nrows(ct) for ct in cts)
 
-    result_cols = Dict{Symbol, Vector{Any}}()
+    # Handle empty result - return typed empty vectors
+    if total_rows == 0
+        names_out = all_cols
+        columns_out = [Vector{col_eltypes[col]}() for col in all_cols]
+        return _assemble(names_out, columns_out)
+    end
+
+    # Use computed eltypes for result columns (not Vector{Any})
+    result_cols = Dict{Symbol, Vector}()
     for col in all_cols
-        result_cols[col] = Vector{Any}(undef, total_rows)
+        result_cols[col] = Vector{col_eltypes[col]}(undef, total_rows)
     end
 
     row_offset = 0
@@ -1358,7 +1438,10 @@ function bind_rows(tables...)
     end
 
     names_out = all_cols
-    columns_out = [_finalize_column(result_cols[col]) for col in all_cols]
+    columns_out = Vector{Vector}(undef, length(all_cols))
+    for (i, col) in enumerate(all_cols)
+        columns_out[i] = result_cols[col]
+    end
 
     return _assemble(names_out, columns_out)
 end
@@ -3025,7 +3108,10 @@ function _apply_by_group(panel::PanelData, op::Function)
 
     # Combine all results
     if isempty(results)
-        return ct
+        # Apply op to empty data to get the correct output schema
+        # (e.g., mutate should add new columns even on empty panels)
+        empty_ct = _subset_indices(ct, Int[])
+        return op(empty_ct)
     end
 
     return bind_rows(results...)

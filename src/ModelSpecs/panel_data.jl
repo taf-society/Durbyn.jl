@@ -245,6 +245,7 @@ Container for panel/time series datasets with optional preprocessing pipeline.
   - If provided and `m` is nothing, derives `m` automatically
 - `target`: Target column name for forecasting (Symbol)
 - `fill_time`: If true, complete missing dates in time grid (default: false)
+- `balanced`: If true with `fill_time`, all groups use the same global time span (balanced panel)
 - `target_na`: Gap-filling config for target column
   - `(strategy=:locf,)` - Last observation carried forward
   - `(strategy=:nocb,)` - Next observation carried backward
@@ -272,6 +273,15 @@ panel = PanelData(data;
     fill_time = true,
     target_na = (strategy=:locf, max_gap=7),
     xreg_na = Dict(:price => (strategy=:locf,), :promo => (strategy=:zero,))
+)
+
+# Balanced panel (all groups padded to same global time span)
+panel = PanelData(data;
+    groupby = :store,
+    date = :date,
+    frequency = :daily,
+    fill_time = true,
+    balanced = true
 )
 ```
 """
@@ -316,6 +326,7 @@ function PanelData(data;
                    frequency::Union{Symbol, Nothing} = nothing,
                    target::Union{Symbol, Nothing} = nothing,
                    fill_time::Bool = false,
+                   balanced::Bool = false,
                    target_na::Union{Nothing, NamedTuple} = nothing,
                    xreg_na::Union{Nothing, Dict} = nothing)
 
@@ -374,7 +385,9 @@ function PanelData(data;
         end
 
         processed_data, time_fill_meta = _fill_time_gaps(
-            processed_data, groups, date, frequency)
+            processed_data, groups, date, frequency, balanced)
+    elseif balanced
+        throw(ArgumentError("balanced=true requires fill_time=true"))
     end
 
     # 3. Fill target gaps if requested
@@ -427,9 +440,10 @@ end
 
 """
 Fill time gaps by completing the time grid per group.
+If `balanced=true`, all groups are padded to the same global time span.
 """
 function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
-                         frequency::Symbol)
+                         frequency::Symbol, balanced::Bool=false)
     n_original = length(ct[date])
     period = frequency_to_period(frequency)
     col_names = propertynames(ct)
@@ -484,6 +498,11 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
         # Group the data
         group_indices = _group_indices(ct, groups)
 
+        # Compute global bounds if balanced panel requested
+        if balanced
+            global_min, global_max = extrema(ct[date])
+        end
+
         results = NamedTuple[]
         total_added = 0
 
@@ -492,7 +511,11 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
             subgroup = NamedTuple{col_names}(Tuple(ct[col][idxs] for col in col_names))
 
             dates = subgroup[date]
-            min_date, max_date = extrema(dates)
+            if balanced
+                min_date, max_date = global_min, global_max
+            else
+                min_date, max_date = extrema(dates)
+            end
             complete_dates = collect(min_date:period:max_date)
 
             # Build lookup
@@ -539,7 +562,8 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
         meta = TimeFillMeta(total_added, n_total, period)
 
         if total_added > 0
-            @info "Time grid completed: $total_added rows added (step: $period)"
+            balanced_str = balanced ? " (balanced panel)" : ""
+            @info "Time grid completed: $total_added rows added (step: $period)$balanced_str"
         end
 
         return combined, meta

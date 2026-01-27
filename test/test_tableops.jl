@@ -1834,3 +1834,34 @@ end
         @test eltype(result.x_sum) == Float64
     end
 end
+
+# =============================================================================
+# complete stress test (Iterators.product optimization)
+# =============================================================================
+@testset "complete with large grids" begin
+    @testset "50x50 grid completes without excessive memory" begin
+        # 50 unique values per column = 2500 potential combinations
+        # Only 50 exist, so 2450 new rows should be added
+        tbl = (a = collect(1:50), b = collect(1:50), value = collect(1.0:50.0))
+        result = complete(tbl, :a, :b)
+        @test length(result.a) == 2500
+        @test length(result.b) == 2500
+        @test count(ismissing, result.value) == 2450
+    end
+
+    @testset "sparse grid only adds missing combinations" begin
+        # 3 values in a, 4 values in b = 12 combinations
+        # Only 2 exist, so 10 new rows
+        tbl = (a = [1, 2], b = [1, 4], c = [10, 20])
+        result = complete(tbl, :a, :b)
+        @test length(result.a) == 4  # 2 unique a * 2 unique b = 4
+    end
+
+    @testset "dense grid adds no new rows" begin
+        # All combinations already exist
+        tbl = (a = [1, 1, 2, 2], b = [1, 2, 1, 2], c = [10, 20, 30, 40])
+        result = complete(tbl, :a, :b)
+        @test length(result.a) == 4
+        @test count(ismissing, result.c) == 0
+    end
+end

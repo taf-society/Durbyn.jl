@@ -2220,24 +2220,6 @@ function complete(data, cols::Symbol...; fill_value=missing)
         unique_values[col] = unique(ct[col])
     end
 
-    # Use Tuple for cartesian product results (immutable, value-based hashing)
-    function cartesian_product(arrays)
-        if length(arrays) == 1
-            # Use (v,) to create single-element tuple; Tuple(v) would try to iterate v
-            return [(v,) for v in arrays[1]]
-        end
-        result = Vector{Tuple}()
-        rest = cartesian_product(arrays[2:end])
-        for v in arrays[1]
-            for r in rest
-                push!(result, (v, r...))
-            end
-        end
-        return result
-    end
-
-    all_combos = cartesian_product([unique_values[c] for c in cols_list])
-
     # Julia's Set uses isequal for hashing, so it handles missing/NaN correctly
     existing_keys = Set{Tuple}()
     for i in 1:n
@@ -2245,8 +2227,14 @@ function complete(data, cols::Symbol...; fill_value=missing)
         push!(existing_keys, key)
     end
 
-    # Filter to combos not in existing keys
-    new_rows = [combo for combo in all_combos if !(combo in existing_keys)]
+    # Use Iterators.product for lazy cartesian product (avoids materializing full product)
+    unique_arrays = Tuple(unique_values[c] for c in cols_list)
+    new_rows = Tuple[]
+    for combo in Iterators.product(unique_arrays...)
+        if !(combo in existing_keys)
+            push!(new_rows, combo)
+        end
+    end
 
     total_rows = n + length(new_rows)
 

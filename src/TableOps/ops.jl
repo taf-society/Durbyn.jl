@@ -116,7 +116,8 @@ function _finalize_column(vec::Vector; eltype_hint::Union{Type, Nothing}=nothing
         T = eltype_hint !== nothing ? eltype_hint : Any
         return Vector{T}()
     end
-    T = promote_type(map(typeof, vec)...)
+    # Use typejoin for tightest common supertype (preserves type relationships)
+    T = reduce(typejoin, map(typeof, vec))
     out = Vector{T}(undef, length(vec))
     for i in eachindex(vec)
         out[i] = convert(T, vec[i])
@@ -2272,12 +2273,19 @@ function complete(data, cols::Symbol...; fill_value=missing)
     end
 
     names_out = collect(available)
-    # Preserve eltypes from original data (with Union{Missing} for non-key columns)
+    # Preserve eltypes from original data (only widen to Union{Missing} if rows were actually added)
     columns_out = Vector{Vector}(undef, length(names_out))
+    rows_added = !isempty(new_rows)
     for (i, name) in enumerate(names_out)
         original_eltype = eltype(ct[name])
-        # Non-key columns may have missing values added
-        hint_eltype = name in cols_set ? original_eltype : Union{original_eltype, typeof(fill_value)}
+        # Only widen non-key columns to Union{fill_value type} if new rows were actually added
+        hint_eltype = if name in cols_set
+            original_eltype
+        elseif rows_added
+            Union{original_eltype, typeof(fill_value)}
+        else
+            original_eltype  # No new rows, keep original type
+        end
         columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=hint_eltype)
     end
 

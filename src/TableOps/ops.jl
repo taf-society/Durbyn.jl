@@ -1135,9 +1135,6 @@ end
 
 glimpse(panel::PanelData; kwargs...) = glimpse(stdout, panel; kwargs...)
 
-# =============================================================================
-# Additional dplyr-style functions
-# =============================================================================
 
 """
     rename(data, specs...)
@@ -1417,9 +1414,6 @@ See also: [`groupby`](@ref)
 """
 ungroup(gt::GroupedTable) = gt.data
 
-# =============================================================================
-# Column selection helpers
-# =============================================================================
 
 """
     ColumnSelector
@@ -1786,9 +1780,6 @@ function mutate(data, ac::Across)
     return NamedTuple{Tuple(names_out)}(Tuple(columns[s] for s in names_out))
 end
 
-# =============================================================================
-# tidyr-style functions
-# =============================================================================
 
 """
     separate(data, col::Symbol; into::Vector{Symbol}, sep::Union{String, Regex, Char}=" ", remove::Bool=true, convert::Bool=false)
@@ -2236,9 +2227,6 @@ function complete(data, cols::Symbol...; fill_value=missing)
     return _assemble(names_out, columns_out)
 end
 
-# =============================================================================
-# Join functions
-# =============================================================================
 
 """
     _resolve_join_keys(left, right, by)
@@ -2409,7 +2397,6 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
     ct_left = _to_columns(left)
     ct_right = _to_columns(right)
 
-    # Validate column lengths
     _check_lengths(ct_left)
     _check_lengths(ct_right)
 
@@ -2422,7 +2409,6 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
     right_names = _column_names(ct_right)
     right_key_set = Set(right_keys)
 
-    # Determine output columns
     out_names = Symbol[]
     out_sources = Tuple{Symbol, Int, Symbol}[]  # (name, table (1=left, 2=right), original_name)
 
@@ -2439,14 +2425,11 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         out_name = name
         if name in left_names
             out_name = Symbol(string(name) * suffix[2])
-            # Only rename left column if it's NOT a key column
-            # Key columns should keep their original names
             if !(name in left_key_set)
                 idx = findfirst(==(name), out_names)
                 if idx !== nothing
                     renamed_left = Symbol(string(name) * suffix[1])
                     out_names[idx] = renamed_left
-                    # Update the source entry for the left column
                     out_sources[idx] = (renamed_left, 1, name)
                 end
             end
@@ -2455,17 +2438,14 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         push!(out_sources, (out_name, 2, name))
     end
 
-    # Check for duplicate output names
     _validate_join_output_names(out_names)
 
-    # Build result
     result_cols = Dict{Symbol, Vector{Any}}()
     for name in out_names
         result_cols[name] = Any[]
     end
 
     if is_cross_join
-        # Cross join: every left row pairs with every right row
         for i in 1:n_left
             for j in 1:n_right
                 for (out_name, table, orig_name) in out_sources
@@ -2495,7 +2475,6 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         end
     end
 
-    # Preserve eltypes from source tables
     columns_out = Vector{Vector}(undef, length(out_names))
     for (i, name) in enumerate(out_names)
         _, table, orig_name = out_sources[i]
@@ -2541,7 +2520,6 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
     ct_left = _to_columns(left)
     ct_right = _to_columns(right)
 
-    # Validate column lengths
     _check_lengths(ct_left)
     _check_lengths(ct_right)
 
@@ -2554,7 +2532,6 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
     right_names = _column_names(ct_right)
     right_key_set = Set(right_keys)
 
-    # Determine output columns
     out_names = Symbol[]
     out_sources = Tuple{Symbol, Int, Symbol}[]
 
@@ -2572,7 +2549,6 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         out_name = name
         if name in left_names
             out_name = Symbol(string(name) * suffix[2])
-            # Only rename left column if it's NOT a key column
             if !(name in left_key_set)
                 idx = findfirst(==(name), out_names)
                 if idx !== nothing
@@ -2587,17 +2563,14 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         push!(right_only_cols, out_name)
     end
 
-    # Check for duplicate output names
     _validate_join_output_names(out_names)
 
-    # Build result
     result_cols = Dict{Symbol, Vector{Any}}()
     for name in out_names
         result_cols[name] = Any[]
     end
 
     if is_cross_join
-        # Cross join: every left row pairs with every right row
         for i in 1:n_left
             for j in 1:n_right
                 for (out_name, table, orig_name) in out_sources
@@ -2624,7 +2597,6 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
                     end
                 end
             else
-                # No match - add left row with missing for right columns
                 for (out_name, table, orig_name) in out_sources
                     if table == 1
                         push!(result_cols[out_name], ct_left[orig_name][i])
@@ -2636,13 +2608,10 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         end
     end
 
-    # Preserve eltypes: right columns may have missing when no match (but not for cross joins)
     columns_out = Vector{Vector}(undef, length(out_names))
     for (i, name) in enumerate(out_names)
         _, table, orig_name = out_sources[i]
         source_eltype = table == 1 ? eltype(ct_left[orig_name]) : eltype(ct_right[orig_name])
-        # Right columns can have missing added when left row has no match
-        # Cross joins have no missing (every left row matches every right row)
         hint_eltype = (table == 2 && !is_cross_join) ? Union{Missing, source_eltype} : source_eltype
         columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=hint_eltype)
     end
@@ -2683,11 +2652,9 @@ See also: [`inner_join`](@ref), [`left_join`](@ref), [`full_join`](@ref)
 """
 function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", "_y"))
     # right_join is just left_join with tables swapped
-    # But we need to handle the key column naming carefully
     ct_left = _to_columns(left)
     ct_right = _to_columns(right)
 
-    # Validate column lengths
     _check_lengths(ct_left)
     _check_lengths(ct_right)
 
@@ -2701,7 +2668,6 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
     right_names = _column_names(ct_right)
     left_key_set = Set(left_keys)
 
-    # Determine output columns - right columns first (preserve order), then left non-keys
     out_names = Symbol[]
     out_sources = Tuple{Symbol, Int, Symbol}[]
 
@@ -2711,15 +2677,12 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         key_map[rk] = lk
     end
 
-    # Add right columns in original order (keys renamed to left key names)
-    # Track output names to detect collisions
     seen_out_names = Set{Symbol}()
     for name in right_names
         if name in right_key_set
             out_name = key_map[name]
         else
             out_name = name
-            # Check if this non-key column collides with an already-added key name
             if out_name in seen_out_names
                 out_name = Symbol(string(name) * suffix[2])
             end
@@ -2731,7 +2694,6 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
 
     right_output_set = Set(out_names)
 
-    # Add left non-key columns, suffixing if they collide with right outputs
     for name in left_names
         if name in left_key_set
             continue
@@ -2744,17 +2706,14 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         push!(out_sources, (out_name, 1, name))
     end
 
-    # Check for duplicate output names
     _validate_join_output_names(out_names)
 
-    # Build result
     result_cols = Dict{Symbol, Vector{Any}}()
     for name in out_names
         result_cols[name] = Any[]
     end
 
     if is_cross_join
-        # Cross join: every right row pairs with every left row
         for j in 1:n_right
             for i in 1:n_left
                 for (out_name, table, orig_name) in out_sources
@@ -2781,7 +2740,6 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
                     end
                 end
             else
-                # No match - add right row with missing for left columns
                 for (out_name, table, orig_name) in out_sources
                     if table == 1
                         push!(result_cols[out_name], missing)
@@ -2793,13 +2751,10 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         end
     end
 
-    # Preserve eltypes: left columns may have missing when no match (but not for cross joins)
     columns_out = Vector{Vector}(undef, length(out_names))
     for (i, name) in enumerate(out_names)
         _, table, orig_name = out_sources[i]
         source_eltype = table == 1 ? eltype(ct_left[orig_name]) : eltype(ct_right[orig_name])
-        # Left columns can have missing added when right row has no match
-        # Cross joins have no missing (every left row matches every right row)
         hint_eltype = (table == 1 && !is_cross_join) ? Union{Missing, source_eltype} : source_eltype
         columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=hint_eltype)
     end
@@ -2842,7 +2797,6 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
     ct_left = _to_columns(left)
     ct_right = _to_columns(right)
 
-    # Validate column lengths
     _check_lengths(ct_left)
     _check_lengths(ct_right)
 
@@ -2855,7 +2809,6 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
     right_names = _column_names(ct_right)
     right_key_set = Set(right_keys)
 
-    # Determine output columns
     out_names = Symbol[]
     out_sources = Tuple{Symbol, Int, Symbol}[]
 
@@ -2872,7 +2825,6 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         out_name = name
         if name in left_names
             out_name = Symbol(string(name) * suffix[2])
-            # Only rename left column if it's NOT a key column
             if !(name in left_key_set)
                 idx = findfirst(==(name), out_names)
                 if idx !== nothing
@@ -2886,17 +2838,14 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         push!(out_sources, (out_name, 2, name))
     end
 
-    # Check for duplicate output names
     _validate_join_output_names(out_names)
 
-    # Build result
     result_cols = Dict{Symbol, Vector{Any}}()
     for name in out_names
         result_cols[name] = Any[]
     end
 
     if is_cross_join
-        # Cross join: every left row pairs with every right row
         for i in 1:n_left
             for j in 1:n_right
                 for (out_name, table, orig_name) in out_sources
@@ -2911,10 +2860,8 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
     else
         right_index = _build_right_index(ct_right, right_keys)
 
-        # Track which right rows have been matched
         matched_right = Set{Int}()
 
-        # First pass: all left rows
         for i in 1:n_left
             left_key = _build_key(ct_left, left_keys, i)
             if haskey(right_index, left_key)
@@ -2929,7 +2876,6 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
                     end
                 end
             else
-                # No match - add left row with missing for right columns
                 for (out_name, table, orig_name) in out_sources
                     if table == 1
                         push!(result_cols[out_name], ct_left[orig_name][i])
@@ -2940,7 +2886,6 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
             end
         end
 
-        # Second pass: unmatched right rows
         left_key_set = Set(left_keys)
         for j in 1:n_right
             if j in matched_right
@@ -2948,7 +2893,6 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
             end
             for (out_name, table, orig_name) in out_sources
                 if table == 1
-                    # For key columns from left, use right's key value
                     if orig_name in left_key_set
                         key_idx = findfirst(==(orig_name), left_keys)
                         push!(result_cols[out_name], ct_right[right_keys[key_idx]][j])
@@ -2962,13 +2906,10 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         end
     end
 
-    # Preserve eltypes: both sides may have missing when no match (but not for cross joins)
     columns_out = Vector{Vector}(undef, length(out_names))
     for (i, name) in enumerate(out_names)
         _, table, orig_name = out_sources[i]
         source_eltype = table == 1 ? eltype(ct_left[orig_name]) : eltype(ct_right[orig_name])
-        # Both left and right columns can have missing added
-        # Cross joins have no missing (every left row matches every right row)
         hint_eltype = is_cross_join ? source_eltype : Union{Missing, source_eltype}
         columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=hint_eltype)
     end
@@ -3010,7 +2951,6 @@ function semi_join(left, right; by=nothing)
 
     left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
 
-    # Build set of keys present in right
     n_right = _nrows(ct_right)
     right_key_set = Set{Any}()
     for j in 1:n_right
@@ -3018,7 +2958,6 @@ function semi_join(left, right; by=nothing)
         push!(right_key_set, key)
     end
 
-    # Filter left rows
     n_left = _nrows(ct_left)
     keep_indices = Int[]
     for i in 1:n_left
@@ -3066,7 +3005,6 @@ function anti_join(left, right; by=nothing)
 
     left_keys, right_keys = _resolve_join_keys(ct_left, ct_right, by)
 
-    # Build set of keys present in right
     n_right = _nrows(ct_right)
     right_key_set = Set{Any}()
     for j in 1:n_right
@@ -3074,7 +3012,6 @@ function anti_join(left, right; by=nothing)
         push!(right_key_set, key)
     end
 
-    # Filter left rows - keep those NOT in right
     n_left = _nrows(ct_left)
     keep_indices = Int[]
     for i in 1:n_left
@@ -3087,9 +3024,6 @@ function anti_join(left, right; by=nothing)
     return _subset_indices(ct_left, keep_indices)
 end
 
-# =============================================================================
-# PanelData dispatches - apply operations by group
-# =============================================================================
 
 """
     _apply_by_group(panel::PanelData, op::Function)
@@ -3106,7 +3040,6 @@ function _apply_by_group(panel::PanelData, op::Function)
     groups = panel.groups
 
     if isempty(groups)
-        # No grouping - apply to entire dataset
         return op(ct)
     end
 
@@ -3119,10 +3052,7 @@ function _apply_by_group(panel::PanelData, op::Function)
         push!(results, result)
     end
 
-    # Combine all results
     if isempty(results)
-        # Apply op to empty data to get the correct output schema
-        # (e.g., mutate should add new columns even on empty panels)
         empty_ct = _subset_indices(ct, Int[])
         return op(empty_ct)
     end
@@ -3142,7 +3072,6 @@ function _rebuild_panel(panel::PanelData, new_data;
     ct = _to_columns(new_data)
     available = Set(_column_names(ct))
 
-    # Validate grouping columns exist
     for g in groups
         if !(g in available)
             throw(ArgumentError("Grouping column '$g' missing from result data. " *
@@ -3150,7 +3079,6 @@ function _rebuild_panel(panel::PanelData, new_data;
         end
     end
 
-    # Clear date if it's missing from the result
     validated_date = date
     if date !== nothing && !(date in available)
         validated_date = nothing
@@ -3303,12 +3231,9 @@ result = select(panel, :value)
 function select(panel::PanelData, spec1::Union{Symbol, Pair, ColumnSelector}, specs::Union{Symbol, Pair, ColumnSelector}...)
     ct = _to_columns(panel.data)
 
-    # Ensure grouping columns are included
     all_specs = [spec1, specs...]
     group_set = Set(panel.groups)
 
-    # Check for renaming specs on structural columns (groups and date)
-    # tsibble philosophy: structural columns require explicit rename()
     structural_cols = copy(group_set)
     if panel.date !== nothing
         push!(structural_cols, panel.date)
@@ -3316,8 +3241,6 @@ function select(panel::PanelData, spec1::Union{Symbol, Pair, ColumnSelector}, sp
 
     for spec in all_specs
         if spec isa Pair
-            # Pair can be :new => :old or :new => transform
-            # For renaming, it's :new => :old where old is a Symbol
             old_col = last(spec)
             new_col = first(spec)
             if old_col isa Symbol && new_col isa Symbol && old_col != new_col
@@ -3331,7 +3254,6 @@ function select(panel::PanelData, spec1::Union{Symbol, Pair, ColumnSelector}, sp
         end
     end
 
-    # Add grouping columns first if not already in specs
     final_specs = Any[]
     for g in panel.groups
         push!(final_specs, g)
@@ -3346,7 +3268,6 @@ function select(panel::PanelData, spec1::Union{Symbol, Pair, ColumnSelector}, sp
 
     result = select(ct, final_specs...)
 
-    # Check if date column is in the output; if not, set date to nothing
     result_names = Set(_column_names(result))
     new_date = (panel.date !== nothing && panel.date in result_names) ? panel.date : nothing
 
@@ -3362,7 +3283,6 @@ function select(panel::PanelData)
     end
     ct = _to_columns(panel.data)
     result = select(ct, panel.groups...)
-    # Date column is not included, so set to nothing
     return _rebuild_panel(panel, result; date=nothing)
 end
 
@@ -3463,8 +3383,6 @@ to preserve panel structure.
 A new `PanelData` with duplicates removed within each group.
 """
 function distinct(panel::PanelData, cols::Symbol...; keep_all::Bool=false)
-    # Auto-include grouping columns to preserve panel structure
-    # Iterate in reverse so pushfirst! maintains original group order
     cols_list = collect(cols)
     for g in reverse(panel.groups)
         if !(g in cols_list)
@@ -3526,7 +3444,6 @@ function rename(panel::PanelData, specs::Pair{Symbol,Symbol}...)
     ct = _to_columns(panel.data)
     result = rename(ct, specs...)
 
-    # Update group column names if they were renamed
     rename_map = Dict(last(p) => first(p) for p in specs)
     new_groups = Symbol[get(rename_map, g, g) for g in panel.groups]
     new_date = panel.date !== nothing ? get(rename_map, panel.date, panel.date) : nothing
@@ -3552,13 +3469,10 @@ function pivot_longer(panel::PanelData;
                       values_to::Symbol = _DEFAULT_VALUES_TO)
     ct = _to_columns(panel.data)
 
-    # Ensure grouping columns are in id_cols, preserving group order
     ids = id_cols isa Symbol ? Symbol[id_cols] : collect(id_cols)
-    # Prepend groups not already in ids, maintaining original group order
     groups_to_add = [g for g in panel.groups if !(g in ids)]
     ids = vcat(groups_to_add, ids)
 
-    # Also preserve date column as id if defined and not already included
     if panel.date !== nothing && !(panel.date in ids)
         push!(ids, panel.date)
     end
@@ -3588,13 +3502,10 @@ function pivot_wider(panel::PanelData;
                      sort_names::Bool = false)
     ct = _to_columns(panel.data)
 
-    # Ensure grouping columns are in id_cols, preserving group order
     ids = id_cols isa Symbol ? Symbol[id_cols] : collect(id_cols)
-    # Prepend groups not already in ids, maintaining original group order
     groups_to_add = [g for g in panel.groups if !(g in ids)]
     ids = vcat(groups_to_add, ids)
 
-    # Also preserve date column as id if defined and not already included
     if panel.date !== nothing && !(panel.date in ids)
         push!(ids, panel.date)
     end
@@ -3605,4 +3516,3 @@ function pivot_wider(panel::PanelData;
     return _rebuild_panel(panel, result)
 end
 
-# Note: glimpse(panel::PanelData) is defined in glimpse_extensions.jl to avoid circular dependencies

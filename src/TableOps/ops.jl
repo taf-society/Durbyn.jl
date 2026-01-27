@@ -182,6 +182,18 @@ Filter rows based on a predicate function.
 # Returns
 A `NamedTuple` containing only rows where `predicate` returns `true`.
 
+# Notes
+The predicate must return exactly `true` or `false`. If it returns `missing`
+(common with nullable data), an error is thrown. Use `coalesce` to handle missing values:
+
+```julia
+# This throws an error if x contains missing:
+query(tbl, row -> row.x > 5)
+
+# Use coalesce to treat missing as false:
+query(tbl, row -> coalesce(row.x > 5, false))
+```
+
 # Examples
 ```julia
 using Durbyn.TableOps
@@ -649,7 +661,12 @@ Transform data from wide format to long format by pivoting columns into rows.
 - `names_to`: Name for the new column containing original column names (default: `:variable`)
 - `values_to`: Name for the new column containing values (default: `:value`)
 
-When both `id_cols` and `value_cols` are empty, all columns are pivoted into values (no id columns).
+# Column Selection Logic
+- If both `id_cols` and `value_cols` are empty: all columns become value columns
+- If only `id_cols` is provided: all other columns become value columns
+- If only `value_cols` is provided: all other columns become id columns
+- If both are provided: unspecified columns are added to `id_cols` (not dropped)
+
 `id_cols` and `value_cols` must not overlap.
 
 # Returns
@@ -1846,7 +1863,8 @@ Separate a character column into multiple columns.
 - `into`: Names for the new columns
 - `sep`: Separator pattern (default: `" "`)
 - `remove`: If `true`, remove the input column (default: `true`)
-- `convert`: If `true`, attempt to convert to numeric types (default: `false`)
+- `convert`: If `true`, attempt to convert to numeric types (default: `false`).
+  Tries `Int` first, falls back to `Float64` if needed.
 
 # Returns
 A `NamedTuple` with the original column split into multiple new columns.
@@ -1991,7 +2009,7 @@ Combine multiple columns into a single character column.
 # Arguments
 - `data`: A Tables.jl-compatible data source
 - `new_col`: Name for the new combined column
-- `cols...`: Columns to combine
+- `cols...`: Columns to combine (at least one required)
 - `sep`: Separator to use between values (default: `"_"`)
 - `remove`: If `true`, remove the input columns (default: `true`)
 

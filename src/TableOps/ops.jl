@@ -120,7 +120,8 @@ function _finalize_column(vec::Vector; eltype_hint::Union{Type, Nothing}=nothing
     T = reduce(promote_type, map(typeof, vec))
     # Incorporate eltype_hint to ensure type is at least as wide as the hint
     # This handles cases like all-missing columns that should be Union{Missing, T}
-    if eltype_hint !== nothing
+    # Skip if hint is Any (would only degrade the inferred type)
+    if eltype_hint !== nothing && eltype_hint !== Any
         T = promote_type(T, eltype_hint)
     end
     out = Vector{T}(undef, length(vec))

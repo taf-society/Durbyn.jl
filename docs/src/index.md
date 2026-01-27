@@ -4,7 +4,7 @@
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://taf-society.github.io/Durbyn.jl/stable/) [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://taf-society.github.io/Durbyn.jl/dev/) [![Build Status](https://github.com/taf-society/Durbyn.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/taf-society/Durbyn.jl/actions/workflows/CI.yml?query=branch%3Amain) [![Coverage](https://codecov.io/gh/taf-society/Durbyn.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/taf-society/Durbyn.jl)
 
-**Durbyn** is a Julia package that implements functionality of the R **forecast** package, providing tools for time-series forecasting.
+**Durbyn** is a Julia package for time-series forecasting, inspired by the R **forecast** and **fable** packages. While drawing on their methodology, Durbyn is a native Julia implementation featuring its own unique formula-based grammar for declarative model specification.
 
 Durbyn — Kurdish for “binoculars” (Dur, far + Byn, to see), embodies foresight through science. Like Hari Seldon’s psychohistory in Asimov’s Foundation, we seek to glimpse the shape of tomorrow through the disciplined clarity of mathematics.
 
@@ -41,6 +41,15 @@ Pkg.add(url="https://github.com/taf-society/Durbyn.jl")
 
 Durbyn provides a modern, declarative interface for model specification using `@formula`.
 This is the **recommended approach** for most users, supporting single series, model comparison, and panel data forecasting.
+
+The `PanelData` interface follows the **[tidy forecasting workflow](https://otexts.com/fpp3/a-tidy-forecasting-workflow.html)** (Hyndman & Athanasopoulos, 2021), providing a structured approach:
+
+1. **Data Preparation** — Load, reshape, and clean data using `TableOps`
+2. **Visualization** — Explore patterns with `plot()` and `glimpse()`
+3. **Model Specification** — Define models using the formula interface (`@formula`)
+4. **Model Training** — Fit models with `fit()`, producing fitted model objects
+5. **Performance Evaluation** — Assess accuracy with `accuracy()` and diagnostics
+6. **Forecasting** — Generate predictions with `forecast()`, returning tidy forecast tables
 
 !!! note "Optional Dependencies"
     Panel data examples require `CSV` and `Downloads` packages:

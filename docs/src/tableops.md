@@ -16,6 +16,15 @@ The `TableOps` module provides a comprehensive set of data manipulation function
 
 **Durbyn.jl is a forecasting package**, and time series data manipulation is at its core. The `TableOps` module is designed to work seamlessly with `PanelData`, a specialized data structure for handling multiple time series (panel/longitudinal data).
 
+The `PanelData` interface follows the **[tidy forecasting workflow](https://otexts.com/fpp3/a-tidy-forecasting-workflow.html)** from Hyndman & Athanasopoulos (2021), providing a structured six-step approach:
+
+1. **Data Preparation** — Load, reshape, and clean data using `TableOps`
+2. **Visualization** — Explore patterns with `plot()` and `glimpse()`
+3. **Model Specification** — Define models using the formula interface (`@formula`)
+4. **Model Training** — Fit models with `fit()`, producing fitted model objects
+5. **Performance Evaluation** — Assess accuracy with `accuracy()` and diagnostics
+6. **Forecasting** — Generate predictions with `forecast()`, returning tidy forecast tables
+
 ### What is PanelData?
 
 `PanelData` wraps your tabular data with metadata that defines:

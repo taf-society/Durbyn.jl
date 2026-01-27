@@ -234,6 +234,11 @@ end
 
 Container for panel/time series datasets with optional preprocessing pipeline.
 
+The `PanelData` interface follows the **tidy forecasting workflow** from
+Hyndman & Athanasopoulos (2021), providing a structured approach to time series
+forecasting: data preparation → visualization → model specification → training →
+evaluation → forecasting. See: https://otexts.com/fpp3/
+
 # Core Arguments
 - `data`: The underlying tabular data (any Tables.jl-compatible format)
 - `groupby`: Column(s) for grouping (Symbol or Vector{Symbol})
@@ -450,6 +455,9 @@ function _fill_time_gaps(ct::NamedTuple, groups::Vector{Symbol}, date::Symbol,
 
     if isempty(groups)
         # Single series - complete globally
+        if balanced
+            @warn "balanced=true has no effect without groupby columns"
+        end
         dates = ct[date]
         min_date, max_date = extrema(dates)
         complete_dates = collect(min_date:period:max_date)

@@ -118,6 +118,11 @@ function _finalize_column(vec::Vector; eltype_hint::Union{Type, Nothing}=nothing
     end
     # Use promote_type for proper Union handling (e.g., Missing + Int64 → Union{Missing, Int64})
     T = reduce(promote_type, map(typeof, vec))
+    # Incorporate eltype_hint to ensure type is at least as wide as the hint
+    # This handles cases like all-missing columns that should be Union{Missing, T}
+    if eltype_hint !== nothing
+        T = promote_type(T, eltype_hint)
+    end
     out = Vector{T}(undef, length(vec))
     for i in eachindex(vec)
         out[i] = convert(T, vec[i])
@@ -162,69 +167,7 @@ function _namedtuple_lt(a::NamedTuple, b::NamedTuple)
     return false  # equal
 end
 
-"""
-    select(data, specs...)
-
-Select and optionally rename columns from a Tables.jl-compatible data source.
-
-# Arguments
-- `data`: Any Tables.jl-compatible source (e.g., `NamedTuple`, `DataFrame`, `CSV.File`)
-- `specs...`: Column specifications, either:
-  - Column names as `Symbol`s to select
-  - `Pair`s like `:new_name => :old_name` to rename columns
-
-# Returns
-A `NamedTuple` with the selected (and optionally renamed) columns.
-
-# Examples
-```julia
-using Durbyn.TableOps
-
-tbl = (a = [1, 2, 3], b = [4, 5, 6], c = [7, 8, 9])
-
-# Select specific columns
-select(tbl, :a, :c)
-# Output: (a = [1, 2, 3], c = [7, 8, 9])
-
-# Rename while selecting
-select(tbl, :x => :a, :y => :b)
-# Output: (x = [1, 2, 3], y = [4, 5, 6])
-```
-"""
-function select(data, specs...)
-    ct = _to_columns(data)
-    isempty(specs) && return ct
-    available = Set(_column_names(ct))
-
-    names_out = Symbol[]
-    columns_out = Vector{Any}()
-    seen_source = Set{Symbol}()  # Track source columns to avoid selecting same column twice
-    seen_output = Set{Symbol}()
-
-    for spec in specs
-        if spec isa Pair
-            new_name = Symbol(first(spec))
-            old_name = Symbol(last(spec))
-        else
-            new_name = Symbol(spec)
-            old_name = Symbol(spec)
-        end
-        old_name in available ||
-            throw(ArgumentError("Column '$(old_name)' not found"))
-        if old_name in seen_source
-            throw(ArgumentError("Source column '$old_name' selected multiple times"))
-        end
-        if new_name in seen_output
-            throw(ArgumentError("Duplicate output column name: '$new_name'"))
-        end
-        push!(seen_source, old_name)
-        push!(seen_output, new_name)
-        push!(names_out, new_name)
-        push!(columns_out, ct[old_name])
-    end
-
-    return _assemble(names_out, columns_out)
-end
+# Note: select() is defined below after ColumnSelector types are declared
 
 """
     query(data, predicate::Function)
@@ -1606,7 +1549,41 @@ function _expand_selector(spec::Pair, available::Tuple)
     return [spec]
 end
 
-# Enhanced select to support column selectors
+"""
+    select(data, specs...)
+
+Select and optionally rename columns from a Tables.jl-compatible data source.
+
+# Arguments
+- `data`: Any Tables.jl-compatible source (e.g., `NamedTuple`, `DataFrame`, `CSV.File`)
+- `specs...`: Column specifications, any combination of:
+  - Column names as `Symbol`s to select
+  - `Pair`s like `:new_name => :old_name` to rename columns
+  - `everything()` to select all remaining columns
+  - `all_of([:col1, :col2])` to select specific columns by name
+
+# Returns
+A `NamedTuple` with the selected (and optionally renamed) columns.
+
+# Examples
+```julia
+using Durbyn.TableOps
+
+tbl = (a = [1, 2, 3], b = [4, 5, 6], c = [7, 8, 9])
+
+# Select specific columns
+select(tbl, :a, :c)
+# Output: (a = [1, 2, 3], c = [7, 8, 9])
+
+# Rename while selecting
+select(tbl, :x => :a, :y => :b)
+# Output: (x = [1, 2, 3], y = [4, 5, 6])
+
+# Select some columns explicitly, then all remaining
+select(tbl, :c, everything())
+# Output: (c = [7, 8, 9], a = [1, 2, 3], b = [4, 5, 6])
+```
+"""
 function select(data, specs::Union{Symbol, Pair, ColumnSelector}...)
     ct = _to_columns(data)
     isempty(specs) && return ct
@@ -1932,20 +1909,33 @@ function separate(data, col::Symbol;
     if convert
         for name in into
             vec = new_cols[name]
-            # Try to convert to numbers
+            # Try to parse as numbers (Int first, then Float64)
+            parsed = Vector{Any}(undef, length(vec))
+            all_int = true
             all_numeric = true
-            for v in vec
-                if !ismissing(v)
-                    try
-                        parse(Float64, v)
-                    catch
-                        all_numeric = false
-                        break
+            for (i, v) in enumerate(vec)
+                if ismissing(v)
+                    parsed[i] = missing
+                else
+                    # Try Int first
+                    int_val = tryparse(Int, v)
+                    if int_val !== nothing
+                        parsed[i] = int_val
+                    else
+                        # Try Float64
+                        float_val = tryparse(Float64, v)
+                        if float_val !== nothing
+                            parsed[i] = float_val
+                            all_int = false
+                        else
+                            all_numeric = false
+                            break
+                        end
                     end
                 end
             end
             if all_numeric
-                new_cols[name] = [ismissing(v) ? missing : parse(Float64, v) for v in vec]
+                new_cols[name] = parsed
             end
         end
     end
@@ -2558,7 +2548,13 @@ function inner_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         end
     end
 
-    columns_out = [_finalize_column(result_cols[name]) for name in out_names]
+    # Preserve eltypes from source tables
+    columns_out = Vector{Vector}(undef, length(out_names))
+    for (i, name) in enumerate(out_names)
+        _, table, orig_name = out_sources[i]
+        source_eltype = table == 1 ? eltype(ct_left[orig_name]) : eltype(ct_right[orig_name])
+        columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=source_eltype)
+    end
     return _assemble(collect(out_names), columns_out)
 end
 
@@ -2693,7 +2689,15 @@ function left_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         end
     end
 
-    columns_out = [_finalize_column(result_cols[name]) for name in out_names]
+    # Preserve eltypes: right columns may have missing when no match
+    columns_out = Vector{Vector}(undef, length(out_names))
+    for (i, name) in enumerate(out_names)
+        _, table, orig_name = out_sources[i]
+        source_eltype = table == 1 ? eltype(ct_left[orig_name]) : eltype(ct_right[orig_name])
+        # Right columns can have missing added when left row has no match
+        hint_eltype = table == 2 ? Union{Missing, source_eltype} : source_eltype
+        columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=hint_eltype)
+    end
     return _assemble(collect(out_names), columns_out)
 end
 
@@ -2841,7 +2845,15 @@ function right_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x",
         end
     end
 
-    columns_out = [_finalize_column(result_cols[name]) for name in out_names]
+    # Preserve eltypes: left columns may have missing when no match
+    columns_out = Vector{Vector}(undef, length(out_names))
+    for (i, name) in enumerate(out_names)
+        _, table, orig_name = out_sources[i]
+        source_eltype = table == 1 ? eltype(ct_left[orig_name]) : eltype(ct_right[orig_name])
+        # Left columns can have missing added when right row has no match
+        hint_eltype = table == 1 ? Union{Missing, source_eltype} : source_eltype
+        columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=hint_eltype)
+    end
     return _assemble(collect(out_names), columns_out)
 end
 
@@ -3001,7 +3013,14 @@ function full_join(left, right; by=nothing, suffix::Tuple{String,String}=("_x", 
         end
     end
 
-    columns_out = [_finalize_column(result_cols[name]) for name in out_names]
+    # Preserve eltypes: both sides may have missing when no match
+    columns_out = Vector{Vector}(undef, length(out_names))
+    for (i, name) in enumerate(out_names)
+        _, table, orig_name = out_sources[i]
+        source_eltype = table == 1 ? eltype(ct_left[orig_name]) : eltype(ct_right[orig_name])
+        # Both left and right columns can have missing added
+        columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=Union{Missing, source_eltype})
+    end
     return _assemble(collect(out_names), columns_out)
 end
 

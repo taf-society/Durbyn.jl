@@ -104,9 +104,17 @@ function _row_namedtuple(ct::NamedTuple, i::Int, names::Tuple)
     return NamedTuple{names}(vals)
 end
 
-function _finalize_column(vec::Vector)
+"""
+    _finalize_column(vec::Vector; eltype_hint::Union{Type, Nothing}=nothing)
+
+Convert a Vector{Any} to a properly typed vector.
+If `eltype_hint` is provided and vec is empty, returns Vector{eltype_hint}().
+"""
+function _finalize_column(vec::Vector; eltype_hint::Union{Type, Nothing}=nothing)
     if isempty(vec)
-        return Vector{Any}()
+        # Use eltype_hint if provided, otherwise Any
+        T = eltype_hint !== nothing ? eltype_hint : Any
+        return Vector{T}()
     end
     T = promote_type(map(typeof, vec)...)
     out = Vector{T}(undef, length(vec))
@@ -189,6 +197,7 @@ function select(data, specs...)
 
     names_out = Symbol[]
     columns_out = Vector{Any}()
+    seen_source = Set{Symbol}()  # Track source columns to avoid selecting same column twice
     seen_output = Set{Symbol}()
 
     for spec in specs
@@ -201,9 +210,13 @@ function select(data, specs...)
         end
         old_name in available ||
             throw(ArgumentError("Column '$(old_name)' not found"))
+        if old_name in seen_source
+            throw(ArgumentError("Source column '$old_name' selected multiple times"))
+        end
         if new_name in seen_output
             throw(ArgumentError("Duplicate output column name: '$new_name'"))
         end
+        push!(seen_source, old_name)
         push!(seen_output, new_name)
         push!(names_out, new_name)
         push!(columns_out, ct[old_name])
@@ -825,7 +838,9 @@ function pivot_longer(data;
     out_cols = Vector{Any}()
     for id in ids
         push!(out_names, id)
-        push!(out_cols, _finalize_column(id_data[id]))
+        # Preserve eltype from original id column
+        id_eltype = eltype(ct[id])
+        push!(out_cols, _finalize_column(id_data[id]; eltype_hint=id_eltype))
     end
     push!(out_names, names_to)
     push!(out_cols, name_col)
@@ -1379,7 +1394,10 @@ function bind_rows(tables...)
     col_set = Set{Symbol}()
     col_eltypes = Dict{Symbol, Type}()
 
-    for ct in cts
+    # Pre-compute column name sets for all tables (avoid repeated Set creation)
+    ct_col_sets = [Set(_column_names(ct)) for ct in cts]
+
+    for (ct, ct_cols) in zip(cts, ct_col_sets)
         for name in _column_names(ct)
             if !(name in col_set)
                 push!(all_cols, name)
@@ -1398,7 +1416,7 @@ function bind_rows(tables...)
 
     # Columns that don't appear in all tables need Union{..., Missing}
     for col in all_cols
-        appears_in_all = all(col in Set(_column_names(ct)) for ct in cts)
+        appears_in_all = all(col in ct_cols for ct_cols in ct_col_sets)
         if !appears_in_all
             col_eltypes[col] = Union{col_eltypes[col], Missing}
         end
@@ -1420,9 +1438,8 @@ function bind_rows(tables...)
     end
 
     row_offset = 0
-    for ct in cts
+    for (ct, ct_names) in zip(cts, ct_col_sets)
         n = _nrows(ct)
-        ct_names = Set(_column_names(ct))
         for col in all_cols
             if col in ct_names
                 for i in 1:n
@@ -1749,14 +1766,23 @@ function summarise(gt::GroupedTable, ac::Across)
 
     for col in keycols
         push!(names_out, col)
-        push!(cols_out, _finalize_column(key_data[col]))
+        # Preserve eltype from original data for key columns
+        key_eltype = eltype(gt.data[col])
+        push!(cols_out, _finalize_column(key_data[col]; eltype_hint=key_eltype))
     end
 
     for col in target_cols
-        for (fn_name, _) in ac.fns
+        for (fn_name, fn) in ac.fns
             out_name = Symbol("$(col)_$(fn_name)")
             push!(names_out, out_name)
-            push!(cols_out, _finalize_column(summary_data[out_name]))
+            # Try to infer summary eltype from function on empty typed vector
+            col_eltype = eltype(gt.data[col])
+            summary_eltype = try
+                typeof(fn(Vector{col_eltype}()))
+            catch
+                Any
+            end
+            push!(cols_out, _finalize_column(summary_data[out_name]; eltype_hint=summary_eltype))
         end
     end
 
@@ -2246,7 +2272,14 @@ function complete(data, cols::Symbol...; fill_value=missing)
     end
 
     names_out = collect(available)
-    columns_out = [_finalize_column(result_cols[name]) for name in names_out]
+    # Preserve eltypes from original data (with Union{Missing} for non-key columns)
+    columns_out = Vector{Vector}(undef, length(names_out))
+    for (i, name) in enumerate(names_out)
+        original_eltype = eltype(ct[name])
+        # Non-key columns may have missing values added
+        hint_eltype = name in cols_set ? original_eltype : Union{original_eltype, typeof(fill_value)}
+        columns_out[i] = _finalize_column(result_cols[name]; eltype_hint=hint_eltype)
+    end
 
     return _assemble(names_out, columns_out)
 end
@@ -2297,8 +2330,9 @@ function _resolve_join_keys(left::NamedTuple, right::NamedTuple, by)
         # Handle empty vectors of any type (e.g., Any[])
         return Symbol[], Symbol[]
     elseif by isa Pair
-        left_key = first(by)
-        right_key = last(by)
+        # Normalize to Symbol
+        left_key = Symbol(first(by))
+        right_key = Symbol(last(by))
         left_key in left_names || throw(ArgumentError("Column '$(left_key)' not found in left table"))
         right_key in right_names || throw(ArgumentError("Column '$(right_key)' not found in right table"))
         return [left_key], [right_key]
@@ -2306,7 +2340,8 @@ function _resolve_join_keys(left::NamedTuple, right::NamedTuple, by)
         left_keys = Symbol[]
         right_keys = Symbol[]
         for p in by
-            lk, rk = first(p), last(p)
+            # Normalize to Symbol
+            lk, rk = Symbol(first(p)), Symbol(last(p))
             lk in left_names || throw(ArgumentError("Column '$(lk)' not found in left table"))
             rk in right_names || throw(ArgumentError("Column '$(rk)' not found in right table"))
             push!(left_keys, lk)

@@ -12,6 +12,71 @@ The `TableOps` module provides a comprehensive set of data manipulation function
 - Arrow.Table objects
 - And many others
 
+## Time Series and Panel Data
+
+**Durbyn.jl is a forecasting package**, and time series data manipulation is at its core. The `TableOps` module is designed to work seamlessly with `PanelData`, a specialized data structure for handling multiple time series (panel/longitudinal data).
+
+### What is PanelData?
+
+`PanelData` wraps your tabular data with metadata that defines:
+- **Grouping columns**: Which columns identify individual time series (e.g., `:series_id`, `:store`, `:product`)
+- **Date column**: Which column contains the time index
+- **Seasonal period (`m`)**: The number of observations per seasonal cycle (e.g., 12 for monthly data with yearly seasonality)
+- **Frequency**: The time frequency (`:daily`, `:weekly`, `:monthly`, `:quarterly`, `:yearly`)
+- **Target column**: The variable to forecast
+
+### Why PanelData Matters for Forecasting
+
+When working with forecasting, you typically need to:
+1. **Process multiple series independently** - Each series may have different scales, patterns, and missing values
+2. **Preserve time ordering** - Operations should respect the temporal structure
+3. **Handle missing time points** - Gaps in time series need special treatment
+4. **Compute group-relative features** - Features like "deviation from series mean" require within-group calculations
+
+`PanelData` enables all of this by automatically applying operations **within each group** while preserving the panel structure.
+
+### Quick Example
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+# Create panel data with multiple time series
+data = (
+    series = ["A", "A", "A", "A", "B", "B", "B", "B"],
+    date = [1, 2, 3, 4, 1, 2, 3, 4],
+    value = [100, 110, 105, 120, 500, 520, 510, 540]
+)
+
+# Wrap in PanelData - this defines the panel structure
+panel = PanelData(data; groupby=:series, date=:date, m=12)
+
+# Now TableOps functions automatically work within each series
+# Compute series-relative features
+result = mutate(panel,
+    series_mean = d -> fill(mean(d.value), length(d.value)),
+    deviation = d -> d.value .- mean(d.value),
+    pct_change = d -> [missing; diff(d.value) ./ d.value[1:end-1] .* 100]
+)
+
+# Fill missing values within each series (not across series!)
+filled = fill_missing(result, :pct_change; direction=:down)
+```
+
+### When to Use PanelData vs Regular Tables
+
+| Use Case | Data Type | Why |
+|----------|-----------|-----|
+| Single time series | Regular table | No grouping needed |
+| Multiple independent series | `PanelData` | Operations apply per-series |
+| Cross-sectional data | Regular table | No time structure |
+| Panel/longitudinal data | `PanelData` | Groups + time structure |
+| Forecasting preparation | `PanelData` | Preserves metadata for models |
+
+For detailed PanelData operations, see the [PanelData Operations](#paneldata-operations) section below.
+
+---
+
 ## Getting Started
 
 ```julia
@@ -1254,106 +1319,167 @@ ungrouped = ungroup(gt)
 
 ## PanelData Operations
 
-TableOps provides special dispatches for `PanelData` objects that automatically apply operations **within each group**. This is particularly useful for time series panel data where you want to perform transformations independently for each series.
+TableOps provides special dispatches for `PanelData` objects that automatically apply operations **within each group**. This is essential for time series forecasting where you need to process multiple series independently while preserving the panel structure.
 
-### Overview
+### How PanelData Operations Work
 
 When you call a TableOps function on a `PanelData` object:
 1. The data is automatically grouped by the panel's grouping columns
 2. The operation is applied to each group independently
 3. Results are combined back into a new `PanelData` with the same metadata
 
-### Supported Operations
+This differs from regular table operations where the function operates on the entire dataset at once.
 
-| Function | PanelData Behavior |
-|----------|-------------------|
-| `query` | Filter rows within each group |
-| `mutate` | Add/modify columns within each group (group-relative computations) |
-| `arrange` | Sort rows within each group |
-| `select` | Select columns (grouping columns auto-included) |
-| `summarise` | Summarize each group (returns NamedTuple) |
-| `distinct` | Remove duplicates within each group |
-| `fill_missing` | Fill missing values within each group |
-| `rename` | Rename columns (updates group metadata) |
-| `pivot_longer` | Pivot (grouping columns auto-added to id_cols) |
-| `pivot_wider` | Pivot (grouping columns auto-added to id_cols) |
+### Creating PanelData
 
-### Example: Group-Relative Computations
+```julia
+using Durbyn.ModelSpecs
+
+# Basic panel data with grouping and date
+panel = PanelData(data;
+    groupby = :series,           # Column(s) identifying each series
+    date = :date,                # Time index column
+    m = 12                       # Seasonal period (12 = monthly with yearly cycle)
+)
+
+# With frequency (m is inferred automatically)
+panel = PanelData(data;
+    groupby = [:store, :product],  # Multiple grouping columns
+    date = :date,
+    frequency = :monthly           # :daily, :weekly, :monthly, :quarterly, :yearly
+)
+
+# With target column for forecasting
+panel = PanelData(data;
+    groupby = :series,
+    date = :date,
+    frequency = :monthly,
+    target = :sales               # The variable to forecast
+)
+
+# With preprocessing: fill time gaps and impute missing values
+panel = PanelData(data;
+    groupby = :series,
+    date = :date,
+    frequency = :monthly,
+    target = :sales,
+    fill_time = true,             # Fill missing time points
+    target_na = (method = :interpolate,)  # Impute missing target values
+)
+```
+
+### PanelData Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data` | Any | The underlying table data |
+| `groups` | `Vector{Symbol}` | Columns that identify each series |
+| `date` | `Symbol` or `nothing` | Time index column |
+| `m` | `Int`, `Vector{Int}`, or `nothing` | Seasonal period(s) |
+| `frequency` | `Symbol` or `nothing` | Time frequency |
+| `target` | `Symbol` or `nothing` | Target variable for forecasting |
+
+### Supported Operations Reference
+
+| Function | PanelData Behavior | Returns |
+|----------|-------------------|---------|
+| `query` | Filter rows within each group | `PanelData` |
+| `mutate` | Add/modify columns within each group | `PanelData` |
+| `arrange` | Sort rows within each group | `PanelData` |
+| `select` | Select columns (grouping/date columns auto-included) | `PanelData` |
+| `distinct` | Remove duplicates within each group (grouping columns auto-included) | `PanelData` |
+| `fill_missing` | Fill missing values within each group | `PanelData` |
+| `rename` | Rename columns (updates group/date metadata) | `PanelData` |
+| `pivot_longer` | Pivot to long (grouping/date columns auto-added to id_cols) | `PanelData` |
+| `pivot_wider` | Pivot to wide (grouping/date columns auto-added to id_cols) | `PanelData` |
+| `summarise` | Summarize each group (collapses time dimension) | `NamedTuple` |
+
+---
+
+### `query` - Filter Rows Per Series
+
+Filter rows independently within each series based on a predicate.
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = ["A", "A", "A", "A", "B", "B", "B", "B"],
+        date = [1, 2, 3, 4, 1, 2, 3, 4],
+        value = [10, 25, 15, 30, 100, 150, 120, 180])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Keep only rows where value > 20 (applied per series)
+filtered = query(panel, row -> row.value > 20)
+glimpse(filtered)
+# Series A: keeps dates 2, 4 (values 25, 30)
+# Series B: keeps all dates (all values > 20)
+```
+
+**Use Case**: Remove outliers, filter to specific time periods, or apply series-specific conditions.
+
+---
+
+### `mutate` - Group-Relative Feature Engineering
+
+Create new columns with computations that operate within each series. This is essential for creating features like:
+- Series-level statistics (mean, std, min, max)
+- Deviations from series mean (centering/normalization)
+- Lagged values and differences
+- Rolling statistics
+- Percentage of series total
 
 ```julia
 using Durbyn.TableOps
 using Durbyn.ModelSpecs
 using Statistics
 
-# Panel data with multiple time series
 data = (series = ["A", "A", "A", "A", "B", "B", "B", "B"],
         date = [1, 2, 3, 4, 1, 2, 3, 4],
-        value = [10, 20, 30, 40, 100, 200, 300, 400])
+        value = [100, 110, 90, 120, 500, 520, 480, 540])
 
 panel = PanelData(data; groupby=:series, date=:date, m=12)
 
-# mutate computes within each group
+# Feature engineering within each series
 result = mutate(panel,
-    group_mean = d -> fill(mean(d.value), length(d.value)),
+    # Series statistics (broadcast to all rows)
+    series_mean = d -> fill(mean(d.value), length(d.value)),
+    series_std = d -> fill(std(d.value), length(d.value)),
+
+    # Centering and scaling
     centered = d -> d.value .- mean(d.value),
-    pct_of_group = d -> d.value ./ sum(d.value) .* 100)
+    scaled = d -> (d.value .- mean(d.value)) ./ std(d.value),
+
+    # Percentage of series total
+    pct_of_total = d -> d.value ./ sum(d.value) .* 100,
+
+    # Lagged values
+    lag1 = d -> [missing; d.value[1:end-1]],
+
+    # Differences
+    diff1 = d -> [missing; diff(d.value)],
+
+    # Percent change
+    pct_change = d -> [missing; diff(d.value) ./ d.value[1:end-1] .* 100]
+)
 
 glimpse(result)
-# Series A: group_mean=25, centered=[-15,-5,5,15], pct=[10,20,30,40]
-# Series B: group_mean=250, centered=[-150,-50,50,150], pct=[10,20,30,40]
 ```
 
-### Example: Fill Missing Values Per Series
+**Key Point**: The function receives only the current group's data, so `mean(d.value)` computes the mean for that series only, not the global mean.
+
+---
+
+### `arrange` - Sort Within Each Series
+
+Sort rows by one or more columns within each series independently.
 
 ```julia
 using Durbyn.TableOps
 using Durbyn.ModelSpecs
 
-# Panel data with missing values in different positions per series
-data = (series = ["A", "A", "A", "B", "B", "B"],
-        date = [1, 2, 3, 1, 2, 3],
-        value = [10, missing, 30, missing, 200, missing])
-
-panel = PanelData(data; groupby=:series, date=:date)
-
-# Forward fill within each series independently
-filled = fill_missing(panel, :value; direction=:down)
-glimpse(filled)
-# Series A: [10, 10, 30]
-# Series B: [missing, 200, 200]
-```
-
-### Example: Summarize Panel Data
-
-```julia
-using Durbyn.TableOps
-using Durbyn.ModelSpecs
-using Statistics
-
-data = (series = ["A", "A", "A", "B", "B", "B"],
-        date = [1, 2, 3, 1, 2, 3],
-        value = [10, 20, 30, 100, 200, 300])
-
-panel = PanelData(data; groupby=:series, date=:date)
-
-# Compute statistics per series
-stats = summarise(panel,
-    mean_val = :value => mean,
-    std_val = :value => std,
-    min_val = :value => minimum,
-    max_val = :value => maximum,
-    n = d -> length(d.value))
-
-println(stats)
-# (series = ["A", "B"], mean_val = [20.0, 200.0], ...)
-```
-
-### Example: Sort and Filter Within Groups
-
-```julia
-using Durbyn.TableOps
-using Durbyn.ModelSpecs
-
+# Data with dates out of order
 data = (series = ["A", "A", "A", "B", "B", "B"],
         date = [3, 1, 2, 2, 3, 1],
         value = [30, 10, 20, 200, 300, 100])
@@ -1362,23 +1488,320 @@ panel = PanelData(data; groupby=:series)
 
 # Sort by date within each series
 sorted = arrange(panel, :date)
-glimpse(sorted)
 # Series A: dates [1, 2, 3], values [10, 20, 30]
 # Series B: dates [1, 2, 3], values [100, 200, 300]
 
-# Filter high values per group
-high_values = query(panel, row -> row.value > 15)
-glimpse(high_values)
-# Series A: keeps rows where value > 15
-# Series B: keeps rows where value > 15
+# Sort descending
+sorted_desc = arrange(panel, :date => :desc)
+
+# Multi-column sort
+arrange(panel, :category, :date => :desc)
 ```
 
-### Key Benefits
+**Use Case**: Ensure time ordering after joins or other operations that may scramble row order.
 
-1. **Automatic grouping**: No need to manually call `groupby` - the panel's groups are used automatically
-2. **Preserved metadata**: Operations return a new `PanelData` with the same grouping columns, date column, and seasonal period
-3. **Group-relative computations**: In `mutate`, functions receive only the current group's data, enabling computations like group means, centering, and percentages
-4. **Independent processing**: Each group is processed independently, which is essential for time series operations like forward-filling
+---
+
+### `select` - Select Columns (Preserving Structure)
+
+Select columns from the panel. **Grouping columns and date column are automatically included** to preserve the panel structure.
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = ["A", "A", "B", "B"],
+        date = [1, 2, 1, 2],
+        value = [100, 110, 200, 210],
+        extra = [1, 2, 3, 4],
+        temp = [20, 21, 22, 23])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Select value column - series and date are auto-included
+result = select(panel, :value)
+# Result has columns: series, date, value
+
+# Rename while selecting
+result = select(panel, :sales => :value)
+# Result has columns: series, date, sales
+
+# Attempting to exclude grouping columns throws an error
+# select(panel, :value)  # :series is always included
+```
+
+**Structural Protection**: The panel's grouping and date columns cannot be accidentally dropped, ensuring the panel structure remains valid.
+
+---
+
+### `distinct` - Unique Rows Per Series
+
+Remove duplicate rows within each series. **Grouping columns are automatically included** in the uniqueness check.
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = ["A", "A", "A", "B", "B", "B"],
+        category = ["X", "X", "Y", "X", "X", "Y"],
+        value = [100, 100, 200, 300, 300, 400])
+
+panel = PanelData(data; groupby=:series)
+
+# Distinct by category within each series
+# (series is auto-included in uniqueness check)
+result = distinct(panel, :category)
+# Series A: keeps one "X" and one "Y"
+# Series B: keeps one "X" and one "Y"
+
+# Keep all columns while deduping
+result = distinct(panel, :category; keep_all=true)
+```
+
+---
+
+### `fill_missing` - Forward/Backward Fill Per Series
+
+Fill missing values using previous or next values **within each series**. This prevents values from one series "leaking" into another.
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (series = ["A", "A", "A", "A", "B", "B", "B", "B"],
+        date = [1, 2, 3, 4, 1, 2, 3, 4],
+        value = [10, missing, missing, 40, missing, 200, missing, 400])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Forward fill within each series
+filled_down = fill_missing(panel, :value; direction=:down)
+# Series A: [10, 10, 10, 40]
+# Series B: [missing, 200, 200, 400]  # First value stays missing
+
+# Backward fill
+filled_up = fill_missing(panel, :value; direction=:up)
+# Series A: [10, 40, 40, 40]
+# Series B: [200, 200, 400, 400]
+
+# Forward then backward (fills all if possible)
+filled_both = fill_missing(panel, :value; direction=:downup)
+# Series A: [10, 10, 10, 40]
+# Series B: [200, 200, 200, 400]
+```
+
+**Critical for Time Series**: Without PanelData grouping, forward fill would carry values across series boundaries, corrupting your data.
+
+---
+
+### `rename` - Rename Columns (Updating Metadata)
+
+Rename columns in the panel. If you rename a grouping column or date column, the panel metadata is automatically updated.
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+data = (id = ["A", "A", "B", "B"],
+        time = [1, 2, 1, 2],
+        val = [100, 110, 200, 210])
+
+panel = PanelData(data; groupby=:id, date=:time)
+
+# Rename grouping column
+renamed = rename(panel, :series => :id)
+# panel.groups is now [:series]
+
+# Rename date column
+renamed = rename(panel, :date => :time)
+# panel.date is now :date
+
+# Rename regular column
+renamed = rename(panel, :value => :val)
+```
+
+---
+
+### `pivot_longer` - Wide to Long (Preserving Structure)
+
+Pivot from wide to long format. **Grouping and date columns are automatically added to `id_cols`** to preserve the panel structure.
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+# Wide format: multiple value columns
+wide_data = (series = ["A", "A", "B", "B"],
+             date = [1, 2, 1, 2],
+             sales = [100, 110, 200, 210],
+             costs = [80, 85, 150, 160])
+
+panel = PanelData(wide_data; groupby=:series, date=:date)
+
+# Pivot sales and costs to long format
+# series and date are auto-included as id_cols
+long = pivot_longer(panel,
+    value_cols = [:sales, :costs],
+    names_to = :metric,
+    values_to = :amount)
+
+glimpse(long)
+# Columns: series, date, metric, amount
+# Each original row becomes 2 rows (one for sales, one for costs)
+```
+
+---
+
+### `pivot_wider` - Long to Wide (Preserving Structure)
+
+Pivot from long to wide format. **Grouping and date columns are automatically added to `id_cols`**.
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+
+# Long format
+long_data = (series = ["A", "A", "A", "A", "B", "B", "B", "B"],
+             date = [1, 1, 2, 2, 1, 1, 2, 2],
+             metric = ["sales", "costs", "sales", "costs", "sales", "costs", "sales", "costs"],
+             amount = [100, 80, 110, 85, 200, 150, 210, 160])
+
+panel = PanelData(long_data; groupby=:series, date=:date)
+
+# Pivot metric values to columns
+wide = pivot_wider(panel,
+    names_from = :metric,
+    values_from = :amount)
+
+glimpse(wide)
+# Columns: series, date, sales, costs
+```
+
+---
+
+### `summarise` - Aggregate Per Series
+
+Compute summary statistics for each series. **Returns a `NamedTuple`** (not PanelData) since the time dimension is collapsed.
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+data = (series = ["A", "A", "A", "A", "B", "B", "B", "B"],
+        date = [1, 2, 3, 4, 1, 2, 3, 4],
+        value = [100, 110, 90, 120, 500, 520, 480, 540])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Compute statistics per series
+stats = summarise(panel,
+    n = d -> length(d.value),
+    mean_val = :value => mean,
+    std_val = :value => std,
+    min_val = :value => minimum,
+    max_val = :value => maximum,
+    range_val = d -> maximum(d.value) - minimum(d.value),
+    cv = d -> std(d.value) / mean(d.value)  # Coefficient of variation
+)
+
+glimpse(stats)
+# (series = ["A", "B"], n = [4, 4], mean_val = [105.0, 510.0], ...)
+```
+
+**Note**: `summarise` returns a `NamedTuple`, not `PanelData`, because the result has one row per series (time dimension is gone).
+
+---
+
+### Using `across` with PanelData
+
+Apply the same function(s) across multiple columns within each group.
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+data = (series = ["A", "A", "B", "B"],
+        date = [1, 2, 1, 2],
+        sales = [100.0, 110.0, 200.0, 210.0],
+        costs = [80.0, 85.0, 150.0, 160.0],
+        units = [10.0, 11.0, 20.0, 21.0])
+
+panel = PanelData(data; groupby=:series, date=:date)
+
+# Summarize multiple columns
+stats = summarise(panel, across([:sales, :costs, :units], :mean => mean, :sum => sum))
+# Result has: series, sales_mean, sales_sum, costs_mean, costs_sum, units_mean, units_sum
+```
+
+---
+
+### Complete Forecasting Workflow Example
+
+```julia
+using Durbyn.TableOps
+using Durbyn.ModelSpecs
+using Statistics
+
+# Raw retail data with multiple stores
+raw_data = (
+    store = ["S1", "S1", "S1", "S1", "S2", "S2", "S2", "S2"],
+    date = [1, 2, 3, 4, 1, 2, 3, 4],
+    sales = [100.0, missing, 120.0, 130.0, 500.0, 520.0, missing, 560.0],
+    promo = [0, 1, 0, 1, 1, 0, 1, 0]
+)
+
+# Step 1: Create PanelData
+panel = PanelData(raw_data; groupby=:store, date=:date, m=12, target=:sales)
+
+# Step 2: Handle missing values per series
+cleaned = fill_missing(panel, :sales; direction=:downup)
+
+# Step 3: Feature engineering within each series
+features = mutate(cleaned,
+    # Lag features
+    sales_lag1 = d -> [missing; d.sales[1:end-1]],
+    sales_lag2 = d -> [missing; missing; d.sales[1:end-2]],
+
+    # Rolling mean (simple 2-period)
+    sales_ma2 = d -> [missing; (d.sales[1:end-1] .+ d.sales[2:end]) ./ 2],
+
+    # Series-level features
+    series_mean = d -> fill(mean(d.sales), length(d.sales)),
+    deviation = d -> d.sales .- mean(d.sales),
+
+    # Trend proxy
+    time_idx = d -> collect(1:length(d.sales))
+)
+
+# Step 4: Filter to rows with complete features
+model_data = query(features, r -> !ismissing(r.sales_lag2))
+
+# Step 5: Summarize for exploration
+summary = summarise(panel,
+    n = d -> length(d.sales),
+    mean_sales = :sales => x -> mean(skipmissing(x)),
+    total_sales = :sales => x -> sum(skipmissing(x)))
+
+glimpse(summary)
+```
+
+---
+
+### Key Benefits of PanelData Operations
+
+1. **Automatic Grouping**: No need to manually `groupby` - the panel's group structure is used automatically
+
+2. **Preserved Metadata**: Operations return a new `PanelData` with the same grouping columns, date column, seasonal period, and other metadata
+
+3. **Structural Protection**: Grouping and date columns cannot be accidentally dropped by `select` or `distinct`
+
+4. **Group-Relative Computations**: In `mutate`, functions receive only the current group's data, enabling proper within-series feature engineering
+
+5. **Independent Processing**: Each group is processed independently, preventing data leakage between series (critical for `fill_missing`)
+
+6. **Seamless Forecasting Integration**: The preserved metadata flows directly into Durbyn's forecasting models
 
 ---
 

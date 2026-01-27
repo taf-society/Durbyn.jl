@@ -116,8 +116,8 @@ function _finalize_column(vec::Vector; eltype_hint::Union{Type, Nothing}=nothing
         T = eltype_hint !== nothing ? eltype_hint : Any
         return Vector{T}()
     end
-    # Use typejoin for tightest common supertype (preserves type relationships)
-    T = reduce(typejoin, map(typeof, vec))
+    # Use promote_type for proper Union handling (e.g., Missing + Int64 → Union{Missing, Int64})
+    T = reduce(promote_type, map(typeof, vec))
     out = Vector{T}(undef, length(vec))
     for i in eachindex(vec)
         out[i] = convert(T, vec[i])

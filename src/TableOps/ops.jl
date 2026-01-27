@@ -205,7 +205,18 @@ function query(data, predicate::Function)
     mask = Vector{Bool}(undef, n)
     for i in 1:n
         row = _row_namedtuple(ct, i, names)
-        mask[i] = predicate(row)
+        result = predicate(row)
+        # Handle missing values explicitly - only `true` passes the filter
+        if result === true
+            mask[i] = true
+        elseif result === false
+            mask[i] = false
+        elseif ismissing(result)
+            throw(ArgumentError("query predicate returned `missing` for row $i. " *
+                "Use `coalesce(condition, false)` or handle missing values explicitly."))
+        else
+            throw(ArgumentError("query predicate must return Bool, got $(typeof(result)) for row $i"))
+        end
     end
     return _subset_mask(ct, mask)
 end
@@ -1806,7 +1817,8 @@ function mutate(data, ac::Across)
             out_name = Symbol("$(col)_$(fn_name)")
             result = fn(ct[col])
             if !(result isa AbstractVector)
-                result = fill(result, n)
+                # Use deepcopy to avoid aliasing mutable results (e.g., Ref, arrays)
+                result = [deepcopy(result) for _ in 1:n]
             elseif length(result) != n
                 throw(DimensionMismatch(
                     "across function '$fn_name' on column '$col' returned vector of length $(length(result)), expected $n"))
@@ -2009,6 +2021,7 @@ function unite(data, new_col::Symbol, cols::Symbol...; sep::String="_", remove::
     n = _check_lengths(ct)
 
     cols_list = collect(cols)
+    isempty(cols_list) && throw(ArgumentError("unite requires at least one input column"))
     for col in cols_list
         col in available || throw(ArgumentError("Column '$(col)' not found"))
     end

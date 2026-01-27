@@ -1865,3 +1865,45 @@ end
         @test count(ismissing, result.c) == 0
     end
 end
+
+# =============================================================================
+# unite validation
+# =============================================================================
+@testset "unite validation" begin
+    @testset "unite with zero columns throws error" begin
+        tbl = (a = [1, 2], b = [3, 4])
+        @test_throws ArgumentError unite(tbl, :x)
+    end
+end
+
+# =============================================================================
+# query missing predicate handling
+# =============================================================================
+@testset "query missing predicate" begin
+    @testset "query with missing result throws clear error" begin
+        tbl = (x = [1, missing, 3],)
+        @test_throws ArgumentError query(tbl, row -> row.x > 2)
+    end
+
+    @testset "query with coalesce handles missing" begin
+        tbl = (x = [1, missing, 3],)
+        result = query(tbl, row -> coalesce(row.x > 2, false))
+        @test length(result.x) == 1
+        @test result.x[1] == 3
+    end
+end
+
+# =============================================================================
+# mutate across aliasing
+# =============================================================================
+@testset "mutate across scalar aliasing" begin
+    @testset "mutable scalars are not aliased" begin
+        tbl = (a = [1, 2, 3],)
+        result = mutate(tbl, across([:a], :ref => x -> Ref(0)))
+        # Modify first element
+        result.a_ref[1][] = 999
+        # Second element should be unchanged
+        @test result.a_ref[2][] == 0
+        @test result.a_ref[3][] == 0
+    end
+end

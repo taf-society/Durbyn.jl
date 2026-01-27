@@ -1366,6 +1366,15 @@ panel = PanelData(data;
     fill_time = true,             # Fill missing time points
     target_na = (method = :interpolate,)  # Impute missing target values
 )
+
+# Balanced panel: all groups padded to same global time span
+panel = PanelData(data;
+    groupby = :series,
+    date = :date,
+    frequency = :monthly,
+    fill_time = true,
+    balanced = true               # All groups get same start/end dates
+)
 ```
 
 ### PanelData Fields
@@ -1378,6 +1387,69 @@ panel = PanelData(data;
 | `m` | `Int`, `Vector{Int}`, or `nothing` | Seasonal period(s) |
 | `frequency` | `Symbol` or `nothing` | Time frequency |
 | `target` | `Symbol` or `nothing` | Target variable for forecasting |
+
+### Balanced Panels
+
+When working with panel data, different groups (series) often have different time spans. For example:
+- Store A might have data from January 2024 to December 2024
+- Store B might have data from March 2024 to November 2024
+
+By default, `fill_time=true` only fills gaps **within each group's own time span**. This creates an **unbalanced panel** where groups have different numbers of observations.
+
+The `balanced=true` option creates a **balanced panel** by padding all groups to the **global time span** (from the earliest date to the latest date across all groups). Groups with shorter histories get `missing` values for dates outside their original range.
+
+#### When to Use Balanced Panels
+
+| Scenario | Use `balanced` | Why |
+|----------|---------------|-----|
+| **Fixed-effects regression** | ✅ Yes | Many panel regression methods require balanced panels |
+| **Matrix-based models** | ✅ Yes | Models that stack series into matrices need equal lengths |
+| **Comparing series statistics** | ✅ Yes | Fair comparison requires same observation periods |
+| **Cross-sectional aggregation** | ✅ Yes | Computing "average across all stores on date X" needs all stores present |
+| **Independent forecasting** | ❌ No | When forecasting each series independently, unbalanced is fine |
+| **Memory-constrained** | ❌ No | Balanced panels can be much larger if time spans vary widely |
+
+#### Example: Balanced vs Unbalanced
+
+```julia
+using Durbyn.ModelSpecs
+using Dates
+
+# Store A: Jan 3-5 (3 days), Store B: Jan 1-4 (4 days)
+data = (
+    store = ["A", "A", "A", "B", "B", "B", "B"],
+    date = [Date(2024,1,3), Date(2024,1,4), Date(2024,1,5),
+            Date(2024,1,1), Date(2024,1,2), Date(2024,1,3), Date(2024,1,4)],
+    sales = [130, 140, 150, 100, 110, 120, 130]
+)
+
+# Unbalanced: each group keeps its own time span
+panel_unbalanced = PanelData(data;
+    groupby = :store,
+    date = :date,
+    frequency = :daily,
+    fill_time = true
+)
+# Store A: 3 rows (Jan 3-5)
+# Store B: 4 rows (Jan 1-4)
+# Total: 7 rows
+
+# Balanced: all groups padded to global span (Jan 1-5)
+panel_balanced = PanelData(data;
+    groupby = :store,
+    date = :date,
+    frequency = :daily,
+    fill_time = true,
+    balanced = true
+)
+# Store A: 5 rows (Jan 1-5, with missing for Jan 1-2)
+# Store B: 5 rows (Jan 1-5, with missing for Jan 5)
+# Total: 10 rows
+```
+
+After balancing, Store A has `missing` sales for January 1-2 (before its data began), and Store B has `missing` sales for January 5 (after its data ended). You can then use `target_na` or `fill_missing` to impute these values if needed.
+
+---
 
 ### Supported Operations Reference
 

@@ -736,6 +736,14 @@ function pivot_longer(data;
         vals = [c for c in cols if !(c in ids)]
     elseif isempty(ids)
         ids = [c for c in cols if !(c in vals)]
+    else
+        # Both id_cols and value_cols provided: add any unspecified columns to ids
+        specified = union(Set(ids), Set(vals))
+        for c in cols
+            if !(c in specified)
+                push!(ids, c)
+            end
+        end
     end
 
     isempty(vals) && throw(ArgumentError("pivot_longer requires at least one value column"))
@@ -966,7 +974,7 @@ function pivot_wider(data;
 
     for id in ids
         push!(out_names, id)
-        push!(out_cols, _finalize_column(id_vectors[id]))
+        push!(out_cols, _finalize_column(id_vectors[id]; eltype_hint=eltype(ct[id])))
     end
 
     if isempty(name_order)
@@ -3188,11 +3196,29 @@ end
     _rebuild_panel(panel::PanelData, new_data; groups=panel.groups, date=panel.date)
 
 Create a new PanelData with new data but preserving metadata from the original panel.
+Validates that structural columns exist; clears date if missing from new_data.
 """
 function _rebuild_panel(panel::PanelData, new_data;
                         groups::Vector{Symbol}=panel.groups,
                         date::Union{Symbol, Nothing}=panel.date)
-    return PanelData(new_data, groups, date, panel.m,
+    ct = _to_columns(new_data)
+    available = Set(_column_names(ct))
+
+    # Validate grouping columns exist
+    for g in groups
+        if !(g in available)
+            throw(ArgumentError("Grouping column '$g' missing from result data. " *
+                "Panel operations must preserve grouping columns."))
+        end
+    end
+
+    # Clear date if it's missing from the result
+    validated_date = date
+    if date !== nothing && !(date in available)
+        validated_date = nothing
+    end
+
+    return PanelData(new_data, groups, validated_date, panel.m,
                      panel.frequency, panel.target,
                      panel.time_fill_meta, panel.target_meta, panel.xreg_meta)
 end
@@ -3487,16 +3513,26 @@ end
 
 Remove duplicate rows within each group of a PanelData.
 
+Grouping columns are automatically included in the uniqueness check and output
+to preserve panel structure.
+
 # Arguments
 - `panel`: A PanelData object with grouping columns
-- `cols...`: Columns to consider for uniqueness
+- `cols...`: Columns to consider for uniqueness (grouping columns auto-included)
 - `keep_all`: Keep all columns (default: false)
 
 # Returns
 A new `PanelData` with duplicates removed within each group.
 """
 function distinct(panel::PanelData, cols::Symbol...; keep_all::Bool=false)
-    _apply_by_group_to_panel(panel, ct -> distinct(ct, cols...; keep_all=keep_all))
+    # Auto-include grouping columns to preserve panel structure
+    cols_list = collect(cols)
+    for g in panel.groups
+        if !(g in cols_list)
+            pushfirst!(cols_list, g)
+        end
+    end
+    _apply_by_group_to_panel(panel, ct -> distinct(ct, cols_list...; keep_all=keep_all))
 end
 
 """
@@ -3583,6 +3619,11 @@ function pivot_longer(panel::PanelData;
     groups_to_add = [g for g in panel.groups if !(g in ids)]
     ids = vcat(groups_to_add, ids)
 
+    # Also preserve date column as id if defined and not already included
+    if panel.date !== nothing && !(panel.date in ids)
+        push!(ids, panel.date)
+    end
+
     result = pivot_longer(ct; id_cols=ids, value_cols=value_cols,
                           names_to=names_to, values_to=values_to)
 
@@ -3613,6 +3654,11 @@ function pivot_wider(panel::PanelData;
     # Prepend groups not already in ids, maintaining original group order
     groups_to_add = [g for g in panel.groups if !(g in ids)]
     ids = vcat(groups_to_add, ids)
+
+    # Also preserve date column as id if defined and not already included
+    if panel.date !== nothing && !(panel.date in ids)
+        push!(ids, panel.date)
+    end
 
     result = pivot_wider(ct; names_from=names_from, values_from=values_from,
                          id_cols=ids, fill=fill, sort_names=sort_names)

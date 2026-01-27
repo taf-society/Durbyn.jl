@@ -112,15 +112,10 @@ If `eltype_hint` is provided and vec is empty, returns Vector{eltype_hint}().
 """
 function _finalize_column(vec::Vector; eltype_hint::Union{Type, Nothing}=nothing)
     if isempty(vec)
-        # Use eltype_hint if provided, otherwise Any
         T = eltype_hint !== nothing ? eltype_hint : Any
         return Vector{T}()
     end
-    # Use promote_type for proper Union handling (e.g., Missing + Int64 → Union{Missing, Int64})
     T = reduce(promote_type, map(typeof, vec))
-    # Incorporate eltype_hint to ensure type is at least as wide as the hint
-    # This handles cases like all-missing columns that should be Union{Missing, T}
-    # Skip if hint is Any (would only degrade the inferred type)
     if eltype_hint !== nothing && eltype_hint !== Any
         T = promote_type(T, eltype_hint)
     end
@@ -142,21 +137,18 @@ function _namedtuple_lt(a::NamedTuple, b::NamedTuple)
     for i in 1:length(a)
         va = a[i]
         vb = b[i]
-        # Handle missing values - sort them last
         va_miss = ismissing(va)
         vb_miss = ismissing(vb)
         if va_miss && vb_miss
             continue
         elseif va_miss
-            return false  # a (missing) comes after b
+            return false
         elseif vb_miss
-            return true   # a comes before b (missing)
+            return true
         end
-        # Use isless for proper type-aware comparison
         if isequal(va, vb)
             continue
         end
-        # isless - error on incompatible types (no silent string fallback)
         try
             return isless(va, vb)
         catch e
@@ -165,10 +157,8 @@ function _namedtuple_lt(a::NamedTuple, b::NamedTuple)
                 "Column contains mixed types that cannot be ordered."))
         end
     end
-    return false  # equal
+    return false
 end
-
-# Note: select() is defined below after ColumnSelector types are declared
 
 """
     query(data, predicate::Function)
@@ -218,7 +208,6 @@ function query(data, predicate::Function)
     for i in 1:n
         row = _row_namedtuple(ct, i, names)
         result = predicate(row)
-        # Handle missing values explicitly - only `true` passes the filter
         if result === true
             mask[i] = true
         elseif result === false
@@ -288,7 +277,6 @@ function arrange(data, cols...; rev::Bool=false)
             if spec isa Pair
                 col = Symbol(first(spec))
                 dir = last(spec)
-                # :asc/:ascending = ascending (false), :desc/:descending/:reverse = descending (true)
                 if dir === :asc || dir === :ascending
                     desc = false
                 elseif dir === :desc || dir === :descending || dir === :reverse
@@ -311,26 +299,22 @@ function arrange(data, cols...; rev::Bool=false)
         end
         perm = collect(1:n)
         values = [ct[sym] for sym in order_cols]
-        # Use stable sort with missing-aware comparisons (missing always sorts last)
         sort!(perm, alg=Base.Sort.MergeSort, lt = (a, b) -> begin
             for (vec, desc) in zip(values, descending)
                 va = vec[a]
                 vb = vec[b]
-                # Handle missing values: missing always sorts last (regardless of asc/desc)
                 va_miss = ismissing(va)
                 vb_miss = ismissing(vb)
                 if va_miss && vb_miss
-                    continue  # Both missing, equal
+                    continue
                 elseif va_miss
-                    return false  # a (missing) comes after b, so a is NOT less than b
+                    return false
                 elseif vb_miss
-                    return true   # a comes before b (missing), so a IS less than b
+                    return true
                 end
-                # Both non-missing: use isequal for proper equality, isless for ordering
                 if isequal(va, vb)
                     continue
                 end
-                # isless - error on incompatible types (no silent string fallback)
                 try
                     return desc ? isless(vb, va) : isless(va, vb)
                 catch e
@@ -339,7 +323,7 @@ function arrange(data, cols...; rev::Bool=false)
                         "Column contains mixed types that cannot be ordered."))
                 end
             end
-            return false  # All equal, maintain original order (stable)
+            return false
         end)
     end
     names = _column_names(ct)
@@ -386,7 +370,6 @@ end
 function groupby(data, cols::AbstractVector{Symbol})
     isempty(cols) && throw(ArgumentError("groupby requires at least one grouping column"))
 
-    # Check for duplicate grouping columns
     if length(cols) != length(Set(cols))
         throw(ArgumentError("Duplicate grouping columns: $(cols)"))
     end
@@ -412,7 +395,6 @@ function groupby(data, cols::AbstractVector{Symbol})
     end
 
     key_list = collect(keys(groups))
-    # Sort using proper comparison (not string-based) for correct numeric/date ordering
     order = sortperm(key_list, lt = _namedtuple_lt)
     key_list = key_list[order]
     idx_list = [groups[key_list[i]] for i in 1:length(key_list)]
@@ -513,27 +495,22 @@ function _infer_summary_type(spec, data::NamedTuple)
         col = first(spec)
         func = last(spec)
         if col isa Symbol
-            # Validate column exists (throws KeyError if not)
             col in propertynames(data) || throw(KeyError(col))
-            # Try calling func on empty typed vector
             col_eltype = eltype(data[col])
             empty_col = Vector{col_eltype}()
             try
                 result = func(empty_col)
                 return typeof(result)
             catch
-                # Function call failed (e.g., mean on empty), fall back to Any
                 return Any
             end
         elseif col isa Tuple
-            # Validate all columns exist
             for c in col
                 c in propertynames(data) || throw(KeyError(c))
             end
-            return Any  # Complex multi-column specs fall back to Any
+            return Any
         end
     end
-    # For functions on full group, fall back to Any
     return Any
 end
 
@@ -598,7 +575,6 @@ function summarise(gt::GroupedTable; kwargs...)
         end
     end
 
-    # Preserve kwargs order by storing names in order
     summary_names = Symbol[]
     summary_data = Dict{Symbol, Vector{Any}}()
     for (name, _) in pairs(kwargs)
@@ -619,18 +595,15 @@ function summarise(gt::GroupedTable; kwargs...)
     for col in keycols
         push!(names, col)
         if m == 0
-            # Empty result: preserve eltype from original data
             original_eltype = eltype(gt.data[col])
             push!(cols, Vector{original_eltype}())
         else
             push!(cols, _finalize_column(key_data[col]))
         end
     end
-    # Iterate in preserved order, not Dict order
     for (name, spec) in zip(summary_names, [kwargs[Symbol(n)] for n in summary_names])
         push!(names, name)
         if m == 0
-            # Try to infer return type for empty data
             result_type = _infer_summary_type(spec, gt.data)
             push!(cols, Vector{result_type}())
         else
@@ -708,7 +681,6 @@ function pivot_longer(data;
     ids = id_cols isa Symbol ? Symbol[id_cols] : collect(id_cols)
     vals = value_cols isa Symbol ? Symbol[value_cols] : collect(value_cols)
 
-    # Check for duplicate id_cols
     if length(ids) != length(unique(ids))
         seen = Set{Symbol}()
         for id in ids
@@ -719,7 +691,6 @@ function pivot_longer(data;
         end
     end
 
-    # Check for duplicate value_cols
     if length(vals) != length(unique(vals))
         seen = Set{Symbol}()
         for v in vals
@@ -730,25 +701,20 @@ function pivot_longer(data;
         end
     end
 
-    # Validate names_to/values_to collision first (applies to all cases)
     if names_to == values_to
         throw(ArgumentError("names_to and values_to cannot be the same: '$names_to'"))
     end
 
-    # Handle empty table case (after basic validation)
     if isempty(cols)
-        # Validate that specified id_cols/value_cols are empty (can't reference non-existent columns)
         if !isempty(ids)
             throw(ArgumentError("ID column '$(ids[1])' not found in empty table"))
         end
         if !isempty(vals)
             throw(ArgumentError("Value column '$(vals[1])' not found in empty table"))
         end
-        # Return empty table with correct schema
         return NamedTuple{(names_to, values_to)}((String[], Any[]))
     end
 
-    # Check for overlap between id_cols and value_cols before defaults
     if !isempty(ids) && !isempty(vals)
         overlap = intersect(Set(ids), Set(vals))
         if !isempty(overlap)
@@ -756,16 +722,13 @@ function pivot_longer(data;
         end
     end
 
-    # When both are empty, treat all columns as value columns (no id columns)
-    # This matches the docstring: "all non-id columns become value columns"
     if isempty(ids) && isempty(vals)
-        vals = copy(cols)  # All columns become values
+        vals = copy(cols)
     elseif isempty(vals)
         vals = [c for c in cols if !(c in ids)]
     elseif isempty(ids)
         ids = [c for c in cols if !(c in vals)]
     else
-        # Both id_cols and value_cols provided: add any unspecified columns to ids
         specified = union(Set(ids), Set(vals))
         for c in cols
             if !(c in specified)
@@ -776,7 +739,6 @@ function pivot_longer(data;
 
     isempty(vals) && throw(ArgumentError("pivot_longer requires at least one value column"))
 
-    # Check for name collisions between names_to/values_to and id_cols
     if names_to in ids
         throw(ArgumentError("names_to='$names_to' conflicts with id column of same name"))
     end
@@ -801,8 +763,6 @@ function pivot_longer(data;
     value_type = promote_type(map(val -> eltype(ct[val]), vals)...)
     value_col = Vector{value_type}(undef, total)
 
-    # Row-major order: for each row, output all value columns
-    # This matches tidyr's pivot_longer behavior
     idx = 1
     for row in 1:n
         for val in vals
@@ -819,7 +779,6 @@ function pivot_longer(data;
     out_cols = Vector{Any}()
     for id in ids
         push!(out_names, id)
-        # Preserve eltype from original id column
         id_eltype = eltype(ct[id])
         push!(out_cols, _finalize_column(id_data[id]; eltype_hint=id_eltype))
     end
@@ -968,7 +927,6 @@ function pivot_wider(data;
                 push!(row_vec, _PIVOT_SENTINEL)
             end
         else
-            # Check if distinct values stringify to the same Symbol
             orig = name_original[name_sym]
             if !isequal(orig, name_val) && typeof(orig) != typeof(name_val)
                 throw(ArgumentError("Distinct values $(repr(orig)) ($(typeof(orig))) and $(repr(name_val)) ($(typeof(name_val))) in names_from column both produce column name ':$(name_sym)'. Ensure names_from values are of consistent type."))
@@ -1009,7 +967,6 @@ function pivot_wider(data;
         return _assemble(out_names, out_cols)
     end
 
-    # Check for collisions between names_from values and id_cols
     id_set = Set(ids)
     for name_sym in name_order
         if name_sym in id_set
@@ -1134,7 +1091,6 @@ function glimpse(io::IO, panel::PanelData; maxrows::Integer = 5)
     println(io, "  Groups: ", isempty(panel.groups) ? "(none)" : join(string.(panel.groups), ", "))
     println(io, "  Date: ", isnothing(panel.date) ? "(none)" : string(panel.date))
 
-    # Show frequency and m
     if panel.frequency !== nothing
         println(io, "  Frequency: ", panel.frequency)
     end
@@ -1148,12 +1104,10 @@ function glimpse(io::IO, panel::PanelData; maxrows::Integer = 5)
         println(io, "  Seasonal period m: (not set)")
     end
 
-    # Show target if set
     if panel.target !== nothing
         println(io, "  Target: ", panel.target)
     end
 
-    # Show preprocessing metadata if any
     has_preprocessing = panel.time_fill_meta !== nothing ||
                         panel.target_meta !== nothing ||
                         !isempty(panel.xreg_meta)
@@ -1297,7 +1251,6 @@ function distinct(data, cols::Symbol...; keep_all::Bool=false)
             throw(ArgumentError("Column '$(col)' not found"))
     end
 
-    # Julia's Set uses isequal for hashing, so it handles missing/NaN correctly
     seen = Set{Any}()
     keep_indices = Int[]
 
@@ -1362,7 +1315,6 @@ function bind_rows(tables...)
 
     cts = [_to_columns(t) for t in tables]
 
-    # Validate each input table has consistent column lengths
     for (i, ct) in enumerate(cts)
         try
             _check_lengths(ct)
@@ -1375,7 +1327,6 @@ function bind_rows(tables...)
     col_set = Set{Symbol}()
     col_eltypes = Dict{Symbol, Type}()
 
-    # Pre-compute column name sets for all tables (avoid repeated Set creation)
     ct_col_sets = [Set(_column_names(ct)) for ct in cts]
 
     for (ct, ct_cols) in zip(cts, ct_col_sets)
@@ -1384,10 +1335,8 @@ function bind_rows(tables...)
                 push!(all_cols, name)
                 push!(col_set, name)
             end
-            # Track eltype from input columns
             col_eltype = eltype(ct[name])
             if haskey(col_eltypes, name)
-                # Promote types when same column appears in multiple tables
                 col_eltypes[name] = promote_type(col_eltypes[name], col_eltype)
             else
                 col_eltypes[name] = col_eltype
@@ -1395,7 +1344,6 @@ function bind_rows(tables...)
         end
     end
 
-    # Columns that don't appear in all tables need Union{..., Missing}
     for col in all_cols
         appears_in_all = all(col in ct_cols for ct_cols in ct_col_sets)
         if !appears_in_all
@@ -1405,14 +1353,12 @@ function bind_rows(tables...)
 
     total_rows = sum(_nrows(ct) for ct in cts)
 
-    # Handle empty result - return typed empty vectors
     if total_rows == 0
         names_out = all_cols
         columns_out = [Vector{col_eltypes[col]}() for col in all_cols]
         return _assemble(names_out, columns_out)
     end
 
-    # Use computed eltypes for result columns (not Vector{Any})
     result_cols = Dict{Symbol, Vector}()
     for col in all_cols
         result_cols[col] = Vector{col_eltypes[col]}(undef, total_rows)
@@ -1632,7 +1578,6 @@ function select(data, specs::Union{Symbol, Pair, ColumnSelector}...)
     seen_output = Set{Symbol}()  # Track output names to prevent duplicates
 
     for spec in specs
-        # Determine if this is an auto-expanding selector (skip duplicates) or explicit spec (error on duplicates)
         is_selector = spec isa ColumnSelector
         expanded = _expand_selector(spec, available)
         for item in expanded
@@ -1645,10 +1590,8 @@ function select(data, specs::Union{Symbol, Pair, ColumnSelector}...)
             end
             if old_name in seen_source
                 if is_selector
-                    # Selectors like everything() silently skip already-selected columns
                     continue
                 else
-                    # Explicit specs error on duplicate source columns
                     throw(ArgumentError("Source column '$old_name' selected multiple times"))
                 end
             end
@@ -1746,7 +1689,6 @@ function summarise(gt::GroupedTable, ac::Across)
         end
     end
 
-    # Check for output name collisions
     seen_names = Set{Symbol}(keycols)
     for col in target_cols
         for (fn_name, _) in ac.fns
@@ -1781,7 +1723,6 @@ function summarise(gt::GroupedTable, ac::Across)
 
     for col in keycols
         push!(names_out, col)
-        # Preserve eltype from original data for key columns
         key_eltype = eltype(gt.data[col])
         push!(cols_out, _finalize_column(key_data[col]; eltype_hint=key_eltype))
     end
@@ -1790,7 +1731,6 @@ function summarise(gt::GroupedTable, ac::Across)
         for (fn_name, fn) in ac.fns
             out_name = Symbol("$(col)_$(fn_name)")
             push!(names_out, out_name)
-            # Try to infer summary eltype from function on empty typed vector
             col_eltype = eltype(gt.data[col])
             summary_eltype = try
                 typeof(fn(Vector{col_eltype}()))
@@ -1817,7 +1757,6 @@ function mutate(data, ac::Across)
         columns[name] = ct[name]
     end
 
-    # Check for output name collisions before computing
     seen_names = Set{Symbol}(available)
     for col in target_cols
         for (fn_name, _) in ac.fns
@@ -1834,7 +1773,6 @@ function mutate(data, ac::Across)
             out_name = Symbol("$(col)_$(fn_name)")
             result = fn(ct[col])
             if !(result isa AbstractVector)
-                # Use deepcopy to avoid aliasing mutable results (e.g., Ref, arrays)
                 result = [deepcopy(result) for _ in 1:n]
             elseif length(result) != n
                 throw(DimensionMismatch(
@@ -1900,7 +1838,6 @@ function separate(data, col::Symbol;
 
     col in available || throw(ArgumentError("Column '$(col)' not found"))
 
-    # Check for duplicate names in 'into'
     if length(into) != length(unique(into))
         seen = Set{Symbol}()
         for name in into
@@ -1911,7 +1848,6 @@ function separate(data, col::Symbol;
         end
     end
 
-    # Check for collision with existing columns (excluding the column being separated if remove=true)
     existing_cols = remove ? Set(c for c in available if c != col) : Set(available)
     for name in into
         if name in existing_cols
@@ -1948,7 +1884,6 @@ function separate(data, col::Symbol;
     if convert
         for name in into
             vec = new_cols[name]
-            # Try to parse as numbers (Int first, then Float64)
             parsed = Vector{Any}(undef, length(vec))
             all_int = true
             all_numeric = true
@@ -1956,12 +1891,10 @@ function separate(data, col::Symbol;
                 if ismissing(v)
                     parsed[i] = missing
                 else
-                    # Try Int first
                     int_val = tryparse(Int, v)
                     if int_val !== nothing
                         parsed[i] = int_val
                     else
-                        # Try Float64
                         float_val = tryparse(Float64, v)
                         if float_val !== nothing
                             parsed[i] = float_val
@@ -2044,9 +1977,6 @@ function unite(data, new_col::Symbol, cols::Symbol...; sep::String="_", remove::
         col in available || throw(ArgumentError("Column '$(col)' not found"))
     end
 
-    # Check for collision with existing columns
-    # When remove=true, new_col can match a column being removed
-    # When remove=false, new_col cannot match any existing column
     cols_set = Set(cols_list)
     conflicting_cols = remove ? Set(c for c in available if c ∉ cols_set) : Set(available)
     if new_col in conflicting_cols
@@ -2251,14 +2181,12 @@ function complete(data, cols::Symbol...; fill_value=missing)
         unique_values[col] = unique(ct[col])
     end
 
-    # Julia's Set uses isequal for hashing, so it handles missing/NaN correctly
     existing_keys = Set{Tuple}()
     for i in 1:n
         key = Tuple(ct[c][i] for c in cols_list)
         push!(existing_keys, key)
     end
 
-    # Use Iterators.product for lazy cartesian product (avoids materializing full product)
     unique_arrays = Tuple(unique_values[c] for c in cols_list)
     new_rows = Tuple[]
     for combo in Iterators.product(unique_arrays...)
@@ -2291,12 +2219,10 @@ function complete(data, cols::Symbol...; fill_value=missing)
     end
 
     names_out = collect(available)
-    # Preserve eltypes from original data (only widen to Union{Missing} if rows were actually added)
     columns_out = Vector{Vector}(undef, length(names_out))
     rows_added = !isempty(new_rows)
     for (i, name) in enumerate(names_out)
         original_eltype = eltype(ct[name])
-        # Only widen non-key columns to Union{fill_value type} if new rows were actually added
         hint_eltype = if name in cols_set
             original_eltype
         elseif rows_added
@@ -2330,7 +2256,6 @@ function _resolve_join_keys(left::NamedTuple, right::NamedTuple, by)
     right_names = Set(_column_names(right))
 
     if by === nothing
-        # Auto-detect common columns, preserving left table column order for determinism
         common = [c for c in left_cols if c in right_names]
         isempty(common) && throw(ArgumentError("No common columns found for join. Specify `by` explicitly."))
         return common, common
@@ -2339,11 +2264,9 @@ function _resolve_join_keys(left::NamedTuple, right::NamedTuple, by)
         by in right_names || throw(ArgumentError("Column '$(by)' not found in right table"))
         return [by], [by]
     elseif by isa AbstractVector{Symbol}
-        # Empty vector = cross join (dplyr behavior)
         if isempty(by)
             return Symbol[], Symbol[]
         end
-        # Check for duplicate keys
         if length(by) != length(Set(by))
             throw(ArgumentError("Duplicate key columns in `by` specification: $(by)"))
         end
@@ -2353,10 +2276,8 @@ function _resolve_join_keys(left::NamedTuple, right::NamedTuple, by)
         end
         return collect(by), collect(by)
     elseif by isa AbstractVector && isempty(by)
-        # Handle empty vectors of any type (e.g., Any[])
         return Symbol[], Symbol[]
     elseif by isa Pair
-        # Normalize to Symbol
         left_key = Symbol(first(by))
         right_key = Symbol(last(by))
         left_key in left_names || throw(ArgumentError("Column '$(left_key)' not found in left table"))
@@ -2366,14 +2287,12 @@ function _resolve_join_keys(left::NamedTuple, right::NamedTuple, by)
         left_keys = Symbol[]
         right_keys = Symbol[]
         for p in by
-            # Normalize to Symbol
-            lk, rk = Symbol(first(p)), Symbol(last(p))
+                lk, rk = Symbol(first(p)), Symbol(last(p))
             lk in left_names || throw(ArgumentError("Column '$(lk)' not found in left table"))
             rk in right_names || throw(ArgumentError("Column '$(rk)' not found in right table"))
             push!(left_keys, lk)
             push!(right_keys, rk)
         end
-        # Check for duplicate keys
         if length(left_keys) != length(Set(left_keys))
             throw(ArgumentError("Duplicate left key columns in `by` specification"))
         end

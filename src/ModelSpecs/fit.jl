@@ -1737,3 +1737,351 @@ function fit(spec::ThetaSpec, panel::PanelData; kwargs...)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end
+
+# =============================================================================
+# Naive Model Fitting
+# =============================================================================
+
+"""
+    fit(spec::NaiveSpec, data; m=nothing, groupby=nothing, kwargs...)
+
+Fit a naive forecasting model to data (single series or grouped).
+
+The naive method uses the last observed value as the forecast for all future periods.
+
+# Arguments
+- `spec::NaiveSpec` - Naive model specification
+- `data` - Tables.jl-compatible data
+
+# Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (stored for reference)
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+
+# Returns
+- If `groupby=nothing`: `FittedNaive`
+- If `groupby` specified: `GroupedFittedModels`
+
+# Examples
+```julia
+spec = NaiveSpec(@formula(sales = naive_term()))
+fitted = fit(spec, data)
+fc = forecast(fitted, h=12)
+
+# Grouped
+fitted = fit(spec, data, groupby=:store)
+```
+"""
+function fit(spec::NaiveSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m=m,
+                           groupby=groupby,
+                           datecol=datecol,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           kwargs...)
+    end
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    naive_fit = Naive_mod.naive(target_vector, seasonal_period;
+                                 lambda=spec.lambda,
+                                 biasadj=spec.biasadj)
+
+    return FittedNaive(spec, naive_fit, target_col, tbl, seasonal_period)
+end
+
+"""
+    fit(spec::SnaiveSpec, data; m, groupby=nothing, kwargs...)
+
+Fit a seasonal naive forecasting model to data (single series or grouped).
+
+The seasonal naive method uses the observation from m periods ago as the forecast.
+The seasonal period `m` is required.
+
+# Arguments
+- `spec::SnaiveSpec` - Seasonal naive model specification
+- `data` - Tables.jl-compatible data
+
+# Keyword Arguments
+- `m::Union{Int, Nothing}` - Seasonal period (required if not in spec)
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+
+# Returns
+- If `groupby=nothing`: `FittedSnaive`
+- If `groupby` specified: `GroupedFittedModels`
+
+# Examples
+```julia
+spec = SnaiveSpec(@formula(sales = snaive_term()))
+fitted = fit(spec, data, m=12)
+fc = forecast(fitted, h=24)
+
+# Grouped
+fitted = fit(spec, data, m=12, groupby=:store)
+```
+"""
+function fit(spec::SnaiveSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m=m,
+                           groupby=groupby,
+                           datecol=datecol,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           kwargs...)
+    end
+
+    seasonal_period = if !isnothing(m)
+        m
+    elseif !isnothing(spec.m)
+        spec.m
+    else
+        throw(ArgumentError(
+            "Seasonal period 'm' must be specified for seasonal naive. " *
+            "Provide it in the spec or as a kwarg to fit()."
+        ))
+    end
+
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    snaive_fit = Naive_mod.snaive(target_vector, seasonal_period;
+                                   lambda=spec.lambda,
+                                   biasadj=spec.biasadj)
+
+    return FittedSnaive(spec, snaive_fit, target_col, tbl, seasonal_period)
+end
+
+"""
+    fit(spec::RwSpec, data; m=nothing, groupby=nothing, kwargs...)
+
+Fit a random walk forecasting model to data (single series or grouped).
+
+Without drift, equivalent to naive. With drift, includes a linear trend.
+
+# Arguments
+- `spec::RwSpec` - Random walk model specification
+- `data` - Tables.jl-compatible data
+
+# Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (stored for reference)
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+
+# Returns
+- If `groupby=nothing`: `FittedRw`
+- If `groupby` specified: `GroupedFittedModels`
+
+# Examples
+```julia
+spec = RwSpec(@formula(sales = rw_term(drift=true)))
+fitted = fit(spec, data)
+fc = forecast(fitted, h=12)
+
+# Grouped
+fitted = fit(spec, data, groupby=:store)
+```
+"""
+function fit(spec::RwSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m=m,
+                           groupby=groupby,
+                           datecol=datecol,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           kwargs...)
+    end
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    # Determine drift from spec or formula term
+    use_drift = spec.drift
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    rw_fit = Naive_mod.rw(target_vector, seasonal_period;
+                          drift=use_drift,
+                          lambda=spec.lambda,
+                          biasadj=spec.biasadj)
+
+    return FittedRw(spec, rw_fit, target_col, tbl, seasonal_period)
+end
+
+# =============================================================================
+# Naive Model Forecasting
+# =============================================================================
+
+"""
+    forecast(fitted::FittedNaive; h, level=[80,95], kwargs...)
+
+Generate forecasts from a fitted naive model.
+"""
+function forecast(fitted::FittedNaive; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for naive forecasts."
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    return Naive_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
+end
+
+"""
+    forecast(fitted::FittedSnaive; h, level=[80,95], kwargs...)
+
+Generate forecasts from a fitted seasonal naive model.
+"""
+function forecast(fitted::FittedSnaive; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for seasonal naive forecasts."
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    return Naive_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
+end
+
+"""
+    forecast(fitted::FittedRw; h, level=[80,95], kwargs...)
+
+Generate forecasts from a fitted random walk model.
+"""
+function forecast(fitted::FittedRw; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for random walk forecasts."
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    return Naive_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
+end
+
+# =============================================================================
+# PanelData support for Naive models
+# =============================================================================
+
+function fit(spec::NaiveSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = resolve_m(panel.m, spec)
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+function fit(spec::SnaiveSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = resolve_m(panel.m, spec)
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+function fit(spec::RwSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = resolve_m(panel.m, spec)
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end

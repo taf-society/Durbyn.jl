@@ -46,7 +46,7 @@ fc = forecast(fitted, h = 12)
 """
 module ModelSpecs
 
-using ..Grammar: ModelFormula, VarTerm, AutoVarTerm, ArimaOrderTerm, TbatsTerm, ThetaTerm, compile_ets_formula
+using ..Grammar: ModelFormula, VarTerm, AutoVarTerm, ArimaOrderTerm, TbatsTerm, ThetaTerm, compile_ets_formula, NaiveTerm, SnaiveTerm, RwTerm
 using ..Utils: Formula
 
 
@@ -58,6 +58,9 @@ export ArarmaSpec, FittedArarma
 export BatsSpec, FittedBats
 export TbatsSpec, FittedTbats
 export ThetaSpec, FittedTheta
+export NaiveSpec, FittedNaive
+export SnaiveSpec, FittedSnaive
+export RwSpec, FittedRw
 export EtsSpec, FittedEts
 export SesSpec, FittedSes
 export HoltSpec, FittedHolt
@@ -82,6 +85,7 @@ include("tbats_spec.jl")
 include("theta_spec.jl")
 include("ets_spec.jl")
 include("smoothing_specs.jl")
+include("naive_spec.jl")
 include("panel_data.jl")
 include("xreg_utils.jl")
 include("model.jl")

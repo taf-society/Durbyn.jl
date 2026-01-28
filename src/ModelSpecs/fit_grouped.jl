@@ -782,3 +782,155 @@ function fit_grouped(spec::ThetaSpec, data;
 
     return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
 end
+
+# =============================================================================
+# Naive Model Grouped Fitting
+# =============================================================================
+
+"""
+    fit_grouped(spec::NaiveSpec, data; m, groupby, parallel=true, fail_fast=false, kwargs...)
+
+Fit naive models to grouped (panel) data.
+"""
+function fit_grouped(spec::NaiveSpec, data;
+                     m::Union{Int, Nothing} = nothing,
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+
+    tbl = Tables.columntable(data)
+
+    groupby_cols = groupby isa Symbol ? [groupby] : collect(groupby)
+    target_col = spec.formula.target
+
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    builder = function(group_data)
+        group_tbl = Tables.columntable(group_data)
+        target_vector = group_tbl[target_col]
+        naive_fit = Naive_mod.naive(target_vector, seasonal_period;
+                                     lambda=spec.lambda,
+                                     biasadj=spec.biasadj)
+        return FittedNaive(spec, naive_fit, target_col, group_data, seasonal_period)
+    end
+
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
+end
+
+"""
+    fit_grouped(spec::SnaiveSpec, data; m, groupby, parallel=true, fail_fast=false, kwargs...)
+
+Fit seasonal naive models to grouped (panel) data.
+"""
+function fit_grouped(spec::SnaiveSpec, data;
+                     m::Union{Int, Nothing} = nothing,
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+
+    tbl = Tables.columntable(data)
+
+    groupby_cols = groupby isa Symbol ? [groupby] : collect(groupby)
+    target_col = spec.formula.target
+
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    seasonal_period = if !isnothing(m)
+        m
+    elseif !isnothing(spec.m)
+        spec.m
+    else
+        throw(ArgumentError(
+            "Seasonal period 'm' must be specified for seasonal naive. " *
+            "Provide it in the spec or as a kwarg to fit()."
+        ))
+    end
+
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    builder = function(group_data)
+        group_tbl = Tables.columntable(group_data)
+        target_vector = group_tbl[target_col]
+        snaive_fit = Naive_mod.snaive(target_vector, seasonal_period;
+                                       lambda=spec.lambda,
+                                       biasadj=spec.biasadj)
+        return FittedSnaive(spec, snaive_fit, target_col, group_data, seasonal_period)
+    end
+
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
+end
+
+"""
+    fit_grouped(spec::RwSpec, data; m, groupby, parallel=true, fail_fast=false, kwargs...)
+
+Fit random walk models to grouped (panel) data.
+"""
+function fit_grouped(spec::RwSpec, data;
+                     m::Union{Int, Nothing} = nothing,
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+
+    tbl = Tables.columntable(data)
+
+    groupby_cols = groupby isa Symbol ? [groupby] : collect(groupby)
+    target_col = spec.formula.target
+
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    use_drift = spec.drift
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    builder = function(group_data)
+        group_tbl = Tables.columntable(group_data)
+        target_vector = group_tbl[target_col]
+        rw_fit = Naive_mod.rw(target_vector, seasonal_period;
+                              drift=use_drift,
+                              lambda=spec.lambda,
+                              biasadj=spec.biasadj)
+        return FittedRw(spec, rw_fit, target_col, group_data, seasonal_period)
+    end
+
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
+end

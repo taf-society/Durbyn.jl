@@ -21,6 +21,7 @@ makedocs(
         "Quick Start" => "quickstart.md",
         "User Guide" => Any[
             "Grammar"                => "grammar.md",
+            "Naive Methods"          => "naive.md",
             "Exponential Smoothing" => "expsmoothing.md",
             "Theta"                  => "theta.md",
             "BATS"                   => "bats.md",

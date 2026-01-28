@@ -2109,3 +2109,123 @@ function fit(spec::RwSpec, panel::PanelData; kwargs...)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end
+
+# =============================================================================
+# Mean Forecasting Model (MeanfSpec)
+# =============================================================================
+
+"""
+    fit(spec::MeanfSpec, data; m=nothing, groupby=nothing, kwargs...)
+
+Fit a mean forecasting model to data (single series or grouped).
+
+The mean method uses the sample mean as the forecast for all future periods.
+
+# Arguments
+- `spec::MeanfSpec` - Mean model specification
+- `data` - Tables.jl-compatible data
+
+# Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (stored for reference)
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by
+- `lambda::Union{Nothing, Float64}` - Box-Cox transformation parameter (overrides spec)
+- `biasadj::Union{Nothing, Bool}` - Bias adjustment (overrides spec)
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+
+# Returns
+- If `groupby=nothing`: `FittedMeanf`
+- If `groupby` specified: `GroupedFittedModels`
+
+# Examples
+```julia
+spec = MeanfSpec(@formula(sales = meanf_term()))
+fitted = fit(spec, data, m=12)
+fc = forecast(fitted, h=12)
+
+# Grouped
+fitted = fit(spec, data, m=12, groupby=:store)
+```
+"""
+function fit(spec::MeanfSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             lambda::Union{Nothing, Float64} = nothing,
+             biasadj::Union{Nothing, Bool} = nothing,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m=m,
+                           groupby=groupby,
+                           datecol=datecol,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           lambda=lambda,
+                           biasadj=biasadj,
+                           kwargs...)
+    end
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    # Allow kwargs to override spec values
+    use_lambda = isnothing(lambda) ? spec.lambda : lambda
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    meanf_fit = Naive_mod.meanf(target_vector, seasonal_period, use_lambda)
+
+    return FittedMeanf(spec, meanf_fit, target_col, tbl, seasonal_period)
+end
+
+"""
+    forecast(fitted::FittedMeanf; h, level=[80,95], kwargs...)
+
+Generate forecasts from a fitted mean model.
+"""
+function forecast(fitted::FittedMeanf; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for mean forecasts."
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    # Convert level to Float64 for meanf forecast
+    level_f64 = Float64.(level)
+    return Naive_mod.forecast(fitted.fit, h, level_f64)
+end
+
+function fit(spec::MeanfSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = resolve_m(panel.m, spec)
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end

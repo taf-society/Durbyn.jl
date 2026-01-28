@@ -45,7 +45,7 @@ import .Grammar: naive_term, snaive_term, rw_term, NaiveTerm, SnaiveTerm, RwTerm
 import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, TbatsSpec, BatsSpec, FittedEts
 import .ModelSpecs: SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
 import .ModelSpecs: CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection
-import .ModelSpecs: NaiveSpec, FittedNaive, SnaiveSpec, FittedSnaive, RwSpec, FittedRw
+import .ModelSpecs: NaiveSpec, FittedNaive, SnaiveSpec, FittedSnaive, RwSpec, FittedRw, MeanfSpec, FittedMeanf
 import .ModelSpecs: ForecastModelCollection, model, PanelData, as_table
 import .ModelSpecs: GroupedFittedModels, GroupedForecasts, successful_models, failed_groups
 import .Arima: arima, arima_rjh, auto_arima, ArimaFit, PDQ
@@ -63,12 +63,12 @@ export coef, coefficients, coefs
 export NelderMeadOptions
 export p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm, ThetaTerm
 export e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
-export naive_term, snaive_term, rw_term, NaiveTerm, SnaiveTerm, RwTerm
+export naive_term, snaive_term, rw_term, meanf_term, NaiveTerm, SnaiveTerm, RwTerm, MeanfTerm
 export AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, FittedEts
 export SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
 export BatsSpec, FittedBats, TbatsSpec, FittedTbats, ThetaSpec, FittedTheta
 export CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection, ForecastModelCollection
-export NaiveSpec, FittedNaive, SnaiveSpec, FittedSnaive, RwSpec, FittedRw
+export NaiveSpec, FittedNaive, SnaiveSpec, FittedSnaive, RwSpec, FittedRw, MeanfSpec, FittedMeanf
 export model, PanelData, as_table
 export GroupedFittedModels, GroupedForecasts, successful_models, failed_groups
 export arima, arima_rjh, auto_arima, ArimaFit, PDQ

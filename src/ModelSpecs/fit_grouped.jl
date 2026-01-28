@@ -952,3 +952,51 @@ function fit_grouped(spec::RwSpec, data;
 
     return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
 end
+
+"""
+    fit_grouped(spec::MeanfSpec, data; m, groupby, parallel=true, fail_fast=false, kwargs...)
+
+Fit mean models to grouped (panel) data.
+"""
+function fit_grouped(spec::MeanfSpec, data;
+                     m::Union{Int, Nothing} = nothing,
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     lambda::Union{Nothing, Float64} = nothing,
+                     biasadj::Union{Nothing, Bool} = nothing,
+                     kwargs...)
+
+    tbl = Tables.columntable(data)
+
+    groupby_cols = groupby isa Symbol ? [groupby] : collect(groupby)
+    target_col = spec.formula.target
+
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    seasonal_period = isnothing(m) ? (isnothing(spec.m) ? 1 : spec.m) : m
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    # Allow kwargs to override spec values
+    use_lambda = isnothing(lambda) ? spec.lambda : lambda
+
+    parent_mod = parentmodule(@__MODULE__)
+    Naive_mod = getfield(parent_mod, :Naive)
+
+    builder = function(group_data)
+        group_tbl = Tables.columntable(group_data)
+        target_vector = group_tbl[target_col]
+        meanf_fit = Naive_mod.meanf(target_vector, seasonal_period, use_lambda)
+        return FittedMeanf(spec, meanf_fit, target_col, group_data, seasonal_period)
+    end
+
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
+end

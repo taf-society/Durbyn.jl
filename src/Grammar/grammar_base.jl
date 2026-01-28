@@ -338,6 +338,34 @@ Specify a random walk forecasting model in a formula.
 rw_term(; drift::Bool=false) = RwTerm(drift)
 
 """
+    MeanfTerm <: AbstractTerm
+
+Represents a mean forecasting model specification in a formula.
+
+The mean method uses the sample mean as the forecast for all future periods.
+"""
+struct MeanfTerm <: AbstractTerm
+end
+
+"""
+    meanf_term()
+
+Specify a mean forecasting model in a formula.
+
+The mean forecast uses the sample mean for all future periods.
+
+# Examples
+```julia
+@formula(sales = meanf_term())
+```
+
+# See Also
+- [`naive_term`](@ref) - Naive method
+- [`snaive_term`](@ref) - Seasonal naive
+"""
+meanf_term() = MeanfTerm()
+
+"""
     VarTerm <: AbstractTerm
 
 Represents an exogenous variable to be used as a regressor in the model.
@@ -1332,7 +1360,7 @@ function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:Abstra
                term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm || term isa BatsTerm ||
                term isa TbatsTerm || term isa ThetaTerm || term isa SesTerm || term isa HoltTerm ||
                term isa HoltWintersTerm || term isa CrostonTerm || term isa NaiveTerm ||
-               term isa SnaiveTerm || term isa RwTerm
+               term isa SnaiveTerm || term isa RwTerm || term isa MeanfTerm
             throw(ArgumentError("Formula term $(term) is not compatible with $(T)."))
         elseif term !== nothing
             throw(ArgumentError("Unsupported term $(term) in formula for $(T)."))
@@ -1549,6 +1577,10 @@ function Base.show(io::IO, term::RwTerm)
     else
         print(io, "rw_term()")
     end
+end
+
+function Base.show(io::IO, ::MeanfTerm)
+    print(io, "meanf_term()")
 end
 
 function Base.show(io::IO, formula::ModelFormula)

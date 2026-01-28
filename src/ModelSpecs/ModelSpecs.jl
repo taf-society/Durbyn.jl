@@ -61,6 +61,7 @@ export ThetaSpec, FittedTheta
 export NaiveSpec, FittedNaive
 export SnaiveSpec, FittedSnaive
 export RwSpec, FittedRw
+export MeanfSpec, FittedMeanf
 export EtsSpec, FittedEts
 export SesSpec, FittedSes
 export HoltSpec, FittedHolt

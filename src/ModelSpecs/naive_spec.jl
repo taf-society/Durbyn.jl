@@ -10,7 +10,7 @@ Naive methods serve as simple benchmarks for more complex forecasting methods:
 - Random Walk: naive with optional drift
 """
 
-import ..Grammar: _extract_single_term
+import ..Grammar: _extract_single_term, NaiveTerm, SnaiveTerm, RwTerm, MeanfTerm
 
 """
     NaiveSpec(formula::ModelFormula; m=nothing, kwargs...)
@@ -327,6 +327,108 @@ struct FittedRw <: AbstractFittedModel
     end
 end
 
+"""
+    MeanfSpec(formula::ModelFormula; m=nothing, kwargs...)
+
+Specify a mean forecasting model using Durbyn's forecasting grammar.
+
+The mean method uses the sample mean as the forecast for all future periods.
+
+# Arguments
+- `formula::ModelFormula` - Formula from `@formula` macro specifying:
+  - Target variable (LHS)
+  - `meanf_term()` on RHS
+
+# Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (stored for reference)
+- `lambda::Union{Nothing, Float64}=nothing` - Box-Cox transformation parameter
+- `biasadj::Bool=false` - Bias adjustment for Box-Cox back-transformation
+
+# Examples
+```julia
+# Mean specification
+spec = MeanfSpec(@formula(sales = meanf_term()))
+
+# Fit to data
+fitted = fit(spec, data, m=12)
+
+# Generate forecasts
+fc = forecast(fitted, h=12)
+
+# Panel data support
+fitted = fit(spec, data, m=12, groupby=[:product, :region])
+```
+
+# See Also
+- [`NaiveSpec`](@ref) - Naive specification
+- [`SnaiveSpec`](@ref) - Seasonal naive specification
+- [`RwSpec`](@ref) - Random walk specification
+"""
+struct MeanfSpec <: AbstractModelSpec
+    formula::ModelFormula
+    m::Union{Int, Nothing}
+    lambda::Union{Nothing, Float64}
+    biasadj::Bool
+    options::Dict{Symbol, Any}
+
+    function MeanfSpec(formula::ModelFormula;
+                       m::Union{Int, Nothing}=nothing,
+                       lambda::Union{Nothing, Float64}=nothing,
+                       biasadj::Bool=false,
+                       kwargs...)
+        # Validate formula contains MeanfTerm
+        _extract_single_term(formula, MeanfTerm)
+        new(formula, m, lambda, biasadj, Dict{Symbol, Any}(kwargs))
+    end
+end
+
+"""
+    FittedMeanf
+
+A fitted mean model containing the specification, fitted parameters,
+and metadata needed for forecasting.
+
+# Fields
+- `spec::MeanfSpec` - Original specification
+- `fit::Any` - Fitted MeanFit object
+- `target_col::Symbol` - Name of target variable
+- `data_schema::Dict{Symbol, Type}` - Column types for validation
+- `m::Int` - Seasonal period used
+
+# Examples
+```julia
+spec = MeanfSpec(@formula(sales = meanf_term()))
+fitted = fit(spec, data, m=12)
+
+# Access underlying fit
+fitted.fit.mu           # Mean (transformed scale)
+fitted.fit.mu_original  # Mean (original scale)
+fitted.fit.sd           # Standard deviation
+
+# Generate forecasts
+fc = forecast(fitted, h=12)
+```
+"""
+struct FittedMeanf <: AbstractFittedModel
+    spec::MeanfSpec
+    fit::Any
+    target_col::Symbol
+    data_schema::Dict{Symbol, Type}
+    m::Int
+
+    function FittedMeanf(spec::MeanfSpec,
+                         fit,
+                         target_col::Symbol,
+                         data,
+                         m::Int)
+        schema = Dict{Symbol, Type}()
+        for (k, v) in pairs(data)
+            schema[k] = eltype(v)
+        end
+        new(spec, fit, target_col, schema, m)
+    end
+end
+
 # Extract metrics - naive methods don't have standard information criteria
 function extract_metrics(model::FittedNaive)
     return Dict{Symbol, Float64}()
@@ -337,6 +439,10 @@ function extract_metrics(model::FittedSnaive)
 end
 
 function extract_metrics(model::FittedRw)
+    return Dict{Symbol, Float64}()
+end
+
+function extract_metrics(model::FittedMeanf)
     return Dict{Symbol, Float64}()
 end
 
@@ -407,4 +513,25 @@ function Base.show(io::IO, fitted::FittedRw)
     end
     println(io, "  Series length: ", length(fitted.fit.x))
     println(io, "  Residual variance: ", round(fitted.fit.sigma2, digits=6))
+end
+
+function Base.show(io::IO, spec::MeanfSpec)
+    print(io, "MeanfSpec(")
+    print(io, spec.formula)
+    if !isnothing(spec.m)
+        print(io, ", m=", spec.m)
+    end
+    if !isnothing(spec.lambda)
+        print(io, ", lambda=", spec.lambda)
+    end
+    print(io, ")")
+end
+
+function Base.show(io::IO, fitted::FittedMeanf)
+    println(io, "FittedMeanf")
+    println(io, "  Target: ", fitted.target_col)
+    println(io, "  Seasonal period (m): ", fitted.m)
+    println(io, "  Series length: ", fitted.fit.n)
+    println(io, "  Mean (original scale): ", round(fitted.fit.mu_original, digits=6))
+    println(io, "  Standard deviation: ", round(fitted.fit.sd, digits=6))
 end

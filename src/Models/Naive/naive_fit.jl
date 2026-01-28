@@ -55,7 +55,7 @@ The naive forecast uses the last observed value as the forecast for all future p
 Formally: y_{T+h|T} = y_T for all h = 1, 2, ...
 
 # Arguments
-- `y::AbstractVector` - Time series data (must have length >= 2)
+- `y::AbstractVector` - Time series data (must have at least 2 non-missing observations)
 - `m::Int=1` - Seasonal period (stored for reference, not used in naive)
 
 # Keyword Arguments
@@ -82,13 +82,29 @@ function naive(y::AbstractVector, m::Int=1;
     n = length(y)
     n >= 2 || throw(ArgumentError("Time series must have at least 2 observations, got $n"))
 
-    x = collect(Float64, y)
+    # Convert to Float64, preserving structure (missings become NaN for processing)
+    x = Vector{Float64}(undef, n)
+    for i in 1:n
+        x[i] = ismissing(y[i]) ? NaN : Float64(y[i])
+    end
+
+    # Count non-missing for validation
+    n_valid = count(!isnan, x)
+    n_valid >= 2 || throw(ArgumentError("Time series must have at least 2 non-missing observations, got $n_valid"))
+
     y_transformed = nothing
 
-    # Apply Box-Cox transformation if specified
+    # Apply Box-Cox transformation if specified (only to non-missing values)
     if !isnothing(lambda)
-        y_trans, lambda = box_cox(x, m, lambda=lambda)
-        y_transformed = y_trans
+        # Get non-missing values for Box-Cox
+        valid_mask = .!isnan.(x)
+        x_valid = x[valid_mask]
+        x_trans_valid, lambda = box_cox(x_valid, m, lambda=lambda)
+
+        # Create transformed array with NaN for missing positions
+        y_trans = fill(NaN, n)
+        y_trans[valid_mask] = x_trans_valid
+        y_transformed = copy(y_trans)
     else
         y_trans = x
     end
@@ -99,14 +115,18 @@ function naive(y::AbstractVector, m::Int=1;
     fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
     fill!(fitted_trans, missing)
     for t in 2:n
-        fitted_trans[t] = y_trans[t-1]
+        if !isnan(y_trans[t-1])
+            fitted_trans[t] = y_trans[t-1]
+        end
     end
 
     # Residuals on transformed scale
     residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
     fill!(residuals_trans, missing)
     for t in 2:n
-        residuals_trans[t] = y_trans[t] - fitted_trans[t]
+        if !ismissing(fitted_trans[t]) && !isnan(y_trans[t])
+            residuals_trans[t] = y_trans[t] - fitted_trans[t]
+        end
     end
 
     # Residual variance on transformed scale
@@ -119,16 +139,31 @@ function naive(y::AbstractVector, m::Int=1;
         fill!(fitted, missing)
         residuals = Vector{Union{Float64, Missing}}(undef, n)
         fill!(residuals, missing)
-        for t in 2:n
-            fitted[t] = inv_box_cox([fitted_trans[t]]; lambda=lambda)[1]
-            residuals[t] = x[t] - fitted[t]
+
+        # Batch back-transform non-missing fitted values
+        fitted_indices = findall(!ismissing, fitted_trans)
+        if !isempty(fitted_indices)
+            fitted_vals = Float64[fitted_trans[i] for i in fitted_indices]
+            fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
+            for (j, i) in enumerate(fitted_indices)
+                fitted[i] = fitted_back[j]
+                if !isnan(x[i])
+                    residuals[i] = x[i] - fitted_back[j]
+                end
+            end
         end
     else
         fitted = fitted_trans
         residuals = residuals_trans
     end
 
-    return NaiveFit(x, fitted, residuals, lag, nothing, nothing, sigma2, m,
+    # Store x with NaN converted back to original form for consistency
+    x_store = Vector{Float64}(undef, n)
+    for i in 1:n
+        x_store[i] = ismissing(y[i]) ? NaN : Float64(y[i])
+    end
+
+    return NaiveFit(x_store, fitted, residuals, lag, nothing, nothing, sigma2, m,
                     "Naive method", lambda, biasadj, y_transformed)
 end
 
@@ -171,13 +206,27 @@ function snaive(y::AbstractVector, m::Int;
     n = length(y)
     n > m || throw(ArgumentError("Time series length ($n) must be greater than seasonal period ($m)"))
 
-    x = collect(Float64, y)
+    # Convert to Float64, preserving structure (missings become NaN for processing)
+    x = Vector{Float64}(undef, n)
+    for i in 1:n
+        x[i] = ismissing(y[i]) ? NaN : Float64(y[i])
+    end
+
+    # Count non-missing for validation
+    n_valid = count(!isnan, x)
+    n_valid > m || throw(ArgumentError("Number of non-missing observations ($n_valid) must be greater than seasonal period ($m)"))
+
     y_transformed = nothing
 
-    # Apply Box-Cox transformation if specified
+    # Apply Box-Cox transformation if specified (only to non-missing values)
     if !isnothing(lambda)
-        y_trans, lambda = box_cox(x, m, lambda=lambda)
-        y_transformed = y_trans
+        valid_mask = .!isnan.(x)
+        x_valid = x[valid_mask]
+        x_trans_valid, lambda = box_cox(x_valid, m, lambda=lambda)
+
+        y_trans = fill(NaN, n)
+        y_trans[valid_mask] = x_trans_valid
+        y_transformed = copy(y_trans)
     else
         y_trans = x
     end
@@ -188,14 +237,18 @@ function snaive(y::AbstractVector, m::Int;
     fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
     fill!(fitted_trans, missing)
     for t in (m+1):n
-        fitted_trans[t] = y_trans[t-m]
+        if !isnan(y_trans[t-m])
+            fitted_trans[t] = y_trans[t-m]
+        end
     end
 
     # Residuals on transformed scale
     residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
     fill!(residuals_trans, missing)
     for t in (m+1):n
-        residuals_trans[t] = y_trans[t] - fitted_trans[t]
+        if !ismissing(fitted_trans[t]) && !isnan(y_trans[t])
+            residuals_trans[t] = y_trans[t] - fitted_trans[t]
+        end
     end
 
     # Residual variance on transformed scale
@@ -208,16 +261,31 @@ function snaive(y::AbstractVector, m::Int;
         fill!(fitted, missing)
         residuals = Vector{Union{Float64, Missing}}(undef, n)
         fill!(residuals, missing)
-        for t in (m+1):n
-            fitted[t] = inv_box_cox([fitted_trans[t]]; lambda=lambda)[1]
-            residuals[t] = x[t] - fitted[t]
+
+        # Batch back-transform non-missing fitted values
+        fitted_indices = findall(!ismissing, fitted_trans)
+        if !isempty(fitted_indices)
+            fitted_vals = Float64[fitted_trans[i] for i in fitted_indices]
+            fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
+            for (j, i) in enumerate(fitted_indices)
+                fitted[i] = fitted_back[j]
+                if !isnan(x[i])
+                    residuals[i] = x[i] - fitted_back[j]
+                end
+            end
         end
     else
         fitted = fitted_trans
         residuals = residuals_trans
     end
 
-    return NaiveFit(x, fitted, residuals, lag, nothing, nothing, sigma2, m,
+    # Store x with NaN for missing positions
+    x_store = Vector{Float64}(undef, n)
+    for i in 1:n
+        x_store[i] = ismissing(y[i]) ? NaN : Float64(y[i])
+    end
+
+    return NaiveFit(x_store, fitted, residuals, lag, nothing, nothing, sigma2, m,
                     "Seasonal naive method", lambda, biasadj, y_transformed)
 end
 
@@ -233,7 +301,7 @@ Without drift: y_{T+h|T} = y_T
 With drift: y_{T+h|T} = y_T + h * drift, where drift = (y_T - y_1) / (T-1)
 
 # Arguments
-- `y::AbstractVector` - Time series data (must have length >= 2)
+- `y::AbstractVector` - Time series data (must have at least 2 non-missing observations)
 - `m::Int=1` - Seasonal period (stored for reference)
 
 # Keyword Arguments
@@ -267,13 +335,27 @@ function rw(y::AbstractVector, m::Int=1;
     n = length(y)
     n >= 2 || throw(ArgumentError("Time series must have at least 2 observations, got $n"))
 
-    x = collect(Float64, y)
+    # Convert to Float64, preserving structure (missings become NaN for processing)
+    x = Vector{Float64}(undef, n)
+    for i in 1:n
+        x[i] = ismissing(y[i]) ? NaN : Float64(y[i])
+    end
+
+    # Count non-missing for validation
+    n_valid = count(!isnan, x)
+    n_valid >= 2 || throw(ArgumentError("Time series must have at least 2 non-missing observations, got $n_valid"))
+
     y_transformed = nothing
 
-    # Apply Box-Cox transformation if specified
+    # Apply Box-Cox transformation if specified (only to non-missing values)
     if !isnothing(lambda)
-        y_trans, lambda = box_cox(x, m, lambda=lambda)
-        y_transformed = y_trans
+        valid_mask = .!isnan.(x)
+        x_valid = x[valid_mask]
+        x_trans_valid, lambda = box_cox(x_valid, m, lambda=lambda)
+
+        y_trans = fill(NaN, n)
+        y_trans[valid_mask] = x_trans_valid
+        y_transformed = copy(y_trans)
     else
         y_trans = x
     end
@@ -282,21 +364,33 @@ function rw(y::AbstractVector, m::Int=1;
 
     if drift
         # Random walk with drift
-        # Drift = average change = (y_T - y_1) / (T-1) on transformed scale
-        drift_val = (y_trans[n] - y_trans[1]) / (n - 1)
+        # Find first and last non-missing values for drift calculation
+        valid_indices = findall(!isnan, y_trans)
+        first_valid = first(valid_indices)
+        last_valid = last(valid_indices)
+        n_span = last_valid - first_valid
+
+        n_span >= 1 || throw(ArgumentError("Need at least 2 non-missing observations with span > 0 for drift"))
+
+        # Drift = average change = (y_last - y_first) / span on transformed scale
+        drift_val = (y_trans[last_valid] - y_trans[first_valid]) / n_span
 
         # Fitted values on transformed scale: y_{t} = y_{t-1} + drift
         fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(fitted_trans, missing)
         for t in 2:n
-            fitted_trans[t] = y_trans[t-1] + drift_val
+            if !isnan(y_trans[t-1])
+                fitted_trans[t] = y_trans[t-1] + drift_val
+            end
         end
 
         # Residuals on transformed scale
         residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(residuals_trans, missing)
         for t in 2:n
-            residuals_trans[t] = y_trans[t] - fitted_trans[t]
+            if !ismissing(fitted_trans[t]) && !isnan(y_trans[t])
+                residuals_trans[t] = y_trans[t] - fitted_trans[t]
+            end
         end
 
         # Residual variance on transformed scale
@@ -304,8 +398,8 @@ function rw(y::AbstractVector, m::Int=1;
         sigma2 = isempty(valid_residuals) ? 0.0 : var(valid_residuals, corrected=true)
 
         # Standard error of drift
-        # SE(drift) = sigma / sqrt(T-1)
-        drift_se = sqrt(sigma2 / (n - 1))
+        # SE(drift) = sigma / sqrt(n_valid-1)
+        drift_se = sqrt(sigma2 / max(n_valid - 1, 1))
 
         method_name = "Random walk with drift"
 
@@ -315,29 +409,48 @@ function rw(y::AbstractVector, m::Int=1;
             fill!(fitted, missing)
             residuals = Vector{Union{Float64, Missing}}(undef, n)
             fill!(residuals, missing)
-            for t in 2:n
-                fitted[t] = inv_box_cox([fitted_trans[t]]; lambda=lambda)[1]
-                residuals[t] = x[t] - fitted[t]
+
+            # Batch back-transform non-missing fitted values
+            fitted_indices = findall(!ismissing, fitted_trans)
+            if !isempty(fitted_indices)
+                fitted_vals = Float64[fitted_trans[i] for i in fitted_indices]
+                fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
+                for (j, i) in enumerate(fitted_indices)
+                    fitted[i] = fitted_back[j]
+                    if !isnan(x[i])
+                        residuals[i] = x[i] - fitted_back[j]
+                    end
+                end
             end
         else
             fitted = fitted_trans
             residuals = residuals_trans
         end
 
-        return NaiveFit(x, fitted, residuals, lag, drift_val, drift_se, sigma2, m,
+        # Store x with NaN for missing positions
+        x_store = Vector{Float64}(undef, n)
+        for i in 1:n
+            x_store[i] = ismissing(y[i]) ? NaN : Float64(y[i])
+        end
+
+        return NaiveFit(x_store, fitted, residuals, lag, drift_val, drift_se, sigma2, m,
                         method_name, lambda, biasadj, y_transformed)
     else
         # Random walk without drift (same as naive)
         fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(fitted_trans, missing)
         for t in 2:n
-            fitted_trans[t] = y_trans[t-1]
+            if !isnan(y_trans[t-1])
+                fitted_trans[t] = y_trans[t-1]
+            end
         end
 
         residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(residuals_trans, missing)
         for t in 2:n
-            residuals_trans[t] = y_trans[t] - fitted_trans[t]
+            if !ismissing(fitted_trans[t]) && !isnan(y_trans[t])
+                residuals_trans[t] = y_trans[t] - fitted_trans[t]
+            end
         end
 
         valid_residuals = collect(skipmissing(residuals_trans))
@@ -349,16 +462,31 @@ function rw(y::AbstractVector, m::Int=1;
             fill!(fitted, missing)
             residuals = Vector{Union{Float64, Missing}}(undef, n)
             fill!(residuals, missing)
-            for t in 2:n
-                fitted[t] = inv_box_cox([fitted_trans[t]]; lambda=lambda)[1]
-                residuals[t] = x[t] - fitted[t]
+
+            # Batch back-transform non-missing fitted values
+            fitted_indices = findall(!ismissing, fitted_trans)
+            if !isempty(fitted_indices)
+                fitted_vals = Float64[fitted_trans[i] for i in fitted_indices]
+                fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
+                for (j, i) in enumerate(fitted_indices)
+                    fitted[i] = fitted_back[j]
+                    if !isnan(x[i])
+                        residuals[i] = x[i] - fitted_back[j]
+                    end
+                end
             end
         else
             fitted = fitted_trans
             residuals = residuals_trans
         end
 
-        return NaiveFit(x, fitted, residuals, lag, nothing, nothing, sigma2, m,
+        # Store x with NaN for missing positions
+        x_store = Vector{Float64}(undef, n)
+        for i in 1:n
+            x_store[i] = ismissing(y[i]) ? NaN : Float64(y[i])
+        end
+
+        return NaiveFit(x_store, fitted, residuals, lag, nothing, nothing, sigma2, m,
                         "Random walk method", lambda, biasadj, y_transformed)
     end
 end

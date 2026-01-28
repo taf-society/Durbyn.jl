@@ -1,6 +1,7 @@
 module Naive
 # Standard libs
-import Statistics: std
+import Statistics: std, mean
+import Random: rand
 
 import Distributions: quantile, TDist, Normal
 

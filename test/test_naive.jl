@@ -224,13 +224,64 @@ const REFERENCE_SD_AP = 119.9663
         fit = meanf(AirPassengers, 12)
         fc = forecast(fit, 12)
 
-        @test all(abs.(fc["mean"] .- REFERENCE_MEAN_AP) .<= EPS_SCALAR)
+        # mu_original is back-transformed, so compare that
+        @test all(abs.(fc["mean"] .- fit.mu_original) .<= EPS_SCALAR)
 
         n = length(AirPassengers)
         fc_pi = forecast(fit, 12, [80.0, 95.0])
 
         width_80 = fc_pi["upper"][1, 1] - fc_pi["lower"][1, 1]
         @test 300 < width_80 < 320
+    end
+
+    @testset "Bootstrap Intervals" begin
+        fit = meanf(AirPassengers, 12)
+
+        # Test bootstrap path doesn't error and produces valid intervals
+        fc_boot = forecast(fit, 10, [80.0, 95.0], false, true, 1000)
+
+        @test haskey(fc_boot, "mean")
+        @test haskey(fc_boot, "lower")
+        @test haskey(fc_boot, "upper")
+
+        @test length(fc_boot["mean"]) == 10
+        @test size(fc_boot["lower"]) == (10, 2)
+        @test size(fc_boot["upper"]) == (10, 2)
+
+        # Intervals should bracket the mean
+        @test all(fc_boot["lower"][:, 1] .< fc_boot["mean"])
+        @test all(fc_boot["upper"][:, 1] .> fc_boot["mean"])
+    end
+
+    @testset "MeanFit Structure Updated" begin
+        fit = meanf(AirPassengers, 12)
+
+        # Test new fields exist
+        @test hasfield(MeanFit, :x)
+        @test hasfield(MeanFit, :mu)
+        @test hasfield(MeanFit, :mu_original)
+        @test hasfield(MeanFit, :sd)
+        @test hasfield(MeanFit, :n)
+
+        @test fit.n == length(AirPassengers)
+        @test length(fit.x) == fit.n
+    end
+
+    @testset "Box-Cox Scale Consistency" begin
+        fit = meanf(AirPassengers, 12, 0.0)
+
+        # mu is on transformed scale (log)
+        @test isapprox(fit.mu, mean(log.(AirPassengers)), atol=EPS_SCALAR)
+
+        # sd is on transformed scale
+        @test isapprox(fit.sd, std(log.(AirPassengers)), atol=EPS_SCALAR)
+
+        # fitted and residuals are on original scale
+        @test all(fit.fitted .> 0)  # Back-transformed, should be positive
+        @test isapprox(fit.fitted[1], fit.mu_original, atol=EPS_SCALAR)
+
+        # Residuals = original - fitted (both on original scale)
+        @test isapprox(fit.residuals[1], AirPassengers[1] - fit.fitted[1], atol=EPS_SCALAR)
     end
 
 end
@@ -487,6 +538,60 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
         @test fit1.sigma2 == fit2.sigma2
         @test all(skipmissing(fit1.fitted) .== skipmissing(fit2.fitted))
+    end
+
+    @testset "Missing Values Support" begin
+        @testset "naive with missing values" begin
+            y_with_missing = Union{Float64, Missing}[1.0, 2.0, missing, 4.0, 5.0, missing, 7.0, 8.0]
+            fit = naive(y_with_missing)
+
+            @test fit isa NaiveFit
+            @test length(fit.x) == 8
+            @test isnan(fit.x[3])  # missing converted to NaN
+            @test isnan(fit.x[6])
+
+            # Fitted at t=4 should use t=3 which is missing -> fitted is missing
+            @test ismissing(fit.fitted[4])
+            # Fitted at t=5 should use t=4 which is 4.0
+            @test fit.fitted[5] == 4.0
+
+            fc = forecast(fit, h=5)
+            @test all(isfinite.(fc.mean))
+        end
+
+        @testset "snaive with missing values" begin
+            y_with_missing = Union{Float64, Missing}[missing, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+            fit = snaive(y_with_missing, 4)
+
+            @test fit isa NaiveFit
+            # First 4 fitted values are missing (lag period)
+            @test all(ismissing.(fit.fitted[1:4]))
+            # Fitted at t=5 uses t=1 which is missing -> missing
+            @test ismissing(fit.fitted[5])
+            # Fitted at t=6 uses t=2 which is 2.0
+            @test fit.fitted[6] == 2.0
+        end
+
+        @testset "rw with missing values" begin
+            y_with_missing = Union{Float64, Missing}[1.0, missing, 3.0, 4.0, 5.0]
+            fit = rw(y_with_missing, drift=true)
+
+            @test fit isa NaiveFit
+            @test !isnothing(fit.drift)
+            # Drift computed from first to last non-missing
+            @test isfinite(fit.drift)
+
+            fc = forecast(fit, h=5)
+            @test all(isfinite.(fc.mean))
+        end
+
+        @testset "Error on insufficient non-missing data" begin
+            y_mostly_missing = Union{Float64, Missing}[missing, missing, 1.0, missing]
+            @test_throws ArgumentError naive(y_mostly_missing)  # only 1 non-missing
+
+            y_snaive_insufficient = Union{Float64, Missing}[1.0, 2.0, missing, missing, missing]
+            @test_throws ArgumentError snaive(y_snaive_insufficient, 4)  # 2 non-missing <= m=4
+        end
     end
 
 end

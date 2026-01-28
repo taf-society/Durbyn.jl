@@ -34,10 +34,11 @@ Fit a mean forecasting model.
 The mean method uses the sample mean as the forecast for all future periods.
 """
 function meanf(y::AbstractArray, m::Int, lambda::Union{Nothing, Float64, String}=nothing)
-    # Collect non-missing values
-    x = collect(Float64, skipmissing(y))
+    # Collect non-missing values and filter NaN (consistent with naive/snaive/rw)
+    x_no_missing = collect(Float64, skipmissing(y))
+    x = filter(!isnan, x_no_missing)
     n = length(x)
-    n >= 1 || throw(ArgumentError("Time series must have at least 1 non-missing observation"))
+    n >= 1 || throw(ArgumentError("Time series must have at least 1 non-missing/non-NaN observation"))
 
     # Apply Box-Cox transformation if specified
     if !isnothing(lambda)
@@ -86,12 +87,23 @@ function forecast(object::MeanFit, h::Int=10, level::Vector{Float64}=[80.0, 95.0
     # Adjust levels for fan or percentage
     if fan
         level = collect(51.0:3:99.0)
-    elseif any(level .> 1.0)
-        if minimum(level) < 0.0 || maximum(level) > 99.99
-            error("Confidence limit out of range")
-        end
     else
-        level = 100.0 .* level
+        # Determine if levels are fractions (0,1] or percentages (1,100]
+        all_fraction = all(lv -> 0.0 < lv <= 1.0, level)
+        all_percent = all(lv -> 1.0 < lv <= 99.99, level)
+
+        if !all_fraction && !all_percent
+            # Check for mixed units or invalid values
+            if any(lv -> lv <= 0.0 || lv > 99.99, level)
+                error("Confidence levels must be in (0, 1] (fractions) or (1, 99.99] (percentages)")
+            else
+                error("Mixed confidence level units detected. Use all fractions (0, 1] or all percentages (1, 99.99]")
+            end
+        end
+
+        if all_fraction
+            level = 100.0 .* level
+        end
     end
 
     nconf = length(level)

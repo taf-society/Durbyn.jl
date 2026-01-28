@@ -119,12 +119,23 @@ function forecast(object::NaiveFit;
     # Adjust levels for fan or percentage
     if fan
         level = collect(51.0:3:99.0)
-    elseif any(lv -> lv > 1.0, level)
-        if minimum(level) < 0.0 || maximum(level) > 99.99
-            error("Confidence limit out of range")
-        end
     else
-        level = 100.0 .* level
+        # Determine if levels are fractions (0,1] or percentages (1,100]
+        all_fraction = all(lv -> 0.0 < lv <= 1.0, level)
+        all_percent = all(lv -> 1.0 < lv <= 99.99, level)
+
+        if !all_fraction && !all_percent
+            # Check for mixed units or invalid values
+            if any(lv -> lv <= 0.0 || lv > 99.99, level)
+                error("Confidence levels must be in (0, 1] (fractions) or (1, 99.99] (percentages)")
+            else
+                error("Mixed confidence level units detected. Use all fractions (0, 1] or all percentages (1, 99.99]")
+            end
+        end
+
+        if all_fraction
+            level = 100.0 .* level
+        end
     end
 
     nconf = length(level)
@@ -237,8 +248,8 @@ function forecast(object::NaiveFit;
     fitted_vals = object.fitted
     residuals_vals = object.residuals
 
-    # Keep level as provided (don't round to avoid mislabeling e.g., 99.5 → 100)
-    level_out = round.(level, digits=1)
+    # Keep level as-is (don't round to avoid mislabeling e.g., 99.5 → 100)
+    level_out = Float64.(level)
 
     return Forecast(
         object,

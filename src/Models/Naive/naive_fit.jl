@@ -398,8 +398,9 @@ function rw(y::AbstractVector, m::Int=1;
         sigma2 = length(valid_residuals) <= 1 ? 0.0 : var(valid_residuals, corrected=true)
 
         # Standard error of drift
-        # SE(drift) = sigma / sqrt(n_valid-1)
-        drift_se = sqrt(sigma2 / max(n_valid - 1, 1))
+        # SE(drift) = sigma / sqrt(n_span) where n_span is the time span over which drift was computed
+        # This accounts for the actual time interval, not just the count of observations
+        drift_se = sqrt(sigma2 / max(n_span, 1))
 
         method_name = "Random walk with drift"
 

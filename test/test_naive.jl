@@ -234,3 +234,259 @@ const REFERENCE_SD_AP = 119.9663
     end
 
 end
+
+# =============================================================================
+# Tests for naive, snaive, rw functions
+# =============================================================================
+
+import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
+
+@testset "Durbyn.Naive (naive/snaive/rw) Module Tests" begin
+
+    @testset "NaiveFit Structure" begin
+        fit = naive(AirPassengers)
+
+        @test fit isa NaiveFit
+        @test length(fit.fitted) == length(AirPassengers)
+        @test length(fit.residuals) == length(AirPassengers)
+        @test fit.lag == 1
+        @test fit.method == "Naive method"
+    end
+
+    @testset "Naive Fitted Values" begin
+        fit = naive(AirPassengers)
+
+        # First fitted value should be missing
+        @test ismissing(fit.fitted[1])
+
+        # Fitted values should be lagged original values
+        for t in 2:length(AirPassengers)
+            @test fit.fitted[t] == AirPassengers[t-1]
+        end
+    end
+
+    @testset "Naive Residuals" begin
+        fit = naive(AirPassengers)
+
+        @test ismissing(fit.residuals[1])
+        for t in 2:length(AirPassengers)
+            @test fit.residuals[t] ≈ AirPassengers[t] - AirPassengers[t-1] atol=EPS_SCALAR
+        end
+    end
+
+    @testset "Naive Forecast" begin
+        fit = naive(AirPassengers, 12)
+        fc = forecast(fit, h=10)
+
+        # All forecasts should equal last observation
+        @test all(fc.mean .== AirPassengers[end])
+
+        # Prediction intervals should widen with horizon
+        @test fc.lower[1][1] > fc.lower[1][10]  # 80% lower bound
+        @test fc.upper[1][1] < fc.upper[1][10]  # 80% upper bound
+    end
+
+    @testset "Seasonal Naive (snaive)" begin
+        fit = snaive(AirPassengers, 12)
+
+        @test fit isa NaiveFit
+        @test fit.lag == 12
+        @test fit.m == 12
+        @test fit.method == "Seasonal naive method"
+
+        # First m fitted values should be missing
+        for t in 1:12
+            @test ismissing(fit.fitted[t])
+        end
+
+        # Fitted values should be lagged by m
+        for t in 13:length(AirPassengers)
+            @test fit.fitted[t] == AirPassengers[t-12]
+        end
+    end
+
+    @testset "Seasonal Naive Forecast" begin
+        fit = snaive(AirPassengers, 12)
+        fc = forecast(fit, h=24)
+
+        # Forecasts should cycle through last m values
+        last_season = AirPassengers[end-11:end]
+        for i in 1:12
+            @test fc.mean[i] == last_season[i]
+            @test fc.mean[i+12] == last_season[i]
+        end
+    end
+
+    @testset "Random Walk without Drift" begin
+        fit = rw(AirPassengers)
+
+        @test fit isa NaiveFit
+        @test fit.method == "Random walk method"
+        @test isnothing(fit.drift)
+        @test isnothing(fit.drift_se)
+
+        # Should be equivalent to naive
+        fit_naive = naive(AirPassengers)
+        @test fit.fitted[2:end] == fit_naive.fitted[2:end]
+    end
+
+    @testset "Random Walk with Drift" begin
+        fit = rw(AirPassengers, drift=true)
+
+        @test fit.method == "Random walk with drift"
+        @test !isnothing(fit.drift)
+        @test !isnothing(fit.drift_se)
+
+        # Drift should be (last - first) / (n - 1)
+        n = length(AirPassengers)
+        expected_drift = (AirPassengers[n] - AirPassengers[1]) / (n - 1)
+        @test fit.drift ≈ expected_drift atol=EPS_SCALAR
+
+        # Forecasts should include drift trend
+        fc = forecast(fit, h=10)
+        for i in 1:10
+            expected = AirPassengers[end] + i * fit.drift
+            @test fc.mean[i] ≈ expected atol=EPS_SCALAR
+        end
+    end
+
+    @testset "rwf alias" begin
+        fit1 = rw(AirPassengers, drift=true)
+        fit2 = rwf(AirPassengers, drift=true)
+
+        @test fit1.drift == fit2.drift
+        @test fit1.sigma2 == fit2.sigma2
+    end
+
+    @testset "Minimum Length Error (n == 1)" begin
+        single_obs = [100.0]
+
+        @test_throws ArgumentError naive(single_obs)
+        @test_throws ArgumentError rw(single_obs)
+    end
+
+    @testset "Minimum Length Error for snaive (n <= m)" begin
+        short_series = [1.0, 2.0, 3.0]
+
+        @test_throws ArgumentError snaive(short_series, 4)
+        @test_throws ArgumentError snaive(short_series, 3)  # n must be > m, not >= m
+    end
+
+    @testset "Box-Cox Transformation" begin
+        fit = naive(AirPassengers, lambda=0.0)
+
+        @test fit.lambda == 0.0
+        @test !isnothing(fit.y_transformed)
+
+        # Transformed data should be log
+        @test fit.y_transformed ≈ log.(AirPassengers) atol=EPS_SCALAR
+
+        # Fitted values should be back-transformed
+        @test all(skipmissing(fit.fitted) .> 0)
+
+        fc = forecast(fit, h=10)
+        @test all(fc.mean .> 0)
+        @test all(fc.lower[1] .> 0)
+        @test all(fc.upper[1] .> 0)
+    end
+
+    @testset "Box-Cox Bias Adjustment" begin
+        # Use data with clear trend for noticeable difference
+        y = 10.0 .+ collect(1.0:50.0) .+ 0.5 .* randn(50)
+        y = abs.(y)  # Ensure positive for Box-Cox
+
+        fit_no_bias = naive(y, lambda=0.5, biasadj=false)
+        fit_with_bias = naive(y, lambda=0.5, biasadj=true)
+
+        @test fit_no_bias.biasadj == false
+        @test fit_with_bias.biasadj == true
+
+        # Forecasts with bias adjustment should generally be slightly higher
+        fc_no_bias = forecast(fit_no_bias, h=10)
+        fc_with_bias = forecast(fit_with_bias, h=10)
+
+        # Both should produce valid forecasts
+        @test all(isfinite.(fc_no_bias.mean))
+        @test all(isfinite.(fc_with_bias.mean))
+
+        # Bias-adjusted forecasts typically differ from non-adjusted
+        # (may be higher or lower depending on data, but should differ)
+        @test fc_no_bias.mean != fc_with_bias.mean
+    end
+
+    @testset "Box-Cox with snaive" begin
+        fit = snaive(AirPassengers, 12, lambda=0.0, biasadj=true)
+
+        @test fit.lambda == 0.0
+        @test fit.biasadj == true
+
+        fc = forecast(fit, h=24)
+        @test all(fc.mean .> 0)
+    end
+
+    @testset "Box-Cox with rw drift" begin
+        fit = rw(AirPassengers, drift=true, lambda=0.0)
+
+        @test fit.lambda == 0.0
+        @test !isnothing(fit.drift)
+
+        fc = forecast(fit, h=12)
+        @test all(fc.mean .> 0)
+        @test all(isfinite.(fc.mean))
+    end
+
+    @testset "Prediction Interval Properties" begin
+        fit = naive(AirPassengers, 12)
+        fc = forecast(fit, h=12, level=[80, 95])
+
+        # Lower < mean < upper
+        @test all(fc.lower[1] .< fc.mean)
+        @test all(fc.lower[2] .< fc.mean)
+        @test all(fc.mean .< fc.upper[1])
+        @test all(fc.mean .< fc.upper[2])
+
+        # 95% interval wider than 80%
+        width_80 = fc.upper[1] .- fc.lower[1]
+        width_95 = fc.upper[2] .- fc.lower[2]
+        @test all(width_95 .> width_80)
+
+        # Intervals widen with horizon (naive variance = h * sigma2)
+        @test width_80[1] < width_80[12]
+        @test width_95[1] < width_95[12]
+    end
+
+    @testset "Seasonal Naive Prediction Intervals" begin
+        fit = snaive(AirPassengers, 12)
+        fc = forecast(fit, h=24, level=[80, 95])
+
+        # Intervals should step up at seasonal boundaries
+        width_80 = fc.upper[1] .- fc.lower[1]
+
+        # Within first season (h=1 to 12), widths should be constant
+        @test all(width_80[1:12] .≈ width_80[1])
+
+        # Second season (h=13 to 24) should have wider intervals
+        @test width_80[13] > width_80[12]
+        @test all(width_80[13:24] .≈ width_80[13])
+    end
+
+    @testset "Constant Series" begin
+        constant = fill(10.0, 50)
+        fit = naive(constant)
+
+        @test fit.sigma2 == 0.0
+        @test all(skipmissing(fit.residuals) .== 0.0)
+
+        fc = forecast(fit, h=10)
+        @test all(fc.mean .== 10.0)
+    end
+
+    @testset "Reproducibility" begin
+        fit1 = naive(AirPassengers, 12)
+        fit2 = naive(AirPassengers, 12)
+
+        @test fit1.sigma2 == fit2.sigma2
+        @test all(skipmissing(fit1.fitted) .== skipmissing(fit2.fitted))
+    end
+
+end

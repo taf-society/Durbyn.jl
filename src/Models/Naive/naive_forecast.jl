@@ -174,8 +174,12 @@ function forecast(object::NaiveFit;
     end
 
     # Calculate standard errors on transformed scale
-    # Handle NaN sigma2 (can happen with single residual)
-    if isnan(sigma2) || sigma2 < 0
+    # Handle NaN/negative sigma2 with warning (can indicate data issues)
+    if isnan(sigma2)
+        @warn "Residual variance (sigma2) is NaN, using 0. This may indicate Box-Cox transformation issues or insufficient data."
+        sigma2 = 0.0
+    elseif sigma2 < 0
+        @warn "Residual variance (sigma2) is negative ($sigma2), using 0. This should not happen."
         sigma2 = 0.0
     end
     sigma = sqrt(sigma2)

@@ -96,15 +96,37 @@ function naive(y::AbstractVector, m::Int=1;
 
     # Apply Box-Cox transformation if specified (only to non-missing values)
     if !isnothing(lambda)
-        # Get non-missing values for Box-Cox
+        # Get non-missing values
         valid_mask = .!isnan.(x)
-        x_valid = x[valid_mask]
-        x_trans_valid, lambda = box_cox(x_valid, m, lambda=lambda)
 
-        # Create transformed array with NaN for missing positions
+        # Pre-filter non-positive values (Box-Cox requires positive values)
+        positive_mask = valid_mask .& (x .> 0)
+        n_nonpositive = count(valid_mask) - count(positive_mask)
+        if n_nonpositive > 0
+            @warn "$n_nonpositive non-positive value(s) invalid for Box-Cox transformation, treated as missing"
+        end
+
+        x_positive = x[positive_mask]
+        count(positive_mask) >= 2 || throw(ArgumentError("Less than 2 positive observations for Box-Cox transformation with lambda=$lambda"))
+
+        x_trans_positive, lambda = box_cox(x_positive, m, lambda=lambda)
+
+        # Check for any NaN/Inf introduced by transformation itself
+        bc_invalid = .!isfinite.(x_trans_positive)
+        n_bc_invalid = count(bc_invalid)
+        if n_bc_invalid > 0
+            @warn "$n_bc_invalid additional value(s) invalid after Box-Cox transformation"
+            x_trans_positive[bc_invalid] .= NaN
+        end
+
+        # Create transformed array with NaN for missing/invalid positions
         y_trans = fill(NaN, n)
-        y_trans[valid_mask] = x_trans_valid
+        y_trans[positive_mask] = x_trans_positive
         y_transformed = copy(y_trans)
+
+        # Validate enough valid values remain after transformation
+        n_valid_trans = count(isfinite, y_trans)
+        n_valid_trans >= 2 || throw(ArgumentError("Less than 2 valid observations remain after Box-Cox transformation with lambda=$lambda"))
     else
         y_trans = x
     end
@@ -115,23 +137,31 @@ function naive(y::AbstractVector, m::Int=1;
     fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
     fill!(fitted_trans, missing)
     for t in 2:n
-        if !isnan(y_trans[t-1])
+        if isfinite(y_trans[t-1])
             fitted_trans[t] = y_trans[t-1]
         end
     end
 
-    # Residuals on transformed scale
+    # Residuals on transformed scale (only when both fitted and actual are valid)
     residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
     fill!(residuals_trans, missing)
     for t in 2:n
-        if !ismissing(fitted_trans[t]) && !isnan(y_trans[t])
+        if !ismissing(fitted_trans[t]) && isfinite(y_trans[t])
             residuals_trans[t] = y_trans[t] - fitted_trans[t]
         end
     end
 
     # Residual variance on transformed scale
     valid_residuals = collect(skipmissing(residuals_trans))
-    sigma2 = length(valid_residuals) <= 1 ? 0.0 : var(valid_residuals, corrected=true)
+    n_resid = length(valid_residuals)
+    if n_resid <= 1
+        sigma2 = 0.0
+        if n_resid == 0
+            @warn "No valid residuals available for variance estimation, using sigma2=0"
+        end
+    else
+        sigma2 = var(valid_residuals, corrected=true)
+    end
 
     # Convert fitted/residuals back to original scale for storage
     if !isnothing(lambda)
@@ -147,7 +177,8 @@ function naive(y::AbstractVector, m::Int=1;
             fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
             for (j, i) in enumerate(fitted_indices)
                 fitted[i] = fitted_back[j]
-                if !isnan(x[i])
+                # Only compute residuals if transformed value at this position is valid
+                if isfinite(y_trans[i])
                     residuals[i] = x[i] - fitted_back[j]
                 end
             end
@@ -220,13 +251,36 @@ function snaive(y::AbstractVector, m::Int;
 
     # Apply Box-Cox transformation if specified (only to non-missing values)
     if !isnothing(lambda)
+        # Get non-missing values
         valid_mask = .!isnan.(x)
-        x_valid = x[valid_mask]
-        x_trans_valid, lambda = box_cox(x_valid, m, lambda=lambda)
+
+        # Pre-filter non-positive values (Box-Cox requires positive values)
+        positive_mask = valid_mask .& (x .> 0)
+        n_nonpositive = count(valid_mask) - count(positive_mask)
+        if n_nonpositive > 0
+            @warn "$n_nonpositive non-positive value(s) invalid for Box-Cox transformation, treated as missing"
+        end
+
+        x_positive = x[positive_mask]
+        count(positive_mask) > m || throw(ArgumentError("$(count(positive_mask)) positive observations for Box-Cox, need more than m=$m"))
+
+        x_trans_positive, lambda = box_cox(x_positive, m, lambda=lambda)
+
+        # Check for any NaN/Inf introduced by transformation itself
+        bc_invalid = .!isfinite.(x_trans_positive)
+        n_bc_invalid = count(bc_invalid)
+        if n_bc_invalid > 0
+            @warn "$n_bc_invalid additional value(s) invalid after Box-Cox transformation"
+            x_trans_positive[bc_invalid] .= NaN
+        end
 
         y_trans = fill(NaN, n)
-        y_trans[valid_mask] = x_trans_valid
+        y_trans[positive_mask] = x_trans_positive
         y_transformed = copy(y_trans)
+
+        # Validate enough valid values remain after transformation
+        n_valid_trans = count(isfinite, y_trans)
+        n_valid_trans > m || throw(ArgumentError("$n_valid_trans valid observations remain after Box-Cox transformation, need more than m=$m"))
     else
         y_trans = x
     end
@@ -237,23 +291,31 @@ function snaive(y::AbstractVector, m::Int;
     fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
     fill!(fitted_trans, missing)
     for t in (m+1):n
-        if !isnan(y_trans[t-m])
+        if isfinite(y_trans[t-m])
             fitted_trans[t] = y_trans[t-m]
         end
     end
 
-    # Residuals on transformed scale
+    # Residuals on transformed scale (only when both fitted and actual are valid)
     residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
     fill!(residuals_trans, missing)
     for t in (m+1):n
-        if !ismissing(fitted_trans[t]) && !isnan(y_trans[t])
+        if !ismissing(fitted_trans[t]) && isfinite(y_trans[t])
             residuals_trans[t] = y_trans[t] - fitted_trans[t]
         end
     end
 
     # Residual variance on transformed scale
     valid_residuals = collect(skipmissing(residuals_trans))
-    sigma2 = length(valid_residuals) <= 1 ? 0.0 : var(valid_residuals, corrected=true)
+    n_resid = length(valid_residuals)
+    if n_resid <= 1
+        sigma2 = 0.0
+        if n_resid == 0
+            @warn "No valid residuals available for variance estimation, using sigma2=0"
+        end
+    else
+        sigma2 = var(valid_residuals, corrected=true)
+    end
 
     # Convert fitted/residuals back to original scale for storage
     if !isnothing(lambda)
@@ -269,7 +331,8 @@ function snaive(y::AbstractVector, m::Int;
             fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
             for (j, i) in enumerate(fitted_indices)
                 fitted[i] = fitted_back[j]
-                if !isnan(x[i])
+                # Only compute residuals if transformed value at this position is valid
+                if isfinite(y_trans[i])
                     residuals[i] = x[i] - fitted_back[j]
                 end
             end
@@ -349,13 +412,36 @@ function rw(y::AbstractVector, m::Int=1;
 
     # Apply Box-Cox transformation if specified (only to non-missing values)
     if !isnothing(lambda)
+        # Get non-missing values
         valid_mask = .!isnan.(x)
-        x_valid = x[valid_mask]
-        x_trans_valid, lambda = box_cox(x_valid, m, lambda=lambda)
+
+        # Pre-filter non-positive values (Box-Cox requires positive values)
+        positive_mask = valid_mask .& (x .> 0)
+        n_nonpositive = count(valid_mask) - count(positive_mask)
+        if n_nonpositive > 0
+            @warn "$n_nonpositive non-positive value(s) invalid for Box-Cox transformation, treated as missing"
+        end
+
+        x_positive = x[positive_mask]
+        count(positive_mask) >= 2 || throw(ArgumentError("Less than 2 positive observations for Box-Cox transformation with lambda=$lambda"))
+
+        x_trans_positive, lambda = box_cox(x_positive, m, lambda=lambda)
+
+        # Check for any NaN/Inf introduced by transformation itself
+        bc_invalid = .!isfinite.(x_trans_positive)
+        n_bc_invalid = count(bc_invalid)
+        if n_bc_invalid > 0
+            @warn "$n_bc_invalid additional value(s) invalid after Box-Cox transformation"
+            x_trans_positive[bc_invalid] .= NaN
+        end
 
         y_trans = fill(NaN, n)
-        y_trans[valid_mask] = x_trans_valid
+        y_trans[positive_mask] = x_trans_positive
         y_transformed = copy(y_trans)
+
+        # Validate enough valid values remain after transformation
+        n_valid_trans = count(isfinite, y_trans)
+        n_valid_trans >= 2 || throw(ArgumentError("Less than 2 valid observations remain after Box-Cox transformation with lambda=$lambda"))
     else
         y_trans = x
     end
@@ -364,13 +450,13 @@ function rw(y::AbstractVector, m::Int=1;
 
     if drift
         # Random walk with drift
-        # Find first and last non-missing values for drift calculation
-        valid_indices = findall(!isnan, y_trans)
+        # Find first and last valid values for drift calculation
+        valid_indices = findall(isfinite, y_trans)
         first_valid = first(valid_indices)
         last_valid = last(valid_indices)
         n_span = last_valid - first_valid
 
-        n_span >= 1 || throw(ArgumentError("Need at least 2 non-missing observations with span > 0 for drift"))
+        n_span >= 1 || throw(ArgumentError("Need at least 2 valid observations with span > 0 for drift"))
 
         # Drift = average change = (y_last - y_first) / span on transformed scale
         drift_val = (y_trans[last_valid] - y_trans[first_valid]) / n_span
@@ -379,23 +465,31 @@ function rw(y::AbstractVector, m::Int=1;
         fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(fitted_trans, missing)
         for t in 2:n
-            if !isnan(y_trans[t-1])
+            if isfinite(y_trans[t-1])
                 fitted_trans[t] = y_trans[t-1] + drift_val
             end
         end
 
-        # Residuals on transformed scale
+        # Residuals on transformed scale (only when both fitted and actual are valid)
         residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(residuals_trans, missing)
         for t in 2:n
-            if !ismissing(fitted_trans[t]) && !isnan(y_trans[t])
+            if !ismissing(fitted_trans[t]) && isfinite(y_trans[t])
                 residuals_trans[t] = y_trans[t] - fitted_trans[t]
             end
         end
 
         # Residual variance on transformed scale
         valid_residuals = collect(skipmissing(residuals_trans))
-        sigma2 = length(valid_residuals) <= 1 ? 0.0 : var(valid_residuals, corrected=true)
+        n_resid = length(valid_residuals)
+        if n_resid <= 1
+            sigma2 = 0.0
+            if n_resid == 0
+                @warn "No valid residuals available for variance estimation, using sigma2=0"
+            end
+        else
+            sigma2 = var(valid_residuals, corrected=true)
+        end
 
         # Standard error of drift
         # SE(drift) = sigma / sqrt(n_span) where n_span is the time span over which drift was computed
@@ -418,7 +512,8 @@ function rw(y::AbstractVector, m::Int=1;
                 fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
                 for (j, i) in enumerate(fitted_indices)
                     fitted[i] = fitted_back[j]
-                    if !isnan(x[i])
+                    # Only compute residuals if transformed value at this position is valid
+                    if isfinite(y_trans[i])
                         residuals[i] = x[i] - fitted_back[j]
                     end
                 end
@@ -441,7 +536,7 @@ function rw(y::AbstractVector, m::Int=1;
         fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(fitted_trans, missing)
         for t in 2:n
-            if !isnan(y_trans[t-1])
+            if isfinite(y_trans[t-1])
                 fitted_trans[t] = y_trans[t-1]
             end
         end
@@ -449,13 +544,21 @@ function rw(y::AbstractVector, m::Int=1;
         residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(residuals_trans, missing)
         for t in 2:n
-            if !ismissing(fitted_trans[t]) && !isnan(y_trans[t])
+            if !ismissing(fitted_trans[t]) && isfinite(y_trans[t])
                 residuals_trans[t] = y_trans[t] - fitted_trans[t]
             end
         end
 
         valid_residuals = collect(skipmissing(residuals_trans))
-        sigma2 = length(valid_residuals) <= 1 ? 0.0 : var(valid_residuals, corrected=true)
+        n_resid = length(valid_residuals)
+        if n_resid <= 1
+            sigma2 = 0.0
+            if n_resid == 0
+                @warn "No valid residuals available for variance estimation, using sigma2=0"
+            end
+        else
+            sigma2 = var(valid_residuals, corrected=true)
+        end
 
         # Convert fitted/residuals back to original scale for storage
         if !isnothing(lambda)
@@ -471,7 +574,8 @@ function rw(y::AbstractVector, m::Int=1;
                 fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
                 for (j, i) in enumerate(fitted_indices)
                     fitted[i] = fitted_back[j]
-                    if !isnan(x[i])
+                    # Only compute residuals if transformed value at this position is valid
+                    if isfinite(y_trans[i])
                         residuals[i] = x[i] - fitted_back[j]
                     end
                 end

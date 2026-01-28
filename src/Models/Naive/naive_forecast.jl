@@ -66,8 +66,8 @@ function forecast(object::NaiveFit;
                   fan::Bool=false)
     h >= 1 || throw(ArgumentError("Forecast horizon h must be >= 1, got $h"))
 
-    y = object.x
-    n = length(y)
+    x = object.x
+    n = length(x)
     sigma2 = object.sigma2
     m = object.m
     lag = object.lag
@@ -77,7 +77,7 @@ function forecast(object::NaiveFit;
     # Adjust levels for fan or percentage
     if fan
         level = collect(51.0:3:99.0)
-    elseif any(level .> 1.0)
+    elseif any(lv -> lv > 1.0, level)
         if minimum(level) < 0.0 || maximum(level) > 99.99
             error("Confidence limit out of range")
         end
@@ -86,34 +86,35 @@ function forecast(object::NaiveFit;
     end
 
     nconf = length(level)
-    level_int = Int.(level)
+    level_int = round.(Int, level)
 
-    # Generate point forecasts
+    # Get transformed data for forecasting (if lambda was used)
+    if !isnothing(lambda) && !isnothing(object.y_transformed)
+        y_trans = object.y_transformed
+    else
+        y_trans = x
+    end
+
+    # Generate point forecasts on transformed scale
     if !isnothing(object.drift)
-        # RW with drift: forecast = last value + h * drift
-        last_val = y[n]
-        if !isnothing(lambda)
-            # Transform last value for forecast computation
-            last_transformed = box_cox([last_val], m, lambda=lambda)[1][1]
-            f = [last_transformed + i * object.drift for i in 1:h]
-        else
-            f = [last_val + i * object.drift for i in 1:h]
-        end
+        # RW with drift: forecast = last transformed value + h * drift
+        last_trans = y_trans[n]
+        f_trans = [last_trans + i * object.drift for i in 1:h]
     elseif lag == 1
-        # Naive: forecast = last value
-        last_val = y[n]
-        f = fill(Float64(last_val), h)
+        # Naive: forecast = last transformed value
+        last_trans = y_trans[n]
+        f_trans = fill(Float64(last_trans), h)
     else
         # Seasonal naive: forecast = value from m periods ago, cycling
-        f = Vector{Float64}(undef, h)
+        f_trans = Vector{Float64}(undef, h)
         for i in 1:h
             # Use last m observations cyclically
             idx = mod1(i, m)
-            f[i] = y[n - m + idx]
+            f_trans[i] = y_trans[n - m + idx]
         end
     end
 
-    # Calculate standard errors
+    # Calculate standard errors on transformed scale
     se = Vector{Float64}(undef, h)
     sigma = sqrt(sigma2)
 
@@ -132,41 +133,48 @@ function forecast(object::NaiveFit;
         end
     end
 
-    # Calculate prediction intervals using Normal quantiles
-    lower = Vector{Vector{Float64}}(undef, nconf)
-    upper = Vector{Vector{Float64}}(undef, nconf)
+    # Calculate prediction intervals using Normal quantiles on transformed scale
+    lower_trans = Vector{Vector{Float64}}(undef, nconf)
+    upper_trans = Vector{Vector{Float64}}(undef, nconf)
 
     for j in 1:nconf
         alpha = (100 - level[j]) / 200
         z = quantile(Normal(), 1 - alpha)
 
-        lower[j] = f .- z .* se
-        upper[j] = f .+ z .* se
+        lower_trans[j] = f_trans .- z .* se
+        upper_trans[j] = f_trans .+ z .* se
     end
 
     # Apply inverse Box-Cox transformation if needed
     if !isnothing(lambda)
+        # Compute forecast variance for bias adjustment
+        fvar = se .^ 2
+
         if biasadj
-            # Bias-adjusted back-transformation
-            f = inv_box_cox(f; lambda=lambda, sigma2=sigma2)
-            for j in 1:nconf
-                lower[j] = inv_box_cox(lower[j]; lambda=lambda)
-                upper[j] = inv_box_cox(upper[j]; lambda=lambda)
-            end
+            # Bias-adjusted back-transformation for point forecast
+            f = inv_box_cox(f_trans; lambda=lambda, biasadj=true, fvar=fvar)
         else
-            f = inv_box_cox(f; lambda=lambda)
-            for j in 1:nconf
-                lower[j] = inv_box_cox(lower[j]; lambda=lambda)
-                upper[j] = inv_box_cox(upper[j]; lambda=lambda)
-            end
+            f = inv_box_cox(f_trans; lambda=lambda)
         end
+
+        # Back-transform intervals (without bias adjustment for bounds)
+        lower = Vector{Vector{Float64}}(undef, nconf)
+        upper = Vector{Vector{Float64}}(undef, nconf)
+        for j in 1:nconf
+            lower[j] = inv_box_cox(lower_trans[j]; lambda=lambda)
+            upper[j] = inv_box_cox(upper_trans[j]; lambda=lambda)
+        end
+    else
+        f = f_trans
+        lower = lower_trans
+        upper = upper_trans
     end
 
     # Convert to Float64 vectors
     mean_vec = Float64.(f)
     x_data = Float64.(object.x)
 
-    # Fitted values and residuals
+    # Fitted values and residuals (already on original scale in NaiveFit)
     fitted_vals = object.fitted
     residuals_vals = object.residuals
 

@@ -798,6 +798,8 @@ function fit_grouped(spec::NaiveSpec, data;
                      datecol::Union{Symbol, Nothing} = nothing,
                      parallel::Bool = true,
                      fail_fast::Bool = false,
+                     lambda::Union{Nothing, Float64} = nothing,
+                     biasadj::Union{Nothing, Bool} = nothing,
                      kwargs...)
 
     tbl = Tables.columntable(data)
@@ -817,6 +819,10 @@ function fit_grouped(spec::NaiveSpec, data;
     seasonal_period >= 1 ||
         throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
 
+    # Allow kwargs to override spec values
+    use_lambda = isnothing(lambda) ? spec.lambda : lambda
+    use_biasadj = isnothing(biasadj) ? spec.biasadj : biasadj
+
     parent_mod = parentmodule(@__MODULE__)
     Naive_mod = getfield(parent_mod, :Naive)
 
@@ -824,8 +830,8 @@ function fit_grouped(spec::NaiveSpec, data;
         group_tbl = Tables.columntable(group_data)
         target_vector = group_tbl[target_col]
         naive_fit = Naive_mod.naive(target_vector, seasonal_period;
-                                     lambda=spec.lambda,
-                                     biasadj=spec.biasadj)
+                                     lambda=use_lambda,
+                                     biasadj=use_biasadj)
         return FittedNaive(spec, naive_fit, target_col, group_data, seasonal_period)
     end
 
@@ -843,6 +849,8 @@ function fit_grouped(spec::SnaiveSpec, data;
                      datecol::Union{Symbol, Nothing} = nothing,
                      parallel::Bool = true,
                      fail_fast::Bool = false,
+                     lambda::Union{Nothing, Float64} = nothing,
+                     biasadj::Union{Nothing, Bool} = nothing,
                      kwargs...)
 
     tbl = Tables.columntable(data)
@@ -872,6 +880,10 @@ function fit_grouped(spec::SnaiveSpec, data;
     seasonal_period >= 1 ||
         throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
 
+    # Allow kwargs to override spec values
+    use_lambda = isnothing(lambda) ? spec.lambda : lambda
+    use_biasadj = isnothing(biasadj) ? spec.biasadj : biasadj
+
     parent_mod = parentmodule(@__MODULE__)
     Naive_mod = getfield(parent_mod, :Naive)
 
@@ -879,8 +891,8 @@ function fit_grouped(spec::SnaiveSpec, data;
         group_tbl = Tables.columntable(group_data)
         target_vector = group_tbl[target_col]
         snaive_fit = Naive_mod.snaive(target_vector, seasonal_period;
-                                       lambda=spec.lambda,
-                                       biasadj=spec.biasadj)
+                                       lambda=use_lambda,
+                                       biasadj=use_biasadj)
         return FittedSnaive(spec, snaive_fit, target_col, group_data, seasonal_period)
     end
 
@@ -898,6 +910,8 @@ function fit_grouped(spec::RwSpec, data;
                      datecol::Union{Symbol, Nothing} = nothing,
                      parallel::Bool = true,
                      fail_fast::Bool = false,
+                     lambda::Union{Nothing, Float64} = nothing,
+                     biasadj::Union{Nothing, Bool} = nothing,
                      kwargs...)
 
     tbl = Tables.columntable(data)
@@ -919,6 +933,10 @@ function fit_grouped(spec::RwSpec, data;
 
     use_drift = spec.drift
 
+    # Allow kwargs to override spec values
+    use_lambda = isnothing(lambda) ? spec.lambda : lambda
+    use_biasadj = isnothing(biasadj) ? spec.biasadj : biasadj
+
     parent_mod = parentmodule(@__MODULE__)
     Naive_mod = getfield(parent_mod, :Naive)
 
@@ -927,8 +945,8 @@ function fit_grouped(spec::RwSpec, data;
         target_vector = group_tbl[target_col]
         rw_fit = Naive_mod.rw(target_vector, seasonal_period;
                               drift=use_drift,
-                              lambda=spec.lambda,
-                              biasadj=spec.biasadj)
+                              lambda=use_lambda,
+                              biasadj=use_biasadj)
         return FittedRw(spec, rw_fit, target_col, group_data, seasonal_period)
     end
 

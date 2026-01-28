@@ -10,7 +10,7 @@ Naive methods serve as simple benchmarks for more complex forecasting methods:
 - Random Walk: naive with optional drift
 """
 
-# NaiveTerm, SnaiveTerm, RwTerm are already available via the module's using statement
+import ..Grammar: _extract_single_term
 
 """
     NaiveSpec(formula::ModelFormula; m=nothing, kwargs...)
@@ -61,6 +61,8 @@ struct NaiveSpec <: AbstractModelSpec
                        lambda::Union{Nothing, Float64}=nothing,
                        biasadj::Bool=false,
                        kwargs...)
+        # Validate formula contains NaiveTerm
+        _extract_single_term(formula, NaiveTerm)
         new(formula, m, lambda, biasadj, Dict{Symbol, Any}(kwargs))
     end
 end
@@ -115,6 +117,8 @@ struct SnaiveSpec <: AbstractModelSpec
                         lambda::Union{Nothing, Float64}=nothing,
                         biasadj::Bool=false,
                         kwargs...)
+        # Validate formula contains SnaiveTerm
+        _extract_single_term(formula, SnaiveTerm)
         new(formula, m, lambda, biasadj, Dict{Symbol, Any}(kwargs))
     end
 end
@@ -175,16 +179,10 @@ struct RwSpec <: AbstractModelSpec
                     lambda::Union{Nothing, Float64}=nothing,
                     biasadj::Bool=false,
                     kwargs...)
-        # Extract drift from formula term if present
-        formula_drift = false
-        for term in formula.terms
-            if term isa RwTerm
-                formula_drift = term.drift
-                break
-            end
-        end
+        # Validate formula contains RwTerm and extract it
+        rw_term = _extract_single_term(formula, RwTerm)
         # Use formula drift if not explicitly specified via kwarg (kwarg takes precedence)
-        final_drift = drift || formula_drift
+        final_drift = drift || rw_term.drift
         new(formula, m, final_drift, lambda, biasadj, Dict{Symbol, Any}(kwargs))
     end
 end

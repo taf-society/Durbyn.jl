@@ -1779,6 +1779,8 @@ function fit(spec::NaiveSpec, data;
              datecol::Union{Symbol, Nothing} = nothing,
              parallel::Bool = true,
              fail_fast::Bool = false,
+             lambda::Union{Nothing, Float64} = nothing,
+             biasadj::Union{Nothing, Bool} = nothing,
              kwargs...)
 
     if !isnothing(groupby)
@@ -1788,6 +1790,8 @@ function fit(spec::NaiveSpec, data;
                            datecol=datecol,
                            parallel=parallel,
                            fail_fast=fail_fast,
+                           lambda=lambda,
+                           biasadj=biasadj,
                            kwargs...)
     end
 
@@ -1809,12 +1813,16 @@ function fit(spec::NaiveSpec, data;
     el <: Number ||
         throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
 
+    # Allow kwargs to override spec values
+    use_lambda = isnothing(lambda) ? spec.lambda : lambda
+    use_biasadj = isnothing(biasadj) ? spec.biasadj : biasadj
+
     parent_mod = parentmodule(@__MODULE__)
     Naive_mod = getfield(parent_mod, :Naive)
 
     naive_fit = Naive_mod.naive(target_vector, seasonal_period;
-                                 lambda=spec.lambda,
-                                 biasadj=spec.biasadj)
+                                 lambda=use_lambda,
+                                 biasadj=use_biasadj)
 
     return FittedNaive(spec, naive_fit, target_col, tbl, seasonal_period)
 end
@@ -1857,6 +1865,8 @@ function fit(spec::SnaiveSpec, data;
              datecol::Union{Symbol, Nothing} = nothing,
              parallel::Bool = true,
              fail_fast::Bool = false,
+             lambda::Union{Nothing, Float64} = nothing,
+             biasadj::Union{Nothing, Bool} = nothing,
              kwargs...)
 
     if !isnothing(groupby)
@@ -1866,6 +1876,8 @@ function fit(spec::SnaiveSpec, data;
                            datecol=datecol,
                            parallel=parallel,
                            fail_fast=fail_fast,
+                           lambda=lambda,
+                           biasadj=biasadj,
                            kwargs...)
     end
 
@@ -1897,12 +1909,16 @@ function fit(spec::SnaiveSpec, data;
     el <: Number ||
         throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
 
+    # Allow kwargs to override spec values
+    use_lambda = isnothing(lambda) ? spec.lambda : lambda
+    use_biasadj = isnothing(biasadj) ? spec.biasadj : biasadj
+
     parent_mod = parentmodule(@__MODULE__)
     Naive_mod = getfield(parent_mod, :Naive)
 
     snaive_fit = Naive_mod.snaive(target_vector, seasonal_period;
-                                   lambda=spec.lambda,
-                                   biasadj=spec.biasadj)
+                                   lambda=use_lambda,
+                                   biasadj=use_biasadj)
 
     return FittedSnaive(spec, snaive_fit, target_col, tbl, seasonal_period)
 end
@@ -1944,6 +1960,8 @@ function fit(spec::RwSpec, data;
              datecol::Union{Symbol, Nothing} = nothing,
              parallel::Bool = true,
              fail_fast::Bool = false,
+             lambda::Union{Nothing, Float64} = nothing,
+             biasadj::Union{Nothing, Bool} = nothing,
              kwargs...)
 
     if !isnothing(groupby)
@@ -1953,6 +1971,8 @@ function fit(spec::RwSpec, data;
                            datecol=datecol,
                            parallel=parallel,
                            fail_fast=fail_fast,
+                           lambda=lambda,
+                           biasadj=biasadj,
                            kwargs...)
     end
 
@@ -1977,13 +1997,17 @@ function fit(spec::RwSpec, data;
     # Determine drift from spec or formula term
     use_drift = spec.drift
 
+    # Allow kwargs to override spec values
+    use_lambda = isnothing(lambda) ? spec.lambda : lambda
+    use_biasadj = isnothing(biasadj) ? spec.biasadj : biasadj
+
     parent_mod = parentmodule(@__MODULE__)
     Naive_mod = getfield(parent_mod, :Naive)
 
     rw_fit = Naive_mod.rw(target_vector, seasonal_period;
                           drift=use_drift,
-                          lambda=spec.lambda,
-                          biasadj=spec.biasadj)
+                          lambda=use_lambda,
+                          biasadj=use_biasadj)
 
     return FittedRw(spec, rw_fit, target_col, tbl, seasonal_period)
 end

@@ -131,7 +131,7 @@ function naive(y::AbstractVector, m::Int=1;
 
     # Residual variance on transformed scale
     valid_residuals = collect(skipmissing(residuals_trans))
-    sigma2 = isempty(valid_residuals) ? 0.0 : var(valid_residuals, corrected=true)
+    sigma2 = length(valid_residuals) <= 1 ? 0.0 : var(valid_residuals, corrected=true)
 
     # Convert fitted/residuals back to original scale for storage
     if !isnothing(lambda)
@@ -253,7 +253,7 @@ function snaive(y::AbstractVector, m::Int;
 
     # Residual variance on transformed scale
     valid_residuals = collect(skipmissing(residuals_trans))
-    sigma2 = isempty(valid_residuals) ? 0.0 : var(valid_residuals, corrected=true)
+    sigma2 = length(valid_residuals) <= 1 ? 0.0 : var(valid_residuals, corrected=true)
 
     # Convert fitted/residuals back to original scale for storage
     if !isnothing(lambda)
@@ -395,7 +395,7 @@ function rw(y::AbstractVector, m::Int=1;
 
         # Residual variance on transformed scale
         valid_residuals = collect(skipmissing(residuals_trans))
-        sigma2 = isempty(valid_residuals) ? 0.0 : var(valid_residuals, corrected=true)
+        sigma2 = length(valid_residuals) <= 1 ? 0.0 : var(valid_residuals, corrected=true)
 
         # Standard error of drift
         # SE(drift) = sigma / sqrt(n_valid-1)
@@ -454,7 +454,7 @@ function rw(y::AbstractVector, m::Int=1;
         end
 
         valid_residuals = collect(skipmissing(residuals_trans))
-        sigma2 = isempty(valid_residuals) ? 0.0 : var(valid_residuals, corrected=true)
+        sigma2 = length(valid_residuals) <= 1 ? 0.0 : var(valid_residuals, corrected=true)
 
         # Convert fitted/residuals back to original scale for storage
         if !isnothing(lambda)

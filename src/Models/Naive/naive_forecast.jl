@@ -86,7 +86,6 @@ function forecast(object::NaiveFit;
     end
 
     nconf = length(level)
-    level_int = round.(Int, level)
 
     # Get transformed data for forecasting (if lambda was used)
     if !isnothing(lambda) && !isnothing(object.y_transformed)
@@ -95,33 +94,68 @@ function forecast(object::NaiveFit;
         y_trans = x
     end
 
+    # Helper: find last non-NaN value in array
+    function find_last_valid(arr)
+        for i in length(arr):-1:1
+            if !isnan(arr[i])
+                return arr[i]
+            end
+        end
+        return NaN  # All values are NaN
+    end
+
+    # Helper: find last non-NaN value at seasonal position
+    function find_last_valid_at_season(arr, pos, period)
+        # pos is 1-indexed position in season (1 to period)
+        # Search backwards through complete seasons
+        for season_start in (length(arr) - period + 1):-period:1
+            idx = season_start + pos - 1
+            if idx >= 1 && idx <= length(arr) && !isnan(arr[idx])
+                return arr[idx]
+            end
+        end
+        return NaN
+    end
+
     # Generate point forecasts on transformed scale
     if !isnothing(object.drift)
-        # RW with drift: forecast = last transformed value + h * drift
-        last_trans = y_trans[n]
+        # RW with drift: forecast = last valid transformed value + h * drift
+        last_trans = find_last_valid(y_trans)
         f_trans = [last_trans + i * object.drift for i in 1:h]
     elseif lag == 1
-        # Naive: forecast = last transformed value
-        last_trans = y_trans[n]
+        # Naive: forecast = last valid transformed value
+        last_trans = find_last_valid(y_trans)
         f_trans = fill(Float64(last_trans), h)
     else
-        # Seasonal naive: forecast = value from m periods ago, cycling
+        # Seasonal naive: forecast = last valid value at each seasonal position
         f_trans = Vector{Float64}(undef, h)
         for i in 1:h
-            # Use last m observations cyclically
-            idx = mod1(i, m)
-            f_trans[i] = y_trans[n - m + idx]
+            # Position in seasonal cycle (1 to m)
+            pos = mod1(i, m)
+            # First try the simple approach: look at position n - m + pos
+            simple_idx = n - m + pos
+            if simple_idx >= 1 && !isnan(y_trans[simple_idx])
+                f_trans[i] = y_trans[simple_idx]
+            else
+                # Fall back to finding last valid at this seasonal position
+                f_trans[i] = find_last_valid_at_season(y_trans, pos, m)
+            end
         end
     end
 
     # Calculate standard errors on transformed scale
-    se = Vector{Float64}(undef, h)
+    # Handle NaN sigma2 (can happen with single residual)
+    if isnan(sigma2) || sigma2 < 0
+        sigma2 = 0.0
+    end
     sigma = sqrt(sigma2)
+    se = Vector{Float64}(undef, h)
 
     for i in 1:h
         if !isnothing(object.drift) && !isnothing(object.drift_se)
             # RW with drift: SE^2 = h * sigma2 + h^2 * drift_se^2
-            se[i] = sqrt(i * sigma2 + i^2 * object.drift_se^2)
+            drift_se = isnan(object.drift_se) ? 0.0 : object.drift_se
+            se[i] = sqrt(i * sigma2 + i^2 * drift_se^2)
         elseif lag == 1
             # Naive/RW without drift: SE = sqrt(h) * sigma
             se[i] = sqrt(i) * sigma
@@ -178,11 +212,14 @@ function forecast(object::NaiveFit;
     fitted_vals = object.fitted
     residuals_vals = object.residuals
 
+    # Keep level as provided (don't round to avoid mislabeling e.g., 99.5 → 100)
+    level_out = round.(level, digits=1)
+
     return Forecast(
         object,
         object.method,
         mean_vec,
-        level_int,
+        level_out,
         x_data,
         upper,
         lower,

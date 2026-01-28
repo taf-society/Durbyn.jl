@@ -121,9 +121,15 @@ function forecast(object::MeanFit, h::Int=10, level::Vector{Float64}=[80.0, 95.0
         end
     else
         # t-distribution intervals on transformed scale
+        # Handle n == 1 case: use infinite intervals (like R)
         for i in 1:nconf
-            tfrac = quantile(TDist(n - 1), 0.5 - level[i] / 200.0)
-            w = -tfrac * sd_trans * sqrt(1.0 + 1.0 / n)
+            if n > 1
+                tfrac = quantile(TDist(n - 1), 0.5 - level[i] / 200.0)
+                w = -tfrac * sd_trans * sqrt(1.0 + 1.0 / n)
+            else
+                # n == 1: infinite intervals (no variance estimate possible)
+                w = Inf
+            end
             lower_trans[:, i] .= f_trans .- w
             upper_trans[:, i] .= f_trans .+ w
         end

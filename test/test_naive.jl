@@ -284,6 +284,24 @@ const REFERENCE_SD_AP = 119.9663
         @test isapprox(fit.residuals[1], AirPassengers[1] - fit.fitted[1], atol=EPS_SCALAR)
     end
 
+    @testset "meanf with n == 1" begin
+        single_obs = [100.0]
+        fit = meanf(single_obs, 1)
+
+        @test fit.n == 1
+        @test fit.mu == 100.0
+        @test fit.sd == 0.0  # sd of single observation
+
+        # Forecast should work but produce infinite intervals (like R)
+        fc = forecast(fit, 5, [80.0, 95.0])
+        @test length(fc["mean"]) == 5
+        @test all(fc["mean"] .== 100.0)
+
+        # Intervals should be infinite (TDist(0) not defined, so we use Inf)
+        @test all(fc["lower"][:, 1] .== -Inf)
+        @test all(fc["upper"][:, 1] .== Inf)
+    end
+
 end
 
 # =============================================================================
@@ -591,6 +609,87 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
             y_snaive_insufficient = Union{Float64, Missing}[1.0, 2.0, missing, missing, missing]
             @test_throws ArgumentError snaive(y_snaive_insufficient, 4)  # 2 non-missing <= m=4
+        end
+    end
+
+    @testset "Trailing Missing Values" begin
+        @testset "naive with trailing missings" begin
+            # Last 2 observations are missing
+            y = Union{Float64, Missing}[1.0, 2.0, 3.0, 4.0, 5.0, missing, missing]
+            fit = naive(y)
+
+            # Forecast should use last non-missing value (5.0)
+            fc = forecast(fit, h=5)
+            @test all(fc.mean .== 5.0)
+            @test all(isfinite.(fc.mean))
+        end
+
+        @testset "snaive with trailing missings" begin
+            # Seasonal period 3, with missing in last season
+            y = Union{Float64, Missing}[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, missing, 9.0]
+            fit = snaive(y, 3)
+
+            fc = forecast(fit, h=6)
+            # Position 1: should use y[7]=7.0 (or y[4]=4.0 as fallback)
+            # Position 2: should use y[8]=missing, fall back to y[5]=5.0
+            # Position 3: should use y[9]=9.0
+            @test fc.mean[1] == 7.0
+            @test fc.mean[2] == 5.0  # Fallback for missing position
+            @test fc.mean[3] == 9.0
+            @test all(isfinite.(fc.mean))
+        end
+
+        @testset "rw with drift and trailing missings" begin
+            y = Union{Float64, Missing}[1.0, 2.0, 3.0, 4.0, 5.0, missing, missing]
+            fit = rw(y, drift=true)
+
+            # Forecast should use last non-missing value
+            fc = forecast(fit, h=5)
+            @test all(isfinite.(fc.mean))
+            # First forecast should be close to 5.0 + drift
+            @test fc.mean[1] > 5.0  # Positive drift expected
+        end
+    end
+
+    @testset "Single Residual (n_valid == 2)" begin
+        @testset "naive with 2 observations" begin
+            y = [10.0, 20.0]
+            fit = naive(y)
+
+            # Only 1 residual (at t=2), so sigma2 should be 0
+            @test fit.sigma2 == 0.0
+
+            fc = forecast(fit, h=5)
+            @test all(fc.mean .== 20.0)
+            # Intervals should still be computed (with sigma=0, they collapse to point)
+            @test all(fc.lower[1] .== fc.mean)
+            @test all(fc.upper[1] .== fc.mean)
+        end
+
+        @testset "snaive with m+1 observations" begin
+            y = [1.0, 2.0, 3.0, 4.0, 5.0]  # m=4, so only 1 residual at t=5
+            fit = snaive(y, 4)
+
+            @test fit.sigma2 == 0.0
+            fc = forecast(fit, h=4)
+            @test all(isfinite.(fc.mean))
+        end
+
+        @testset "rw with drift and 2 observations" begin
+            y = [10.0, 20.0]
+            fit = rw(y, drift=true)
+
+            # Drift should be (20 - 10) / 1 = 10
+            @test fit.drift == 10.0
+            # Only 1 residual, so sigma2 should be 0
+            @test fit.sigma2 == 0.0
+            # drift_se should also be 0 (or very small)
+            @test fit.drift_se == 0.0
+
+            fc = forecast(fit, h=3)
+            @test fc.mean[1] ≈ 30.0 atol=EPS_SCALAR  # 20 + 1*10
+            @test fc.mean[2] ≈ 40.0 atol=EPS_SCALAR  # 20 + 2*10
+            @test fc.mean[3] ≈ 50.0 atol=EPS_SCALAR  # 20 + 3*10
         end
     end
 

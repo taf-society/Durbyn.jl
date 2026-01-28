@@ -247,6 +247,97 @@ struct ThetaTerm <: AbstractTerm
 end
 
 """
+    NaiveTerm <: AbstractTerm
+
+Represents a naive forecasting model specification in a formula.
+
+The naive method uses the last observation as the forecast for all future periods.
+"""
+struct NaiveTerm <: AbstractTerm
+end
+
+"""
+    SnaiveTerm <: AbstractTerm
+
+Represents a seasonal naive forecasting model specification in a formula.
+
+The seasonal naive method uses the observation from m periods ago as the forecast.
+"""
+struct SnaiveTerm <: AbstractTerm
+end
+
+"""
+    RwTerm <: AbstractTerm
+
+Represents a random walk forecasting model specification in a formula.
+
+# Fields
+- `drift::Bool` - Whether to include drift term
+"""
+struct RwTerm <: AbstractTerm
+    drift::Bool
+end
+
+"""
+    naive_term()
+
+Specify a naive forecasting model in a formula.
+
+The naive forecast uses the last observed value for all future periods.
+
+# Examples
+```julia
+@formula(sales = naive_term())
+```
+
+# See Also
+- [`snaive_term`](@ref) - Seasonal naive
+- [`rw_term`](@ref) - Random walk with optional drift
+"""
+naive_term() = NaiveTerm()
+
+"""
+    snaive_term()
+
+Specify a seasonal naive forecasting model in a formula.
+
+The seasonal naive forecast uses the value from m periods ago.
+
+# Examples
+```julia
+@formula(sales = snaive_term())
+```
+
+# See Also
+- [`naive_term`](@ref) - Non-seasonal naive
+- [`rw_term`](@ref) - Random walk with optional drift
+"""
+snaive_term() = SnaiveTerm()
+
+"""
+    rw_term(; drift::Bool=false)
+
+Specify a random walk forecasting model in a formula.
+
+# Keyword Arguments
+- `drift::Bool=false` - Include drift term (linear trend)
+
+# Examples
+```julia
+# Random walk without drift (equivalent to naive)
+@formula(sales = rw_term())
+
+# Random walk with drift
+@formula(sales = rw_term(drift=true))
+```
+
+# See Also
+- [`naive_term`](@ref) - Naive method
+- [`snaive_term`](@ref) - Seasonal naive
+"""
+rw_term(; drift::Bool=false) = RwTerm(drift)
+
+"""
     VarTerm <: AbstractTerm
 
 Represents an exogenous variable to be used as a regressor in the model.
@@ -1240,7 +1331,8 @@ function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:Abstra
         elseif term isa EtsComponentTerm || term isa EtsDriftTerm || term isa ArimaOrderTerm ||
                term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm || term isa BatsTerm ||
                term isa TbatsTerm || term isa ThetaTerm || term isa SesTerm || term isa HoltTerm ||
-               term isa HoltWintersTerm || term isa CrostonTerm
+               term isa HoltWintersTerm || term isa CrostonTerm || term isa NaiveTerm ||
+               term isa SnaiveTerm || term isa RwTerm
             throw(ArgumentError("Formula term $(term) is not compatible with $(T)."))
         elseif term !== nothing
             throw(ArgumentError("Unsupported term $(term) in formula for $(T)."))
@@ -1440,6 +1532,22 @@ function Base.show(io::IO, term::ThetaTerm)
         print(io, "theta()")
     else
         print(io, "theta(", join(args, ", "), ")")
+    end
+end
+
+function Base.show(io::IO, ::NaiveTerm)
+    print(io, "naive_term()")
+end
+
+function Base.show(io::IO, ::SnaiveTerm)
+    print(io, "snaive_term()")
+end
+
+function Base.show(io::IO, term::RwTerm)
+    if term.drift
+        print(io, "rw_term(drift=true)")
+    else
+        print(io, "rw_term()")
     end
 end
 

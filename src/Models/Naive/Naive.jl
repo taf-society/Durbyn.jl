@@ -2,7 +2,7 @@ module Naive
 # Standard libs
 import Statistics: std
 
-import Distributions: quantile, TDist
+import Distributions: quantile, TDist, Normal
 
 # Internal modules
 import ..Utils: mean2
@@ -11,5 +11,9 @@ import ..Generics: Forecast, forecast, plot
 
 include("meanf.jl")
 export MeanFit, meanf
+
+include("naive_fit.jl")
+include("naive_forecast.jl")
+export NaiveFit, naive, snaive, rw, rwf
 
 end

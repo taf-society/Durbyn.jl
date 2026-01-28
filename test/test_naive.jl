@@ -302,6 +302,28 @@ const REFERENCE_SD_AP = 119.9663
         @test all(fc["upper"][:, 1] .== Inf)
     end
 
+    @testset "meanf with n == 1 and lambda < 0" begin
+        # With lambda < 0, infinite upper bounds become NaN after inv_box_cox
+        # This is correct mathematical behavior - the Box-Cox transform domain is bounded
+        single_obs = [100.0]
+        fit = meanf(single_obs, 1, -0.5)
+
+        @test fit.n == 1
+        @test !isnothing(fit.lambda)
+        @test fit.lambda == -0.5
+
+        fc = forecast(fit, 5, [80.0, 95.0])
+        @test length(fc["mean"]) == 5
+        @test all(isfinite.(fc["mean"]))
+
+        # Lower bounds: -Inf on transformed scale → 0 on original scale (for lambda < 0)
+        @test all(fc["lower"][:, 1] .== 0.0)
+
+        # Upper bounds: +Inf on transformed scale → NaN (exceeds inv_box_cox domain)
+        # This is correct behavior matching R's InvBoxCox
+        @test all(isnan.(fc["upper"][:, 1]))
+    end
+
 end
 
 # =============================================================================
@@ -691,6 +713,30 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             @test fc.mean[2] ≈ 40.0 atol=EPS_SCALAR  # 20 + 2*10
             @test fc.mean[3] ≈ 50.0 atol=EPS_SCALAR  # 20 + 3*10
         end
+    end
+
+    @testset "Seasonal Position with All NaN Values" begin
+        # Test case: all values at position 2 in the season are missing
+        # m=3, positions are: 1, 2, 3, 1, 2, 3, 1, 2, 3
+        # indices:           1, 2, 3, 4, 5, 6, 7, 8, 9
+        # Make position 2 (indices 2, 5, 8) all NaN
+        y = Union{Float64, Missing}[1.0, missing, 3.0, 4.0, missing, 6.0, 7.0, missing, 9.0]
+        fit = snaive(y, 3)
+
+        fc = forecast(fit, h=6)
+
+        # Position 1 (forecast indices 1, 4): should use y[7]=7.0
+        @test fc.mean[1] == 7.0
+        @test fc.mean[4] == 7.0
+
+        # Position 2 (forecast indices 2, 5): all values are missing
+        # Should return NaN for these positions
+        @test isnan(fc.mean[2])
+        @test isnan(fc.mean[5])
+
+        # Position 3 (forecast indices 3, 6): should use y[9]=9.0
+        @test fc.mean[3] == 9.0
+        @test fc.mean[6] == 9.0
     end
 
 end

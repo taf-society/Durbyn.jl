@@ -6,6 +6,48 @@ prediction intervals that account for forecast horizon and method-specific
 variance characteristics.
 """
 
+# Helper functions for finding valid values (moved outside forecast for performance)
+
+"""
+    _find_last_valid(arr)
+
+Find the last non-NaN value in an array, searching backwards.
+Returns NaN if all values are NaN.
+"""
+function _find_last_valid(arr)
+    for i in length(arr):-1:1
+        if !isnan(arr[i])
+            return arr[i]
+        end
+    end
+    return NaN  # All values are NaN
+end
+
+"""
+    _find_last_valid_at_season(arr, pos, period)
+
+Find the last non-NaN value at a specific seasonal position.
+
+# Arguments
+- `arr` - Array to search
+- `pos` - Position in seasonal cycle (1-indexed, 1 to period)
+- `period` - Seasonal period
+
+Returns NaN if no valid value found at this seasonal position.
+"""
+function _find_last_valid_at_season(arr, pos, period)
+    n = length(arr)
+    # Search backwards through the array at this seasonal position
+    # Start from the most recent occurrence of this position
+    start_idx = n - mod(n - pos, period)
+    for idx in start_idx:-period:1
+        if idx >= 1 && !isnan(arr[idx])
+            return arr[idx]
+        end
+    end
+    return NaN
+end
+
 """
     forecast(object::NaiveFit; h::Int=10, level::Vector{<:Real}=[80, 95], fan::Bool=false)
 
@@ -94,37 +136,14 @@ function forecast(object::NaiveFit;
         y_trans = x
     end
 
-    # Helper: find last non-NaN value in array
-    function find_last_valid(arr)
-        for i in length(arr):-1:1
-            if !isnan(arr[i])
-                return arr[i]
-            end
-        end
-        return NaN  # All values are NaN
-    end
-
-    # Helper: find last non-NaN value at seasonal position
-    function find_last_valid_at_season(arr, pos, period)
-        # pos is 1-indexed position in season (1 to period)
-        # Search backwards through complete seasons
-        for season_start in (length(arr) - period + 1):-period:1
-            idx = season_start + pos - 1
-            if idx >= 1 && idx <= length(arr) && !isnan(arr[idx])
-                return arr[idx]
-            end
-        end
-        return NaN
-    end
-
     # Generate point forecasts on transformed scale
     if !isnothing(object.drift)
         # RW with drift: forecast = last valid transformed value + h * drift
-        last_trans = find_last_valid(y_trans)
+        last_trans = _find_last_valid(y_trans)
         f_trans = [last_trans + i * object.drift for i in 1:h]
     elseif lag == 1
         # Naive: forecast = last valid transformed value
-        last_trans = find_last_valid(y_trans)
+        last_trans = _find_last_valid(y_trans)
         f_trans = fill(Float64(last_trans), h)
     else
         # Seasonal naive: forecast = last valid value at each seasonal position
@@ -138,7 +157,7 @@ function forecast(object::NaiveFit;
                 f_trans[i] = y_trans[simple_idx]
             else
                 # Fall back to finding last valid at this seasonal position
-                f_trans[i] = find_last_valid_at_season(y_trans, pos, m)
+                f_trans[i] = _find_last_valid_at_season(y_trans, pos, m)
             end
         end
     end
@@ -207,6 +226,12 @@ function forecast(object::NaiveFit;
     # Convert to Float64 vectors
     mean_vec = Float64.(f)
     x_data = Float64.(object.x)
+
+    # Warn if all forecasts are NaN (indicates no valid data to forecast from)
+    if all(isnan, mean_vec)
+        @warn "All forecast values are NaN. This typically indicates all observations " *
+              "at the required lag positions are missing."
+    end
 
     # Fitted values and residuals (already on original scale in NaiveFit)
     fitted_vals = object.fitted

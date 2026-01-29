@@ -83,9 +83,9 @@ using Durbyn
 
         init = Durbyn.Diffusion.bass_init(y)
 
-        @test haskey(pairs(init) |> collect .|> first |> Set, :m)
-        @test haskey(pairs(init) |> collect .|> first |> Set, :p)
-        @test haskey(pairs(init) |> collect .|> first |> Set, :q)
+        @test hasfield(typeof(init), :m)
+        @test hasfield(typeof(init), :p)
+        @test hasfield(typeof(init), :q)
 
         # Market potential should be at least as large as cumulative adoption
         @test init.m >= sum(y)
@@ -100,9 +100,9 @@ using Durbyn
 
         init = Durbyn.Diffusion.gompertz_init(y)
 
-        @test haskey(pairs(init) |> collect .|> first |> Set, :m)
-        @test haskey(pairs(init) |> collect .|> first |> Set, :a)
-        @test haskey(pairs(init) |> collect .|> first |> Set, :b)
+        @test hasfield(typeof(init), :m)
+        @test hasfield(typeof(init), :a)
+        @test hasfield(typeof(init), :b)
 
         @test init.m >= sum(y)
         @test init.a > 0
@@ -114,10 +114,10 @@ using Durbyn
 
         init = Durbyn.Diffusion.gsgompertz_init(y)
 
-        @test haskey(pairs(init) |> collect .|> first |> Set, :m)
-        @test haskey(pairs(init) |> collect .|> first |> Set, :a)
-        @test haskey(pairs(init) |> collect .|> first |> Set, :b)
-        @test haskey(pairs(init) |> collect .|> first |> Set, :c)
+        @test hasfield(typeof(init), :m)
+        @test hasfield(typeof(init), :a)
+        @test hasfield(typeof(init), :b)
+        @test hasfield(typeof(init), :c)
 
         @test init.m >= sum(y)
         @test init.a > 0
@@ -130,9 +130,9 @@ using Durbyn
 
         init = Durbyn.Diffusion.weibull_init(y)
 
-        @test haskey(pairs(init) |> collect .|> first |> Set, :m)
-        @test haskey(pairs(init) |> collect .|> first |> Set, :a)
-        @test haskey(pairs(init) |> collect .|> first |> Set, :b)
+        @test hasfield(typeof(init), :m)
+        @test hasfield(typeof(init), :a)
+        @test hasfield(typeof(init), :b)
 
         @test init.m >= sum(y) * 0.99  # Allow small tolerance
         @test init.a > 0
@@ -149,9 +149,9 @@ using Durbyn
 
         @test fit isa DiffusionFit
         @test fit.model_type == Bass
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :m)
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :p)
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :q)
+        @test hasfield(typeof(fit.params), :m)
+        @test hasfield(typeof(fit.params), :p)
+        @test hasfield(typeof(fit.params), :q)
 
         @test length(fit.fitted) == 15
         @test length(fit.cumulative) == 15
@@ -168,9 +168,9 @@ using Durbyn
 
         @test fit isa DiffusionFit
         @test fit.model_type == Gompertz
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :m)
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :a)
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :b)
+        @test hasfield(typeof(fit.params), :m)
+        @test hasfield(typeof(fit.params), :a)
+        @test hasfield(typeof(fit.params), :b)
 
         @test length(fit.fitted) == 15
         @test fit.mse >= 0
@@ -185,10 +185,10 @@ using Durbyn
 
         @test fit isa DiffusionFit
         @test fit.model_type == GSGompertz
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :m)
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :a)
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :b)
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :c)
+        @test hasfield(typeof(fit.params), :m)
+        @test hasfield(typeof(fit.params), :a)
+        @test hasfield(typeof(fit.params), :b)
+        @test hasfield(typeof(fit.params), :c)
 
         @test length(fit.fitted) == 15
         @test fit.mse >= 0
@@ -203,9 +203,9 @@ using Durbyn
 
         @test fit isa DiffusionFit
         @test fit.model_type == Weibull
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :m)
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :a)
-        @test haskey(pairs(fit.params) |> collect .|> first |> Set, :b)
+        @test hasfield(typeof(fit.params), :m)
+        @test hasfield(typeof(fit.params), :a)
+        @test hasfield(typeof(fit.params), :b)
 
         @test length(fit.fitted) == 15
         @test fit.mse >= 0
@@ -333,6 +333,63 @@ using Durbyn
         y_large = [5000.0, 15000.0, 35000.0, 65000.0, 95000.0]
         fit_large = fit_diffusion(y_large, model_type=Bass)
         @test fit_large isa DiffusionFit
+    end
+
+    @testset "Leading Zeros (cleanlead parameter)" begin
+        # Test data with leading zeros
+        y_with_zeros = [0.0, 0.0, 5.0, 15.0, 35.0, 65.0, 95.0]
+        y_no_zeros = [5.0, 15.0, 35.0, 65.0, 95.0]
+
+        # Default behavior (cleanlead=true): fitted values for cleaned series only
+        fit_clean = fit_diffusion(y_with_zeros, model_type=Bass, cleanlead=true)
+        @test fit_clean.offset == 2
+        @test length(fit_clean.y) == 5  # Cleaned data length
+        @test length(fit_clean.y_original) == 7  # Original data length
+        @test length(fit_clean.fitted) == 5  # Fitted values for cleaned series
+        @test fit_clean.y == y_no_zeros
+
+        # cleanlead=false: keep original length
+        fit_full = fit_diffusion(y_with_zeros, model_type=Bass, cleanlead=false)
+        @test fit_full.offset == 0
+        @test length(fit_full.y) == 7  # Full data length
+        @test length(fit_full.fitted) == 7  # Fitted values for full series
+
+        # Both should produce similar parameters (fitting on same cleaned data internally)
+        # but with cleanlead=false the first two points will have different residuals
+        @test fit_clean.params.m ≈ fit_full.params.m rtol=0.1
+    end
+
+    @testset "Offset Field Persistence" begin
+        y = [0.0, 0.0, 0.0, 5.0, 15.0, 35.0, 65.0, 95.0]
+
+        fit = fit_diffusion(y, model_type=Bass, cleanlead=true)
+
+        # Offset should be correctly stored
+        @test fit.offset == 3
+
+        # y_original should be the full original data
+        @test fit.y_original == y
+
+        # y should be the cleaned data
+        @test length(fit.y) == length(y) - 3
+        @test fit.y == y[4:end]
+    end
+
+    @testset "Bass Decomposition Convention" begin
+        # Test that innovators + imitators = adoption
+        curve = Durbyn.Diffusion.bass_curve(10, 1000.0, 0.03, 0.38)
+
+        for t in 1:10
+            @test curve.innovators[t] + curve.imitators[t] ≈ curve.adoption[t] atol=1e-10
+        end
+
+        # Test R convention: innovators uses current cumulative At
+        # innovators[t] = p * (m - cumulative[t])
+        m, p, q = 1000.0, 0.03, 0.38
+        for t in 1:10
+            expected_innovators = p * (m - curve.cumulative[t])
+            @test curve.innovators[t] ≈ expected_innovators atol=1e-10
+        end
     end
 
     @testset "Parameter Recovery" begin

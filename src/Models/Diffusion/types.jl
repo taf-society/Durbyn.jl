@@ -32,11 +32,13 @@ Struct holding a fitted diffusion model.
   - Gompertz: `(m, a, b)` - market potential, displacement, growth rate
   - GSGompertz: `(m, a, b, c)` - market potential, shape, scale, shift
   - Weibull: `(m, a, b)` - market potential, scale, shape
-- `fitted::Vector{Float64}`: Fitted adoption per period
-- `cumulative::Vector{Float64}`: Fitted cumulative adoption
+- `fitted::Vector{Float64}`: Fitted adoption per period (for cleaned data when cleanlead=true)
+- `cumulative::Vector{Float64}`: Fitted cumulative adoption (for cleaned data when cleanlead=true)
 - `residuals::Vector{Float64}`: In-sample residuals (actual - fitted)
 - `mse::Float64`: Mean squared error
-- `y::Vector{Float64}`: Original adoption data (per period)
+- `y::Vector{Float64}`: Cleaned adoption data (without leading zeros when cleanlead=true)
+- `y_original::Vector{Float64}`: Original adoption data before cleaning
+- `offset::Int`: Number of leading zeros removed (0 when cleanlead=false)
 - `init_params::NamedTuple`: Initial parameters before optimization
 - `loss::Int`: Loss function power (1=MAE, 2=MSE)
 - `optim_cumulative::Bool`: Whether optimization was on cumulative values
@@ -49,6 +51,8 @@ struct DiffusionFit
     residuals::Vector{Float64}
     mse::Float64
     y::Vector{Float64}
+    y_original::Vector{Float64}
+    offset::Int
     init_params::NamedTuple
     loss::Int
     optim_cumulative::Bool
@@ -57,7 +61,7 @@ end
 function Base.show(io::IO, fit::DiffusionFit)
     println(io, "Diffusion Model ($(fit.model_type))")
     println(io, "─────────────────────────────")
-    println(io, "Observations: ", length(fit.y))
+    println(io, "Observations: ", length(fit.y), fit.offset > 0 ? " ($(fit.offset) leading zeros removed)" : "")
     println(io, "Parameters:")
     for (k, v) in pairs(fit.params)
         println(io, "  $(k): ", round(v, digits=6))

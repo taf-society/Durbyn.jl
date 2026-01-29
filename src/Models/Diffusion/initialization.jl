@@ -205,7 +205,7 @@ end
     weibull_init(y) -> NamedTuple
 
 Initialize Weibull model parameters using median-ranked OLS.
-Based on Sharif and Islam (1980) and Abernethy (2006).
+Based on R's diffusion package implementation.
 
 # Arguments
 - `y::Vector{<:Real}`: Adoption per period data
@@ -214,9 +214,8 @@ Based on Sharif and Islam (1980) and Abernethy (2006).
 NamedTuple with initial parameters `(m, a, b)`.
 
 # Method
-1. Compute cumulative adoption Y = cumsum(y)
-2. Calculate median rank using Bernard's approximation
-3. Fit log-linear regression to extract a and b
+R approach: regress log(Y) on log(log(L/(L-mdrk))) where Y is cumulative adoption.
+This linearizes the Weibull CDF relationship.
 """
 function weibull_init(y::AbstractVector{<:Real})
     T = Float64
@@ -232,15 +231,14 @@ function weibull_init(y::AbstractVector{<:Real})
     # Ensure median ranks are in valid range
     mdrk = clamp.(mdrk, T(1e-10), T(1.0 - 1e-10))
 
-    # Weibull linearization: log(-log(1 - F)) = b*log(t) - b*log(a)
-    # Let: X = log(t), Z = log(-log(1-mdrk))
-    # Then: Z = b*X - b*log(a)
+    # R approach: log(Y) ~ log(log(L/(L-mdrk)))
+    # This regresses cumulative adoption on the Weibull linearization
+    L = T(1.0)  # Fixed as in R
 
-    # Design matrix for regression
-    X = log.(1:n)
-    Z = log.(-log.(1.0 .- mdrk))
+    X = log.(log.(L ./ (L .- mdrk)))
+    Z = log.(Y)
 
-    # Filter out invalid values
+    # Filter invalid values
     valid = isfinite.(X) .& isfinite.(Z)
     X_valid = X[valid]
     Z_valid = Z[valid]
@@ -253,17 +251,14 @@ function weibull_init(y::AbstractVector{<:Real})
         return (m=m, a=a, b=b)
     end
 
-    # Fit regression: Z = intercept + slope * X
+    # Fit: Z = intercept + slope * X
+    # In R: wbfit <- lm(log(Y) ~ log(log(L/(L-mdrk))))
+    # coef[2] = b, a = exp(-coef[1]/b)
     X_mat = hcat(ones(length(X_valid)), X_valid)
     cf = X_mat \ Z_valid
 
-    intercept = cf[1]
-    slope = cf[2]  # This is b
-
-    b = max(slope, T(0.1))
-    a = exp(-intercept / b)
-
-    # Market potential from final cumulative
+    b = cf[2]
+    a = exp(-(cf[1] / b))
     m = Y[end]
 
     # Ensure reasonable bounds

@@ -47,10 +47,9 @@ function bass_curve(n::Int, m::Real, p::Real, q::Real)
         adoption[t] = cumulative[t] - cumulative[t-1]
     end
 
-    # Innovators and imitators decomposition
+    # Innovators and imitators decomposition (R convention: uses current cumulative)
     for t in 1:n
-        prev_cum = t == 1 ? zero(T) : cumulative[t-1]
-        innovators[t] = p * (m - prev_cum)
+        innovators[t] = p * (m - cumulative[t])
         imitators[t] = adoption[t] - innovators[t]
     end
 

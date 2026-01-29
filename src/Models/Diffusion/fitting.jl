@@ -158,7 +158,7 @@ function _scale_m(m::Float64, y::AbstractVector; up::Bool=false)
 end
 
 """
-    fit_diffusion(y; model_type=Bass, w=nothing, loss=2, cumulative=true,
+    fit_diffusion(y; model_type=Bass, cleanlead=true, w=nothing, loss=2, cumulative=true,
                   mscal=true, maxiter=500, method="L-BFGS-B") -> DiffusionFit
 
 Fit a diffusion model to adoption data.
@@ -168,6 +168,9 @@ Fit a diffusion model to adoption data.
 
 # Keyword Arguments
 - `model_type::DiffusionModelType=Bass`: Type of model to fit
+- `cleanlead::Bool=true`: If true, remove leading zeros before fitting (matches R behavior).
+  When true, fitted values are returned for the cleaned series only. The offset field
+  indicates how many leading zeros were removed.
 - `w::Union{Nothing, NamedTuple}=nothing`: Fixed parameter values. Use `nothing` values
   to indicate parameters to estimate. For example, `(m=nothing, p=0.03, q=nothing)` fixes
   p at 0.03 while estimating m and q.
@@ -191,10 +194,15 @@ fit = fit_diffusion(y, model_type=Gompertz, w=(m=500.0, a=nothing, b=nothing))
 
 # Using L1 loss
 fit = fit_diffusion(y, loss=1)
+
+# Keep leading zeros in output
+y = [0, 0, 5, 10, 25, 45]
+fit = fit_diffusion(y, cleanlead=false)  # fitted values for full series
 ```
 """
 function fit_diffusion(y::AbstractVector{<:Real};
                        model_type::DiffusionModelType=Bass,
+                       cleanlead::Bool=true,
                        w::Union{Nothing, NamedTuple}=nothing,
                        loss::Int=2,
                        cumulative::Bool=true,
@@ -203,17 +211,23 @@ function fit_diffusion(y::AbstractVector{<:Real};
                        method::String="L-BFGS-B")
 
     T = Float64
-    y = collect(T.(y))
-    n = length(y)
+    y_original = collect(T.(y))
 
-    # Remove leading zeros if present
-    y_clean, offset = _cleanzero(y)
-    if length(y_clean) < 3
+    # Handle leading zeros based on cleanlead parameter
+    if cleanlead
+        y_clean, offset = _cleanzero(y_original)
+    else
+        y_clean = y_original
+        offset = 0
+    end
+
+    n_clean = length(y_clean)
+
+    if n_clean < 3
         throw(ArgumentError("Need at least 3 non-zero observations for diffusion fitting"))
     end
 
-    # Compute cumulative
-    Y = cumsum(y)
+    # Compute cumulative for cleaned data
     Y_clean = cumsum(y_clean)
 
     # Get initial parameters
@@ -289,11 +303,11 @@ function fit_diffusion(y::AbstractVector{<:Real};
     opt_params = result.par
     final_params = _reconstruct_params(opt_params, model_type, fixed_params, mscal_factor)
 
-    # Generate fitted curve (for full data including offset)
-    curve = get_curve(model_type, n, final_params)
+    # Generate fitted curve for cleaned data only (matches R behavior)
+    curve = get_curve(model_type, n_clean, final_params)
 
-    # Compute residuals and MSE
-    residuals = y .- curve.adoption
+    # Compute residuals and MSE on cleaned data
+    residuals = y_clean .- curve.adoption
     mse = mean(residuals .^ 2)
 
     return DiffusionFit(
@@ -303,7 +317,9 @@ function fit_diffusion(y::AbstractVector{<:Real};
         curve.cumulative,
         residuals,
         mse,
-        y,
+        y_clean,
+        y_original,
+        offset,
         init_params,
         loss,
         cumulative

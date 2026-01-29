@@ -57,6 +57,10 @@ using Test
         include("test_theta.jl")
     end
 
+    @testset "Diffusion Models" begin
+        include("test_diffusion.jl")
+    end
+
     @testset "Naive Model" begin
         include("test_naive.jl")
     end

@@ -4,9 +4,6 @@
 Implementation of diffusion curve forecasting models for technology adoption
 and market penetration analysis.
 
-This module ports the R `diffusion` package functionality to Julia, providing
-four classical diffusion models:
-
 # Model Types
 - `Bass`: Bass diffusion model - captures innovation and imitation effects
 - `Gompertz`: Gompertz growth curve - asymmetric S-curve

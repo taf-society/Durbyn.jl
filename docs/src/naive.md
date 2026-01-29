@@ -341,7 +341,8 @@ fit = naive(y; lambda = 0.0, biasadj = true)
 
 **Lambda requirements**:
 - ``λ ≤ 0``: Requires strictly positive values (non-positive values are treated as missing with a warning)
-- ``λ > 0``: Allows negative values via signed transformation; only zeros are excluded
+- ``λ > 0``: Allows negative values and zeros via signed transformation
+  - For x=0: the transform produces ``-1/λ`` (finite value)
 
 The `biasadj` option applies a bias correction when transforming forecasts back to the
 original scale, which can improve accuracy for skewed distributions. When enabled, bias

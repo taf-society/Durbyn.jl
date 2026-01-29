@@ -63,7 +63,8 @@ function meanf(y::AbstractArray, m::Int;
     if !isnothing(lambda)
         # Pre-filter values based on lambda:
         # - lambda <= 0: requires positive values
-        # - lambda > 0: signed transform handles negatives, only filter zeros
+        # - lambda > 0: signed transform handles negatives AND zeros
+        #   For x=0: (sign(0) * |0|^lambda - 1) / lambda = -1/lambda (finite)
         if lambda isa String
             # Auto lambda - need positive values for estimation
             transform_mask = valid_mask .& (x_orig .> 0)
@@ -74,12 +75,8 @@ function meanf(y::AbstractArray, m::Int;
                 @warn "$n_invalid non-positive value(s) invalid for Box-Cox transformation with lambda=$lambda, treated as missing"
             end
         else
-            # For lambda > 0, only exclude zeros (signed transform handles negatives)
-            transform_mask = valid_mask .& (x_orig .!= 0)
-            n_invalid = count(valid_mask) - count(transform_mask)
-            if n_invalid > 0
-                @warn "$n_invalid zero value(s) invalid for Box-Cox transformation with lambda=$lambda, treated as missing"
-            end
+            # For lambda > 0, signed transform handles negatives and zeros (like R)
+            transform_mask = valid_mask
         end
 
         x_to_transform = x_orig[transform_mask]
@@ -124,29 +121,30 @@ function meanf(y::AbstractArray, m::Int;
     sigma2 = n > 0 ? mean(residuals_trans_valid .^ 2) : 0.0
 
     # Fitted values and residuals preserving original length
+    # R's meanf: fitted values are back-transformed WITHOUT biasadj
+    # R's meanf: residuals stay on TRANSFORMED scale (not original)
     fitted = Vector{Union{Float64, Missing}}(undef, n_orig)
     residuals = Vector{Union{Float64, Missing}}(undef, n_orig)
     fill!(fitted, missing)
     fill!(residuals, missing)
 
-    # Back-transform to original scale for storage
+    # Back-transform to original scale
     if !isnothing(lambda)
-        # Apply bias adjustment if requested (R does: InvBoxCox(fitted, lambda, biasadj, var(res)))
+        # mu_original for display - can apply biasadj
         if biasadj && sigma2 > 0
             mu_original = inv_box_cox([mu_trans]; lambda=lambda, biasadj=true, fvar=sigma2)[1]
         else
             mu_original = inv_box_cox([mu_trans]; lambda=lambda)[1]
         end
 
-        # Fill fitted values and residuals at valid positions
+        # R: fitted values back-transformed WITHOUT biasadj (InvBoxCox(fits, lambda))
+        # R: residuals stay on transformed scale (res = x - fits where x is transformed)
+        fitted_backtrans = inv_box_cox([mu_trans]; lambda=lambda)[1]  # No biasadj
         for i in 1:n_orig
             if isfinite(y_trans[i])
-                if biasadj && sigma2 > 0
-                    fitted[i] = inv_box_cox([mu_trans]; lambda=lambda, biasadj=true, fvar=sigma2)[1]
-                else
-                    fitted[i] = inv_box_cox([mu_trans]; lambda=lambda)[1]
-                end
-                residuals[i] = x_orig[i] - fitted[i]
+                fitted[i] = fitted_backtrans
+                # R keeps residuals on transformed scale
+                residuals[i] = y_trans[i] - mu_trans
             end
         end
     else
@@ -191,24 +189,18 @@ function forecast(object::MeanFit;
     f_trans = fill(mu_trans, h)
 
     # Adjust levels for fan or percentage
+    # R's approach: if ALL levels are in (0, 1), treat as fractions; otherwise percentages
+    # Note: level=1 is treated as 1% (percentage), not 100% (fraction)
     if fan
         level = collect(51.0:3:99.0)
     else
-        # Determine if levels are fractions (0,1] or percentages (1,100]
-        all_fraction = all(lv -> 0.0 < lv <= 1.0, level)
-        all_percent = all(lv -> 1.0 < lv <= 99.99, level)
-
-        if !all_fraction && !all_percent
-            # Check for mixed units or invalid values
-            if any(lv -> lv <= 0.0 || lv > 99.99, level)
-                error("Confidence levels must be in (0, 1] (fractions) or (1, 99.99] (percentages)")
-            else
-                error("Mixed confidence level units detected. Use all fractions (0, 1] or all percentages (1, 99.99]")
-            end
-        end
+        # R: if(min(level) > 0 && max(level) < 1) level <- 100*level
+        all_fraction = all(lv -> 0.0 < lv < 1.0, level)  # Strict < 1.0 (like R)
 
         if all_fraction
             level = 100.0 .* level
+        elseif any(lv -> lv <= 0.0 || lv > 99.99, level)
+            error("Confidence levels must be in (0, 1) (fractions) or (0, 99.99] (percentages)")
         end
     end
 
@@ -217,9 +209,21 @@ function forecast(object::MeanFit;
     # Compute residual variance for bias adjustment (MSE without centering)
     valid_x = filter(!isnan, object.x)
     if !isnothing(lambda)
-        x_trans_valid, _ = box_cox(filter(x -> x > 0, valid_x), m, lambda=lambda)
-        x_trans_valid = filter(isfinite, x_trans_valid)
-        residuals_trans_valid = x_trans_valid .- mu_trans
+        # Filter based on lambda (matching fit logic):
+        # - lambda <= 0: requires positive values
+        # - lambda > 0: allows zeros and negatives (signed transform)
+        if lambda <= 0
+            x_to_transform = filter(x -> x > 0, valid_x)
+        else
+            x_to_transform = valid_x
+        end
+        if isempty(x_to_transform)
+            residuals_trans_valid = Float64[]
+        else
+            x_trans_valid, _ = box_cox(x_to_transform, m, lambda=lambda)
+            x_trans_valid = filter(isfinite, x_trans_valid)
+            residuals_trans_valid = x_trans_valid .- mu_trans
+        end
     else
         residuals_trans_valid = valid_x .- mu_trans
     end

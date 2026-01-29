@@ -277,12 +277,13 @@ const REFERENCE_SD_AP = 119.9663
         # sd is on transformed scale
         @test isapprox(fit.sd, std(log.(AirPassengers)), atol=EPS_SCALAR)
 
-        # fitted and residuals are on original scale
+        # fitted values are on original scale (back-transformed)
         @test all(fit.fitted .> 0)  # Back-transformed, should be positive
         @test isapprox(fit.fitted[1], fit.mu_original, atol=EPS_SCALAR)
 
-        # Residuals = original - fitted (both on original scale)
-        @test isapprox(fit.residuals[1], AirPassengers[1] - fit.fitted[1], atol=EPS_SCALAR)
+        # R's meanf: residuals stay on TRANSFORMED scale (res = x - fits where x is transformed)
+        # residuals[i] = log(y[i]) - mu_trans
+        @test isapprox(fit.residuals[1], log(AirPassengers[1]) - fit.mu, atol=EPS_SCALAR)
     end
 
     @testset "meanf with n == 1" begin

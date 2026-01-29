@@ -77,7 +77,7 @@ fc = forecast(fit, h=10)
 - [`rw`](@ref) - Random walk with optional drift
 """
 function naive(y::AbstractVector, m::Int=1;
-               lambda::Union{Nothing, Float64}=nothing,
+               lambda::Union{Nothing, Float64, String}=nothing,
                biasadj::Bool=false)
     n = length(y)
     n >= 2 || throw(ArgumentError("Time series must have at least 2 observations, got $n"))
@@ -100,21 +100,22 @@ function naive(y::AbstractVector, m::Int=1;
         valid_mask = .!isnan.(x)
 
         # Pre-filter values based on lambda:
+        # - lambda = "auto": need positive values for lambda estimation
         # - lambda <= 0: requires positive values (log for lambda=0, or domain restriction for lambda<0)
-        # - lambda > 0: signed transform handles negatives, only filter zeros to avoid 0^lambda issues
-        if lambda <= 0
+        # - lambda > 0: signed transform handles negatives AND zeros
+        #   For x=0: (sign(0) * |0|^lambda - 1) / lambda = -1/lambda (finite)
+        if lambda isa String
+            # Auto lambda - need positive values for estimation
+            transform_mask = valid_mask .& (x .> 0)
+        elseif lambda <= 0
             transform_mask = valid_mask .& (x .> 0)
             n_invalid = count(valid_mask) - count(transform_mask)
             if n_invalid > 0
                 @warn "$n_invalid non-positive value(s) invalid for Box-Cox transformation with lambda=$lambda, treated as missing"
             end
         else
-            # For lambda > 0, only exclude zeros (signed transform handles negatives)
-            transform_mask = valid_mask .& (x .!= 0)
-            n_invalid = count(valid_mask) - count(transform_mask)
-            if n_invalid > 0
-                @warn "$n_invalid zero value(s) invalid for Box-Cox transformation with lambda=$lambda, treated as missing"
-            end
+            # For lambda > 0, signed transform handles negatives and zeros (like R)
+            transform_mask = valid_mask
         end
 
         x_to_transform = x[transform_mask]
@@ -178,16 +179,20 @@ function naive(y::AbstractVector, m::Int=1;
     end
 
     # Residual variance on transformed scale
-    # R uses MSE = mean(res^2) without centering, NOT centered variance
-    # This matters when residual mean ≠ 0 (e.g., trending series)
+    # R uses two different variance measures:
+    # 1. sigma2 = mean(res^2) for prediction intervals (MSE)
+    # 2. var(res) (centered variance) for biasadj in InvBoxCox
     valid_residuals = collect(skipmissing(residuals_trans))
     n_resid = length(valid_residuals)
     if n_resid == 0
         sigma2 = 0.0
+        biasadj_var = 0.0
         @warn "No valid residuals available for variance estimation, using sigma2=0"
     else
-        # Match R: sigma = sqrt(mean(res^2, na.rm=TRUE)), so sigma2 = mean(res^2)
+        # sigma2 = MSE for prediction intervals (R: sigma <- sqrt(mean(res^2, na.rm=TRUE)))
         sigma2 = mean(valid_residuals .^ 2)
+        # biasadj_var = centered variance for bias adjustment (R: var(res))
+        biasadj_var = n_resid > 1 ? var(valid_residuals) : 0.0
     end
 
     # Convert fitted/residuals back to original scale for storage
@@ -198,23 +203,21 @@ function naive(y::AbstractVector, m::Int=1;
         fill!(residuals, missing)
 
         # Batch back-transform non-missing fitted values
-        # Apply bias adjustment if requested (R does: InvBoxCox(fitted, lambda, biasadj, var(res)))
+        # R uses var(res) (centered variance) for biasadj: InvBoxCox(fitted, lambda, biasadj, var(res))
         fitted_indices = findall(!ismissing, fitted_trans)
         if !isempty(fitted_indices)
             fitted_vals = Float64[fitted_trans[i] for i in fitted_indices]
-            if biasadj && sigma2 > 0
-                fitted_back = inv_box_cox(fitted_vals; lambda=lambda, biasadj=true, fvar=sigma2)
+            if biasadj && biasadj_var > 0
+                fitted_back = inv_box_cox(fitted_vals; lambda=lambda, biasadj=true, fvar=biasadj_var)
             else
                 fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
             end
             for (j, i) in enumerate(fitted_indices)
                 fitted[i] = fitted_back[j]
-                # Only compute residuals if transformed value at this position is valid
-                if isfinite(y_trans[i])
-                    residuals[i] = x[i] - fitted_back[j]
-                end
             end
         end
+        # R's lagwalk: residuals stay on TRANSFORMED scale (res = y - fitted where both are transformed)
+        residuals = residuals_trans
     else
         fitted = fitted_trans
         residuals = residuals_trans
@@ -269,7 +272,7 @@ fc = forecast(fit, h=8)
 - [`rw`](@ref) - Random walk with optional drift
 """
 function snaive(y::AbstractVector, m::Int;
-                lambda::Union{Nothing, Float64}=nothing,
+                lambda::Union{Nothing, Float64, String}=nothing,
                 biasadj::Bool=false)
     m >= 1 || throw(ArgumentError("Seasonal period m must be >= 1, got $m"))
 
@@ -294,21 +297,22 @@ function snaive(y::AbstractVector, m::Int;
         valid_mask = .!isnan.(x)
 
         # Pre-filter values based on lambda:
+        # - lambda = "auto": need positive values for lambda estimation
         # - lambda <= 0: requires positive values (log for lambda=0, or domain restriction for lambda<0)
-        # - lambda > 0: signed transform handles negatives, only filter zeros
-        if lambda <= 0
+        # - lambda > 0: signed transform handles negatives AND zeros
+        #   For x=0: (sign(0) * |0|^lambda - 1) / lambda = -1/lambda (finite)
+        if lambda isa String
+            # Auto lambda - need positive values for estimation
+            transform_mask = valid_mask .& (x .> 0)
+        elseif lambda <= 0
             transform_mask = valid_mask .& (x .> 0)
             n_invalid = count(valid_mask) - count(transform_mask)
             if n_invalid > 0
                 @warn "$n_invalid non-positive value(s) invalid for Box-Cox transformation with lambda=$lambda, treated as missing"
             end
         else
-            # For lambda > 0, only exclude zeros (signed transform handles negatives)
-            transform_mask = valid_mask .& (x .!= 0)
-            n_invalid = count(valid_mask) - count(transform_mask)
-            if n_invalid > 0
-                @warn "$n_invalid zero value(s) invalid for Box-Cox transformation with lambda=$lambda, treated as missing"
-            end
+            # For lambda > 0, signed transform handles negatives and zeros (like R)
+            transform_mask = valid_mask
         end
 
         x_to_transform = x[transform_mask]
@@ -371,15 +375,20 @@ function snaive(y::AbstractVector, m::Int;
     end
 
     # Residual variance on transformed scale
-    # R uses MSE = mean(res^2) without centering, NOT centered variance
+    # R uses two different variance measures:
+    # 1. sigma2 = mean(res^2) for prediction intervals (MSE)
+    # 2. var(res) (centered variance) for biasadj in InvBoxCox
     valid_residuals = collect(skipmissing(residuals_trans))
     n_resid = length(valid_residuals)
     if n_resid == 0
         sigma2 = 0.0
+        biasadj_var = 0.0
         @warn "No valid residuals available for variance estimation, using sigma2=0"
     else
-        # Match R: sigma = sqrt(mean(res^2, na.rm=TRUE)), so sigma2 = mean(res^2)
+        # sigma2 = MSE for prediction intervals (R: sigma <- sqrt(mean(res^2, na.rm=TRUE)))
         sigma2 = mean(valid_residuals .^ 2)
+        # biasadj_var = centered variance for bias adjustment (R: var(res))
+        biasadj_var = n_resid > 1 ? var(valid_residuals) : 0.0
     end
 
     # Convert fitted/residuals back to original scale for storage
@@ -390,23 +399,21 @@ function snaive(y::AbstractVector, m::Int;
         fill!(residuals, missing)
 
         # Batch back-transform non-missing fitted values
-        # Apply bias adjustment if requested (R does: InvBoxCox(fitted, lambda, biasadj, var(res)))
+        # R uses var(res) (centered variance) for biasadj: InvBoxCox(fitted, lambda, biasadj, var(res))
         fitted_indices = findall(!ismissing, fitted_trans)
         if !isempty(fitted_indices)
             fitted_vals = Float64[fitted_trans[i] for i in fitted_indices]
-            if biasadj && sigma2 > 0
-                fitted_back = inv_box_cox(fitted_vals; lambda=lambda, biasadj=true, fvar=sigma2)
+            if biasadj && biasadj_var > 0
+                fitted_back = inv_box_cox(fitted_vals; lambda=lambda, biasadj=true, fvar=biasadj_var)
             else
                 fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
             end
             for (j, i) in enumerate(fitted_indices)
                 fitted[i] = fitted_back[j]
-                # Only compute residuals if transformed value at this position is valid
-                if isfinite(y_trans[i])
-                    residuals[i] = x[i] - fitted_back[j]
-                end
             end
         end
+        # R's lagwalk: residuals stay on TRANSFORMED scale (res = y - fitted where both are transformed)
+        residuals = residuals_trans
     else
         fitted = fitted_trans
         residuals = residuals_trans
@@ -463,7 +470,7 @@ fc = forecast(fit2, h=10)
 """
 function rw(y::AbstractVector, m::Int=1;
             drift::Bool=false,
-            lambda::Union{Nothing, Float64}=nothing,
+            lambda::Union{Nothing, Float64, String}=nothing,
             biasadj::Bool=false)
     n = length(y)
     n >= 2 || throw(ArgumentError("Time series must have at least 2 observations, got $n"))
@@ -486,21 +493,22 @@ function rw(y::AbstractVector, m::Int=1;
         valid_mask = .!isnan.(x)
 
         # Pre-filter values based on lambda:
+        # - lambda = "auto": need positive values for lambda estimation
         # - lambda <= 0: requires positive values (log for lambda=0, or domain restriction for lambda<0)
-        # - lambda > 0: signed transform handles negatives, only filter zeros
-        if lambda <= 0
+        # - lambda > 0: signed transform handles negatives AND zeros
+        #   For x=0: (sign(0) * |0|^lambda - 1) / lambda = -1/lambda (finite)
+        if lambda isa String
+            # Auto lambda - need positive values for estimation
+            transform_mask = valid_mask .& (x .> 0)
+        elseif lambda <= 0
             transform_mask = valid_mask .& (x .> 0)
             n_invalid = count(valid_mask) - count(transform_mask)
             if n_invalid > 0
                 @warn "$n_invalid non-positive value(s) invalid for Box-Cox transformation with lambda=$lambda, treated as missing"
             end
         else
-            # For lambda > 0, only exclude zeros (signed transform handles negatives)
-            transform_mask = valid_mask .& (x .!= 0)
-            n_invalid = count(valid_mask) - count(transform_mask)
-            if n_invalid > 0
-                @warn "$n_invalid zero value(s) invalid for Box-Cox transformation with lambda=$lambda, treated as missing"
-            end
+            # For lambda > 0, signed transform handles negatives and zeros (like R)
+            transform_mask = valid_mask
         end
 
         x_to_transform = x[transform_mask]
@@ -623,12 +631,10 @@ function rw(y::AbstractVector, m::Int=1;
                 end
                 for (j, i) in enumerate(fitted_indices)
                     fitted[i] = fitted_back[j]
-                    # Only compute residuals if transformed value at this position is valid
-                    if isfinite(y_trans[i])
-                        residuals[i] = x[i] - fitted_back[j]
-                    end
                 end
             end
+            # R's lagwalk: residuals stay on TRANSFORMED scale
+            residuals = residuals_trans
         else
             fitted = fitted_trans
             residuals = residuals_trans
@@ -673,42 +679,44 @@ function rw(y::AbstractVector, m::Int=1;
             end
         end
 
-        # R uses MSE = mean(res^2) without centering for no-drift case
+        # Residual variance on transformed scale
+        # R uses two different variance measures:
+        # 1. sigma2 = mean(res^2) for prediction intervals (MSE)
+        # 2. var(res) (centered variance) for biasadj in InvBoxCox
         valid_residuals = collect(skipmissing(residuals_trans))
         n_resid = length(valid_residuals)
         if n_resid == 0
             sigma2 = 0.0
+            biasadj_var = 0.0
             @warn "No valid residuals available for variance estimation, using sigma2=0"
         else
-            # Match R: sigma = sqrt(mean(res^2, na.rm=TRUE)), so sigma2 = mean(res^2)
+            # sigma2 = MSE for prediction intervals (R: sigma <- sqrt(mean(res^2, na.rm=TRUE)))
             sigma2 = mean(valid_residuals .^ 2)
+            # biasadj_var = centered variance for bias adjustment (R: var(res))
+            biasadj_var = n_resid > 1 ? var(valid_residuals) : 0.0
         end
 
         # Convert fitted/residuals back to original scale for storage
         if !isnothing(lambda)
             fitted = Vector{Union{Float64, Missing}}(undef, n)
             fill!(fitted, missing)
-            residuals = Vector{Union{Float64, Missing}}(undef, n)
-            fill!(residuals, missing)
 
             # Batch back-transform non-missing fitted values
-            # Apply bias adjustment if requested
+            # R uses var(res) (centered variance) for biasadj: InvBoxCox(fitted, lambda, biasadj, var(res))
             fitted_indices = findall(!ismissing, fitted_trans)
             if !isempty(fitted_indices)
                 fitted_vals = Float64[fitted_trans[i] for i in fitted_indices]
-                if biasadj && sigma2 > 0
-                    fitted_back = inv_box_cox(fitted_vals; lambda=lambda, biasadj=true, fvar=sigma2)
+                if biasadj && biasadj_var > 0
+                    fitted_back = inv_box_cox(fitted_vals; lambda=lambda, biasadj=true, fvar=biasadj_var)
                 else
                     fitted_back = inv_box_cox(fitted_vals; lambda=lambda)
                 end
                 for (j, i) in enumerate(fitted_indices)
                     fitted[i] = fitted_back[j]
-                    # Only compute residuals if transformed value at this position is valid
-                    if isfinite(y_trans[i])
-                        residuals[i] = x[i] - fitted_back[j]
-                    end
                 end
             end
+            # R's lagwalk: residuals stay on TRANSFORMED scale
+            residuals = residuals_trans
         else
             fitted = fitted_trans
             residuals = residuals_trans

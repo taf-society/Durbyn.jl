@@ -120,24 +120,18 @@ function forecast(object::NaiveFit;
     biasadj = object.biasadj
 
     # Adjust levels for fan or percentage
+    # R's approach: if ALL levels are in (0, 1), treat as fractions; otherwise percentages
+    # Note: level=1 is treated as 1% (percentage), not 100% (fraction)
     if fan
         level = collect(51.0:3:99.0)
     else
-        # Determine if levels are fractions (0,1] or percentages (1,100]
-        all_fraction = all(lv -> 0.0 < lv <= 1.0, level)
-        all_percent = all(lv -> 1.0 < lv <= 99.99, level)
-
-        if !all_fraction && !all_percent
-            # Check for mixed units or invalid values
-            if any(lv -> lv <= 0.0 || lv > 99.99, level)
-                error("Confidence levels must be in (0, 1] (fractions) or (1, 99.99] (percentages)")
-            else
-                error("Mixed confidence level units detected. Use all fractions (0, 1] or all percentages (1, 99.99]")
-            end
-        end
+        # R: if(min(level) > 0 && max(level) < 1) level <- 100*level
+        all_fraction = all(lv -> 0.0 < lv < 1.0, level)  # Strict < 1.0 (like R)
 
         if all_fraction
             level = 100.0 .* level
+        elseif any(lv -> lv <= 0.0 || lv > 99.99, level)
+            error("Confidence levels must be in (0, 1) (fractions) or (0, 99.99] (percentages)")
         end
     end
 

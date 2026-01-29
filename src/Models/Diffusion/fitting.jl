@@ -1,0 +1,333 @@
+"""
+    Diffusion Model Fitting
+
+Core fitting logic for diffusion curve models.
+"""
+
+"""
+    diffusion_cost(params, y, Y, model_type, fixed_params, loss, cumulative, mscal_factor)
+
+Compute the cost function for diffusion model optimization.
+
+# Arguments
+- `params::Vector{Float64}`: Parameters to optimize (scaled)
+- `y::Vector{Float64}`: Adoption per period
+- `Y::Vector{Float64}`: Cumulative adoption
+- `model_type::DiffusionModelType`: Type of diffusion model
+- `fixed_params::Dict{Symbol, Float64}`: Parameters held fixed (not optimized)
+- `loss::Int`: Loss function power (1=MAE, 2=MSE)
+- `cumulative::Bool`: Whether to optimize on cumulative values
+- `mscal_factor::Float64`: Market potential scaling factor
+
+# Returns
+Cost value (sum of errors raised to loss power).
+"""
+function diffusion_cost(params::Vector{Float64}, y::Vector{Float64}, Y::Vector{Float64},
+                        model_type::DiffusionModelType, fixed_params::Dict{Symbol, Float64},
+                        loss::Int, cumulative::Bool, mscal_factor::Float64)
+    T = Float64
+    n = length(y)
+
+    # Reconstruct full parameter set
+    full_params = _reconstruct_params(params, model_type, fixed_params, mscal_factor)
+
+    # Check for invalid parameters
+    for (k, v) in pairs(full_params)
+        if v <= 0 || !isfinite(v)
+            return T(1e20)
+        end
+    end
+
+    # Generate curve
+    curve = get_curve(model_type, n, full_params)
+
+    # Compute cost
+    if cumulative
+        errors = Y .- curve.cumulative
+    else
+        errors = y .- curve.adoption
+    end
+
+    # Handle loss function
+    if loss == 2
+        return sum(errors .^ 2)
+    elseif loss == 1
+        return sum(abs.(errors))
+    else
+        return sum(abs.(errors) .^ loss)
+    end
+end
+
+"""
+    _reconstruct_params(opt_params, model_type, fixed_params, mscal_factor) -> NamedTuple
+
+Reconstruct full parameter NamedTuple from optimization vector and fixed values.
+"""
+function _reconstruct_params(opt_params::Vector{Float64}, model_type::DiffusionModelType,
+                              fixed_params::Dict{Symbol, Float64}, mscal_factor::Float64)
+
+    # Determine which parameters are being optimized
+    param_names = _get_param_names(model_type)
+    opt_idx = 1
+    result = Dict{Symbol, Float64}()
+
+    for name in param_names
+        if haskey(fixed_params, name)
+            result[name] = fixed_params[name]
+        else
+            result[name] = opt_params[opt_idx]
+            opt_idx += 1
+        end
+    end
+
+    # Rescale market potential
+    if haskey(result, :m)
+        result[:m] = result[:m] * mscal_factor
+    end
+
+    return _dict_to_params(result, model_type)
+end
+
+"""
+    _get_param_names(model_type) -> Vector{Symbol}
+
+Get parameter names for a given model type.
+"""
+function _get_param_names(model_type::DiffusionModelType)
+    if model_type == Bass
+        return [:m, :p, :q]
+    elseif model_type == Gompertz
+        return [:m, :a, :b]
+    elseif model_type == GSGompertz
+        return [:m, :a, :b, :c]
+    elseif model_type == Weibull
+        return [:m, :a, :b]
+    else
+        error("Unknown model type: $model_type")
+    end
+end
+
+"""
+    _dict_to_params(d, model_type) -> NamedTuple
+
+Convert dictionary to properly typed NamedTuple for model type.
+"""
+function _dict_to_params(d::Dict{Symbol, Float64}, model_type::DiffusionModelType)
+    if model_type == Bass
+        return (m=d[:m], p=d[:p], q=d[:q])
+    elseif model_type == Gompertz
+        return (m=d[:m], a=d[:a], b=d[:b])
+    elseif model_type == GSGompertz
+        return (m=d[:m], a=d[:a], b=d[:b], c=d[:c])
+    elseif model_type == Weibull
+        return (m=d[:m], a=d[:a], b=d[:b])
+    else
+        error("Unknown model type: $model_type")
+    end
+end
+
+"""
+    _params_to_dict(params) -> Dict{Symbol, Float64}
+
+Convert NamedTuple to dictionary.
+"""
+function _params_to_dict(params::NamedTuple)
+    return Dict{Symbol, Float64}(k => Float64(v) for (k, v) in pairs(params))
+end
+
+"""
+    _scale_m(m, y; up=false) -> Float64
+
+Scale market potential parameter for optimization stability.
+
+# Arguments
+- `m::Float64`: Market potential
+- `y::Vector`: Adoption data
+- `up::Bool=false`: If true, scale up; if false, scale down
+
+# Returns
+Scaled market potential.
+"""
+function _scale_m(m::Float64, y::AbstractVector; up::Bool=false)
+    scale_factor = 10 * sum(y)
+    if up
+        return m * scale_factor
+    else
+        return m / scale_factor
+    end
+end
+
+"""
+    fit_diffusion(y; model_type=Bass, w=nothing, loss=2, cumulative=true,
+                  mscal=true, maxiter=500, method="L-BFGS-B") -> DiffusionFit
+
+Fit a diffusion model to adoption data.
+
+# Arguments
+- `y::Vector{<:Real}`: Adoption per period data
+
+# Keyword Arguments
+- `model_type::DiffusionModelType=Bass`: Type of model to fit
+- `w::Union{Nothing, NamedTuple}=nothing`: Fixed parameter values. Use `nothing` values
+  to indicate parameters to estimate. For example, `(m=nothing, p=0.03, q=nothing)` fixes
+  p at 0.03 while estimating m and q.
+- `loss::Int=2`: Loss function power (1=MAE, 2=MSE)
+- `cumulative::Bool=true`: Optimize on cumulative adoption values
+- `mscal::Bool=true`: Scale market parameter for optimization stability
+- `maxiter::Int=500`: Maximum optimization iterations
+- `method::String="L-BFGS-B"`: Optimization method
+
+# Returns
+`DiffusionFit` struct containing fitted parameters and diagnostics.
+
+# Examples
+```julia
+# Basic Bass model fit
+y = [5, 10, 25, 45, 70, 85, 75, 50, 30, 15]
+fit = fit_diffusion(y)
+
+# Gompertz model with fixed market potential
+fit = fit_diffusion(y, model_type=Gompertz, w=(m=500.0, a=nothing, b=nothing))
+
+# Using L1 loss
+fit = fit_diffusion(y, loss=1)
+```
+"""
+function fit_diffusion(y::AbstractVector{<:Real};
+                       model_type::DiffusionModelType=Bass,
+                       w::Union{Nothing, NamedTuple}=nothing,
+                       loss::Int=2,
+                       cumulative::Bool=true,
+                       mscal::Bool=true,
+                       maxiter::Int=500,
+                       method::String="L-BFGS-B")
+
+    T = Float64
+    y = collect(T.(y))
+    n = length(y)
+
+    # Remove leading zeros if present
+    y_clean, offset = _cleanzero(y)
+    if length(y_clean) < 3
+        throw(ArgumentError("Need at least 3 non-zero observations for diffusion fitting"))
+    end
+
+    # Compute cumulative
+    Y = cumsum(y)
+    Y_clean = cumsum(y_clean)
+
+    # Get initial parameters
+    init_params = get_init(model_type, y_clean)
+
+    # Determine which parameters to optimize vs fix
+    param_names = _get_param_names(model_type)
+    fixed_params = Dict{Symbol, Float64}()
+    opt_param_names = Symbol[]
+
+    if !isnothing(w)
+        for name in param_names
+            if hasproperty(w, name) && !isnothing(getproperty(w, name))
+                fixed_params[name] = T(getproperty(w, name))
+            else
+                push!(opt_param_names, name)
+            end
+        end
+    else
+        opt_param_names = param_names
+    end
+
+    if isempty(opt_param_names)
+        throw(ArgumentError("At least one parameter must be estimated"))
+    end
+
+    # Compute scaling factor
+    mscal_factor = mscal ? 10 * sum(y_clean) : one(T)
+
+    # Build initial parameter vector for optimization
+    init_dict = _params_to_dict(init_params)
+    x0 = T[]
+    lower = T[]
+    upper = T[]
+
+    for name in param_names
+        if !(name in keys(fixed_params))
+            val = init_dict[name]
+            # Scale m if needed
+            if name == :m && mscal
+                val = val / mscal_factor
+            end
+            push!(x0, val)
+
+            # Set bounds
+            if name == :m
+                push!(lower, T(1e-9))
+                push!(upper, T(1e6))  # Will be rescaled
+            elseif name in (:p, :q, :a, :b, :c)
+                push!(lower, T(1e-9))
+                push!(upper, T(10.0))
+            else
+                push!(lower, T(1e-9))
+                push!(upper, T(Inf))
+            end
+        end
+    end
+
+    # Create objective function
+    function objective(params)
+        return diffusion_cost(params, y_clean, Y_clean, model_type,
+                             fixed_params, loss, cumulative, mscal_factor)
+    end
+
+    # Optimize
+    result = optim(x0, objective;
+                   method=method,
+                   lower=lower,
+                   upper=upper,
+                   control=Dict("maxit" => maxiter))
+
+    # Extract optimized parameters
+    opt_params = result.par
+    final_params = _reconstruct_params(opt_params, model_type, fixed_params, mscal_factor)
+
+    # Generate fitted curve (for full data including offset)
+    curve = get_curve(model_type, n, final_params)
+
+    # Compute residuals and MSE
+    residuals = y .- curve.adoption
+    mse = mean(residuals .^ 2)
+
+    return DiffusionFit(
+        model_type,
+        final_params,
+        curve.adoption,
+        curve.cumulative,
+        residuals,
+        mse,
+        y,
+        init_params,
+        loss,
+        cumulative
+    )
+end
+
+"""
+    diffusion(y; model_type=Bass, kwargs...) -> DiffusionFit
+
+Convenience wrapper for `fit_diffusion`.
+
+# Arguments
+Same as `fit_diffusion`.
+
+# Returns
+`DiffusionFit` struct.
+
+# Example
+```julia
+y = [5, 10, 25, 45, 70, 85, 75, 50, 30, 15]
+fit = diffusion(y)
+fit = diffusion(y, model_type=Gompertz)
+```
+"""
+function diffusion(y::AbstractVector{<:Real}; kwargs...)
+    return fit_diffusion(y; kwargs...)
+end

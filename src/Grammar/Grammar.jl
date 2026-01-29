@@ -44,9 +44,9 @@ fit = auto_arima(formula, data, 12)
 module Grammar
 
 export p, q, d, P, Q, D, auto
-export e, t, s, drift, ses, holt, hw, holt_winters, croston, arar, bats, tbats, theta
+export e, t, s, drift, ses, holt, hw, holt_winters, croston, arar, bats, tbats, theta, diffusion
 export naive_term, snaive_term, rw_term, meanf_term
-export AbstractTerm, ArimaOrderTerm, VarTerm, AutoVarTerm, ModelFormula, ArarTerm, BatsTerm, TbatsTerm, ThetaTerm
+export AbstractTerm, ArimaOrderTerm, VarTerm, AutoVarTerm, ModelFormula, ArarTerm, BatsTerm, TbatsTerm, ThetaTerm, DiffusionTerm
 export NaiveTerm, SnaiveTerm, RwTerm, MeanfTerm
 export EtsComponentTerm, EtsDriftTerm, SesTerm, HoltTerm, HoltWintersTerm, CrostonTerm
 export compile_arima_formula, compile_ets_formula

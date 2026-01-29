@@ -247,6 +247,46 @@ struct ThetaTerm <: AbstractTerm
 end
 
 """
+    DiffusionTerm <: AbstractTerm
+
+Represents a diffusion model specification term in a formula.
+
+Diffusion models capture technology adoption and market penetration patterns using
+classical S-curve models.
+
+# Fields
+- `model_type::Union{Symbol, Nothing}` - Model type: :Bass, :Gompertz, :GSGompertz, :Weibull, or nothing (default Bass)
+- `m::Union{Float64, Nothing}` - Market potential (nothing = estimate)
+- `p::Union{Float64, Nothing}` - Innovation coefficient for Bass (nothing = estimate)
+- `q::Union{Float64, Nothing}` - Imitation coefficient for Bass (nothing = estimate)
+- `a::Union{Float64, Nothing}` - Parameter a for Gompertz/GSGompertz/Weibull (nothing = estimate)
+- `b::Union{Float64, Nothing}` - Parameter b for Gompertz/GSGompertz/Weibull (nothing = estimate)
+- `c::Union{Float64, Nothing}` - Parameter c for GSGompertz only (nothing = estimate)
+- `loss::Union{Int, Nothing}` - Loss function power (1=MAE, 2=MSE, nothing = default 2)
+- `cumulative::Union{Bool, Nothing}` - Optimize on cumulative values (nothing = default true)
+
+# Examples
+```julia
+@formula(adoption = diffusion())                     # Default Bass model
+@formula(adoption = diffusion(model=:Bass))          # Bass diffusion
+@formula(adoption = diffusion(model=:Gompertz))      # Gompertz growth
+@formula(adoption = diffusion(model=:Bass, m=1000))  # Bass with fixed market potential
+@formula(adoption = diffusion(loss=1))               # Use L1 loss (MAE)
+```
+"""
+struct DiffusionTerm <: AbstractTerm
+    model_type::Union{Symbol, Nothing}
+    m::Union{Float64, Nothing}
+    p::Union{Float64, Nothing}
+    q::Union{Float64, Nothing}
+    a::Union{Float64, Nothing}
+    b::Union{Float64, Nothing}
+    c::Union{Float64, Nothing}
+    loss::Union{Int, Nothing}
+    cumulative::Union{Bool, Nothing}
+end
+
+"""
     NaiveTerm <: AbstractTerm
 
 Represents a naive forecasting model specification in a formula.
@@ -1034,6 +1074,130 @@ function theta(; model::Union{Symbol, Nothing}=nothing,
     return ThetaTerm(model, alpha_f, theta_f, decomp_str, nmse)
 end
 
+const _DIFFUSION_VALID_MODELS = (:Bass, :Gompertz, :GSGompertz, :Weibull)
+
+"""
+    diffusion(; model=nothing, m=nothing, p=nothing, q=nothing,
+              a=nothing, b=nothing, c=nothing, loss=nothing, cumulative=nothing)
+
+Specify a diffusion forecasting model in a formula.
+
+Diffusion models capture technology adoption and market penetration patterns using
+classical S-curve models.
+
+# Arguments
+- `model::Union{Symbol, Nothing}=nothing` - Model type:
+  - `:Bass` - Bass diffusion (innovation/imitation) - default
+  - `:Gompertz` - Gompertz growth curve
+  - `:GSGompertz` - Gamma/Shifted Gompertz
+  - `:Weibull` - Weibull distribution model
+- `m::Union{Real, Nothing}=nothing` - Market potential (nothing = estimate)
+- `p::Union{Real, Nothing}=nothing` - Innovation coefficient for Bass (nothing = estimate)
+- `q::Union{Real, Nothing}=nothing` - Imitation coefficient for Bass (nothing = estimate)
+- `a::Union{Real, Nothing}=nothing` - Parameter a for non-Bass models (nothing = estimate)
+- `b::Union{Real, Nothing}=nothing` - Parameter b for non-Bass models (nothing = estimate)
+- `c::Union{Real, Nothing}=nothing` - Parameter c for GSGompertz only (nothing = estimate)
+- `loss::Union{Int, Nothing}=nothing` - Loss function power (1=MAE, 2=MSE), default 2
+- `cumulative::Union{Bool, Nothing}=nothing` - Optimize on cumulative values, default true
+
+# Returns
+`DiffusionTerm` for use in formula specification.
+
+# Examples
+```julia
+# Default Bass model
+@formula(adoption = diffusion())
+
+# Specific model type
+@formula(adoption = diffusion(model=:Bass))
+@formula(adoption = diffusion(model=:Gompertz))
+@formula(adoption = diffusion(model=:GSGompertz))
+@formula(adoption = diffusion(model=:Weibull))
+
+# Bass with fixed market potential
+@formula(adoption = diffusion(model=:Bass, m=10000))
+
+# Bass with fixed innovation coefficient
+@formula(adoption = diffusion(model=:Bass, p=0.03))
+
+# Use L1 loss instead of L2
+@formula(adoption = diffusion(loss=1))
+
+# Optimize on adoption instead of cumulative
+@formula(adoption = diffusion(cumulative=false))
+```
+
+# See Also
+- [`DiffusionTerm`](@ref) - Term type created by this function
+"""
+function diffusion(; model::Union{Symbol, Nothing}=nothing,
+                    m::Union{Real, Nothing}=nothing,
+                    p::Union{Real, Nothing}=nothing,
+                    q::Union{Real, Nothing}=nothing,
+                    a::Union{Real, Nothing}=nothing,
+                    b::Union{Real, Nothing}=nothing,
+                    c::Union{Real, Nothing}=nothing,
+                    loss::Union{Int, Nothing}=nothing,
+                    cumulative::Union{Bool, Nothing}=nothing)
+
+    # Validate model type
+    if !isnothing(model)
+        model ∈ _DIFFUSION_VALID_MODELS || throw(ArgumentError(
+            "model must be one of $(_DIFFUSION_VALID_MODELS), got :$(model)"))
+    end
+
+    # Convert and validate parameters
+    m_f = isnothing(m) ? nothing : Float64(m)
+    if !isnothing(m_f) && m_f <= 0
+        throw(ArgumentError("m (market potential) must be positive, got $(m)"))
+    end
+
+    p_f = isnothing(p) ? nothing : Float64(p)
+    if !isnothing(p_f) && p_f <= 0
+        throw(ArgumentError("p (innovation coefficient) must be positive, got $(p)"))
+    end
+
+    q_f = isnothing(q) ? nothing : Float64(q)
+    if !isnothing(q_f) && q_f <= 0
+        throw(ArgumentError("q (imitation coefficient) must be positive, got $(q)"))
+    end
+
+    a_f = isnothing(a) ? nothing : Float64(a)
+    if !isnothing(a_f) && a_f <= 0
+        throw(ArgumentError("a must be positive, got $(a)"))
+    end
+
+    b_f = isnothing(b) ? nothing : Float64(b)
+    if !isnothing(b_f) && b_f <= 0
+        throw(ArgumentError("b must be positive, got $(b)"))
+    end
+
+    c_f = isnothing(c) ? nothing : Float64(c)
+    if !isnothing(c_f) && c_f <= 0
+        throw(ArgumentError("c must be positive, got $(c)"))
+    end
+
+    # Validate loss
+    if !isnothing(loss) && loss < 1
+        throw(ArgumentError("loss must be >= 1, got $(loss)"))
+    end
+
+    # Warn about model-specific parameters
+    if !isnothing(model)
+        if model == :Bass && (!isnothing(a) || !isnothing(b) || !isnothing(c))
+            @warn "Parameters a, b, c are ignored for Bass model. Use p and q instead."
+        elseif model in (:Gompertz, :Weibull) && (!isnothing(p) || !isnothing(q))
+            @warn "Parameters p, q are Bass-specific. Use a, b for $(model) model."
+        elseif model in (:Gompertz, :Weibull) && !isnothing(c)
+            @warn "Parameter c is only for GSGompertz model."
+        elseif model == :GSGompertz && (!isnothing(p) || !isnothing(q))
+            @warn "Parameters p, q are Bass-specific. Use a, b, c for GSGompertz model."
+        end
+    end
+
+    return DiffusionTerm(model, m_f, p_f, q_f, a_f, b_f, c_f, loss, cumulative)
+end
+
 """
     e(code::AbstractString = "Z")
 
@@ -1358,7 +1522,7 @@ function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:Abstra
             selected = term
         elseif term isa EtsComponentTerm || term isa EtsDriftTerm || term isa ArimaOrderTerm ||
                term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm || term isa BatsTerm ||
-               term isa TbatsTerm || term isa ThetaTerm || term isa SesTerm || term isa HoltTerm ||
+               term isa TbatsTerm || term isa ThetaTerm || term isa DiffusionTerm || term isa SesTerm || term isa HoltTerm ||
                term isa HoltWintersTerm || term isa CrostonTerm || term isa NaiveTerm ||
                term isa SnaiveTerm || term isa RwTerm || term isa MeanfTerm
             throw(ArgumentError("Formula term $(term) is not compatible with $(T)."))
@@ -1560,6 +1724,42 @@ function Base.show(io::IO, term::ThetaTerm)
         print(io, "theta()")
     else
         print(io, "theta(", join(args, ", "), ")")
+    end
+end
+
+function Base.show(io::IO, term::DiffusionTerm)
+    args = String[]
+    if !isnothing(term.model_type)
+        push!(args, "model=:$(term.model_type)")
+    end
+    if !isnothing(term.m)
+        push!(args, "m=$(term.m)")
+    end
+    if !isnothing(term.p)
+        push!(args, "p=$(term.p)")
+    end
+    if !isnothing(term.q)
+        push!(args, "q=$(term.q)")
+    end
+    if !isnothing(term.a)
+        push!(args, "a=$(term.a)")
+    end
+    if !isnothing(term.b)
+        push!(args, "b=$(term.b)")
+    end
+    if !isnothing(term.c)
+        push!(args, "c=$(term.c)")
+    end
+    if !isnothing(term.loss)
+        push!(args, "loss=$(term.loss)")
+    end
+    if !isnothing(term.cumulative)
+        push!(args, "cumulative=$(term.cumulative)")
+    end
+    if isempty(args)
+        print(io, "diffusion()")
+    else
+        print(io, "diffusion(", join(args, ", "), ")")
     end
 end
 

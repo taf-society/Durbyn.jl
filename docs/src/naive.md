@@ -200,13 +200,15 @@ The random walk with drift includes a linear trend based on the average historic
 \hat{y}_{T+h|T} = y_T + h \cdot b
 ```
 
-where the drift term ``b`` is estimated as:
+where the drift term ``b`` is estimated as the mean of first differences:
 
 ```math
-b = \frac{y_T - y_1}{T - 1}
+b = \frac{1}{n}\sum_{t=2}^{T} (y_t - y_{t-1})
 ```
 
-This is the average change per period over the entire series.
+where ``n`` is the number of valid consecutive pairs. This approach is more robust than the
+endpoint formula ``(y_T - y_1)/(T-1)`` because it uses all available consecutive pairs rather
+than just endpoints, making it more reliable when data has missing values or gaps.
 
 ### Mean Method
 
@@ -224,6 +226,10 @@ This assumes the data fluctuates around a constant mean with no trend or seasona
 
 Naive methods produce prediction intervals that widen with the forecast horizon,
 reflecting increasing uncertainty over time.
+
+**Residual variance (``σ²``)**: The residual variance used for prediction intervals is
+computed as the mean squared error (MSE) of residuals without centering:
+``σ² = \frac{1}{n}\sum_{t} e_t^2``. This matches R's forecast package behavior.
 
 ### Naive / Random Walk (without drift)
 
@@ -258,7 +264,9 @@ Includes additional uncertainty from the drift estimate:
 \text{Var}(\hat{y}_{T+h|T}) = h \cdot \sigma^2 + h^2 \cdot \text{SE}(b)^2
 ```
 
-where ``\text{SE}(b) = \sigma / \sqrt{T-1}`` is the standard error of the drift coefficient.
+where ``\text{SE}(b) = s_d / \sqrt{n}`` is the standard error of the drift coefficient,
+``s_d`` is the standard deviation of the first differences, and ``n`` is the number of
+valid consecutive pairs.
 
 ### Mean Method
 
@@ -294,12 +302,18 @@ All naive methods handle missing values gracefully:
 
 - **Leading missings**: Skipped when finding the starting point
 - **Trailing missings**: The last valid observation is used
-- **Scattered missings**: Converted to NaN internally; forecasts use the most recent valid value
+- **Scattered missings**: Converted to NaN internally; fitted values use forward-fill from the most recent valid lagged value
 
 ```julia
 y = [1.0, missing, 3.0, 4.0, missing, 6.0]
 fit = naive(y)  # Uses 6.0 (last valid) for forecasts
+# fit.fitted[3] = 1.0 (lagged from y[1], since y[2] is missing)
 ```
+
+**Forward-fill behavior**: When computing fitted values, if the lagged value is missing,
+the method forward-fills from the most recent valid fitted value. This matches the R
+forecast package's `lagwalk()` behavior and ensures fitted values are available wherever
+actual values exist, even when there are gaps in the series.
 
 For seasonal naive, if a particular seasonal position has missing values, the method
 searches backwards through prior seasonal cycles to find the most recent valid observation
@@ -325,8 +339,13 @@ fit = naive(y; lambda = "auto")
 fit = naive(y; lambda = 0.0, biasadj = true)
 ```
 
+**Lambda requirements**:
+- ``λ ≤ 0``: Requires strictly positive values (non-positive values are treated as missing with a warning)
+- ``λ > 0``: Allows negative values via signed transformation; only zeros are excluded
+
 The `biasadj` option applies a bias correction when transforming forecasts back to the
-original scale, which can improve accuracy for skewed distributions.
+original scale, which can improve accuracy for skewed distributions. When enabled, bias
+adjustment is applied to both fitted values and point forecasts.
 
 ---
 

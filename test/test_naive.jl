@@ -591,8 +591,9 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             @test isnan(fit.x[3])  # missing converted to NaN
             @test isnan(fit.x[6])
 
-            # Fitted at t=4 should use t=3 which is missing -> fitted is missing
-            @test ismissing(fit.fitted[4])
+            # With forward-fill (matching R), fitted[4] is filled from earlier value
+            # Fitted at t=4: y[3] is missing, so forward-fill from fitted[3] = y[2] = 2.0
+            @test fit.fitted[4] == 2.0
             # Fitted at t=5 should use t=4 which is 4.0
             @test fit.fitted[5] == 4.0
 
@@ -607,7 +608,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             @test fit isa NaiveFit
             # First 4 fitted values are missing (lag period)
             @test all(ismissing.(fit.fitted[1:4]))
-            # Fitted at t=5 uses t=1 which is missing -> missing
+            # Fitted at t=5 uses t=1 which is missing, but y[5] is valid so forward-fill doesn't apply
+            # (forward-fill only applies when y[t] is not missing but fitted[t] would be missing)
             @test ismissing(fit.fitted[5])
             # Fitted at t=6 uses t=2 which is 2.0
             @test fit.fitted[6] == 2.0
@@ -679,21 +681,23 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             y = [10.0, 20.0]
             fit = naive(y)
 
-            # Only 1 residual (at t=2), so sigma2 should be 0
-            @test fit.sigma2 == 0.0
+            # Only 1 residual (at t=2), res = 20 - 10 = 10
+            # R uses MSE = mean(res^2) = 100, not centered variance (which would be 0)
+            @test fit.sigma2 == 100.0
 
             fc = forecast(fit, h=5)
             @test all(fc.mean .== 20.0)
-            # Intervals should still be computed (with sigma=0, they collapse to point)
-            @test all(fc.lower[1] .== fc.mean)
-            @test all(fc.upper[1] .== fc.mean)
+            # With sigma2 > 0, intervals are now wider (matching R behavior)
+            @test all(fc.lower[1] .< fc.mean)
+            @test all(fc.upper[1] .> fc.mean)
         end
 
         @testset "snaive with m+1 observations" begin
             y = [1.0, 2.0, 3.0, 4.0, 5.0]  # m=4, so only 1 residual at t=5
             fit = snaive(y, 4)
 
-            @test fit.sigma2 == 0.0
+            # res = 5 - 1 = 4, MSE = 16
+            @test fit.sigma2 == 16.0
             fc = forecast(fit, h=4)
             @test all(isfinite.(fc.mean))
         end
@@ -704,7 +708,10 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
             # Drift should be (20 - 10) / 1 = 10
             @test fit.drift == 10.0
-            # Only 1 residual, so sigma2 should be 0
+            # With drift, R uses (n-1) divisor via var(corrected=true)
+            # Only 1 residual, so sigma2 = var([0.0], corrected=true) which is NaN or 0
+            # But with MSE approach for drift case, it's the variance of residuals
+            # residual = 20 - (10 + 10) = 0, so sigma2 = var([0], corrected=true) = 0
             @test fit.sigma2 == 0.0
             # drift_se should also be 0 (or very small)
             @test fit.drift_se == 0.0

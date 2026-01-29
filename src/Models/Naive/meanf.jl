@@ -4,13 +4,14 @@
 Fitted mean forecasting model.
 
 # Fields
-- `x::Vector{Float64}` - Original time series data (with missings/NaN/invalid Box-Cox removed)
+- `x::Vector{Float64}` - Original time series data (preserves original length, NaN for missing/invalid)
 - `mu::Float64` - Mean on transformed scale (if lambda used) for forecasting
 - `mu_original::Float64` - Mean on original scale for display
 - `sd::Float64` - Standard deviation on transformed scale
 - `lambda::Union{Nothing, Float64}` - Box-Cox transformation parameter
-- `fitted::Vector{Float64}` - Fitted values on original scale
-- `residuals::Vector{Float64}` - Residuals on original scale
+- `biasadj::Bool` - Whether bias adjustment is applied
+- `fitted::Vector{Union{Float64, Missing}}` - Fitted values on original scale (preserves original length)
+- `residuals::Vector{Union{Float64, Missing}}` - Residuals on original scale (preserves original length)
 - `n::Int` - Number of valid observations used
 - `m::Int` - Seasonal period
 """
@@ -20,80 +21,150 @@ struct MeanFit
     mu_original::Float64
     sd::Float64
     lambda::Union{Nothing, Float64}
-    fitted::Vector{Float64}
-    residuals::Vector{Float64}
+    biasadj::Bool
+    fitted::Vector{Union{Float64, Missing}}
+    residuals::Vector{Union{Float64, Missing}}
     n::Int
     m::Int
 end
 
 """
-    meanf(y::AbstractArray, m::Int, lambda=nothing)
+    meanf(y::AbstractArray, m::Int; lambda=nothing, biasadj::Bool=false)
 
 Fit a mean forecasting model.
 
 The mean method uses the sample mean as the forecast for all future periods.
+
+# Arguments
+- `y::AbstractArray` - Time series data
+- `m::Int` - Seasonal period
+
+# Keyword Arguments
+- `lambda::Union{Nothing, Float64}=nothing` - Box-Cox transformation parameter
+- `biasadj::Bool=false` - Apply bias adjustment for Box-Cox back-transformation
 """
-function meanf(y::AbstractArray, m::Int, lambda::Union{Nothing, Float64, String}=nothing)
-    # Collect non-missing values and filter NaN (consistent with naive/snaive/rw)
-    x_no_missing = collect(Float64, skipmissing(y))
-    x = filter(!isnan, x_no_missing)
-    n_before_transform = length(x)
-    n_before_transform >= 1 || throw(ArgumentError("Time series must have at least 1 non-missing/non-NaN observation"))
+function meanf(y::AbstractArray, m::Int;
+               lambda::Union{Nothing, Float64, String}=nothing,
+               biasadj::Bool=false)
+    n_orig = length(y)
+
+    # Convert to Float64, preserving structure (missings become NaN for processing)
+    x_orig = Vector{Float64}(undef, n_orig)
+    for i in 1:n_orig
+        x_orig[i] = ismissing(y[i]) ? NaN : Float64(y[i])
+    end
+
+    # Track valid positions for original indexing
+    valid_mask = .!isnan.(x_orig)
+    n_valid = count(valid_mask)
+    n_valid >= 1 || throw(ArgumentError("Time series must have at least 1 non-missing/non-NaN observation"))
 
     # Apply Box-Cox transformation if specified
     if !isnothing(lambda)
-        # Pre-filter non-positive values for Box-Cox (required for log when lambda=0, and generally)
-        positive_mask = x .> 0
-        n_nonpositive = count(!, positive_mask)
-        if n_nonpositive > 0
-            @warn "$n_nonpositive non-positive value(s) invalid for Box-Cox transformation, treated as missing"
+        # Pre-filter values based on lambda:
+        # - lambda <= 0: requires positive values
+        # - lambda > 0: signed transform handles negatives, only filter zeros
+        if lambda isa String
+            # Auto lambda - need positive values for estimation
+            transform_mask = valid_mask .& (x_orig .> 0)
+        elseif lambda <= 0
+            transform_mask = valid_mask .& (x_orig .> 0)
+            n_invalid = count(valid_mask) - count(transform_mask)
+            if n_invalid > 0
+                @warn "$n_invalid non-positive value(s) invalid for Box-Cox transformation with lambda=$lambda, treated as missing"
+            end
+        else
+            # For lambda > 0, only exclude zeros (signed transform handles negatives)
+            transform_mask = valid_mask .& (x_orig .!= 0)
+            n_invalid = count(valid_mask) - count(transform_mask)
+            if n_invalid > 0
+                @warn "$n_invalid zero value(s) invalid for Box-Cox transformation with lambda=$lambda, treated as missing"
+            end
         end
-        x_positive = x[positive_mask]
 
-        length(x_positive) >= 1 || throw(ArgumentError("No positive observations for Box-Cox transformation with lambda=$lambda"))
+        x_to_transform = x_orig[transform_mask]
+        count(transform_mask) >= 1 || throw(ArgumentError("No valid observations for Box-Cox transformation with lambda=$lambda"))
 
-        x_trans_valid, lambda = box_cox(x_positive, m, lambda=lambda)
+        x_trans_values, lambda = box_cox(x_to_transform, m, lambda=lambda)
 
-        # Also check for any NaN/Inf introduced by transformation itself
-        bc_valid_mask = isfinite.(x_trans_valid)
+        # Check for any NaN/Inf introduced by transformation itself
+        bc_valid_mask = isfinite.(x_trans_values)
         n_bc_invalid = count(!, bc_valid_mask)
         if n_bc_invalid > 0
             @warn "$n_bc_invalid additional value(s) invalid after Box-Cox transformation"
-            x_positive = x_positive[bc_valid_mask]
-            x_trans_valid = x_trans_valid[bc_valid_mask]
         end
 
-        x_valid = x_positive
-        n = length(x_valid)
+        # Create transformed array preserving original length
+        y_trans = fill(NaN, n_orig)
+        transform_indices = findall(transform_mask)
+        for (j, i) in enumerate(transform_indices)
+            if bc_valid_mask[j]
+                y_trans[i] = x_trans_values[j]
+            end
+        end
 
+        # Count valid transformed values
+        n = count(isfinite, y_trans)
         n >= 1 || throw(ArgumentError("No valid observations remain after Box-Cox transformation with lambda=$lambda"))
+
+        # Get valid transformed values for mean/sd calculation
+        x_trans_valid = filter(isfinite, y_trans)
     else
-        x_valid = x
-        x_trans_valid = x
-        n = length(x)
+        y_trans = x_orig
+        x_trans_valid = filter(!isnan, x_orig)
+        n = length(x_trans_valid)
     end
 
     # Compute mean and sd on transformed scale (using only valid values)
     mu_trans = mean(x_trans_valid)
     sd_trans = n > 1 ? std(x_trans_valid) : 0.0
 
-    # Fitted values and residuals on transformed scale
-    fitted_trans = fill(mu_trans, n)
-    residuals_trans = x_trans_valid .- fitted_trans
+    # Compute residual variance for bias adjustment (MSE without centering, like R)
+    residuals_trans_valid = x_trans_valid .- mu_trans
+    sigma2 = n > 0 ? mean(residuals_trans_valid .^ 2) : 0.0
+
+    # Fitted values and residuals preserving original length
+    fitted = Vector{Union{Float64, Missing}}(undef, n_orig)
+    residuals = Vector{Union{Float64, Missing}}(undef, n_orig)
+    fill!(fitted, missing)
+    fill!(residuals, missing)
 
     # Back-transform to original scale for storage
     if !isnothing(lambda)
-        mu_original = inv_box_cox([mu_trans]; lambda=lambda)[1]
-        fitted = inv_box_cox(fitted_trans; lambda=lambda)
-        # Residuals on original scale: only for valid transformed observations
-        residuals = x_valid .- fitted
+        # Apply bias adjustment if requested (R does: InvBoxCox(fitted, lambda, biasadj, var(res)))
+        if biasadj && sigma2 > 0
+            mu_original = inv_box_cox([mu_trans]; lambda=lambda, biasadj=true, fvar=sigma2)[1]
+        else
+            mu_original = inv_box_cox([mu_trans]; lambda=lambda)[1]
+        end
+
+        # Fill fitted values and residuals at valid positions
+        for i in 1:n_orig
+            if isfinite(y_trans[i])
+                if biasadj && sigma2 > 0
+                    fitted[i] = inv_box_cox([mu_trans]; lambda=lambda, biasadj=true, fvar=sigma2)[1]
+                else
+                    fitted[i] = inv_box_cox([mu_trans]; lambda=lambda)[1]
+                end
+                residuals[i] = x_orig[i] - fitted[i]
+            end
+        end
     else
         mu_original = mu_trans
-        fitted = fitted_trans
-        residuals = residuals_trans
+        for i in 1:n_orig
+            if !isnan(x_orig[i])
+                fitted[i] = mu_trans
+                residuals[i] = x_orig[i] - mu_trans
+            end
+        end
     end
 
-    return MeanFit(x_valid, mu_trans, mu_original, sd_trans, lambda, fitted, residuals, n, m)
+    return MeanFit(x_orig, mu_trans, mu_original, sd_trans, lambda, biasadj, fitted, residuals, n, m)
+end
+
+# Keep backward-compatible positional argument version (without biasadj)
+function meanf(y::AbstractArray, m::Int, lambda::Union{Nothing, Float64, String})
+    meanf(y, m; lambda=lambda, biasadj=false)
 end
 
 """
@@ -112,6 +183,7 @@ function forecast(object::MeanFit;
     mu_trans = object.mu
     sd_trans = object.sd
     lambda = object.lambda
+    biasadj = object.biasadj
     m = object.m
     n = object.n
 
@@ -142,37 +214,46 @@ function forecast(object::MeanFit;
 
     nconf = length(level)
 
+    # Compute residual variance for bias adjustment (MSE without centering)
+    valid_x = filter(!isnan, object.x)
+    if !isnothing(lambda)
+        x_trans_valid, _ = box_cox(filter(x -> x > 0, valid_x), m, lambda=lambda)
+        x_trans_valid = filter(isfinite, x_trans_valid)
+        residuals_trans_valid = x_trans_valid .- mu_trans
+    else
+        residuals_trans_valid = valid_x .- mu_trans
+    end
+    sigma2 = length(residuals_trans_valid) > 0 ? mean(residuals_trans_valid .^ 2) : 0.0
+
     # Use Vector{Vector} for intervals (consistent with naive_forecast)
     lower_trans = Vector{Vector{Float64}}(undef, nconf)
     upper_trans = Vector{Vector{Float64}}(undef, nconf)
 
     if bootstrap
-        # Residuals on transformed scale for bootstrap
-        if !isnothing(lambda)
-            x_trans, _ = box_cox(object.x, m, lambda=lambda)
-            # Filter invalid transformed values
-            valid_mask = isfinite.(x_trans)
-            x_trans_valid = x_trans[valid_mask]
-            residuals_trans = x_trans_valid .- mu_trans
-        else
-            residuals_trans = object.x .- mu_trans
-        end
-        e = residuals_trans .- mean(residuals_trans)
+        # Residuals on transformed scale for bootstrap (centered)
+        e = residuals_trans_valid .- mean(residuals_trans_valid)
         ne = length(e)
 
-        # Bootstrap simulation - sample with replacement from residuals
-        for i in 1:nconf
-            lower_h = Vector{Float64}(undef, h)
-            upper_h = Vector{Float64}(undef, h)
-            for j in 1:h
-                sim = [mu_trans + e[rand(1:ne)] for _ in 1:npaths]
-                lower_h[j] = quantile(sim, 0.5 - level[i] / 200.0)
-                upper_h[j] = quantile(sim, 0.5 + level[i] / 200.0)
+        if ne == 0
+            @warn "No valid residuals for bootstrap, using analytical intervals"
+            bootstrap = false
+        else
+            # Bootstrap simulation - simulate once, then take quantiles at all levels (like R)
+            sim = Matrix{Float64}(undef, npaths, h)
+            for i in 1:npaths
+                for j in 1:h
+                    sim[i, j] = mu_trans + e[rand(1:ne)]
+                end
             end
-            lower_trans[i] = lower_h
-            upper_trans[i] = upper_h
+
+            for i in 1:nconf
+                lower_trans[i] = [quantile(sim[:, j], 0.5 - level[i] / 200.0) for j in 1:h]
+                upper_trans[i] = [quantile(sim[:, j], 0.5 + level[i] / 200.0) for j in 1:h]
+            end
         end
-    else
+    end
+
+    if !bootstrap
         # t-distribution intervals on transformed scale
         # Handle n == 1 case: use infinite intervals (like R)
         for i in 1:nconf
@@ -190,10 +271,19 @@ function forecast(object::MeanFit;
 
     # Back-transform to original scale
     if !isnothing(lambda)
-        f = inv_box_cox(f_trans; lambda=lambda)
+        # Compute forecast variance for bias adjustment
+        fvar = sd_trans^2 * (1.0 + 1.0 / n)
+
+        if biasadj && fvar > 0
+            f = inv_box_cox(f_trans; lambda=lambda, biasadj=true, fvar=fvar)
+        else
+            f = inv_box_cox(f_trans; lambda=lambda)
+        end
+
         lower = Vector{Vector{Float64}}(undef, nconf)
         upper = Vector{Vector{Float64}}(undef, nconf)
         for i in 1:nconf
+            # Intervals are NOT bias-adjusted (like R)
             lower[i] = inv_box_cox(lower_trans[i]; lambda=lambda)
             upper[i] = inv_box_cox(upper_trans[i]; lambda=lambda)
         end

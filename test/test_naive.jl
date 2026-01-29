@@ -63,20 +63,20 @@ const REFERENCE_SD_AP = 119.9663
 
         @testset "Default horizon" begin
             fc = forecast(fit)
-            @test length(fc["mean"]) == 10
-            @test all(fc["mean"] .== fit.mu)
+            @test length(fc.mean) == 10
+            @test all(fc.mean .== fit.mu_original)
         end
 
         @testset "Custom horizon" begin
             fc = forecast(fit, 24)
-            @test length(fc["mean"]) == 24
-            @test all(fc["mean"] .== fit.mu)
+            @test length(fc.mean) == 24
+            @test all(fc.mean .== fit.mu_original)
         end
 
         @testset "Short horizon" begin
             fc = forecast(fit, 1)
-            @test length(fc["mean"]) == 1
-            @test fc["mean"][1] == fit.mu
+            @test length(fc.mean) == 1
+            @test fc.mean[1] == fit.mu_original
         end
     end
 
@@ -86,35 +86,37 @@ const REFERENCE_SD_AP = 119.9663
         @testset "Default levels" begin
             fc = forecast(fit, 10, [80.0, 95.0])
 
-            @test size(fc["lower"]) == (10, 2)
-            @test size(fc["upper"]) == (10, 2)
+            @test length(fc.lower) == 2
+            @test length(fc.upper) == 2
+            @test length(fc.lower[1]) == 10
+            @test length(fc.upper[1]) == 10
         end
 
         @testset "Interval properties" begin
             fc = forecast(fit, 10, [80.0, 95.0])
 
-            @test all(fc["lower"][:, 1] .< fc["mean"])
-            @test all(fc["lower"][:, 2] .< fc["mean"])
-            @test all(fc["upper"][:, 1] .> fc["mean"])
-            @test all(fc["upper"][:, 2] .> fc["mean"])
+            @test all(fc.lower[1] .< fc.mean)
+            @test all(fc.lower[2] .< fc.mean)
+            @test all(fc.upper[1] .> fc.mean)
+            @test all(fc.upper[2] .> fc.mean)
 
-            width_80 = fc["upper"][:, 1] .- fc["lower"][:, 1]
-            width_95 = fc["upper"][:, 2] .- fc["lower"][:, 2]
+            width_80 = fc.upper[1] .- fc.lower[1]
+            width_95 = fc.upper[2] .- fc.lower[2]
             @test all(width_95 .> width_80)
         end
 
         @testset "Symmetric intervals" begin
             fc = forecast(fit, 10, [80.0])
 
-            lower_dist = fc["mean"] .- fc["lower"][:, 1]
-            upper_dist = fc["upper"][:, 1] .- fc["mean"]
+            lower_dist = fc.mean .- fc.lower[1]
+            upper_dist = fc.upper[1] .- fc.mean
             @test all(abs.(lower_dist .- upper_dist) .<= EPS_SCALAR)
         end
 
         @testset "Single level" begin
             fc = forecast(fit, 10, [90.0])
-            @test size(fc["lower"]) == (10, 1)
-            @test size(fc["upper"]) == (10, 1)
+            @test length(fc.lower) == 1
+            @test length(fc.upper) == 1
         end
     end
 
@@ -122,16 +124,16 @@ const REFERENCE_SD_AP = 119.9663
         fit = meanf(AirPassengers, 12)
         fc = forecast(fit, 10, [80.0], true)
 
-        @test haskey(fc, "level")
-        @test haskey(fc, "lower")
-        @test haskey(fc, "upper")
+        @test !isempty(fc.level)
+        @test !isempty(fc.lower)
+        @test !isempty(fc.upper)
     end
 
     @testset "Level normalization" begin
         fit = meanf(AirPassengers, 12)
 
         fc1 = forecast(fit, 10, [0.80, 0.95])
-        @test fc1["level"] == [80.0, 95.0]
+        @test fc1.level == [80.0, 95.0]
     end
 
     @testset "Box-Cox Transformation" begin
@@ -142,9 +144,9 @@ const REFERENCE_SD_AP = 119.9663
 
         fc = forecast(fit, 10, [80.0])
 
-        @test all(fc["mean"] .> 0)
-        @test all(fc["lower"] .> 0)
-        @test all(fc["upper"] .> 0)
+        @test all(fc.mean .> 0)
+        @test all(fc.lower[1] .> 0)
+        @test all(fc.upper[1] .> 0)
     end
 
     @testset "Simple Test Data" begin
@@ -155,7 +157,7 @@ const REFERENCE_SD_AP = 119.9663
         @test fit.sd ≈ std(simple_data) atol=EPS_SCALAR
 
         fc = forecast(fit, 3)
-        @test all(fc["mean"] .== 3.0)
+        @test all(fc.mean .== 3.0)
     end
 
     @testset "Constant Series" begin
@@ -174,7 +176,7 @@ const REFERENCE_SD_AP = 119.9663
             @test fit.mu == 2.0
 
             fc = forecast(fit, 5)
-            @test length(fc["mean"]) == 5
+            @test length(fc.mean) == 5
         end
 
         @testset "Different frequencies" begin
@@ -193,13 +195,12 @@ const REFERENCE_SD_AP = 119.9663
         fit = meanf(AirPassengers, 12)
         fc = forecast(fit, 10, [80.0, 95.0])
 
-        @test haskey(fc, "mean")
-        @test haskey(fc, "lower")
-        @test haskey(fc, "upper")
-        @test haskey(fc, "level")
-        @test haskey(fc, "m")
+        @test !isempty(fc.mean)
+        @test !isempty(fc.lower)
+        @test !isempty(fc.upper)
+        @test !isempty(fc.level)
 
-        @test fc["m"] == 12
+        @test fc.model.m == 12
     end
 
     @testset "Reproducibility" begin
@@ -225,12 +226,12 @@ const REFERENCE_SD_AP = 119.9663
         fc = forecast(fit, 12)
 
         # mu_original is back-transformed, so compare that
-        @test all(abs.(fc["mean"] .- fit.mu_original) .<= EPS_SCALAR)
+        @test all(abs.(fc.mean .- fit.mu_original) .<= EPS_SCALAR)
 
         n = length(AirPassengers)
         fc_pi = forecast(fit, 12, [80.0, 95.0])
 
-        width_80 = fc_pi["upper"][1, 1] - fc_pi["lower"][1, 1]
+        width_80 = fc_pi.upper[1][1] - fc_pi.lower[1][1]
         @test 300 < width_80 < 320
     end
 
@@ -240,17 +241,17 @@ const REFERENCE_SD_AP = 119.9663
         # Test bootstrap path doesn't error and produces valid intervals
         fc_boot = forecast(fit, 10, [80.0, 95.0], false, true, 1000)
 
-        @test haskey(fc_boot, "mean")
-        @test haskey(fc_boot, "lower")
-        @test haskey(fc_boot, "upper")
+        @test !isempty(fc_boot.mean)
+        @test !isempty(fc_boot.lower)
+        @test !isempty(fc_boot.upper)
 
-        @test length(fc_boot["mean"]) == 10
-        @test size(fc_boot["lower"]) == (10, 2)
-        @test size(fc_boot["upper"]) == (10, 2)
+        @test length(fc_boot.mean) == 10
+        @test length(fc_boot.lower) == 2
+        @test length(fc_boot.lower[1]) == 10
 
         # Intervals should bracket the mean
-        @test all(fc_boot["lower"][:, 1] .< fc_boot["mean"])
-        @test all(fc_boot["upper"][:, 1] .> fc_boot["mean"])
+        @test all(fc_boot.lower[1] .< fc_boot.mean)
+        @test all(fc_boot.upper[1] .> fc_boot.mean)
     end
 
     @testset "MeanFit Structure Updated" begin
@@ -294,12 +295,12 @@ const REFERENCE_SD_AP = 119.9663
 
         # Forecast should work but produce infinite intervals (like R)
         fc = forecast(fit, 5, [80.0, 95.0])
-        @test length(fc["mean"]) == 5
-        @test all(fc["mean"] .== 100.0)
+        @test length(fc.mean) == 5
+        @test all(fc.mean .== 100.0)
 
         # Intervals should be infinite (TDist(0) not defined, so we use Inf)
-        @test all(fc["lower"][:, 1] .== -Inf)
-        @test all(fc["upper"][:, 1] .== Inf)
+        @test all(fc.lower[1] .== -Inf)
+        @test all(fc.upper[1] .== Inf)
     end
 
     @testset "meanf with n == 1 and lambda < 0" begin
@@ -313,15 +314,15 @@ const REFERENCE_SD_AP = 119.9663
         @test fit.lambda == -0.5
 
         fc = forecast(fit, 5, [80.0, 95.0])
-        @test length(fc["mean"]) == 5
-        @test all(isfinite.(fc["mean"]))
+        @test length(fc.mean) == 5
+        @test all(isfinite.(fc.mean))
 
         # Lower bounds: -Inf on transformed scale → 0 on original scale (for lambda < 0)
-        @test all(fc["lower"][:, 1] .== 0.0)
+        @test all(fc.lower[1] .== 0.0)
 
         # Upper bounds: +Inf on transformed scale → NaN (exceeds inv_box_cox domain)
         # This is correct behavior matching R's InvBoxCox
-        @test all(isnan.(fc["upper"][:, 1]))
+        @test all(isnan.(fc.upper[1]))
     end
 
 end

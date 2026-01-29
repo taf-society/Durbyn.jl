@@ -28,7 +28,7 @@ using .Grammar
 using .ModelSpecs
 using .TableOps
 using .Naive
-import .Naive: NaiveFit, naive, snaive, rw, rwf
+import .Naive: NaiveFit, MeanFit, naive, snaive, rw, rwf, meanf
 using .Arima
 using .IntermittentDemand
 using .Bats
@@ -41,7 +41,7 @@ import .Generics: plot, fitted, residuals, summary, predict, forecast, fit, accu
 import .Optimize: NelderMeadOptions
 import .Grammar: p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm, ThetaTerm
 import .Grammar: e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
-import .Grammar: naive_term, snaive_term, rw_term, NaiveTerm, SnaiveTerm, RwTerm
+import .Grammar: naive_term, snaive_term, rw_term, meanf_term, NaiveTerm, SnaiveTerm, RwTerm, MeanfTerm
 import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, TbatsSpec, BatsSpec, FittedEts
 import .ModelSpecs: SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
 import .ModelSpecs: CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection
@@ -73,7 +73,7 @@ export model, PanelData, as_table
 export GroupedFittedModels, GroupedForecasts, successful_models, failed_groups
 export arima, arima_rjh, auto_arima, ArimaFit, PDQ
 export ARAR, ArarmaModel, ararma, auto_ararma
-export NaiveFit, naive, snaive, rw, rwf
+export NaiveFit, MeanFit, naive, snaive, rw, rwf, meanf
 export bats, BATSModel
 export tbats, TBATSModel
 export theta, auto_theta, ThetaFit, ThetaModelType, STM, OTM, DSTM, DOTM

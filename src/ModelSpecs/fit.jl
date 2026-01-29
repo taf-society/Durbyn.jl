@@ -1828,7 +1828,7 @@ function fit(spec::NaiveSpec, data;
 end
 
 """
-    fit(spec::SnaiveSpec, data; m, groupby=nothing, kwargs...)
+    fit(spec::SnaiveSpec, data; m, groupby=nothing, start=nothing, kwargs...)
 
 Fit a seasonal naive forecasting model to data (single series or grouped).
 
@@ -1841,6 +1841,7 @@ The seasonal period `m` is required.
 
 # Keyword Arguments
 - `m::Union{Int, Nothing}` - Seasonal period (required if not in spec)
+- `start::Union{Int, Nothing}` - Seasonal position of first observation (1 to m)
 - `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by
 - `parallel::Bool` - Use parallel processing for grouped data (default true)
 - `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
@@ -1854,6 +1855,9 @@ The seasonal period `m` is required.
 spec = SnaiveSpec(@formula(sales = snaive_term()))
 fitted = fit(spec, data, m=12)
 fc = forecast(fitted, h=24)
+
+# Monthly data starting in March
+fitted = fit(spec, data, m=12, start=3)
 
 # Grouped
 fitted = fit(spec, data, m=12, groupby=:store)

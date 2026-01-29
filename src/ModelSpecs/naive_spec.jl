@@ -73,6 +73,7 @@ end
 Specify a seasonal naive forecasting model using Durbyn's forecasting grammar.
 
 The seasonal naive method uses the observation from m periods ago as the forecast.
+This is equivalent to an ARIMA(0,0,0)(0,1,0)_m model.
 The seasonal period `m` is required either at spec construction or at fit time.
 
 # Arguments

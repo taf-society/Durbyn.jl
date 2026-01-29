@@ -9,7 +9,7 @@ This module provides naive forecasting methods for time series:
 These serve as simple benchmarks for more complex forecasting methods.
 """
 
-import Statistics: var, mean
+import Statistics: var, mean, std
 import Distributions: quantile, Normal
 
 """
@@ -152,6 +152,7 @@ function naive(y::AbstractVector, m::Int=1;
     end
 
     # Residual variance on transformed scale
+    # R forecast uses n divisor (corrected=false) for naive without drift
     valid_residuals = collect(skipmissing(residuals_trans))
     n_resid = length(valid_residuals)
     if n_resid <= 1
@@ -160,7 +161,7 @@ function naive(y::AbstractVector, m::Int=1;
             @warn "No valid residuals available for variance estimation, using sigma2=0"
         end
     else
-        sigma2 = var(valid_residuals, corrected=true)
+        sigma2 = var(valid_residuals, corrected=false)  # Match R: divide by n
     end
 
     # Convert fitted/residuals back to original scale for storage
@@ -204,7 +205,9 @@ end
 Fit a seasonal naive forecasting model.
 
 The seasonal naive method uses the observation from m periods ago as the forecast.
-Formally: y_{T+h|T} = y_{T+h-m*k} where k = ceil((h-1)/m) + 1
+This is equivalent to an ARIMA(0,0,0)(0,1,0)_m model.
+
+Formally: y_{T+h|T} = y_{T+h-m*k} where k = ceil(h/m)
 
 # Arguments
 - `y::AbstractVector` - Time series data
@@ -223,6 +226,11 @@ Formally: y_{T+h|T} = y_{T+h-m*k} where k = ceil((h-1)/m) + 1
 y = randn(120)
 fit = snaive(y, 12)
 fc = forecast(fit, h=24)
+
+# Quarterly data
+y_quarterly = randn(20)
+fit = snaive(y_quarterly, 4)
+fc = forecast(fit, h=8)
 ```
 
 # See Also
@@ -306,6 +314,7 @@ function snaive(y::AbstractVector, m::Int;
     end
 
     # Residual variance on transformed scale
+    # R forecast uses n divisor (corrected=false) for snaive without drift
     valid_residuals = collect(skipmissing(residuals_trans))
     n_resid = length(valid_residuals)
     if n_resid <= 1
@@ -314,7 +323,7 @@ function snaive(y::AbstractVector, m::Int;
             @warn "No valid residuals available for variance estimation, using sigma2=0"
         end
     else
-        sigma2 = var(valid_residuals, corrected=true)
+        sigma2 = var(valid_residuals, corrected=false)  # Match R: divide by n
     end
 
     # Convert fitted/residuals back to original scale for storage
@@ -450,16 +459,22 @@ function rw(y::AbstractVector, m::Int=1;
 
     if drift
         # Random walk with drift
-        # Find first and last valid values for drift calculation
-        valid_indices = findall(isfinite, y_trans)
-        first_valid = first(valid_indices)
-        last_valid = last(valid_indices)
-        n_span = last_valid - first_valid
+        # R's approach: drift = mean of first differences via lm(diff ~ 1)
+        # This matches R forecast package's lagwalk() function
 
-        n_span >= 1 || throw(ArgumentError("Need at least 2 valid observations with span > 0 for drift"))
+        # Compute first differences where both y[t] and y[t-1] are valid
+        differences = Float64[]
+        for t in 2:n
+            if isfinite(y_trans[t]) && isfinite(y_trans[t-1])
+                push!(differences, y_trans[t] - y_trans[t-1])
+            end
+        end
 
-        # Drift = average change = (y_last - y_first) / span on transformed scale
-        drift_val = (y_trans[last_valid] - y_trans[first_valid]) / n_span
+        n_diff = length(differences)
+        n_diff >= 1 || throw(ArgumentError("Need at least 1 valid first difference for drift estimation"))
+
+        # Drift = mean of first differences (equivalent to lm(diff ~ 1) intercept)
+        drift_val = mean(differences)
 
         # Fitted values on transformed scale: y_{t} = y_{t-1} + drift
         fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
@@ -471,6 +486,7 @@ function rw(y::AbstractVector, m::Int=1;
         end
 
         # Residuals on transformed scale (only when both fitted and actual are valid)
+        # These are: y[t] - (y[t-1] + drift) = diff[t] - drift
         residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(residuals_trans, missing)
         for t in 2:n
@@ -480,6 +496,7 @@ function rw(y::AbstractVector, m::Int=1;
         end
 
         # Residual variance on transformed scale
+        # R uses (n-1) divisor for drift case (corrected=true)
         valid_residuals = collect(skipmissing(residuals_trans))
         n_resid = length(valid_residuals)
         if n_resid <= 1
@@ -488,13 +505,16 @@ function rw(y::AbstractVector, m::Int=1;
                 @warn "No valid residuals available for variance estimation, using sigma2=0"
             end
         else
-            sigma2 = var(valid_residuals, corrected=true)
+            sigma2 = var(valid_residuals, corrected=true)  # Match R: divide by (n-1) for drift
         end
 
-        # Standard error of drift
-        # SE(drift) = sigma / sqrt(n_span) where n_span is the time span over which drift was computed
-        # This accounts for the actual time interval, not just the count of observations
-        drift_se = sqrt(sigma2 / max(n_span, 1))
+        # Standard error of drift = SE of mean = sd(differences) / sqrt(n_diff)
+        # This matches R's lm() coefficient standard error
+        if n_diff <= 1
+            drift_se = 0.0
+        else
+            drift_se = std(differences) / sqrt(n_diff)
+        end
 
         method_name = "Random walk with drift"
 
@@ -549,6 +569,7 @@ function rw(y::AbstractVector, m::Int=1;
             end
         end
 
+        # R forecast uses n divisor (corrected=false) for rw without drift
         valid_residuals = collect(skipmissing(residuals_trans))
         n_resid = length(valid_residuals)
         if n_resid <= 1
@@ -557,7 +578,7 @@ function rw(y::AbstractVector, m::Int=1;
                 @warn "No valid residuals available for variance estimation, using sigma2=0"
             end
         else
-            sigma2 = var(valid_residuals, corrected=true)
+            sigma2 = var(valid_residuals, corrected=false)  # Match R: divide by n
         end
 
         # Convert fitted/residuals back to original scale for storage
@@ -607,6 +628,10 @@ function Base.show(io::IO, fit::NaiveFit)
     println(io, fit.method)
     println(io, "-------------------------------")
     println(io, "Lag: ", fit.lag)
+    if fit.lag > 1
+        # Seasonal naive - show seasonal period
+        println(io, "Seasonal period: ", fit.m)
+    end
     if !isnothing(fit.drift)
         println(io, "Drift: ", round(fit.drift, digits=6))
         println(io, "Drift SE: ", round(fit.drift_se, digits=6))

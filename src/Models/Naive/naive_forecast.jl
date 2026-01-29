@@ -28,17 +28,20 @@ end
 
 Find the last non-NaN value at a specific seasonal position.
 
+This function searches backwards through the array to find the most recent
+valid (non-NaN) value that falls at the specified seasonal position.
+
 # Arguments
 - `arr` - Array to search
-- `pos` - Position in seasonal cycle (1-indexed, 1 to period)
+- `pos` - Position in seasonal cycle (1 to period)
 - `period` - Seasonal period
 
 Returns NaN if no valid value found at this seasonal position.
 """
 function _find_last_valid_at_season(arr, pos, period)
     n = length(arr)
-    # Search backwards through the array at this seasonal position
     # Start from the most recent occurrence of this position
+    # Index i has position mod1(i, period), so we find the most recent index with this position
     start_idx = n - mod(n - pos, period)
     for idx in start_idx:-period:1
         if idx >= 1 && !isnan(arr[idx])
@@ -157,13 +160,18 @@ function forecast(object::NaiveFit;
         last_trans = _find_last_valid(y_trans)
         f_trans = fill(Float64(last_trans), h)
     else
-        # Seasonal naive: forecast = last valid value at each seasonal position
+        # Seasonal naive: forecast by cycling through last m values
+        # This matches R's forecast package behavior:
+        #   future = tail(fits, lag)
+        #   fc = rep(future, fullperiods)[1:h]
+        #
+        # Formula: simple_idx = n - m + mod1(i, m) gives the index of the
+        # value from the same seasonal position in the most recent complete cycle
         f_trans = Vector{Float64}(undef, h)
         for i in 1:h
-            # Position in seasonal cycle (1 to m)
             pos = mod1(i, m)
-            # First try the simple approach: look at position n - m + pos
             simple_idx = n - m + pos
+
             if simple_idx >= 1 && !isnan(y_trans[simple_idx])
                 f_trans[i] = y_trans[simple_idx]
             else

@@ -145,27 +145,34 @@ function naive(y::AbstractVector, m::Int=1;
 
     lag = 1
 
-    # Fitted values on transformed scale: y_{t} = y_{t-1}
-    # R forward-fills missing fitted values with earlier lagged values
-    fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
-    fill!(fitted_trans, missing)
-    for t in 2:n
-        if isfinite(y_trans[t-1])
-            fitted_trans[t] = y_trans[t-1]
+    # R's lagwalk fill strategy:
+    # 1. Create lagged series: lagged[t] = y[t-lag]
+    # 2. At positions where y[t] is NA: if lagged[t] is also NA, fill with lagged[t-lag]
+    # 3. fitted[t] = lagged[t]
+
+    # Step 1: Create lagged series
+    lagged = fill(NaN, n)
+    for t in (lag+1):n
+        lagged[t] = y_trans[t-lag]
+    end
+
+    # Step 2: R's fill - at positions where y is NA, fill lagged if also NA
+    # R: for(i in y_na){ if(is.na(fits)[i]){ fits[i] <- fits[i-lag] } }
+    for t in (lag+1):n
+        if isnan(y_trans[t]) && isnan(lagged[t])
+            # y[t] is NA and lagged[t] is NA, fill with lagged[t-lag]
+            if t > lag && isfinite(lagged[t-lag])
+                lagged[t] = lagged[t-lag]
+            end
         end
     end
 
-    # Forward-fill missing fitted values (like R's lagwalk)
-    # If fitted[t] is missing and y[t] is not missing, fill with previous fitted value
-    for t in 2:n
-        if ismissing(fitted_trans[t]) && !isnan(x[t])
-            # Find most recent non-missing fitted value
-            for k in (t-1):-1:2
-                if !ismissing(fitted_trans[k])
-                    fitted_trans[t] = fitted_trans[k]
-                    break
-                end
-            end
+    # Step 3: Create fitted values from lagged series
+    fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
+    fill!(fitted_trans, missing)
+    for t in (lag+1):n
+        if isfinite(lagged[t])
+            fitted_trans[t] = lagged[t]
         end
     end
 
@@ -341,27 +348,34 @@ function snaive(y::AbstractVector, m::Int;
 
     lag = m
 
-    # Fitted values on transformed scale: y_{t} = y_{t-m}
-    # R forward-fills missing fitted values with earlier lagged values
-    fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
-    fill!(fitted_trans, missing)
-    for t in (m+1):n
-        if isfinite(y_trans[t-m])
-            fitted_trans[t] = y_trans[t-m]
+    # R's lagwalk fill strategy:
+    # 1. Create lagged series: lagged[t] = y[t-lag]
+    # 2. At positions where y[t] is NA: if lagged[t] is also NA, fill with lagged[t-lag]
+    # 3. fitted[t] = lagged[t]
+
+    # Step 1: Create lagged series
+    lagged = fill(NaN, n)
+    for t in (lag+1):n
+        lagged[t] = y_trans[t-lag]
+    end
+
+    # Step 2: R's fill - at positions where y is NA, fill lagged if also NA
+    # R: for(i in y_na){ if(is.na(fits)[i]){ fits[i] <- fits[i-lag] } }
+    for t in (lag+1):n
+        if isnan(y_trans[t]) && isnan(lagged[t])
+            # y[t] is NA and lagged[t] is NA, fill with lagged[t-lag]
+            if t > lag && isfinite(lagged[t-lag])
+                lagged[t] = lagged[t-lag]
+            end
         end
     end
 
-    # Forward-fill missing fitted values (like R's lagwalk)
-    # If fitted[t] is missing and y[t] is not missing, fill with value from m periods earlier
-    for t in (m+1):n
-        if ismissing(fitted_trans[t]) && !isnan(x[t])
-            # Find most recent non-missing fitted value at same seasonal position
-            for k in (t-m):-m:(m+1)
-                if !ismissing(fitted_trans[k])
-                    fitted_trans[t] = fitted_trans[k]
-                    break
-                end
-            end
+    # Step 3: Create fitted values from lagged series
+    fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
+    fill!(fitted_trans, missing)
+    for t in (lag+1):n
+        if isfinite(lagged[t])
+            fitted_trans[t] = lagged[t]
         end
     end
 
@@ -538,59 +552,72 @@ function rw(y::AbstractVector, m::Int=1;
     lag = 1
 
     if drift
-        # Random walk with drift
-        # R's approach: drift = mean of first differences via lm(diff ~ 1)
-        # This matches R forecast package's lagwalk() function
+        # Random walk with drift - R's exact approach:
+        # 1. Create lagged series with R's fill strategy (without drift first)
+        # 2. Compute drift = mean(y - fitted) via lm(y-fitted ~ 1, na.action=na.exclude)
+        # 3. Add drift to fitted values
+        # 4. Recompute residuals
 
-        # Compute first differences where both y[t] and y[t-1] are valid
-        differences = Float64[]
-        for t in 2:n
-            if isfinite(y_trans[t]) && isfinite(y_trans[t-1])
-                push!(differences, y_trans[t] - y_trans[t-1])
-            end
+        # Step 1: Create lagged series with R's fill strategy
+        lagged = fill(NaN, n)
+        for t in (lag+1):n
+            lagged[t] = y_trans[t-lag]
         end
 
-        n_diff = length(differences)
-        n_diff >= 1 || throw(ArgumentError("Need at least 1 valid first difference for drift estimation"))
-
-        # Drift = mean of first differences (equivalent to lm(diff ~ 1) intercept)
-        drift_val = mean(differences)
-
-        # Fitted values on transformed scale: y_{t} = y_{t-1} + drift
-        # R forward-fills missing fitted values
-        fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
-        fill!(fitted_trans, missing)
-        for t in 2:n
-            if isfinite(y_trans[t-1])
-                fitted_trans[t] = y_trans[t-1] + drift_val
-            end
-        end
-
-        # Forward-fill missing fitted values (like R's lagwalk)
-        for t in 2:n
-            if ismissing(fitted_trans[t]) && !isnan(x[t])
-                for k in (t-1):-1:2
-                    if !ismissing(fitted_trans[k])
-                        # Use last fitted value + drift for the time elapsed
-                        fitted_trans[t] = fitted_trans[k] + (t - k) * drift_val
-                        break
-                    end
+        # R's fill - at positions where y is NA, fill lagged if also NA
+        for t in (lag+1):n
+            if isnan(y_trans[t]) && isnan(lagged[t])
+                if t > lag && isfinite(lagged[t-lag])
+                    lagged[t] = lagged[t-lag]
                 end
             end
         end
 
-        # Residuals on transformed scale (only when both fitted and actual are valid)
-        # These are: y[t] - (y[t-1] + drift) = diff[t] - drift
+        # Create initial fitted values (without drift) from lagged series
+        fitted_no_drift = Vector{Union{Float64, Missing}}(undef, n)
+        fill!(fitted_no_drift, missing)
+        for t in (lag+1):n
+            if isfinite(lagged[t])
+                fitted_no_drift[t] = lagged[t]
+            end
+        end
+
+        # Step 2: Compute drift = mean(y - fitted) via lm(y-fitted ~ 1)
+        # R: fit <- summary(lm(y-fitted ~ 1, na.action=na.exclude))
+        diff_y_fitted = Float64[]
+        for t in (lag+1):n
+            if !ismissing(fitted_no_drift[t]) && isfinite(y_trans[t])
+                push!(diff_y_fitted, y_trans[t] - fitted_no_drift[t])
+            end
+        end
+
+        n_diff = length(diff_y_fitted)
+        n_diff >= 1 || throw(ArgumentError("Need at least 1 valid (y - fitted) pair for drift estimation"))
+
+        # drift = mean(y - fitted), which is the intercept from lm(y-fitted ~ 1)
+        drift_val = mean(diff_y_fitted)
+
+        # Step 3: Add drift to fitted values
+        # R: fitted <- fitted + b
+        fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
+        fill!(fitted_trans, missing)
+        for t in (lag+1):n
+            if !ismissing(fitted_no_drift[t])
+                fitted_trans[t] = fitted_no_drift[t] + drift_val
+            end
+        end
+
+        # Step 4: Compute residuals
+        # R: res <- y - fitted (after adding drift)
         residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(residuals_trans, missing)
-        for t in 2:n
+        for t in (lag+1):n
             if !ismissing(fitted_trans[t]) && isfinite(y_trans[t])
                 residuals_trans[t] = y_trans[t] - fitted_trans[t]
             end
         end
 
-        # Residual variance on transformed scale
-        # R uses (n-1) divisor for drift case (corrected=true)
+        # Residual variance - R uses lm's sigma which is sqrt(sum(res^2)/(n-1))
         valid_residuals = collect(skipmissing(residuals_trans))
         n_resid = length(valid_residuals)
         if n_resid <= 1
@@ -599,15 +626,16 @@ function rw(y::AbstractVector, m::Int=1;
                 @warn "No valid residuals available for variance estimation, using sigma2=0"
             end
         else
-            sigma2 = var(valid_residuals, corrected=true)  # Match R: divide by (n-1) for drift
+            # R: sigma <- fit$sigma which is sqrt(RSS/(n-p)) where p=1 for intercept-only model
+            sigma2 = sum(valid_residuals .^ 2) / (n_resid - 1)
         end
 
-        # Standard error of drift = SE of mean = sd(differences) / sqrt(n_diff)
-        # This matches R's lm() coefficient standard error
-        if n_diff <= 1
+        # Standard error of drift = SE from lm = sigma / sqrt(n)
+        # R: b.se <- fit$coefficients[1,2] which is sigma/sqrt(n)
+        if n_resid <= 1
             drift_se = 0.0
         else
-            drift_se = std(differences) / sqrt(n_diff)
+            drift_se = sqrt(sigma2) / sqrt(n_diff)
         end
 
         method_name = "Random walk with drift"
@@ -650,30 +678,39 @@ function rw(y::AbstractVector, m::Int=1;
                         method_name, lambda, biasadj, y_transformed)
     else
         # Random walk without drift (same as naive)
-        # R forward-fills missing fitted values
-        fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
-        fill!(fitted_trans, missing)
-        for t in 2:n
-            if isfinite(y_trans[t-1])
-                fitted_trans[t] = y_trans[t-1]
-            end
+        # R's lagwalk fill strategy:
+        # 1. Create lagged series: lagged[t] = y[t-lag]
+        # 2. At positions where y[t] is NA: if lagged[t] is also NA, fill with lagged[t-lag]
+        # 3. fitted[t] = lagged[t]
+
+        # Step 1: Create lagged series
+        lagged = fill(NaN, n)
+        for t in (lag+1):n
+            lagged[t] = y_trans[t-lag]
         end
 
-        # Forward-fill missing fitted values (like R's lagwalk)
-        for t in 2:n
-            if ismissing(fitted_trans[t]) && !isnan(x[t])
-                for k in (t-1):-1:2
-                    if !ismissing(fitted_trans[k])
-                        fitted_trans[t] = fitted_trans[k]
-                        break
-                    end
+        # Step 2: R's fill - at positions where y is NA, fill lagged if also NA
+        for t in (lag+1):n
+            if isnan(y_trans[t]) && isnan(lagged[t])
+                if t > lag && isfinite(lagged[t-lag])
+                    lagged[t] = lagged[t-lag]
                 end
             end
         end
 
+        # Step 3: Create fitted values from lagged series
+        fitted_trans = Vector{Union{Float64, Missing}}(undef, n)
+        fill!(fitted_trans, missing)
+        for t in (lag+1):n
+            if isfinite(lagged[t])
+                fitted_trans[t] = lagged[t]
+            end
+        end
+
+        # Compute residuals
         residuals_trans = Vector{Union{Float64, Missing}}(undef, n)
         fill!(residuals_trans, missing)
-        for t in 2:n
+        for t in (lag+1):n
             if !ismissing(fitted_trans[t]) && isfinite(y_trans[t])
                 residuals_trans[t] = y_trans[t] - fitted_trans[t]
             end

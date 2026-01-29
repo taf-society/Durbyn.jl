@@ -592,11 +592,13 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             @test isnan(fit.x[3])  # missing converted to NaN
             @test isnan(fit.x[6])
 
-            # With forward-fill (matching R), fitted[4] is filled from earlier value
-            # Fitted at t=4: y[3] is missing, so forward-fill from fitted[3] = y[2] = 2.0
-            @test fit.fitted[4] == 2.0
+            # R's lagwalk fill strategy: only fill lagged values at positions where y is NA
+            # y[4] is NOT NA, so lagged[4] = y[3] = NA stays missing
+            @test ismissing(fit.fitted[4])
             # Fitted at t=5 should use t=4 which is 4.0
             @test fit.fitted[5] == 4.0
+            # y[7] is NOT NA, so lagged[7] = y[6] = NA stays missing
+            @test ismissing(fit.fitted[7])
 
             fc = forecast(fit, h=5)
             @test all(isfinite.(fc.mean))
@@ -609,8 +611,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             @test fit isa NaiveFit
             # First 4 fitted values are missing (lag period)
             @test all(ismissing.(fit.fitted[1:4]))
-            # Fitted at t=5 uses t=1 which is missing, but y[5] is valid so forward-fill doesn't apply
-            # (forward-fill only applies when y[t] is not missing but fitted[t] would be missing)
+            # R's fill strategy: fill lagged at positions where y is NA
+            # y[5] is NOT NA, so lagged[5] = y[1] = NA stays missing
             @test ismissing(fit.fitted[5])
             # Fitted at t=6 uses t=2 which is 2.0
             @test fit.fitted[6] == 2.0

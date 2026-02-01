@@ -5,7 +5,7 @@ Core fitting logic for diffusion curve models.
 """
 
 """
-    diffusion_cost(params, y, Y, model_type, fixed_params, loss, cumulative, mscal_factor, ibound)
+    diffusion_cost(params, y, Y, model_type, fixed_params, loss, cumulative, mscal_factor)
 
 Compute the cost function for diffusion model optimization.
 
@@ -18,37 +18,29 @@ Compute the cost function for diffusion model optimization.
 - `loss::Int`: Loss function power (1=MAE, 2=MSE)
 - `cumulative::Bool`: Whether to optimize on cumulative values
 - `mscal_factor::Float64`: Market potential scaling factor
-- `ibound::Bool`: If true, use internal bounds check (for non-L-BFGS-B methods)
 
 # Returns
 Cost value (sum of errors raised to loss power).
 """
 function diffusion_cost(params::Vector{Float64}, y::Vector{Float64}, Y::Vector{Float64},
                         model_type::DiffusionModelType, fixed_params::Dict{Symbol, Float64},
-                        loss::Int, cumulative::Bool, mscal_factor::Float64, ibound::Bool)
+                        loss::Int, cumulative::Bool, mscal_factor::Float64)
     T = Float64
     n = length(y)
 
     # Reconstruct full parameter set
     full_params = _reconstruct_params(params, model_type, fixed_params, mscal_factor)
 
-    # Internal bounds check for non-L-BFGS-B methods (matches R's ibound behavior)
-    if ibound
-        for (k, v) in pairs(full_params)
-            if v <= 0
-                return T(1e200)
-            end
-        end
-    end
-
-    # Check for invalid parameters (NaN, Inf)
+    # Always check for positive parameters - diffusion curves require positive params
+    # This also handles the ibound case and protects against numerical gradient steps
+    # that might temporarily violate bounds
     for (k, v) in pairs(full_params)
-        if !isfinite(v)
+        if v <= 0 || !isfinite(v)
             return T(1e200)
         end
     end
 
-    # Generate curve
+    # Generate curve (now safe since all params are positive and finite)
     curve = get_curve(model_type, n, full_params)
 
     # Compute cost
@@ -337,22 +329,20 @@ function fit_diffusion(y::AbstractVector{<:Real};
     end
 
     # Handle bounds based on method (matches R's checkInit behavior)
-    # L-BFGS-B: uses explicit lower bounds, no internal bounds check
-    # Other methods: no explicit bounds, use internal bounds check in cost function
+    # L-BFGS-B: uses explicit lower bounds
+    # Other methods: no explicit bounds (cost function handles invalid params internally)
     if method == "L-BFGS-B"
         lower = fill(T(1e-9), length(x0))
         upper = fill(T(Inf), length(x0))
-        ibound = false
     else
         lower = fill(T(-Inf), length(x0))
         upper = fill(T(Inf), length(x0))
-        ibound = true
     end
 
     # Create objective function
     function objective(params)
         return diffusion_cost(params, y_clean, Y_clean, model_type,
-                             fixed_params, loss, cumulative, mscal_factor, ibound)
+                             fixed_params, loss, cumulative, mscal_factor)
     end
 
     # Optimize

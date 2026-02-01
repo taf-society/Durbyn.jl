@@ -182,8 +182,11 @@ Fit a diffusion model to adoption data.
 - `mscal::Bool=true`: Scale market parameter for optimization stability
 - `maxiter::Int=500`: Maximum optimization iterations
 - `method::String="L-BFGS-B"`: Optimization method
-- `initpar::String="linearize"`: Initialization method. "linearize" (default, matches R)
-  uses Bass optimization for Gompertz/GSGompertz init. "preset" uses fixed preset values.
+- `initpar`: Initialization method. Can be:
+  - `"linearize"` or `"linearise"` (default): analytical methods with Bass optimization
+    for Gompertz/GSGompertz init
+  - `"preset"`: fixed preset values
+  - `Vector{<:Real}`: numeric vector of initial parameter values (length must match model)
 
 # Returns
 `DiffusionFit` struct containing fitted parameters and diagnostics.
@@ -203,6 +206,9 @@ fit = fit_diffusion(y, model_type=Bass, w=(m=500.0, p=0.03, q=0.38))
 # Using L1 loss
 fit = fit_diffusion(y, loss=1)
 
+# Custom initial values (numeric vector)
+fit = fit_diffusion(y, model_type=Bass, initpar=[500.0, 0.03, 0.38])
+
 # Keep leading zeros in output
 y = [0, 0, 5, 10, 25, 45]
 fit = fit_diffusion(y, cleanlead=false)  # fitted values for full series
@@ -217,7 +223,7 @@ function fit_diffusion(y::AbstractVector{<:Real};
                        mscal::Bool=true,
                        maxiter::Int=500,
                        method::String="L-BFGS-B",
-                       initpar::String="linearize")
+                       initpar::Union{String, AbstractVector{<:Real}}="linearize")
 
     T = Float64
     y_original = collect(T.(y))
@@ -245,27 +251,43 @@ function fit_diffusion(y::AbstractVector{<:Real};
     Y_clean = cumsum(y_clean)
 
     # Get initial parameters
-    # initpar="linearize" (default): uses analytical methods with Bass optimization for
-    # Gompertz/GSGompertz (matches R's gompertzInit and gsgInit which call diffusionEstim).
-    # initpar="preset": uses fixed preset values (matches R's initpar="preset").
-    init_params = get_init(model_type, y_clean;
-                           initpar=initpar,
-                           loss=loss,
-                           mscal=mscal,
-                           method=method,
-                           maxiter=maxiter)
+    # Handle different initpar types (matches R behavior)
+    param_names = _get_param_names(model_type)
+    n_params = length(param_names)
+
+    if initpar isa AbstractVector
+        # Numeric init vector provided (matches R's is.numeric(initpar) path)
+        if length(initpar) != n_params
+            throw(ArgumentError("$model_type requires $n_params parameters for initpar, got $(length(initpar))"))
+        end
+        init_dict = Dict{Symbol, Float64}(param_names[i] => Float64(initpar[i]) for i in 1:n_params)
+        init_params = _dict_to_params(init_dict, model_type)
+        is_linearize = false
+    else
+        # String initpar - normalize spelling
+        initpar_norm = initpar == "linearise" ? "linearize" : initpar
+
+        init_params = get_init(model_type, y_clean;
+                               initpar=initpar_norm,
+                               loss=loss,
+                               mscal=mscal,
+                               method=method,
+                               maxiter=maxiter)
+        is_linearize = initpar_norm == "linearize"
+    end
 
     # R check: if init[1] < max(y) then init[1] = max(y)
-    # This ensures market potential is at least as large as observed max
-    max_y = maximum(y_clean)
-    if init_params.m < max_y
-        init_dict_check = _params_to_dict(init_params)
-        init_dict_check[:m] = max_y
-        init_params = _dict_to_params(init_dict_check, model_type)
+    # This only applies in the linearize path (not preset or numeric)
+    if is_linearize
+        max_y = maximum(y_clean)
+        if init_params.m < max_y
+            init_dict_check = _params_to_dict(init_params)
+            init_dict_check[:m] = max_y
+            init_params = _dict_to_params(init_dict_check, model_type)
+        end
     end
 
     # Determine which parameters to optimize vs fix
-    param_names = _get_param_names(model_type)
     fixed_params = Dict{Symbol, Float64}()
     opt_param_names = Symbol[]
 

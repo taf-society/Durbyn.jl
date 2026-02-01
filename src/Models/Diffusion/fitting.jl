@@ -5,7 +5,7 @@ Core fitting logic for diffusion curve models.
 """
 
 """
-    diffusion_cost(params, y, Y, model_type, fixed_params, loss, cumulative, mscal_factor)
+    diffusion_cost(params, y, Y, model_type, fixed_params, loss, cumulative, mscal_factor, ibound)
 
 Compute the cost function for diffusion model optimization.
 
@@ -18,23 +18,33 @@ Compute the cost function for diffusion model optimization.
 - `loss::Int`: Loss function power (1=MAE, 2=MSE)
 - `cumulative::Bool`: Whether to optimize on cumulative values
 - `mscal_factor::Float64`: Market potential scaling factor
+- `ibound::Bool`: If true, use internal bounds check (for non-L-BFGS-B methods)
 
 # Returns
 Cost value (sum of errors raised to loss power).
 """
 function diffusion_cost(params::Vector{Float64}, y::Vector{Float64}, Y::Vector{Float64},
                         model_type::DiffusionModelType, fixed_params::Dict{Symbol, Float64},
-                        loss::Int, cumulative::Bool, mscal_factor::Float64)
+                        loss::Int, cumulative::Bool, mscal_factor::Float64, ibound::Bool)
     T = Float64
     n = length(y)
 
     # Reconstruct full parameter set
     full_params = _reconstruct_params(params, model_type, fixed_params, mscal_factor)
 
-    # Check for invalid parameters
+    # Internal bounds check for non-L-BFGS-B methods (matches R's ibound behavior)
+    if ibound
+        for (k, v) in pairs(full_params)
+            if v <= 0
+                return T(1e200)
+            end
+        end
+    end
+
+    # Check for invalid parameters (NaN, Inf)
     for (k, v) in pairs(full_params)
-        if v <= 0 || !isfinite(v)
-            return T(1e20)
+        if !isfinite(v)
+            return T(1e200)
         end
     end
 
@@ -180,8 +190,8 @@ Fit a diffusion model to adoption data.
 - `mscal::Bool=true`: Scale market parameter for optimization stability
 - `maxiter::Int=500`: Maximum optimization iterations
 - `method::String="L-BFGS-B"`: Optimization method
-- `initpar::String="optim"`: Initialization method. "optim" uses full Bass optimization
-  for Gompertz/GSGompertz init (matches R behavior). "linearize" uses linear regression only.
+- `initpar::String="linearize"`: Initialization method. "linearize" (default, matches R)
+  uses Bass optimization for Gompertz/GSGompertz init. "preset" uses fixed preset values.
 
 # Returns
 `DiffusionFit` struct containing fitted parameters and diagnostics.
@@ -215,7 +225,7 @@ function fit_diffusion(y::AbstractVector{<:Real};
                        mscal::Bool=true,
                        maxiter::Int=500,
                        method::String="L-BFGS-B",
-                       initpar::String="optim")
+                       initpar::String="linearize")
 
     T = Float64
     y_original = collect(T.(y))
@@ -243,13 +253,16 @@ function fit_diffusion(y::AbstractVector{<:Real};
     Y_clean = cumsum(y_clean)
 
     # Get initial parameters
-    # use_bass_optim=true matches R's default "linearize" which actually runs Bass optimization
-    # for Gompertz/GSGompertz init (see R's gompertzInit and gsgInit)
-    use_bass_optim = (initpar == "optim")
+    # In R, initpar="linearize" (default) still runs Bass optimization for Gompertz/GSGompertz
+    # init (see R's gompertzInit and gsgInit which call diffusionEstim with type="bass").
+    # "preset" uses fixed preset values without optimization.
+    use_bass_optim = (initpar == "linearize")
     init_params = get_init(model_type, y_clean;
                            use_bass_optim=use_bass_optim,
                            loss=loss,
-                           mscal=mscal)
+                           mscal=mscal,
+                           method=method,
+                           maxiter=maxiter)
 
     # R check: if init[1] < max(y) then init[1] = max(y)
     # This ensures market potential is at least as large as observed max
@@ -311,8 +324,6 @@ function fit_diffusion(y::AbstractVector{<:Real};
     # Build initial parameter vector for optimization
     init_dict = _params_to_dict(init_params)
     x0 = T[]
-    lower = T[]
-    upper = T[]
 
     for name in param_names
         if !(name in keys(fixed_params))
@@ -322,17 +333,26 @@ function fit_diffusion(y::AbstractVector{<:Real};
                 val = val / mscal_factor
             end
             push!(x0, val)
-
-            # Set bounds (match R: only lower bound of 1e-9 for L-BFGS-B, no upper bounds)
-            push!(lower, T(1e-9))
-            push!(upper, T(Inf))
         end
+    end
+
+    # Handle bounds based on method (matches R's checkInit behavior)
+    # L-BFGS-B: uses explicit lower bounds, no internal bounds check
+    # Other methods: no explicit bounds, use internal bounds check in cost function
+    if method == "L-BFGS-B"
+        lower = fill(T(1e-9), length(x0))
+        upper = fill(T(Inf), length(x0))
+        ibound = false
+    else
+        lower = fill(T(-Inf), length(x0))
+        upper = fill(T(Inf), length(x0))
+        ibound = true
     end
 
     # Create objective function
     function objective(params)
         return diffusion_cost(params, y_clean, Y_clean, model_type,
-                             fixed_params, loss, cumulative, mscal_factor)
+                             fixed_params, loss, cumulative, mscal_factor, ibound)
     end
 
     # Optimize

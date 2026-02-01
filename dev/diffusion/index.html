@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Diffusion · Durbyn.jl</title><meta name="title" content="Diffusion · Durbyn.jl"/><meta property="og:title" content="Diffusion · Durbyn.jl"/><meta property="twitter:title" content="Diffusion · Durbyn.jl"/><meta name="description" content="Documentation for Durbyn.jl."/><meta property="og:description" content="Documentation for Durbyn.jl."/><meta property="twitter:description" content="Documentation for Durbyn.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script><link href="../assets/theme.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="Durbyn.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../">Durbyn.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../quickstart/">Quick Start</a></li><li><span class="tocitem">User Guide</span><ul><li><a class="tocitem" href="../grammar/">Grammar</a></li><li><a class="tocitem" href="../naive/">Naive Methods</a></li><li><a class="tocitem" href="../expsmoothing/">Exponential Smoothing</a></li><li><a class="tocitem" href="../theta/">Theta</a></li><li><a class="tocitem" href="../bats/">BATS</a></li><li><a class="tocitem" href="../tbats/">TBATS</a></li><li><a class="tocitem" href="../intermittent/">Intermittent Demand</a></li><li><a class="tocitem" href="../arima/">ARIMA</a></li><li class="is-active"><a class="tocitem" href>Diffusion</a><ul class="internal"><li><a class="tocitem" href="#Theory-and-Background"><span>Theory and Background</span></a></li><li><a class="tocitem" href="#Model-Types"><span>Model Types</span></a></li><li><a class="tocitem" href="#Parameter-Initialization"><span>Parameter Initialization</span></a></li><li><a class="tocitem" href="#Usage"><span>Usage</span></a></li><li><a class="tocitem" href="#Accessing-Fitted-Results"><span>Accessing Fitted Results</span></a></li><li><a class="tocitem" href="#Bass-Model-Decomposition"><span>Bass Model Decomposition</span></a></li><li><a class="tocitem" href="#Curve-Generation-Functions"><span>Curve Generation Functions</span></a></li><li><a class="tocitem" href="#Model-Comparison-Example"><span>Model Comparison Example</span></a></li><li><a class="tocitem" href="#Use-Cases"><span>Use Cases</span></a></li><li><a class="tocitem" href="#API-Reference"><span>API Reference</span></a></li><li><a class="tocitem" href="#References"><span>References</span></a></li></ul></li><li><a class="tocitem" href="../arar/">ARAR</a></li><li><a class="tocitem" href="../ararma/">ARARMA</a></li><li><a class="tocitem" href="../stats/">Statistics</a></li><li><a class="tocitem" href="../optimize/">Optimization</a></li><li><a class="tocitem" href="../utils/">Utilities</a></li><li><a class="tocitem" href="../tableops/">Table Operations</a></li></ul></li><li><a class="tocitem" href="../api/">API Reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">User Guide</a></li><li class="is-active"><a href>Diffusion</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Diffusion</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/taf-society/Durbyn.jl/blob/main/docs/src/diffusion.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Diffusion-Models:-Technology-Adoption-and-Market-Penetration-Forecasting"><a class="docs-heading-anchor" href="#Diffusion-Models:-Technology-Adoption-and-Market-Penetration-Forecasting">Diffusion Models: Technology Adoption and Market Penetration Forecasting</a><a id="Diffusion-Models:-Technology-Adoption-and-Market-Penetration-Forecasting-1"></a><a class="docs-heading-anchor-permalink" href="#Diffusion-Models:-Technology-Adoption-and-Market-Penetration-Forecasting" title="Permalink"></a></h1><p>Diffusion models are specialized forecasting tools designed to predict <strong>technology adoption</strong>, <strong>market penetration</strong>, and <strong>product life cycle dynamics</strong>. Unlike traditional time series methods that model temporal autocorrelation, diffusion models capture the underlying social dynamics of how innovations spread through a population.</p><p>Durbyn implements four classic diffusion models:</p><table><tr><th style="text-align: right">Model</th><th style="text-align: right">Best For</th><th style="text-align: right">Key Feature</th></tr><tr><td style="text-align: right"><strong>Bass</strong></td><td style="text-align: right">New product forecasting</td><td style="text-align: right">Separates innovators from imitators</td></tr><tr><td style="text-align: right"><strong>Gompertz</strong></td><td style="text-align: right">Biological/market growth</td><td style="text-align: right">Asymmetric S-curve with early inflection</td></tr><tr><td style="text-align: right"><strong>GSGompertz</strong></td><td style="text-align: right">Flexible adoption patterns</td><td style="text-align: right">Generalized shape control</td></tr><tr><td style="text-align: right"><strong>Weibull</strong></td><td style="text-align: right">Reliability/lifetime analysis</td><td style="text-align: right">Distribution-based flexibility</td></tr></table><hr/><h2 id="Theory-and-Background"><a class="docs-heading-anchor" href="#Theory-and-Background">Theory and Background</a><a id="Theory-and-Background-1"></a><a class="docs-heading-anchor-permalink" href="#Theory-and-Background" title="Permalink"></a></h2><p>Diffusion of innovations theory (Rogers, 1962) describes how new ideas and technologies spread through social systems. The adoption process typically follows an S-curve pattern:</p><ol><li><strong>Introduction phase</strong>: Few early adopters (innovators)</li><li><strong>Growth phase</strong>: Rapid adoption as word-of-mouth spreads</li><li><strong>Maturity phase</strong>: Market saturation approaches</li><li><strong>Saturation</strong>: Adoption levels off at market potential</li></ol><p>Diffusion models mathematically capture this dynamic by modeling cumulative adoption as a function of time and market potential.</p><hr/><h2 id="Model-Types"><a class="docs-heading-anchor" href="#Model-Types">Model Types</a><a id="Model-Types-1"></a><a class="docs-heading-anchor-permalink" href="#Model-Types" title="Permalink"></a></h2><h3 id="1.-Bass-Diffusion-Model"><a class="docs-heading-anchor" href="#1.-Bass-Diffusion-Model">1. Bass Diffusion Model</a><a id="1.-Bass-Diffusion-Model-1"></a><a class="docs-heading-anchor-permalink" href="#1.-Bass-Diffusion-Model" title="Permalink"></a></h3><p>The <strong>Bass model</strong> (Bass, 1969) is the most widely used diffusion model in marketing science. It explicitly models two adoption mechanisms:</p><ul><li><strong>Innovation effect</strong> (coefficient <code>p</code>): External influence from mass media, advertising</li><li><strong>Imitation effect</strong> (coefficient <code>q</code>): Internal influence from word-of-mouth, social contagion</li></ul><h4 id="Mathematical-Formulation"><a class="docs-heading-anchor" href="#Mathematical-Formulation">Mathematical Formulation</a><a id="Mathematical-Formulation-1"></a><a class="docs-heading-anchor-permalink" href="#Mathematical-Formulation" title="Permalink"></a></h4><p><strong>Cumulative adoption:</strong></p><p class="math-container">\[A_t = m \cdot \frac{1 - e^{-(p+q)t}}{1 + \frac{q}{p} e^{-(p+q)t}}\]</p><p><strong>Adoption per period (first differences):</strong></p><p class="math-container">\[a_t = A_t - A_{t-1}\]</p><p><strong>Hazard rate interpretation:</strong></p><p class="math-container">\[\frac{f(t)}{1-F(t)} = p + q \cdot F(t)\]</p><p>where the probability of adoption at time <code>t</code> given non-adoption is linear in cumulative adoption.</p><h4 id="Parameters"><a class="docs-heading-anchor" href="#Parameters">Parameters</a><a id="Parameters-1"></a><a class="docs-heading-anchor-permalink" href="#Parameters" title="Permalink"></a></h4><table><tr><th style="text-align: right">Parameter</th><th style="text-align: right">Symbol</th><th style="text-align: right">Description</th><th style="text-align: right">Typical Range</th></tr><tr><td style="text-align: right">Market potential</td><td style="text-align: right"><code>m</code></td><td style="text-align: right">Total eventual adopters</td><td style="text-align: right">&gt; max(cumsum(y))</td></tr><tr><td style="text-align: right">Innovation coefficient</td><td style="text-align: right"><code>p</code></td><td style="text-align: right">External influence rate</td><td style="text-align: right">0.001 - 0.1</td></tr><tr><td style="text-align: right">Imitation coefficient</td><td style="text-align: right"><code>q</code></td><td style="text-align: right">Internal influence rate</td><td style="text-align: right">0.1 - 0.5</td></tr></table><p><strong>Key insight</strong>: The ratio <code>q/p</code> determines the shape of the adoption curve. Higher ratios produce more pronounced peaks.</p><h4 id="Decomposition"><a class="docs-heading-anchor" href="#Decomposition">Decomposition</a><a id="Decomposition-1"></a><a class="docs-heading-anchor-permalink" href="#Decomposition" title="Permalink"></a></h4><p>The Bass model uniquely provides decomposition of adoption into innovator and imitator components:</p><p class="math-container">\[\text{Innovators}_t = p \cdot (m - A_t)\]</p><p class="math-container">\[\text{Imitators}_t = a_t - \text{Innovators}_t\]</p><hr/><h3 id="2.-Gompertz-Growth-Curve"><a class="docs-heading-anchor" href="#2.-Gompertz-Growth-Curve">2. Gompertz Growth Curve</a><a id="2.-Gompertz-Growth-Curve-1"></a><a class="docs-heading-anchor-permalink" href="#2.-Gompertz-Growth-Curve" title="Permalink"></a></h3><p>The <strong>Gompertz model</strong> (Gompertz, 1825) produces an asymmetric S-curve with the inflection point occurring earlier than the midpoint. Originally developed for mortality modeling, it&#39;s widely used for biological and market growth phenomena.</p><h4 id="Mathematical-Formulation-2"><a class="docs-heading-anchor" href="#Mathematical-Formulation-2">Mathematical Formulation</a><a class="docs-heading-anchor-permalink" href="#Mathematical-Formulation-2" title="Permalink"></a></h4><p><strong>Cumulative adoption:</strong></p><p class="math-container">\[A_t = m \cdot e^{-a \cdot e^{-b \cdot t}}\]</p><p><strong>Adoption per period:</strong></p><p class="math-container">\[a_t = m \cdot a \cdot b \cdot e^{-bt} \cdot e^{-a \cdot e^{-bt}}\]</p><h4 id="Parameters-2"><a class="docs-heading-anchor" href="#Parameters-2">Parameters</a><a class="docs-heading-anchor-permalink" href="#Parameters-2" title="Permalink"></a></h4><table><tr><th style="text-align: right">Parameter</th><th style="text-align: right">Symbol</th><th style="text-align: right">Description</th><th style="text-align: right">Effect</th></tr><tr><td style="text-align: right">Market potential</td><td style="text-align: right"><code>m</code></td><td style="text-align: right">Asymptotic maximum</td><td style="text-align: right">Upper bound of curve</td></tr><tr><td style="text-align: right">Displacement</td><td style="text-align: right"><code>a</code></td><td style="text-align: right">X-axis translation</td><td style="text-align: right">Shifts curve horizontally</td></tr><tr><td style="text-align: right">Growth rate</td><td style="text-align: right"><code>b</code></td><td style="text-align: right">Steepness parameter</td><td style="text-align: right">Controls adoption speed</td></tr></table><p><strong>Key property</strong>: The inflection point occurs at <code>t* = ln(a)/b</code> when cumulative adoption reaches <code>m/e ≈ 0.368m</code>.</p><hr/><h3 id="3.-Gamma/Shifted-Gompertz-(GSGompertz)"><a class="docs-heading-anchor" href="#3.-Gamma/Shifted-Gompertz-(GSGompertz)">3. Gamma/Shifted Gompertz (GSGompertz)</a><a id="3.-Gamma/Shifted-Gompertz-(GSGompertz)-1"></a><a class="docs-heading-anchor-permalink" href="#3.-Gamma/Shifted-Gompertz-(GSGompertz)" title="Permalink"></a></h3><p>The <strong>Gamma/Shifted Gompertz</strong> model (Bemmaor, 1994) generalizes the Bass model by allowing heterogeneity in the imitation coefficient across adopters. This produces more flexible curve shapes.</p><h4 id="Mathematical-Formulation-3"><a class="docs-heading-anchor" href="#Mathematical-Formulation-3">Mathematical Formulation</a><a class="docs-heading-anchor-permalink" href="#Mathematical-Formulation-3" title="Permalink"></a></h4><p><strong>Cumulative adoption:</strong></p><p class="math-container">\[A_t = m \cdot (1 - e^{-bt})(1 + a \cdot e^{-bt})^{-c}\]</p><h4 id="Parameters-3"><a class="docs-heading-anchor" href="#Parameters-3">Parameters</a><a class="docs-heading-anchor-permalink" href="#Parameters-3" title="Permalink"></a></h4><table><tr><th style="text-align: right">Parameter</th><th style="text-align: right">Symbol</th><th style="text-align: right">Description</th><th style="text-align: right">Special Cases</th></tr><tr><td style="text-align: right">Market potential</td><td style="text-align: right"><code>m</code></td><td style="text-align: right">Total eventual adopters</td><td style="text-align: right">-</td></tr><tr><td style="text-align: right">Shape</td><td style="text-align: right"><code>a</code></td><td style="text-align: right">Heterogeneity parameter</td><td style="text-align: right"><code>a = p/q</code> (Bass relation)</td></tr><tr><td style="text-align: right">Scale</td><td style="text-align: right"><code>b</code></td><td style="text-align: right">Rate parameter</td><td style="text-align: right"><code>b = p + q</code> (Bass relation)</td></tr><tr><td style="text-align: right">Shift</td><td style="text-align: right"><code>c</code></td><td style="text-align: right">Distribution parameter</td><td style="text-align: right"><code>c = 1</code> gives Bass-like curve</td></tr></table><p><strong>Connection to Bass</strong>: When <code>c = 1</code>, the GSGompertz reduces to a form equivalent to the Bass model with <code>a = p/q</code> and <code>b = p + q</code>.</p><hr/><h3 id="4.-Weibull-Distribution-Model"><a class="docs-heading-anchor" href="#4.-Weibull-Distribution-Model">4. Weibull Distribution Model</a><a id="4.-Weibull-Distribution-Model-1"></a><a class="docs-heading-anchor-permalink" href="#4.-Weibull-Distribution-Model" title="Permalink"></a></h3><p>The <strong>Weibull model</strong> (Sharif &amp; Islam, 1980) uses the Weibull cumulative distribution function for adoption modeling. It&#39;s particularly useful when adoption follows reliability/lifetime distribution patterns.</p><h4 id="Mathematical-Formulation-4"><a class="docs-heading-anchor" href="#Mathematical-Formulation-4">Mathematical Formulation</a><a class="docs-heading-anchor-permalink" href="#Mathematical-Formulation-4" title="Permalink"></a></h4><p><strong>Cumulative adoption:</strong></p><p class="math-container">\[A_t = m \cdot \left(1 - e^{-(t/a)^b}\right)\]</p><p><strong>Adoption per period:</strong></p><p class="math-container">\[a_t = \frac{m \cdot b}{a} \cdot \left(\frac{t}{a}\right)^{b-1} \cdot e^{-(t/a)^b}\]</p><h4 id="Parameters-4"><a class="docs-heading-anchor" href="#Parameters-4">Parameters</a><a class="docs-heading-anchor-permalink" href="#Parameters-4" title="Permalink"></a></h4><table><tr><th style="text-align: right">Parameter</th><th style="text-align: right">Symbol</th><th style="text-align: right">Description</th><th style="text-align: right">Shape Effect</th></tr><tr><td style="text-align: right">Market potential</td><td style="text-align: right"><code>m</code></td><td style="text-align: right">Total eventual adopters</td><td style="text-align: right">Upper bound</td></tr><tr><td style="text-align: right">Scale</td><td style="text-align: right"><code>a</code></td><td style="text-align: right">Characteristic life</td><td style="text-align: right">Stretches/compresses time</td></tr><tr><td style="text-align: right">Shape</td><td style="text-align: right"><code>b</code></td><td style="text-align: right">Shape parameter</td><td style="text-align: right"><code>b &lt; 1</code>: decreasing hazard; <code>b = 1</code>: exponential; <code>b &gt; 1</code>: increasing hazard</td></tr></table><hr/><h2 id="Parameter-Initialization"><a class="docs-heading-anchor" href="#Parameter-Initialization">Parameter Initialization</a><a id="Parameter-Initialization-1"></a><a class="docs-heading-anchor-permalink" href="#Parameter-Initialization" title="Permalink"></a></h2><p>Durbyn provides two initialization strategies for optimization:</p><h3 id="Linearize-(Default)"><a class="docs-heading-anchor" href="#Linearize-(Default)">Linearize (Default)</a><a id="Linearize-(Default)-1"></a><a class="docs-heading-anchor-permalink" href="#Linearize-(Default)" title="Permalink"></a></h3><p>Uses analytical methods to compute starting values:</p><ul><li><strong>Bass</strong>: Linear regression on <code>y ~ Y + Y²</code> where <code>Y = cumsum(y)</code>, solving the resulting quadratic</li><li><strong>Gompertz</strong>: Jukic et al. (2004) three-point method with Bass optimization for <code>m</code></li><li><strong>GSGompertz</strong>: Derives from Bass parameters using Bemmaor&#39;s conversion formulas</li><li><strong>Weibull</strong>: Median-ranked OLS using Bernard&#39;s approximation</li></ul><h3 id="Preset"><a class="docs-heading-anchor" href="#Preset">Preset</a><a id="Preset-1"></a><a class="docs-heading-anchor-permalink" href="#Preset" title="Permalink"></a></h3><p>Uses fixed starting values (useful when analytical methods fail):</p><table><tr><th style="text-align: right">Model</th><th style="text-align: right">Preset Values</th></tr><tr><td style="text-align: right">Bass</td><td style="text-align: right"><code>m=0.5, p=0.5, q=0.5</code> (scaled by <code>10*sum(y)</code> for <code>m</code>)</td></tr><tr><td style="text-align: right">Gompertz</td><td style="text-align: right"><code>m=1, a=1, b=1</code> (scaled)</td></tr><tr><td style="text-align: right">GSGompertz</td><td style="text-align: right"><code>m=0.5, a=0.5, b=0.5, c=0.5</code> (scaled)</td></tr><tr><td style="text-align: right">Weibull</td><td style="text-align: right"><code>m=0.5, a=0.5, b=0.5</code> (scaled)</td></tr></table><hr/><h2 id="Usage"><a class="docs-heading-anchor" href="#Usage">Usage</a><a id="Usage-1"></a><a class="docs-heading-anchor-permalink" href="#Usage" title="Permalink"></a></h2><h3 id="Basic-Fitting"><a class="docs-heading-anchor" href="#Basic-Fitting">Basic Fitting</a><a id="Basic-Fitting-1"></a><a class="docs-heading-anchor-permalink" href="#Basic-Fitting" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn
+using Durbyn.Diffusion
+
+# Sample adoption data (units per period)
+y = [5, 10, 25, 45, 70, 85, 75, 50, 30, 15]
+
+# Fit Bass diffusion model (default)
+fit = diffusion(y)
+# Or equivalently:
+fit = diffusion(y, model_type=Bass)
+
+# View results
+println(fit)</code></pre><p><strong>Output:</strong></p><pre><code class="nohighlight hljs">Diffusion Model (Bass)
+─────────────────────────────
+Observations: 10
+Parameters:
+  m: 485.123456
+  p: 0.032145
+  q: 0.387654
+MSE: 12.345678
+Loss function: L2
+Optimized on: cumulative</code></pre><h3 id="Fitting-Different-Model-Types"><a class="docs-heading-anchor" href="#Fitting-Different-Model-Types">Fitting Different Model Types</a><a id="Fitting-Different-Model-Types-1"></a><a class="docs-heading-anchor-permalink" href="#Fitting-Different-Model-Types" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Gompertz model
+fit_gomp = diffusion(y, model_type=Gompertz)
+
+# Gamma/Shifted Gompertz
+fit_gsg = diffusion(y, model_type=GSGompertz)
+
+# Weibull model
+fit_weib = diffusion(y, model_type=Weibull)</code></pre><h3 id="Forecasting"><a class="docs-heading-anchor" href="#Forecasting">Forecasting</a><a id="Forecasting-1"></a><a class="docs-heading-anchor-permalink" href="#Forecasting" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Fit model
+fit = diffusion(y, model_type=Bass)
+
+# Generate 5-period forecast
+fc = forecast(fit, h=5)
+
+# Access results
+fc.mean        # Point forecasts
+fc.lower[1]    # 80% lower prediction bounds
+fc.lower[2]    # 95% lower prediction bounds
+fc.upper[1]    # 80% upper prediction bounds
+fc.upper[2]    # 95% upper prediction bounds
+
+# Plot forecast
+plot(fc)</code></pre><h3 id="Prediction-at-Specific-Time-Points"><a class="docs-heading-anchor" href="#Prediction-at-Specific-Time-Points">Prediction at Specific Time Points</a><a id="Prediction-at-Specific-Time-Points-1"></a><a class="docs-heading-anchor-permalink" href="#Prediction-at-Specific-Time-Points" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Predict adoption for periods 1-20
+fit = diffusion(y, model_type=Bass)
+pred = predict(fit, 1:20)
+
+pred.adoption      # Adoption per period
+pred.cumulative    # Cumulative adoption</code></pre><h3 id="Fixed-Parameters"><a class="docs-heading-anchor" href="#Fixed-Parameters">Fixed Parameters</a><a id="Fixed-Parameters-1"></a><a class="docs-heading-anchor-permalink" href="#Fixed-Parameters" title="Permalink"></a></h3><p>Fix specific parameters while estimating others:</p><pre><code class="language-julia hljs"># Fix market potential at 500, estimate p and q
+fit = diffusion(y, model_type=Bass, w=(m=500.0, p=nothing, q=nothing))
+
+# Fix innovation coefficient, estimate m and q
+fit = diffusion(y, model_type=Bass, w=(m=nothing, p=0.03, q=nothing))
+
+# Fix all parameters (compute fit only)
+fit = diffusion(y, model_type=Bass, w=(m=500.0, p=0.03, q=0.38))</code></pre><h3 id="Custom-Initial-Values"><a class="docs-heading-anchor" href="#Custom-Initial-Values">Custom Initial Values</a><a id="Custom-Initial-Values-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Initial-Values" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Provide numeric initial values
+fit = diffusion(y, model_type=Bass, initpar=[500.0, 0.03, 0.38])
+
+# Use preset initialization
+fit = diffusion(y, model_type=Bass, initpar=&quot;preset&quot;)</code></pre><h3 id="Loss-Functions"><a class="docs-heading-anchor" href="#Loss-Functions">Loss Functions</a><a id="Loss-Functions-1"></a><a class="docs-heading-anchor-permalink" href="#Loss-Functions" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Mean Squared Error (default)
+fit_mse = diffusion(y, loss=2)
+
+# Mean Absolute Error (more robust to outliers)
+fit_mae = diffusion(y, loss=1)</code></pre><h3 id="Handling-Leading-Zeros"><a class="docs-heading-anchor" href="#Handling-Leading-Zeros">Handling Leading Zeros</a><a id="Handling-Leading-Zeros-1"></a><a class="docs-heading-anchor-permalink" href="#Handling-Leading-Zeros" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Data with leading zeros (common in early adoption)
+y = [0, 0, 0, 5, 10, 25, 45, 70, 85, 75]
+
+# Remove leading zeros before fitting (default)
+fit = diffusion(y, cleanlead=true)
+println(&quot;Offset: $(fit.offset)&quot;)  # Number of zeros removed
+
+# Keep leading zeros
+fit = diffusion(y, cleanlead=false)</code></pre><h3 id="Optimization-Options"><a class="docs-heading-anchor" href="#Optimization-Options">Optimization Options</a><a id="Optimization-Options-1"></a><a class="docs-heading-anchor-permalink" href="#Optimization-Options" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Custom optimization settings
+fit = diffusion(y,
+    model_type=Bass,
+    method=&quot;L-BFGS-B&quot;,     # Optimization algorithm
+    maxiter=1000,          # Maximum iterations
+    mscal=true,            # Scale market potential for stability
+    cumulative=true        # Optimize on cumulative values
+)</code></pre><hr/><h2 id="Accessing-Fitted-Results"><a class="docs-heading-anchor" href="#Accessing-Fitted-Results">Accessing Fitted Results</a><a id="Accessing-Fitted-Results-1"></a><a class="docs-heading-anchor-permalink" href="#Accessing-Fitted-Results" title="Permalink"></a></h2><p>The <code>DiffusionFit</code> struct contains comprehensive model information:</p><pre><code class="language-julia hljs">fit = diffusion(y, model_type=Bass)
+
+# Model type
+fit.model_type        # Bass, Gompertz, GSGompertz, or Weibull
+
+# Fitted parameters
+fit.params            # NamedTuple: (m=..., p=..., q=...) for Bass
+fit.params.m          # Market potential
+fit.params.p          # Innovation coefficient (Bass)
+fit.params.q          # Imitation coefficient (Bass)
+
+# Fitted values
+fit.fitted            # Fitted adoption per period
+fit.cumulative        # Fitted cumulative adoption
+fit.residuals         # Residuals (actual - fitted)
+
+# Diagnostics
+fit.mse               # Mean squared error
+fit.loss              # Loss function used (1=MAE, 2=MSE)
+fit.optim_cumulative  # Whether optimized on cumulative
+
+# Data
+fit.y                 # Cleaned data (after removing leading zeros)
+fit.y_original        # Original data
+fit.offset            # Number of leading zeros removed
+
+# Initialization
+fit.init_params       # Initial parameters before optimization</code></pre><hr/><h2 id="Bass-Model-Decomposition"><a class="docs-heading-anchor" href="#Bass-Model-Decomposition">Bass Model Decomposition</a><a id="Bass-Model-Decomposition-1"></a><a class="docs-heading-anchor-permalink" href="#Bass-Model-Decomposition" title="Permalink"></a></h2><p>The Bass model uniquely provides innovator/imitator decomposition:</p><pre><code class="language-julia hljs">using Durbyn.Diffusion
+
+# Generate Bass curve with decomposition
+n = 20
+m, p, q = 1000.0, 0.03, 0.38
+
+curve = bass_curve(n, m, p, q)
+
+curve.cumulative    # Cumulative adoption
+curve.adoption      # Adoption per period
+curve.innovators    # Innovation component
+curve.imitators     # Imitation component
+
+# Verify: adoption = innovators + imitators
+all(curve.adoption .≈ curve.innovators .+ curve.imitators)  # true</code></pre><hr/><h2 id="Curve-Generation-Functions"><a class="docs-heading-anchor" href="#Curve-Generation-Functions">Curve Generation Functions</a><a id="Curve-Generation-Functions-1"></a><a class="docs-heading-anchor-permalink" href="#Curve-Generation-Functions" title="Permalink"></a></h2><p>Generate theoretical diffusion curves for visualization or analysis:</p><pre><code class="language-julia hljs">using Durbyn.Diffusion
+
+# Bass curve
+curve = bass_curve(50, 1000.0, 0.03, 0.38)
+
+# Gompertz curve
+curve = gompertz_curve(50, 1000.0, 5.0, 0.3)
+
+# GSGompertz curve
+curve = gsgompertz_curve(50, 1000.0, 0.08, 0.41, 1.0)
+
+# Weibull curve
+curve = weibull_curve(50, 1000.0, 15.0, 2.5)
+
+# All return NamedTuple with:
+# - cumulative: Vector of cumulative adoption
+# - adoption: Vector of adoption per period
+# - (Bass only) innovators, imitators: Decomposition</code></pre><hr/><h2 id="Model-Comparison-Example"><a class="docs-heading-anchor" href="#Model-Comparison-Example">Model Comparison Example</a><a id="Model-Comparison-Example-1"></a><a class="docs-heading-anchor-permalink" href="#Model-Comparison-Example" title="Permalink"></a></h2><pre><code class="language-julia hljs">using Durbyn
+using Durbyn.Diffusion
+
+# Historical smartphone adoption data (millions of units)
+y = [2, 8, 25, 55, 95, 140, 175, 195, 205, 210, 212, 213]
+
+# Fit all four models
+models = Dict(
+    &quot;Bass&quot; =&gt; diffusion(y, model_type=Bass),
+    &quot;Gompertz&quot; =&gt; diffusion(y, model_type=Gompertz),
+    &quot;GSGompertz&quot; =&gt; diffusion(y, model_type=GSGompertz),
+    &quot;Weibull&quot; =&gt; diffusion(y, model_type=Weibull)
+)
+
+# Compare MSE
+for (name, fit) in models
+    println(&quot;$name MSE: $(round(fit.mse, digits=2))&quot;)
+end
+
+# Forecast with best model
+best_model = argmin(Dict(k =&gt; v.mse for (k, v) in models))
+fc = forecast(models[best_model], h=5)
+println(&quot;\nBest model: $best_model&quot;)
+println(&quot;Forecast: $(round.(fc.mean, digits=1))&quot;)</code></pre><hr/><h2 id="Use-Cases"><a class="docs-heading-anchor" href="#Use-Cases">Use Cases</a><a id="Use-Cases-1"></a><a class="docs-heading-anchor-permalink" href="#Use-Cases" title="Permalink"></a></h2><h3 id="New-Product-Launch-Forecasting"><a class="docs-heading-anchor" href="#New-Product-Launch-Forecasting">New Product Launch Forecasting</a><a id="New-Product-Launch-Forecasting-1"></a><a class="docs-heading-anchor-permalink" href="#New-Product-Launch-Forecasting" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Early sales data for new product (units/month)
+sales = [100, 250, 580, 1200, 2100, 3500, 5200, 6800]
+
+# Fit Bass model
+fit = diffusion(sales, model_type=Bass)
+
+# Forecast remaining product lifecycle
+fc = forecast(fit, h=24)
+
+# Key insights
+println(&quot;Estimated market potential: $(round(fit.params.m)) units&quot;)
+println(&quot;Innovation coefficient (p): $(round(fit.params.p, digits=4))&quot;)
+println(&quot;Imitation coefficient (q): $(round(fit.params.q, digits=4))&quot;)
+println(&quot;Peak period (estimated): period $(argmax(fc.mean) + length(sales))&quot;)</code></pre><h3 id="Technology-Adoption-Analysis"><a class="docs-heading-anchor" href="#Technology-Adoption-Analysis">Technology Adoption Analysis</a><a id="Technology-Adoption-Analysis-1"></a><a class="docs-heading-anchor-permalink" href="#Technology-Adoption-Analysis" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Annual internet user growth (millions)
+users = [16, 36, 70, 147, 248, 361, 513, 719, 1018, 1319]
+
+# Compare models
+fit_bass = diffusion(users, model_type=Bass)
+fit_gomp = diffusion(users, model_type=Gompertz)
+
+# Bass provides adoption dynamics insight
+println(&quot;Innovation effect (p): $(round(fit_bass.params.p, digits=4))&quot;)
+println(&quot;Imitation effect (q): $(round(fit_bass.params.q, digits=4))&quot;)
+println(&quot;Word-of-mouth multiplier (q/p): $(round(fit_bass.params.q/fit_bass.params.p, digits=1))x&quot;)</code></pre><h3 id="Market-Saturation-Analysis"><a class="docs-heading-anchor" href="#Market-Saturation-Analysis">Market Saturation Analysis</a><a id="Market-Saturation-Analysis-1"></a><a class="docs-heading-anchor-permalink" href="#Market-Saturation-Analysis" title="Permalink"></a></h3><pre><code class="language-julia hljs"># EV adoption data
+ev_sales = [15, 45, 120, 280, 550, 920, 1400, 1950]
+
+fit = diffusion(ev_sales, model_type=Bass)
+
+# Current penetration
+current_cumulative = sum(ev_sales)
+market_potential = fit.params.m
+penetration = current_cumulative / market_potential * 100
+
+println(&quot;Market potential: $(round(market_potential)) units&quot;)
+println(&quot;Current penetration: $(round(penetration, digits=1))%&quot;)
+println(&quot;Remaining market: $(round(market_potential - current_cumulative)) units&quot;)</code></pre><hr/><h2 id="API-Reference"><a class="docs-heading-anchor" href="#API-Reference">API Reference</a><a id="API-Reference-1"></a><a class="docs-heading-anchor-permalink" href="#API-Reference" title="Permalink"></a></h2><h3 id="Main-Functions"><a class="docs-heading-anchor" href="#Main-Functions">Main Functions</a><a id="Main-Functions-1"></a><a class="docs-heading-anchor-permalink" href="#Main-Functions" title="Permalink"></a></h3><pre><code class="language-julia hljs"># Fit diffusion model
+diffusion(y; model_type=Bass, kwargs...) -&gt; DiffusionFit
+fit_diffusion(y; model_type=Bass, kwargs...) -&gt; DiffusionFit
+
+# Generate forecast
+forecast(fit::DiffusionFit; h::Int, level=[80, 95]) -&gt; Forecast
+
+# Predict at specific times
+predict(fit::DiffusionFit, t::AbstractVector) -&gt; NamedTuple</code></pre><h3 id="Curve-Generation"><a class="docs-heading-anchor" href="#Curve-Generation">Curve Generation</a><a id="Curve-Generation-1"></a><a class="docs-heading-anchor-permalink" href="#Curve-Generation" title="Permalink"></a></h3><pre><code class="language-julia hljs">bass_curve(n, m, p, q) -&gt; NamedTuple
+gompertz_curve(n, m, a, b) -&gt; NamedTuple
+gsgompertz_curve(n, m, a, b, c) -&gt; NamedTuple
+weibull_curve(n, m, a, b) -&gt; NamedTuple</code></pre><h3 id="Initialization-Functions"><a class="docs-heading-anchor" href="#Initialization-Functions">Initialization Functions</a><a id="Initialization-Functions-1"></a><a class="docs-heading-anchor-permalink" href="#Initialization-Functions" title="Permalink"></a></h3><pre><code class="language-julia hljs">bass_init(y) -&gt; NamedTuple
+gompertz_init(y; kwargs...) -&gt; NamedTuple
+gsgompertz_init(y; kwargs...) -&gt; NamedTuple
+weibull_init(y) -&gt; NamedTuple</code></pre><h3 id="fit_diffusion-Keyword-Arguments"><a class="docs-heading-anchor" href="#fit_diffusion-Keyword-Arguments">fit_diffusion Keyword Arguments</a><a id="fit_diffusion-Keyword-Arguments-1"></a><a class="docs-heading-anchor-permalink" href="#fit_diffusion-Keyword-Arguments" title="Permalink"></a></h3><table><tr><th style="text-align: right">Argument</th><th style="text-align: right">Type</th><th style="text-align: right">Default</th><th style="text-align: right">Description</th></tr><tr><td style="text-align: right"><code>model_type</code></td><td style="text-align: right"><code>DiffusionModelType</code></td><td style="text-align: right"><code>Bass</code></td><td style="text-align: right">Model to fit</td></tr><tr><td style="text-align: right"><code>cleanlead</code></td><td style="text-align: right"><code>Bool</code></td><td style="text-align: right"><code>true</code></td><td style="text-align: right">Remove leading zeros</td></tr><tr><td style="text-align: right"><code>w</code></td><td style="text-align: right"><code>NamedTuple</code> or <code>Nothing</code></td><td style="text-align: right"><code>nothing</code></td><td style="text-align: right">Fixed parameters</td></tr><tr><td style="text-align: right"><code>loss</code></td><td style="text-align: right"><code>Int</code></td><td style="text-align: right"><code>2</code></td><td style="text-align: right">Loss function (1=MAE, 2=MSE)</td></tr><tr><td style="text-align: right"><code>cumulative</code></td><td style="text-align: right"><code>Bool</code></td><td style="text-align: right"><code>true</code></td><td style="text-align: right">Optimize on cumulative values</td></tr><tr><td style="text-align: right"><code>mscal</code></td><td style="text-align: right"><code>Bool</code></td><td style="text-align: right"><code>true</code></td><td style="text-align: right">Scale market parameter</td></tr><tr><td style="text-align: right"><code>maxiter</code></td><td style="text-align: right"><code>Int</code></td><td style="text-align: right"><code>500</code></td><td style="text-align: right">Maximum iterations</td></tr><tr><td style="text-align: right"><code>method</code></td><td style="text-align: right"><code>String</code></td><td style="text-align: right"><code>&quot;L-BFGS-B&quot;</code></td><td style="text-align: right">Optimization method</td></tr><tr><td style="text-align: right"><code>initpar</code></td><td style="text-align: right"><code>String</code> or <code>Vector</code></td><td style="text-align: right"><code>&quot;linearize&quot;</code></td><td style="text-align: right">Initialization method</td></tr></table><hr/><h2 id="References"><a class="docs-heading-anchor" href="#References">References</a><a id="References-1"></a><a class="docs-heading-anchor-permalink" href="#References" title="Permalink"></a></h2><ul><li><p>Bass, F.M. (1969). A new product growth for model consumer durables. <em>Management Science</em>, 15(5), 215-227.</p></li><li><p>Bemmaor, A.C. (1994). Modeling the diffusion of new durable goods: Word-of-mouth effect versus consumer heterogeneity. In G. Laurent et al. (Eds.), <em>Research Traditions in Marketing</em>. Kluwer Academic Publishers.</p></li><li><p>Gompertz, B. (1825). On the nature of the function expressive of the law of human mortality. <em>Philosophical Transactions of the Royal Society</em>, 115, 513-583.</p></li><li><p>Jukic, D., Kralik, G., &amp; Scitovski, R. (2004). Least-squares fitting Gompertz curve. <em>Journal of Computational and Applied Mathematics</em>, 169, 359-375.</p></li><li><p>Rogers, E.M. (1962). <em>Diffusion of Innovations</em>. Free Press.</p></li><li><p>Sharif, M.N. &amp; Islam, M.N. (1980). The Weibull distribution as a general model for forecasting technological change. <em>Technological Forecasting and Social Change</em>, 18(3), 247-256.</p></li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../arima/">« ARIMA</a><a class="docs-footer-nextpage" href="../arar/">ARAR »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Sunday 1 February 2026 19:46">Sunday 1 February 2026</span>. Using Julia version 1.12.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

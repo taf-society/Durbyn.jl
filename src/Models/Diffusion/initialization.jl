@@ -391,18 +391,64 @@ function _cleanzero(y::AbstractVector; lead::Bool=true)
 end
 
 """
-    get_init(model_type, y; use_bass_optim=false, loss=2, mscal=true, method="L-BFGS-B", maxiter=500) -> NamedTuple
+    preset_init(model_type, y; mscal=true) -> NamedTuple
 
-Dispatch to the appropriate initialization function based on model type.
+Return preset initial parameter values for diffusion models (matches R's initpar="preset").
+
+# Arguments
+- `model_type::DiffusionModelType`: The type of diffusion model
+- `y::Vector`: Adoption per period data (used for scaling m if mscal=true)
+
+# Keyword Arguments
+- `mscal::Bool=true`: If true, scale market potential by 10*sum(y)
+
+# Returns
+NamedTuple with preset initial parameters.
+
+# Notes
+R preset values:
+- Bass: (m=0.5, p=0.5, q=0.5)
+- Gompertz: (m=1, a=1, b=1)
+- GSGompertz: (m=0.5, a=0.5, b=0.5, c=0.5)
+- Weibull: (m=0.5, a=0.5, b=0.5)
+When mscal=true, m is scaled up by 10*sum(y).
+"""
+function preset_init(model_type::DiffusionModelType, y::AbstractVector{<:Real}; mscal::Bool=true)
+    T = Float64
+    y_sum = sum(y)
+    scale_factor = mscal && y_sum > 0 ? 10 * y_sum : one(T)
+
+    if model_type == Bass
+        m = T(0.5) * scale_factor
+        return (m=m, p=T(0.5), q=T(0.5))
+    elseif model_type == Gompertz
+        m = T(1.0) * scale_factor
+        return (m=m, a=T(1.0), b=T(1.0))
+    elseif model_type == GSGompertz
+        m = T(0.5) * scale_factor
+        return (m=m, a=T(0.5), b=T(0.5), c=T(0.5))
+    elseif model_type == Weibull
+        m = T(0.5) * scale_factor
+        return (m=m, a=T(0.5), b=T(0.5))
+    else
+        error("Unknown model type: $model_type")
+    end
+end
+
+"""
+    get_init(model_type, y; initpar="linearize", loss=2, mscal=true, method="L-BFGS-B", maxiter=500) -> NamedTuple
+
+Dispatch to the appropriate initialization function based on model type and initpar setting.
 
 # Arguments
 - `model_type::DiffusionModelType`: The type of diffusion model
 - `y::Vector`: Adoption per period data
 
 # Keyword Arguments
-- `use_bass_optim::Bool=false`: For Gompertz/GSGompertz, use full Bass optimization (matches R)
+- `initpar::String="linearize"`: Initialization method. "linearize" uses analytical methods
+  (with Bass optimization for Gompertz/GSGompertz). "preset" uses fixed preset values.
 - `loss::Int=2`: Loss function for Bass optimization
-- `mscal::Bool=true`: Scale market potential for Bass optimization
+- `mscal::Bool=true`: Scale market potential for optimization
 - `method::String="L-BFGS-B"`: Optimization method for Bass fitting
 - `maxiter::Int=500`: Maximum iterations for Bass fitting
 
@@ -410,11 +456,20 @@ Dispatch to the appropriate initialization function based on model type.
 NamedTuple with initial parameters for the specified model type.
 """
 function get_init(model_type::DiffusionModelType, y::AbstractVector{<:Real};
-                  use_bass_optim::Bool=false,
+                  initpar::String="linearize",
                   loss::Int=2,
                   mscal::Bool=true,
                   method::String="L-BFGS-B",
                   maxiter::Int=500)
+    # Handle preset initialization (matches R's initpar="preset")
+    if initpar == "preset"
+        return preset_init(model_type, y; mscal=mscal)
+    end
+
+    # Default: linearize initialization
+    # For Gompertz/GSGompertz, use Bass optimization (matches R's initpar="linearize")
+    use_bass_optim = true
+
     if model_type == Bass
         return bass_init(y)
     elseif model_type == Gompertz

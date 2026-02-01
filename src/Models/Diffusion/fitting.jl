@@ -162,7 +162,7 @@ end
 
 """
     fit_diffusion(y; model_type=Bass, cleanlead=true, w=nothing, loss=2, cumulative=true,
-                  mscal=true, maxiter=500, method="L-BFGS-B", initpar="optim") -> DiffusionFit
+                  mscal=true, maxiter=500, method="L-BFGS-B", initpar="linearize") -> DiffusionFit
 
 Fit a diffusion model to adoption data.
 
@@ -245,12 +245,11 @@ function fit_diffusion(y::AbstractVector{<:Real};
     Y_clean = cumsum(y_clean)
 
     # Get initial parameters
-    # In R, initpar="linearize" (default) still runs Bass optimization for Gompertz/GSGompertz
-    # init (see R's gompertzInit and gsgInit which call diffusionEstim with type="bass").
-    # "preset" uses fixed preset values without optimization.
-    use_bass_optim = (initpar == "linearize")
+    # initpar="linearize" (default): uses analytical methods with Bass optimization for
+    # Gompertz/GSGompertz (matches R's gompertzInit and gsgInit which call diffusionEstim).
+    # initpar="preset": uses fixed preset values (matches R's initpar="preset").
     init_params = get_init(model_type, y_clean;
-                           use_bass_optim=use_bass_optim,
+                           initpar=initpar,
                            loss=loss,
                            mscal=mscal,
                            method=method,

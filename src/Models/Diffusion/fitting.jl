@@ -80,8 +80,9 @@ function _reconstruct_params(opt_params::Vector{Float64}, model_type::DiffusionM
         end
     end
 
-    # Rescale market potential
-    if haskey(result, :m)
+    # Rescale market potential ONLY if it was optimized (not fixed)
+    # Fixed m values should remain as the user specified them
+    if haskey(result, :m) && !haskey(fixed_params, :m)
         result[:m] = result[:m] * mscal_factor
     end
 
@@ -222,8 +223,13 @@ function fit_diffusion(y::AbstractVector{<:Real};
     end
 
     n_clean = length(y_clean)
+    n_nonzero = count(!=(0), y_clean)
 
     if n_clean < 3
+        throw(ArgumentError("Need at least 3 observations for diffusion fitting"))
+    end
+
+    if n_nonzero < 3
         throw(ArgumentError("Need at least 3 non-zero observations for diffusion fitting"))
     end
 
@@ -254,8 +260,9 @@ function fit_diffusion(y::AbstractVector{<:Real};
         throw(ArgumentError("At least one parameter must be estimated"))
     end
 
-    # Compute scaling factor
-    mscal_factor = mscal ? 10 * sum(y_clean) : one(T)
+    # Compute scaling factor (ensure non-zero to avoid division errors)
+    y_sum = sum(y_clean)
+    mscal_factor = mscal && y_sum > 0 ? 10 * y_sum : one(T)
 
     # Build initial parameter vector for optimization
     init_dict = _params_to_dict(init_params)

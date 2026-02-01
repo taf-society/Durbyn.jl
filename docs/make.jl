@@ -28,6 +28,7 @@ makedocs(
             "TBATS"                  => "tbats.md",
             "Intermittent Demand"   => "intermittent.md",
             "ARIMA"                  => "arima.md",
+            "Diffusion"              => "diffusion.md",
             "ARAR"                   => "arar.md",
             "ARARMA"                 => "ararma.md",
             "Statistics"             => "stats.md",

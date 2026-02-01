@@ -312,8 +312,8 @@ using Durbyn
         term = Durbyn.Grammar.diffusion(model=:Bass, m=1000.0)
         @test term.m == 1000.0
 
-        # Test formula parsing
-        formula = @formula(adoption = diffusion())
+        # Test formula parsing (use qualified Grammar.diffusion to avoid ambiguity)
+        formula = @formula(adoption = Durbyn.Grammar.diffusion())
         @test formula isa Durbyn.Grammar.ModelFormula
         @test formula.target == :adoption
     end
@@ -413,7 +413,8 @@ using Durbyn
         y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
 
         # Test that diffusion() works the same as fit_diffusion()
-        fit1 = diffusion(y, model_type=Bass)
+        # Use qualified Durbyn.Diffusion.diffusion to avoid ambiguity with Grammar.diffusion
+        fit1 = Durbyn.Diffusion.diffusion(y, model_type=Bass)
         fit2 = fit_diffusion(y, model_type=Bass)
 
         @test fit1.model_type == fit2.model_type

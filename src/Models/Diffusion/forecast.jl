@@ -91,7 +91,7 @@ function compute_prediction_intervals(fit::DiffusionFit, h::Int, level::Vector{I
     n = length(fit.y)
 
     # Compute residual standard deviation (using corrected variance)
-    valid_residuals = fit.residuals[fit.residuals .!= 0]
+    valid_residuals = fit.residuals[isfinite.(fit.residuals)]
     if length(valid_residuals) < 2
         sigma = T(1.0)
     else
@@ -214,7 +214,7 @@ pred = predict(fit, 1:20)  # Predict for periods 1-20
 ```
 """
 function predict(fit::DiffusionFit, t::AbstractVector{<:Real})
-    n_max = maximum(Int, t)
+    n_max = Int(maximum(t))
 
     # Generate curve up to max time point
     curve = get_curve(fit.model_type, n_max, fit.params)

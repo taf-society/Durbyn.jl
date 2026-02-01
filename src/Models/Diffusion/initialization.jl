@@ -73,30 +73,46 @@ function bass_init(y::AbstractVector{<:Real})
         end
     end
 
-    # Ensure reasonable bounds
-    m = max(m, Y[end] * 1.01)
-    p = clamp(p, T(1e-6), T(1.0))
-    q = clamp(q, T(1e-6), T(2.0))
+    # Match R behavior: only ensure parameters are positive
+    # R's bassInit doesn't clamp, just returns the values from regression
+    # The check init[1] < max(y) => init[1] = max(y) happens in diffusionEstim
+    if m <= 0
+        m = Y[end]
+    end
+    if p <= 0
+        p = T(0.03)
+    end
+    if q <= 0
+        q = T(0.38)
+    end
 
     return (m=m, p=p, q=q)
 end
 
 """
-    gompertz_init(y) -> NamedTuple
+    gompertz_init(y; use_bass_optim=false, loss=2, mscal=true) -> NamedTuple
 
 Initialize Gompertz model parameters using the method from Jukic et al. (2004).
 
 # Arguments
 - `y::Vector{<:Real}`: Adoption per period data
 
+# Keyword Arguments
+- `use_bass_optim::Bool=false`: If true, use full Bass optimization for m (matches R behavior)
+- `loss::Int=2`: Loss function for Bass optimization
+- `mscal::Bool=true`: Scale market potential for Bass optimization
+
 # Returns
 NamedTuple with initial parameters `(m, a, b)`.
 
 # Method
-1. Use Bass initialization to get market potential estimate m
-2. Select three time points and compute a, b analytically
+1. Use Bass optimization (or linear init) to get market potential estimate m
+2. Select three time points and compute a, b analytically (Jukic et al. 2004)
 """
-function gompertz_init(y::AbstractVector{<:Real})
+function gompertz_init(y::AbstractVector{<:Real};
+                       use_bass_optim::Bool=false,
+                       loss::Int=2,
+                       mscal::Bool=true)
     T = Float64
     y = collect(T.(y))
     n = length(y)
@@ -117,60 +133,82 @@ function gompertz_init(y::AbstractVector{<:Real})
     # Cumulative adoption
     Y = cumsum(y_clean)
 
-    # Select three time points: start, middle, end
+    # Select three time points: start, middle, end (matches R)
     t0 = [1, max(1, floor(Int, (1 + n_clean) / 2)), n_clean]
     x0 = [Y[t0[1]], Y[t0[2]], Y[t0[3]]]
 
-    # Use Bass to estimate m
-    bass_params = bass_init(y_clean)
-    m = bass_params.m
+    # Handle duplicate values (matches R: slightly perturb duplicates)
+    for i in 2:3
+        if x0[i] == x0[i-1]
+            x0[i] = x0[i] + x0[i] * 1e-5
+        end
+    end
+
+    # Get m from Bass (use optimization if requested, matches R's gompertzInit)
+    if use_bass_optim
+        # Call fit_diffusion with Bass model - matches R's diffusionEstim call
+        bass_fit = _fit_bass_for_init(y_clean, loss, mscal)
+        m = bass_fit.m
+    else
+        bass_params = bass_init(y_clean)
+        m = bass_params.m
+    end
 
     # Ensure x0 values are positive for log
     x0 = max.(x0, T(1e-10))
 
-    # Compute a and b using Jukic et al. (2004) formulas
+    # Compute a and b using Jukic et al. (2004) formulas (matches R exactly)
     log_x0 = log.(x0)
 
     denom = log_x0[3] - 2 * log_x0[2] + log_x0[1]
+    diff1 = log_x0[2] - log_x0[1]
+    diff2 = log_x0[3] - log_x0[2]
 
-    if abs(denom) < 1e-12
+    if abs(denom) < 1e-12 || abs(diff1) < 1e-12 || abs(diff2) < 1e-12
         # Fallback
         a = T(5.0)
         b = T(0.5)
     else
-        diff1 = log_x0[2] - log_x0[1]
-        diff2 = log_x0[3] - log_x0[2]
-
-        if abs(diff2) < 1e-12 || diff2 / diff1 <= 0
+        # R formula: a = (-(diff1^2 / denom)) * (diff1/diff2)^(2*t0[1]/(t0[3]-t0[1]))
+        # R keeps signed ratio, not abs
+        ratio = diff1 / diff2
+        if ratio <= 0
+            # Can't take log of non-positive, fallback
             a = T(5.0)
             b = T(0.5)
         else
-            # a = -(diff1^2 / denom) * (diff1 / diff2)^(2*t0[1] / (t0[3] - t0[1]))
-            ratio = abs(diff1 / diff2)
-            exp_factor = 2 * t0[1] / max(t0[3] - t0[1], 1)
-            a = abs(-diff1^2 / denom) * ratio^exp_factor
+            exp_factor = 2 * t0[1] / (t0[3] - t0[1])
+            a = (-diff1^2 / denom) * ratio^exp_factor
 
-            # b = -2 / (t0[3] - t0[1]) * log(diff2 / diff1)
-            b = abs(-2 / max(t0[3] - t0[1], 1) * log(ratio))
+            # R formula: b = (-2 / (t0[3] - t0[1])) * log((diff2)/(diff1))
+            b = (-2 / (t0[3] - t0[1])) * log(diff2 / diff1)
+
+            # Ensure positive (R doesn't explicitly do this but expects positive)
+            if a <= 0
+                a = T(5.0)
+            end
+            if b <= 0
+                b = T(0.5)
+            end
         end
     end
-
-    # Ensure reasonable bounds
-    m = max(m, cumsum(y)[end] * 1.01)
-    a = clamp(a, T(1e-6), T(100.0))
-    b = clamp(b, T(1e-6), T(5.0))
 
     return (m=m, a=a, b=b)
 end
 
 """
-    gsgompertz_init(y) -> NamedTuple
+    gsgompertz_init(y; use_bass_optim=false, loss=2, mscal=true) -> NamedTuple
 
 Initialize Gamma/Shifted Gompertz model parameters.
 Uses Bass model as base (assumes c=1 initially).
 
 # Arguments
 - `y::Vector{<:Real}`: Adoption per period data
+
+# Keyword Arguments
+- `use_bass_optim::Bool=false`: If true, use full Bass optimization (matches R behavior)
+- `loss::Int=2`: Loss function for Bass optimization
+- `mscal::Bool=true`: Scale market potential for Bass optimization
 
 # Returns
 NamedTuple with initial parameters `(m, a, b, c)`.
@@ -180,23 +218,37 @@ From Bemmaor (1994): when c=1, GSGompertz relates to Bass via:
 - a = p/q (shape parameter beta)
 - b = p + q (scale parameter)
 """
-function gsgompertz_init(y::AbstractVector{<:Real})
+function gsgompertz_init(y::AbstractVector{<:Real};
+                         use_bass_optim::Bool=false,
+                         loss::Int=2,
+                         mscal::Bool=true)
     T = Float64
 
-    # Fit Bass model first
-    bass_params = bass_init(y)
+    # Get Bass parameters (use optimization if requested, matches R's gsgInit)
+    if use_bass_optim
+        bass_params = _fit_bass_for_init(y, loss, mscal)
+    else
+        bass_params = bass_init(y)
+    end
+
     m = bass_params.m
     p = bass_params.p
     q = bass_params.q
 
-    # Convert to GSGompertz parameters (assuming c=1)
+    # Convert to GSGompertz parameters (assuming c=1, per Bemmaor 1994)
+    # R: a <- what[2] / what[3]  # the shape parameter beta
+    # R: b <- what[2] + what[3]  # the scale parameter b
     a = abs(q) > 1e-12 ? p / q : T(0.1)
     b = p + q
     c = T(1.0)
 
-    # Ensure reasonable bounds
-    a = clamp(a, T(1e-6), T(100.0))
-    b = clamp(b, T(1e-6), T(5.0))
+    # Ensure positive (R doesn't clamp but expects positive)
+    if a <= 0
+        a = T(0.1)
+    end
+    if b <= 0
+        b = T(0.5)
+    end
 
     return (m=m, a=a, b=b, c=c)
 end
@@ -261,12 +313,32 @@ function weibull_init(y::AbstractVector{<:Real})
     a = exp(-(cf[1] / b))
     m = Y[end]
 
-    # Ensure reasonable bounds
-    m = max(m, Y[end] * 1.01)
-    a = clamp(a, T(1e-6), T(n * 10))
-    b = clamp(b, T(0.1), T(10.0))
+    # Match R behavior: m = Y[end], only ensure positive params
+    # R doesn't inflate m here, just uses Y[end]
+    if m <= 0
+        m = Y[end]
+    end
+    if a <= 0
+        a = T(n / 2)
+    end
+    if b <= 0
+        b = T(2.0)
+    end
 
     return (m=m, a=a, b=b)
+end
+
+"""
+    _fit_bass_for_init(y, loss, mscal) -> NamedTuple
+
+Internal helper to fit Bass model for use in Gompertz/GSGompertz initialization.
+This matches R's behavior of calling diffusionEstim(..., type="bass") in gompertzInit/gsgInit.
+"""
+function _fit_bass_for_init(y::AbstractVector{<:Real}, loss::Int, mscal::Bool)
+    # Fit Bass model - this will be called from gompertz_init and gsgompertz_init
+    # when use_bass_optim=true
+    fit = fit_diffusion(y; model_type=Bass, loss=loss, mscal=mscal, cleanlead=true)
+    return fit.params
 end
 
 """
@@ -302,7 +374,7 @@ function _cleanzero(y::AbstractVector; lead::Bool=true)
 end
 
 """
-    get_init(model_type, y) -> NamedTuple
+    get_init(model_type, y; use_bass_optim=false, loss=2, mscal=true) -> NamedTuple
 
 Dispatch to the appropriate initialization function based on model type.
 
@@ -310,16 +382,24 @@ Dispatch to the appropriate initialization function based on model type.
 - `model_type::DiffusionModelType`: The type of diffusion model
 - `y::Vector`: Adoption per period data
 
+# Keyword Arguments
+- `use_bass_optim::Bool=false`: For Gompertz/GSGompertz, use full Bass optimization (matches R)
+- `loss::Int=2`: Loss function for Bass optimization
+- `mscal::Bool=true`: Scale market potential for Bass optimization
+
 # Returns
 NamedTuple with initial parameters for the specified model type.
 """
-function get_init(model_type::DiffusionModelType, y::AbstractVector{<:Real})
+function get_init(model_type::DiffusionModelType, y::AbstractVector{<:Real};
+                  use_bass_optim::Bool=false,
+                  loss::Int=2,
+                  mscal::Bool=true)
     if model_type == Bass
         return bass_init(y)
     elseif model_type == Gompertz
-        return gompertz_init(y)
+        return gompertz_init(y; use_bass_optim=use_bass_optim, loss=loss, mscal=mscal)
     elseif model_type == GSGompertz
-        return gsgompertz_init(y)
+        return gsgompertz_init(y; use_bass_optim=use_bass_optim, loss=loss, mscal=mscal)
     elseif model_type == Weibull
         return weibull_init(y)
     else

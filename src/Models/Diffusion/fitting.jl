@@ -160,7 +160,7 @@ end
 
 """
     fit_diffusion(y; model_type=Bass, cleanlead=true, w=nothing, loss=2, cumulative=true,
-                  mscal=true, maxiter=500, method="L-BFGS-B") -> DiffusionFit
+                  mscal=true, maxiter=500, method="L-BFGS-B", initpar="optim") -> DiffusionFit
 
 Fit a diffusion model to adoption data.
 
@@ -174,12 +174,14 @@ Fit a diffusion model to adoption data.
   indicates how many leading zeros were removed.
 - `w::Union{Nothing, NamedTuple}=nothing`: Fixed parameter values. Use `nothing` values
   to indicate parameters to estimate. For example, `(m=nothing, p=0.03, q=nothing)` fixes
-  p at 0.03 while estimating m and q.
+  p at 0.03 while estimating m and q. All parameters can be fixed (matches R behavior).
 - `loss::Int=2`: Loss function power (1=MAE, 2=MSE)
 - `cumulative::Bool=true`: Optimize on cumulative adoption values
 - `mscal::Bool=true`: Scale market parameter for optimization stability
 - `maxiter::Int=500`: Maximum optimization iterations
 - `method::String="L-BFGS-B"`: Optimization method
+- `initpar::String="optim"`: Initialization method. "optim" uses full Bass optimization
+  for Gompertz/GSGompertz init (matches R behavior). "linearize" uses linear regression only.
 
 # Returns
 `DiffusionFit` struct containing fitted parameters and diagnostics.
@@ -192,6 +194,9 @@ fit = fit_diffusion(y)
 
 # Gompertz model with fixed market potential
 fit = fit_diffusion(y, model_type=Gompertz, w=(m=500.0, a=nothing, b=nothing))
+
+# Fully fixed parameters (matches R behavior)
+fit = fit_diffusion(y, model_type=Bass, w=(m=500.0, p=0.03, q=0.38))
 
 # Using L1 loss
 fit = fit_diffusion(y, loss=1)
@@ -209,7 +214,8 @@ function fit_diffusion(y::AbstractVector{<:Real};
                        cumulative::Bool=true,
                        mscal::Bool=true,
                        maxiter::Int=500,
-                       method::String="L-BFGS-B")
+                       method::String="L-BFGS-B",
+                       initpar::String="optim")
 
     T = Float64
     y_original = collect(T.(y))
@@ -237,7 +243,22 @@ function fit_diffusion(y::AbstractVector{<:Real};
     Y_clean = cumsum(y_clean)
 
     # Get initial parameters
-    init_params = get_init(model_type, y_clean)
+    # use_bass_optim=true matches R's default "linearize" which actually runs Bass optimization
+    # for Gompertz/GSGompertz init (see R's gompertzInit and gsgInit)
+    use_bass_optim = (initpar == "optim")
+    init_params = get_init(model_type, y_clean;
+                           use_bass_optim=use_bass_optim,
+                           loss=loss,
+                           mscal=mscal)
+
+    # R check: if init[1] < max(y) then init[1] = max(y)
+    # This ensures market potential is at least as large as observed max
+    max_y = maximum(y_clean)
+    if init_params.m < max_y
+        init_dict_check = _params_to_dict(init_params)
+        init_dict_check[:m] = max_y
+        init_params = _dict_to_params(init_dict_check, model_type)
+    end
 
     # Determine which parameters to optimize vs fix
     param_names = _get_param_names(model_type)
@@ -256,8 +277,31 @@ function fit_diffusion(y::AbstractVector{<:Real};
         opt_param_names = param_names
     end
 
+    # Handle fully fixed parameters (match R behavior - no optimization needed)
     if isempty(opt_param_names)
-        throw(ArgumentError("At least one parameter must be estimated"))
+        # All parameters are fixed - just compute the fit directly
+        full_params = _dict_to_params(Dict{Symbol, Float64}(
+            name => T(getproperty(w, name)) for name in param_names
+        ), model_type)
+
+        curve = get_curve(model_type, n_clean, full_params)
+        residuals = y_clean .- curve.adoption
+        mse = mean(residuals .^ 2)
+
+        return DiffusionFit(
+            model_type,
+            full_params,
+            curve.adoption,
+            curve.cumulative,
+            residuals,
+            mse,
+            y_clean,
+            y_original,
+            offset,
+            full_params,  # init_params same as final for fixed
+            loss,
+            cumulative
+        )
     end
 
     # Compute scaling factor (ensure non-zero to avoid division errors)
@@ -279,17 +323,9 @@ function fit_diffusion(y::AbstractVector{<:Real};
             end
             push!(x0, val)
 
-            # Set bounds
-            if name == :m
-                push!(lower, T(1e-9))
-                push!(upper, T(1e6))  # Will be rescaled
-            elseif name in (:p, :q, :a, :b, :c)
-                push!(lower, T(1e-9))
-                push!(upper, T(10.0))
-            else
-                push!(lower, T(1e-9))
-                push!(upper, T(Inf))
-            end
+            # Set bounds (match R: only lower bound of 1e-9 for L-BFGS-B, no upper bounds)
+            push!(lower, T(1e-9))
+            push!(upper, T(Inf))
         end
     end
 

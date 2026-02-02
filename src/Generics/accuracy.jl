@@ -179,15 +179,13 @@ function _accuracy_forecast_collection(fc_collection, actual, training_data, by)
         end
 
         try
-            # Try with _warn_by=false first; fall back for custom methods that don't accept it
-            acc = try
+            # Check if the accuracy method for this type is from Durbyn.Generics
+            # If so, it accepts _warn_by; otherwise, don't pass internal keyword to external methods
+            m = which(accuracy, (typeof(fc_obj), typeof(actual)))
+            acc = if m.module === @__MODULE__
                 accuracy(fc_obj, actual; training_data=training_data, by=by, _warn_by=false)
-            catch e
-                if e isa MethodError
-                    accuracy(fc_obj, actual; training_data=training_data, by=by)
-                else
-                    rethrow(e)
-                end
+            else
+                accuracy(fc_obj, actual; training_data=training_data, by=by)
             end
             push!(model_names, name)
             push!(metrics_list, acc)

@@ -76,7 +76,7 @@ spec = ArimaSpec(
 spec = ArimaSpec(@formula(sales = p(1,3) + q(1,3) + temperature + promotion))
 
 # Automatic exogenous selection (all numeric columns except target/group/date)
-spec = ArimaSpec(@formula(sales = .))
+spec = ArimaSpec(@formula(sales = auto()))
 
 # Complex interactions for xreg
 spec = ArimaSpec(

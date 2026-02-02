@@ -361,4 +361,85 @@ import Durbyn.Grammar: EtsComponentTerm, EtsDriftTerm
         @test length(arar_terms) >= 0
     end
 
+    @testset "@formula error handling" begin
+        @testset "Quoted symbols on RHS should error" begin
+            # @formula(y = :x) should throw a clear error, not a MethodError
+            # @eval wraps macro errors in LoadError
+            @test_throws LoadError @eval @formula(y = :x)
+            @test_throws LoadError @eval @formula(y = p(1) + :temperature)
+        end
+
+        @testset "Invalid LHS should error" begin
+            # Field access on LHS
+            @test_throws LoadError @eval @formula(df.y = p(1))
+            # Quoted symbol on LHS
+            @test_throws LoadError @eval @formula(:y = p(1))
+        end
+
+        @testset "AutoVarTerm via auto()" begin
+            # Note: @formula(y = .) is not parseable - Julia rejects bare `.` as an identifier
+            # before the macro runs. Use auto() function instead.
+            f = @formula(y = auto())
+            @test f isa ModelFormula
+            @test length(f.terms) == 1
+            @test f.terms[1] isa AutoVarTerm
+        end
+    end
+
+    @testset "Vector + term with mixed types" begin
+        # Creating a concrete Vector{ArimaOrderTerm} and adding a different term
+        # should not throw MethodError (fixed by converting to Vector{AbstractTerm})
+        terms = [p(1)]
+        @test terms isa Vector{ArimaOrderTerm}
+
+        # Adding a different term type should work
+        result = terms + q(1)
+        @test result isa Vector{AbstractTerm}
+        @test length(result) == 2
+
+        # Adding a VarTerm to concrete vector should also work
+        result2 = terms + :temperature
+        @test result2 isa Vector{AbstractTerm}
+        @test length(result2) == 2
+        @test result2[2] isa VarTerm
+
+        # Prepending should also work
+        result3 = q(1) + terms
+        @test result3 isa Vector{AbstractTerm}
+        @test length(result3) == 2
+
+        result4 = :temperature + terms
+        @test result4 isa Vector{AbstractTerm}
+        @test length(result4) == 2
+        @test result4[1] isa VarTerm
+    end
+
+    @testset "EtsComponentTerm validates codes" begin
+        # Valid codes should work
+        @test EtsComponentTerm(:error, "A").code == "A"
+        @test EtsComponentTerm(:error, "M").code == "M"
+        @test EtsComponentTerm(:trend, "N").code == "N"
+
+        # Invalid codes should throw
+        @test_throws ArgumentError EtsComponentTerm(:error, "X")
+        @test_throws ArgumentError EtsComponentTerm(:error, "N")  # N not valid for error
+        @test_throws ArgumentError EtsComponentTerm(:trend, "X")
+        @test_throws ArgumentError EtsComponentTerm(:seasonal, "X")
+    end
+
+    @testset "croston() type validation" begin
+        # Valid Bool values should work
+        term1 = croston(optimize_init=true)
+        @test term1.optimize_init == true
+
+        term2 = croston(rm_missing=false)
+        @test term2.rm_missing == false
+
+        # Invalid types should throw ArgumentError
+        @test_throws ArgumentError croston(optimize_init="true")
+        @test_throws ArgumentError croston(optimize_init=1)
+        @test_throws ArgumentError croston(rm_missing="false")
+        @test_throws ArgumentError croston(rm_missing=0)
+    end
+
 end

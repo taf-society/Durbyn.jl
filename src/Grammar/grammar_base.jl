@@ -77,7 +77,7 @@ struct EtsComponentTerm <: AbstractTerm
     function EtsComponentTerm(component::Symbol, code::AbstractString)
         component ∈ (:error, :trend, :seasonal) ||
             throw(ArgumentError("ETS component must be :error, :trend, or :seasonal, got :$(component)"))
-        normalized = uppercase(code)
+        normalized = _validate_ets_code(component, code)
         new(component, normalized)
     end
 end
@@ -415,12 +415,12 @@ Represents an exogenous variable to be used as a regressor in the model.
 
 # Examples
 ```julia
-# Typically created by using Symbol directly in formula
+# Typically created by using bare symbols in @formula
 VarTerm(:temperature)
 VarTerm(:promotion)
 
 # Used in formulas like:
-# :sales = p(1,2) + q(2,3) + :temperature + :promotion
+# @formula(sales = p(1,2) + q(2,3) + temperature + promotion)
 ```
 """
 struct VarTerm <: AbstractTerm
@@ -433,7 +433,7 @@ end
 Sentinel term indicating that all eligible columns (excluding date, group, and target)
 should be treated as exogenous regressors automatically.
 
-Created when a formula uses `.` on the right-hand side, e.g. `@formula(value = .)`.
+Created via `auto()` in formulas, e.g. `@formula(value = auto())`.
 """
 struct AutoVarTerm <: AbstractTerm
 end
@@ -746,8 +746,15 @@ function croston(; method::Union{AbstractString, Symbol} = "hyndman",
                    init_strategy::Union{AbstractString, Symbol, Nothing} = nothing,
                    number_of_params::Union{Int, Nothing} = nothing,
                    cost_metric::Union{AbstractString, Symbol, Nothing} = nothing,
-                   optimize_init::Union{Bool, Nothing} = nothing,
-                   rm_missing::Union{Bool, Nothing} = nothing)
+                   optimize_init = nothing,
+                   rm_missing = nothing)
+
+    if !isnothing(optimize_init) && !(optimize_init isa Bool)
+        throw(ArgumentError("optimize_init must be Bool or nothing, got $(typeof(optimize_init))"))
+    end
+    if !isnothing(rm_missing) && !(rm_missing isa Bool)
+        throw(ArgumentError("rm_missing must be Bool or nothing, got $(typeof(rm_missing))"))
+    end
 
     method_str = lowercase(String(method))
 
@@ -1275,9 +1282,9 @@ Represents a complete model formula in Durbyn's forecasting grammar.
 
 # Examples
 ```julia
-# Typically created via the = operator:
-# target = p(1,2) + q(2,3)
-ModelFormula(:y, [ArimaOrderTerm(:p, 1, 2), ArimaOrderTerm(:q, 2, 3)])
+# Typically created via the @formula macro:
+# @formula(y = p(1,2) + q(2,3))
+ModelFormula(:y, AbstractTerm[ArimaOrderTerm(:p, 1, 2), ArimaOrderTerm(:q, 2, 3)])
 ```
 """
 struct ModelFormula
@@ -1313,17 +1320,17 @@ p(1,2) + d(1) + q(2,3) + P(0,1) + D(1) + Q(0,1) + :temperature + :promotion
 # Combine two terms
 Base.:+(t1::AbstractTerm, t2::AbstractTerm) = AbstractTerm[t1, t2]
 
-# Add term to existing vector
-Base.:+(terms::Vector{<:AbstractTerm}, t::AbstractTerm) = push!(copy(terms), t)
-Base.:+(t::AbstractTerm, terms::Vector{<:AbstractTerm}) = pushfirst!(copy(terms), t)
+# Add term to existing vector (convert to Vector{AbstractTerm} to allow mixed types)
+Base.:+(terms::Vector{<:AbstractTerm}, t::AbstractTerm) = push!(AbstractTerm[terms...], t)
+Base.:+(t::AbstractTerm, terms::Vector{<:AbstractTerm}) = pushfirst!(AbstractTerm[terms...], t)
 
 # Combine term with Symbol (create VarTerm)
 Base.:+(t::AbstractTerm, s::Symbol) = AbstractTerm[t, VarTerm(s)]
 Base.:+(s::Symbol, t::AbstractTerm) = AbstractTerm[VarTerm(s), t]
 
-# Add Symbol to existing vector
-Base.:+(terms::Vector{<:AbstractTerm}, s::Symbol) = push!(copy(terms), VarTerm(s))
-Base.:+(s::Symbol, terms::Vector{<:AbstractTerm}) = pushfirst!(copy(terms), VarTerm(s))
+# Add Symbol to existing vector (convert to Vector{AbstractTerm} to allow mixed types)
+Base.:+(terms::Vector{<:AbstractTerm}, s::Symbol) = push!(AbstractTerm[terms...], VarTerm(s))
+Base.:+(s::Symbol, terms::Vector{<:AbstractTerm}) = pushfirst!(AbstractTerm[terms...], VarTerm(s))
 
 # Combine two Symbols
 Base.:+(s1::Symbol, s2::Symbol) = AbstractTerm[VarTerm(s1), VarTerm(s2)]
@@ -1373,12 +1380,30 @@ macro formula(expr)
     target = expr.args[1]
     rhs = expr.args[2]
 
+    # Validate LHS is a bare symbol
+    if !(target isa Symbol)
+        if target isa Expr && target.head == :.
+            error("@formula LHS must be a bare symbol, not a field access. " *
+                  "Use @formula(y = ...) instead of @formula(df.y = ...)")
+        elseif target isa QuoteNode || (target isa Expr && target.head == :quote)
+            error("@formula LHS must be a bare symbol, not a quoted symbol. " *
+                  "Use @formula(y = ...) instead of @formula(:y = ...)")
+        else
+            error("@formula LHS must be a bare symbol (e.g., y), got $(typeof(target))")
+        end
+    end
+
     function process_rhs(ex)
         if ex isa Symbol
             if ex === Symbol(".")
                 return :($(esc(:AutoVarTerm))())
             end
             return :($(esc(:VarTerm))($(QuoteNode(ex))))
+        elseif ex isa QuoteNode || (ex isa Expr && ex.head == :quote)
+            # User wrote :x instead of x - give helpful error
+            sym = ex isa QuoteNode ? ex.value : ex.args[1]
+            error("@formula RHS: use bare symbol `$(sym)` instead of `:$(sym)`. " *
+                  "The macro handles symbol conversion automatically.")
         elseif ex isa Expr && ex.head == :call
             if ex.args[1] == :+
                 return Expr(:call, :+, [process_rhs(arg) for arg in ex.args[2:end]]...)
@@ -1520,11 +1545,8 @@ function _extract_single_term(formula::ModelFormula, ::Type{T}) where {T<:Abstra
             isnothing(selected) ||
                 throw(ArgumentError("Formula may contain only one $(T) term."))
             selected = term
-        elseif term isa EtsComponentTerm || term isa EtsDriftTerm || term isa ArimaOrderTerm ||
-               term isa VarTerm || term isa AutoVarTerm || term isa ArarTerm || term isa BatsTerm ||
-               term isa TbatsTerm || term isa ThetaTerm || term isa DiffusionTerm || term isa SesTerm || term isa HoltTerm ||
-               term isa HoltWintersTerm || term isa CrostonTerm || term isa NaiveTerm ||
-               term isa SnaiveTerm || term isa RwTerm || term isa MeanfTerm
+        elseif term isa AbstractTerm
+            # Any other AbstractTerm is incompatible with the requested type
             throw(ArgumentError("Formula term $(term) is not compatible with $(T)."))
         elseif term !== nothing
             throw(ArgumentError("Unsupported term $(term) in formula for $(T)."))
@@ -1545,11 +1567,11 @@ function Base.show(io::IO, term::ArimaOrderTerm)
 end
 
 function Base.show(io::IO, term::VarTerm)
-    print(io, ":$(term.name)")
+    print(io, "$(term.name)")
 end
 
 function Base.show(io::IO, ::AutoVarTerm)
-    print(io, ".")
+    print(io, "auto()")
 end
 
 function Base.show(io::IO, term::EtsComponentTerm)

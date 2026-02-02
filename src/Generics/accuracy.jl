@@ -179,7 +179,16 @@ function _accuracy_forecast_collection(fc_collection, actual, training_data, by)
         end
 
         try
-            acc = accuracy(fc_obj, actual; training_data=training_data, by=by, _warn_by=false)
+            # Try with _warn_by=false first; fall back for custom methods that don't accept it
+            acc = try
+                accuracy(fc_obj, actual; training_data=training_data, by=by, _warn_by=false)
+            catch e
+                if e isa MethodError
+                    accuracy(fc_obj, actual; training_data=training_data, by=by)
+                else
+                    rethrow(e)
+                end
+            end
             push!(model_names, name)
             push!(metrics_list, acc)
         catch e
@@ -305,7 +314,7 @@ end
     _index_actual_by_groups(act_ct, value_col, group_cols)
 
 Build index of actual values organized by group keys.
-Sorts by date if available to ensure proper alignment with forecasts.
+Sorts by date/time/step if available to ensure proper alignment with forecasts.
 """
 function _index_actual_by_groups(act_ct::NamedTuple, value_col::Symbol, group_cols::Vector{Symbol}=Symbol[])
     col_names = propertynames(act_ct)
@@ -326,23 +335,23 @@ function _index_actual_by_groups(act_ct::NamedTuple, value_col::Symbol, group_co
                   "Available columns: $(join(col_names, ", "))")
         end
     end
-    
-    has_date = :date in col_names
-    
+
+    # Detect time column for sorting
+    time_col = _detect_time_column(act_ct)
+
     groups_dict = Dict{NamedTuple, Vector{Float64}}()
 
     if isempty(group_cols)
-        
-        if has_date
-            # Sort by date
-            date_col = act_ct.date
-            sorted_indices = sortperm(collect(date_col))
+
+        if !isnothing(time_col)
+            # Sort by time column
+            sorted_indices = sortperm(collect(act_ct[time_col]))
             groups_dict[NamedTuple()] = Float64[act_ct[value_col][i] for i in sorted_indices]
         else
             groups_dict[NamedTuple()] = Float64.(act_ct[value_col])
         end
     else
-        
+
         temp_groups = Dict{NamedTuple, Vector{Tuple{Any, Float64}}}()
 
         for i in 1:n
@@ -350,12 +359,12 @@ function _index_actual_by_groups(act_ct::NamedTuple, value_col::Symbol, group_co
             key = NamedTuple{Tuple(group_cols)}(Tuple(key_vals))
 
             value = Float64(act_ct[value_col][i])
-            date_val = has_date ? act_ct.date[i] : i
+            time_val = !isnothing(time_col) ? act_ct[time_col][i] : i
 
             if !haskey(temp_groups, key)
                 temp_groups[key] = Tuple{Any, Float64}[]
             end
-            push!(temp_groups[key], (date_val, value))
+            push!(temp_groups[key], (time_val, value))
         end
 
         
@@ -610,16 +619,40 @@ function _detect_time_column(ct::NamedTuple)
 end
 
 """
+    _detect_shared_time_column(ct1::NamedTuple, ct2::NamedTuple)
+
+Detect a shared time column between two tables, preferring the intersection.
+Returns (shared_col, ct1_col, ct2_col) where shared_col is the common column
+(or nothing if none shared), and ct1_col/ct2_col are what each table would use individually.
+"""
+function _detect_shared_time_column(ct1::NamedTuple, ct2::NamedTuple)
+    ct1_cols = Set(propertynames(ct1))
+    ct2_cols = Set(propertynames(ct2))
+
+    ct1_time = _detect_time_column(ct1)
+    ct2_time = _detect_time_column(ct2)
+
+    # Find the first shared time column (by priority order)
+    for candidate in [:date, :time, :step]
+        if candidate in ct1_cols && candidate in ct2_cols
+            return (candidate, ct1_time, ct2_time)
+        end
+    end
+
+    # No shared time column
+    return (nothing, ct1_time, ct2_time)
+end
+
+"""
     _calculate_grouped_table_accuracy(fc_ct, act_ct, group_cols)
 
 Calculate accuracy for grouped tables.
 """
 function _calculate_grouped_table_accuracy(fc_ct::NamedTuple, act_ct::NamedTuple, group_cols::Vector{Symbol})
-    # Validate that both tables use the same time column for alignment
-    fc_time_col = _detect_time_column(fc_ct)
-    act_time_col = _detect_time_column(act_ct)
+    # Detect time columns, preferring a shared column
+    shared_time_col, fc_time_col, act_time_col = _detect_shared_time_column(fc_ct, act_ct)
 
-    if fc_time_col != act_time_col
+    if isnothing(shared_time_col) && (!isnothing(fc_time_col) || !isnothing(act_time_col))
         if isnothing(fc_time_col)
             @warn "Actual table has time column :$act_time_col but forecast table has none. Row order may not align correctly."
         elseif isnothing(act_time_col)
@@ -630,8 +663,8 @@ function _calculate_grouped_table_accuracy(fc_ct::NamedTuple, act_ct::NamedTuple
         end
     end
 
-    fc_groups = _build_group_index(fc_ct, group_cols)
-    act_groups = _build_group_index(act_ct, group_cols)
+    fc_groups = _build_group_index(fc_ct, group_cols; time_col=shared_time_col)
+    act_groups = _build_group_index(act_ct, group_cols; time_col=shared_time_col)
 
     value_col = _identify_value_column(act_ct)
 
@@ -700,12 +733,13 @@ function _calculate_grouped_table_accuracy(fc_ct::NamedTuple, act_ct::NamedTuple
 end
 
 """
-    _build_group_index(ct, group_cols)
+    _build_group_index(ct, group_cols; time_col=nothing)
 
 Build index mapping group keys to row indices.
 Sorts indices within each group by date/time/step if available.
+If time_col is provided, uses that column; otherwise auto-detects.
 """
-function _build_group_index(ct::NamedTuple, group_cols::Vector{Symbol})
+function _build_group_index(ct::NamedTuple, group_cols::Vector{Symbol}; time_col::Union{Symbol, Nothing}=nothing)
     n = length(ct[first(propertynames(ct))])
     groups = Dict{NamedTuple, Vector{Int}}()
 
@@ -719,12 +753,16 @@ function _build_group_index(ct::NamedTuple, group_cols::Vector{Symbol})
         push!(groups[key], i)
     end
 
-    # Sort indices within each group by date/time/step
-    time_col = _detect_time_column(ct)
+    # Sort indices within each group by time column
+    sort_col = if !isnothing(time_col) && time_col in propertynames(ct)
+        time_col
+    else
+        _detect_time_column(ct)
+    end
 
-    if !isnothing(time_col)
+    if !isnothing(sort_col)
         for (key, indices) in groups
-            sort!(indices, by = i -> ct[time_col][i])
+            sort!(indices, by = i -> ct[sort_col][i])
         end
     end
 

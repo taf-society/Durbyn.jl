@@ -8,6 +8,8 @@ const _index_actual_by_groups = Durbyn.Generics._index_actual_by_groups
 const _build_group_index = Durbyn.Generics._build_group_index
 const _has_grouping_columns = Durbyn.Generics._has_grouping_columns
 const _identify_value_column = Durbyn.Generics._identify_value_column
+const _detect_time_column = Durbyn.Generics._detect_time_column
+const _detect_shared_time_column = Durbyn.Generics._detect_shared_time_column
 
 const EPS = 1e-6
 
@@ -286,7 +288,7 @@ const EPS = 1e-6
     end
 
     @testset "Time column mismatch warning" begin
-        # Forecast table uses :date, actual table uses :time
+        # Forecast table uses :date, actual table uses :time (no shared column)
         fc_table = (
             group = ["G1", "G1"],
             date = [1, 2],
@@ -303,6 +305,64 @@ const EPS = 1e-6
         @test_logs (:warn, r"Forecast table uses :date.*actual table uses :time") begin
             accuracy(fc_table, actual_table)
         end
+    end
+
+    @testset "Shared time column detection" begin
+        # Both tables have :date and :time, should prefer shared :date
+        ct1 = (series = ["A"], date = [1], time = [100])
+        ct2 = (series = ["A"], time = [100], step = [1])
+
+        shared, ct1_col, ct2_col = _detect_shared_time_column(ct1, ct2)
+        @test shared == :time  # :time is the shared column
+        @test ct1_col == :date  # ct1 would use :date on its own
+        @test ct2_col == :time  # ct2 would use :time on its own
+    end
+
+    @testset "Shared time column aligns tables correctly" begin
+        # Tables have different first time columns but share :time
+        fc_table = (
+            group = ["G1", "G1"],
+            date = [1, 2],      # fc would use :date alone
+            time = [10, 20],    # shared column
+            mean = [10.0, 20.0]
+        )
+
+        actual_table = (
+            group = ["G1", "G1"],
+            time = [20, 10],    # reversed order, shared column
+            step = [2, 1],
+            value = [18.0, 12.0]  # values correspond to time order
+        )
+
+        # Should align on shared :time column, not warn
+        # time=10 -> fc mean=10, actual value=12 -> error=2
+        # time=20 -> fc mean=20, actual value=18 -> error=-2
+        # ME = 0
+        acc = accuracy(fc_table, actual_table)
+        @test acc.ME[1] ≈ 0.0 atol=EPS
+    end
+
+    @testset "_index_actual_by_groups uses time/step columns" begin
+        # Test that :time is used when :date is not available
+        ct = (
+            series = ["A", "A", "A"],
+            time = [3, 1, 2],  # Out of order
+            value = [30.0, 10.0, 20.0]
+        )
+
+        groups = _index_actual_by_groups(ct, :value, [:series])
+        key = (series = "A",)
+        @test groups[key] == [10.0, 20.0, 30.0]  # Sorted by time
+
+        # Test :step fallback
+        ct_step = (
+            series = ["A", "A"],
+            step = [2, 1],
+            value = [20.0, 10.0]
+        )
+
+        groups_step = _index_actual_by_groups(ct_step, :value, [:series])
+        @test groups_step[key] == [10.0, 20.0]  # Sorted by step
     end
 
 end

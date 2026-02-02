@@ -57,7 +57,11 @@ fc = forecast(fitted, h = 12)
 accuracy(fc, test_table)
 ```
 """
-function accuracy(forecast_input, actual; training_data=nothing, by=nothing)
+function accuracy(forecast_input, actual; training_data=nothing, by=nothing, _warn_by::Bool=true)
+    if !isnothing(by) && _warn_by
+        @warn "`by` parameter is not yet implemented and will be ignored"
+    end
+
     if forecast_input isa AbstractVector{<:Real} && actual isa AbstractVector{<:Real}
         return _compute_accuracy_metrics(forecast_input, actual, training_data)
     end
@@ -175,7 +179,7 @@ function _accuracy_forecast_collection(fc_collection, actual, training_data, by)
         end
 
         try
-            acc = accuracy(fc_obj, actual; training_data=training_data, by=by)
+            acc = accuracy(fc_obj, actual; training_data=training_data, by=by, _warn_by=false)
             push!(model_names, name)
             push!(metrics_list, acc)
         catch e
@@ -204,8 +208,15 @@ function _accuracy_grouped_forecasts(fc, actual, training_data, by)
 
     value_col = _identify_value_column(act_ct)
 
-    act_groups = _index_actual_by_groups(act_ct, value_col)
-    
+    # Extract group column names from the forecast's groups
+    group_cols = if !isempty(fc.groups)
+        collect(Symbol, keys(fc.groups[1]))
+    else
+        Symbol[]
+    end
+
+    act_groups = _index_actual_by_groups(act_ct, value_col, group_cols)
+
     return _accuracy_by_groups(fc, act_groups, training_data)
 end
 
@@ -291,18 +302,29 @@ function _has_grouping_columns(ct::NamedTuple)
 end
 
 """
-    _index_actual_by_groups(act_ct, value_col)
+    _index_actual_by_groups(act_ct, value_col, group_cols)
 
 Build index of actual values organized by group keys.
 Sorts by date if available to ensure proper alignment with forecasts.
 """
-function _index_actual_by_groups(act_ct::NamedTuple, value_col::Symbol)
+function _index_actual_by_groups(act_ct::NamedTuple, value_col::Symbol, group_cols::Vector{Symbol}=Symbol[])
     col_names = propertynames(act_ct)
     n = length(act_ct[first(col_names)])
-    
-    group_cols = Symbol[]
-    if :series in col_names
-        push!(group_cols, :series)
+
+    # If no group columns provided, try to detect them from the table
+    if isempty(group_cols)
+        for col in [:series, :group]
+            if col in col_names
+                push!(group_cols, col)
+            end
+        end
+    else
+        # Validate that all required group columns exist in the actual table
+        missing_cols = filter(col -> col ∉ col_names, group_cols)
+        if !isempty(missing_cols)
+            error("Actual data is missing required group column(s): $(join(missing_cols, ", ")). " *
+                  "Available columns: $(join(col_names, ", "))")
+        end
     end
     
     has_date = :date in col_names
@@ -354,10 +376,10 @@ Calculate accuracy for each group.
 function _accuracy_by_groups(fc, act_groups::Dict, training_data)
     group_keys = Symbol[]
     group_values = Vector{Any}[]
-    metrics = Dict{Symbol, Vector{Float64}}()
-    
-    for m in [:ME, :RMSE, :MAE, :MPE, :MAPE, :ACF1]
-        metrics[m] = Float64[]
+    metrics = Dict{Symbol, Vector{Union{Float64, Nothing}}}()
+
+    for m in [:ME, :RMSE, :MAE, :MPE, :MAPE, :MASE, :ACF1]
+        metrics[m] = Union{Float64, Nothing}[]
     end
 
     n_successful = 0
@@ -411,10 +433,12 @@ function _accuracy_by_groups(fc, act_groups::Dict, training_data)
             push!(group_values[i], key[gk])
         end
 
-        
-        for (metric_name, metric_val) in pairs(acc)
-            if metric_name in keys(metrics)
-                push!(metrics[metric_name], metric_val)
+        # Store metrics, handling MASE which may not be present in acc
+        for metric_name in keys(metrics)
+            if haskey(acc, metric_name)
+                push!(metrics[metric_name], acc[metric_name])
+            elseif metric_name == :MASE
+                push!(metrics[metric_name], nothing)
             end
         end
 
@@ -439,9 +463,16 @@ function _accuracy_by_groups(fc, act_groups::Dict, training_data)
         push!(result_vals, group_values[i])
     end
 
-    for m in [:ME, :RMSE, :MAE, :MPE, :MAPE, :ACF1]
-        push!(result_cols, m)
-        push!(result_vals, metrics[m])
+    for m in [:ME, :RMSE, :MAE, :MPE, :MAPE, :MASE, :ACF1]
+        if haskey(metrics, m)
+            vals = metrics[m]
+            # Only include MASE if at least one value is non-nothing
+            if m == :MASE && !any(!isnothing, vals)
+                continue
+            end
+            push!(result_cols, m)
+            push!(result_vals, vals)
+        end
     end
 
     return NamedTuple{Tuple(result_cols)}(Tuple(result_vals))
@@ -549,7 +580,7 @@ function _accuracy_table_grouped(fc_ct::NamedTuple, act_ct::NamedTuple, by)
     act_cols = Set(propertynames(act_ct))
 
     group_cols = Symbol[]
-    for col in [:series, :model, :model_name]
+    for col in [:series, :model, :model_name, :group]
         if col in fc_cols && col in act_cols
             push!(group_cols, col)
         end
@@ -563,12 +594,42 @@ function _accuracy_table_grouped(fc_ct::NamedTuple, act_ct::NamedTuple, by)
 end
 
 """
+    _detect_time_column(ct::NamedTuple)
+
+Detect the time column used for alignment (:date, :time, or :step).
+Returns the column name or nothing if no time column is found.
+"""
+function _detect_time_column(ct::NamedTuple)
+    col_names = propertynames(ct)
+    for candidate in [:date, :time, :step]
+        if candidate in col_names
+            return candidate
+        end
+    end
+    return nothing
+end
+
+"""
     _calculate_grouped_table_accuracy(fc_ct, act_ct, group_cols)
 
 Calculate accuracy for grouped tables.
 """
 function _calculate_grouped_table_accuracy(fc_ct::NamedTuple, act_ct::NamedTuple, group_cols::Vector{Symbol})
-    
+    # Validate that both tables use the same time column for alignment
+    fc_time_col = _detect_time_column(fc_ct)
+    act_time_col = _detect_time_column(act_ct)
+
+    if fc_time_col != act_time_col
+        if isnothing(fc_time_col)
+            @warn "Actual table has time column :$act_time_col but forecast table has none. Row order may not align correctly."
+        elseif isnothing(act_time_col)
+            @warn "Forecast table has time column :$fc_time_col but actual table has none. Row order may not align correctly."
+        else
+            @warn "Forecast table uses :$fc_time_col for alignment but actual table uses :$act_time_col. " *
+                  "Consider using the same column name in both tables."
+        end
+    end
+
     fc_groups = _build_group_index(fc_ct, group_cols)
     act_groups = _build_group_index(act_ct, group_cols)
 
@@ -579,9 +640,9 @@ function _calculate_grouped_table_accuracy(fc_ct::NamedTuple, act_ct::NamedTuple
         result_group_cols[col] = Any[]
     end
 
-    metrics = Dict{Symbol, Vector{Float64}}()
-    for m in [:ME, :RMSE, :MAE, :MPE, :MAPE, :ACF1]
-        metrics[m] = Float64[]
+    metrics = Dict{Symbol, Vector{Union{Float64, Nothing}}}()
+    for m in [:ME, :RMSE, :MAE, :MPE, :MAPE, :MASE, :ACF1]
+        metrics[m] = Union{Float64, Nothing}[]
     end
 
     for (key, fc_indices) in fc_groups
@@ -605,13 +666,16 @@ function _calculate_grouped_table_accuracy(fc_ct::NamedTuple, act_ct::NamedTuple
             push!(result_group_cols[col], key[col])
         end
 
-        for (m, v) in pairs(acc)
-            if m in keys(metrics)
-                push!(metrics[m], v)
+        # Store metrics, handling MASE which may not be present in acc
+        for metric_name in keys(metrics)
+            if haskey(acc, metric_name)
+                push!(metrics[metric_name], acc[metric_name])
+            elseif metric_name == :MASE
+                push!(metrics[metric_name], nothing)
             end
         end
     end
-    
+
     result_cols = Symbol[]
     result_vals = Any[]
 
@@ -620,9 +684,16 @@ function _calculate_grouped_table_accuracy(fc_ct::NamedTuple, act_ct::NamedTuple
         push!(result_vals, result_group_cols[col])
     end
 
-    for m in [:ME, :RMSE, :MAE, :MPE, :MAPE, :ACF1]
-        push!(result_cols, m)
-        push!(result_vals, metrics[m])
+    for m in [:ME, :RMSE, :MAE, :MPE, :MAPE, :MASE, :ACF1]
+        if haskey(metrics, m)
+            vals = metrics[m]
+            # Only include MASE if at least one value is non-nothing
+            if m == :MASE && !any(!isnothing, vals)
+                continue
+            end
+            push!(result_cols, m)
+            push!(result_vals, vals)
+        end
     end
 
     return NamedTuple{Tuple(result_cols)}(Tuple(result_vals))
@@ -632,6 +703,7 @@ end
     _build_group_index(ct, group_cols)
 
 Build index mapping group keys to row indices.
+Sorts indices within each group by date/time/step if available.
 """
 function _build_group_index(ct::NamedTuple, group_cols::Vector{Symbol})
     n = length(ct[first(propertynames(ct))])
@@ -645,6 +717,15 @@ function _build_group_index(ct::NamedTuple, group_cols::Vector{Symbol})
             groups[key] = Int[]
         end
         push!(groups[key], i)
+    end
+
+    # Sort indices within each group by date/time/step
+    time_col = _detect_time_column(ct)
+
+    if !isnothing(time_col)
+        for (key, indices) in groups
+            sort!(indices, by = i -> ct[time_col][i])
+        end
     end
 
     return groups

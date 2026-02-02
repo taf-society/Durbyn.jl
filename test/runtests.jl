@@ -68,4 +68,8 @@ using Test
     @testset "Reference Tests" begin
         include("test_reference.jl")
     end
+
+    @testset "Accuracy Module" begin
+        include("test_accuracy.jl")
+    end
 end

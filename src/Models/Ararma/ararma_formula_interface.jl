@@ -168,23 +168,60 @@ function ararma(formula::ModelFormula, data; max_ar_depth::Int=26, max_lag::Int=
         compiled[term.term] = (term.min, term.max)
     end
 
-    min_p, max_p = get(compiled, :p, (0, 4))
-    min_q, max_q = get(compiled, :q, (0, 2))  
+    # Track which terms were explicitly specified in formula
+    p_in_formula = haskey(compiled, :p)
+    q_in_formula = haskey(compiled, :q)
 
     kwargs_dict = Dict{Symbol, Any}(kwargs)
     kwargs_dict[:max_ar_depth] = max_ar_depth
     kwargs_dict[:max_lag] = max_lag
 
-    if use_auto
-
-        # Remove kwargs that would override formula-specified bounds
-        for key in [:p, :q, :min_p, :max_p, :min_q, :max_q]
+    # Determine bounds: formula takes precedence, then kwargs, then defaults
+    if p_in_formula
+        min_p, max_p = compiled[:p]
+        # Warn if kwargs try to override formula-specified p bounds
+        for key in [:p, :min_p, :max_p]
             if haskey(kwargs_dict, key)
-                @warn "Keyword argument '$(key)' is ignored when using formula interface. " *
-                      "The formula specification takes precedence."
+                @warn "Keyword argument '$(key)' is ignored because p() is specified in formula."
                 delete!(kwargs_dict, key)
             end
         end
+    else
+        # No p() in formula - use kwargs if provided, else defaults
+        min_p = get(kwargs_dict, :min_p, 0)
+        max_p = get(kwargs_dict, :max_p, 4)
+        delete!(kwargs_dict, :min_p)
+        delete!(kwargs_dict, :max_p)
+        # Warn if :p kwarg is present (it's ignored in auto mode; use min_p/max_p instead)
+        if haskey(kwargs_dict, :p)
+            @warn "Keyword argument 'p' is ignored in auto mode. Use 'min_p'/'max_p' or add p() to formula."
+            delete!(kwargs_dict, :p)
+        end
+    end
+
+    if q_in_formula
+        min_q, max_q = compiled[:q]
+        # Warn if kwargs try to override formula-specified q bounds
+        for key in [:q, :min_q, :max_q]
+            if haskey(kwargs_dict, key)
+                @warn "Keyword argument '$(key)' is ignored because q() is specified in formula."
+                delete!(kwargs_dict, key)
+            end
+        end
+    else
+        # No q() in formula - use kwargs if provided, else defaults
+        min_q = get(kwargs_dict, :min_q, 0)
+        max_q = get(kwargs_dict, :max_q, 2)
+        delete!(kwargs_dict, :min_q)
+        delete!(kwargs_dict, :max_q)
+        # Warn if :q kwarg is present (it's ignored in auto mode; use min_q/max_q instead)
+        if haskey(kwargs_dict, :q)
+            @warn "Keyword argument 'q' is ignored in auto mode. Use 'min_q'/'max_q' or add q() to formula."
+            delete!(kwargs_dict, :q)
+        end
+    end
+
+    if use_auto
 
         ararma_args = Dict{Symbol, Any}(
             :min_p => min_p,

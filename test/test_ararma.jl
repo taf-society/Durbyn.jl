@@ -332,6 +332,9 @@ using Durbyn.Ararma
 
         # max_lag < 4 should throw
         @test_throws ArgumentError ararma(ap; max_ar_depth=4, max_lag=3)
+
+        # Series with n < 5 should throw
+        @test_throws ArgumentError ararma([1.0, 2.0, 3.0, 4.0])
     end
 
     @testset "Parameter validation - max_lag vs series length" begin
@@ -365,8 +368,7 @@ using Durbyn.Ararma
     @testset "Formula precedence over kwargs" begin
         data = (y = ap,)
 
-        # min_p/max_p kwargs should be ignored when using formula (uses formula values)
-        # This should NOT throw and should use formula's p(2,4) range
+        # When formula specifies p(), kwargs for p should be ignored
         fit = @formula(y = p(2, 4) + q(0, 2)) |> f -> ararma(f, data; min_p=0, max_p=10)
         @test fit.ar_order >= 2
         @test fit.ar_order <= 4
@@ -375,6 +377,12 @@ using Durbyn.Ararma
         fit_fixed = @formula(y = p(3) + q(1)) |> f -> ararma(f, data; min_p=0, max_p=5, crit=:bic)
         @test fit_fixed.ar_order == 3
         @test fit_fixed.ma_order == 1
+
+        # When formula omits p(), kwargs CAN override defaults
+        # Formula only specifies q(1,2), so max_p kwarg should be used
+        fit_override = @formula(y = q(1, 2)) |> f -> ararma(f, data; max_p=2)
+        @test fit_override.ar_order <= 2  # respects max_p kwarg
+        @test fit_override.ma_order >= 1  # respects formula's q(1,2)
     end
 
     @testset "fit_arma residual length validation" begin

@@ -4,6 +4,11 @@ function setup_params(y_in::AbstractVector;
 
     n = length(y_in)
 
+    # Hard minimum: need at least 5 observations for gamma computation (i=0:4 requires n >= 5)
+    if n < 5
+        throw(ArgumentError("Series too short (n=$n) for ARARMA. Need at least 5 observations."))
+    end
+
     if n < 10
         @warn "Training data is too short (length=$n). The model may be unreliable."
     end
@@ -37,11 +42,9 @@ function setup_params(y_in::AbstractVector;
     end
 
     # Clamp max_lag to n-1 to prevent indexing errors in gamma computation
+    # (Since n >= 5 is guaranteed above, n-1 >= 4 always holds)
     if max_lag >= n
-        clamped_max_lag = max(4, n - 1)
-        if clamped_max_lag < 4
-            throw(ArgumentError("Series too short (n=$n) for ARARMA. Need at least 5 observations."))
-        end
+        clamped_max_lag = n - 1
         @warn "max_lag ($max_lag) exceeds series length - 1 ($(n - 1)). Clamping to $clamped_max_lag."
         max_lag = clamped_max_lag
     end

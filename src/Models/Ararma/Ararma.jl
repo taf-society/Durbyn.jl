@@ -2,6 +2,7 @@ module Ararma
 using Statistics
 using Distributions
 using LinearAlgebra
+using Polynomials
 import Base: show
 import ..Generics: Forecast
 import ..Generics: forecast, fitted, residuals

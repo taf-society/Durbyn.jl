@@ -104,26 +104,68 @@ function compute_xi(Ψ::Vector{Float64}, ϕ::Vector{Float64}, lags::NTuple{4, In
 end
 
 """
-    is_arma_stable(ϕ, θ) -> Bool
+    ar_stable(phi::Vector{Float64}) -> Bool
 
-Check if ARMA coefficients satisfy stability constraints.
-Returns true if sum(|ϕ|) < 1 and sum(|θ|) < 1.
+Check if AR polynomial has all roots outside the unit circle (stability).
+The characteristic polynomial is 1 - phi[1]*z - phi[2]*z^2 - ...
 """
-function is_arma_stable(ϕ::Vector{Float64}, θ::Vector{Float64})
-    if !isempty(ϕ) && sum(abs.(ϕ)) >= 1.0
-        return false
+function ar_stable(phi::Vector{Float64})
+    isempty(phi) && return true
+    last_nz = findlast(x -> x != 0.0, phi)
+    isnothing(last_nz) && return true
+    coeffs = vcat(1.0, -phi[1:last_nz]...)
+    return all(abs.(roots(Polynomial(coeffs))) .> 1.0)
+end
+
+"""
+    ma_invertible(theta::Vector{Float64}) -> Bool
+
+Check if MA polynomial has all roots outside the unit circle (invertibility).
+The characteristic polynomial is 1 + theta[1]*z + theta[2]*z^2 + ...
+"""
+function ma_invertible(theta::Vector{Float64})
+    isempty(theta) && return true
+    last_nz = findlast(x -> x != 0.0, theta)
+    isnothing(last_nz) && return true
+    coeffs = vcat(1.0, theta[1:last_nz]...)
+    return all(abs.(roots(Polynomial(coeffs))) .> 1.0)
+end
+
+"""
+    is_arma_usable(phi, theta) -> Bool
+
+Check if ARMA model is usable (AR stable and MA invertible).
+Issues a warning if the model is not usable and will fall back to AR-only.
+"""
+function is_arma_usable(phi::Vector{Float64}, theta::Vector{Float64})
+    ar_ok = ar_stable(phi)
+    ma_ok = ma_invertible(theta)
+    if !ar_ok || !ma_ok
+        reasons = String[]
+        !ar_ok && push!(reasons, "AR roots inside unit circle")
+        !ma_ok && push!(reasons, "MA roots inside unit circle")
+        @warn "ARMA disabled: $(join(reasons, "; ")). Using AR-only."
     end
-    if !isempty(θ) && sum(abs.(θ)) >= 1.0
-        return false
-    end
-    return true
+    return ar_ok && ma_ok
 end
 
 function fit_arma(p::Int, q::Int, y::Vector{Float64}, options::NelderMeadOptions=NelderMeadOptions())
     n = length(y)
+
+    # Validate inputs
+    p < 0 && throw(ArgumentError("AR order p must be non-negative. Got p=$p"))
+    q < 0 && throw(ArgumentError("MA order q must be non-negative. Got q=$q"))
+
+    max_lag = max(p, q)
+    if n <= max_lag
+        throw(ArgumentError(
+            "Residual series too short (length=$n) for ARMA($p,$q). " *
+            "Need at least $(max_lag + 1) observations."
+        ))
+    end
+
     μ = mean(y)
     y_demeaned = y .- μ
-    max_lag = max(p, q)
     function arma_loss(params)
         ϕ = params[1:p]
         θ = params[p+1:p+q]
@@ -155,7 +197,9 @@ function fit_arma(p::Int, q::Int, y::Vector{Float64}, options::NelderMeadOptions
 
         return nll + penalty
     end
-    init = [zeros(p + q); log(var(y))]
+    # Use a minimum variance to handle constant or near-constant series
+    y_var = max(var(y), 1e-10)
+    init = [zeros(p + q); log(y_var)]
 
     parscale = max.(abs.(init), 0.1)
 
@@ -245,13 +289,25 @@ Reference
 Parzen, E. (1982). ARARMA Models for Time Series Analysis and Forecasting.
 Journal of Forecasting, 1(1), 67-82.
 """
-function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int=4, q::Int=1, 
+function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int=4, q::Int=1,
     options::NelderMeadOptions=NelderMeadOptions())
+
+    # Validate ARMA orders
+    p < 0 && throw(ArgumentError("AR order p must be non-negative. Got p=$p"))
+    q < 0 && throw(ArgumentError("MA order q must be non-negative. Got q=$q"))
+
+    # Validate and auto-adjust parameters for short series
+    max_ar_depth, max_lag = setup_params(y; max_ar_depth=max_ar_depth, max_lag=max_lag)
+
     Y = copy(y)
     Ψ = [1.0]
 
     for _ in 1:3
         n = length(y)
+        # Early exit for short series - need enough data for prefilter
+        if n <= max(15, max_ar_depth) + 1
+            break
+        end
         ϕ = [sum(y[(τ+1):n] .* y[1:(n-τ)]) / sum(y[1:(n-τ)].^2) for τ in 1:15]
         err = [sum((y[(τ+1):n] - ϕ[τ]*y[1:(n-τ)]).^2) / sum(y[(τ+1):n].^2) for τ in 1:15]
         τ = argmin(err)
@@ -278,8 +334,9 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
     gamma = [sum(X[1:(n-i)] .* X[(i+1):n]) / n for i in 0:max_lag]
 
     best_σ2 = Inf
-    best_lag = (1, 0, 0, 0)
+    best_lag = (1, 2, 3, 4)  # Sensible default fallback
     best_phi = zeros(4)
+    found_valid_lag = false
     A = fill(gamma[1], 4, 4)
     b = zeros(4)
     for i in 2:(max_ar_depth-2), j in (i+1):(max_ar_depth-1), k in (j+1):max_ar_depth
@@ -300,12 +357,48 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
             best_σ2 = σ2
             best_phi = copy(ϕ)
             best_lag = (1, i, j, k)
+            found_valid_lag = true
         end
+    end
+
+    # Fallback for ill-conditioned or short series
+    if !found_valid_lag
+        @warn "No well-conditioned lag combination found. Using fallback lag (1,2,3,4)."
+        fallback_lag = (1, 2, 3, 4)
+        A_fb = fill(gamma[1], 4, 4)
+        A_fb[1,2] = A_fb[2,1] = gamma[2]
+        A_fb[1,3] = A_fb[3,1] = gamma[3]
+        A_fb[2,3] = A_fb[3,2] = gamma[2]
+        A_fb[1,4] = A_fb[4,1] = gamma[4]
+        A_fb[2,4] = A_fb[4,2] = gamma[3]
+        A_fb[3,4] = A_fb[4,3] = gamma[2]
+        b_fb = [gamma[2], gamma[3], gamma[4], gamma[5]]
+        # Guard against singular matrix (e.g., perfectly constant series)
+        try
+            best_phi = A_fb \ b_fb
+        catch e
+            if e isa SingularException || e isa LAPACKException
+                @warn "Fallback Yule-Walker system is singular. Using zero AR coefficients."
+                best_phi = zeros(4)
+            else
+                rethrow(e)
+            end
+        end
+        best_lag = fallback_lag
     end
 
     xi = compute_xi(Ψ, best_phi, best_lag)
     k = length(xi)
     n = length(Y)
+
+    # Validate that we have enough data after accounting for xi length
+    if k > n
+        throw(ArgumentError(
+            "Composite filter length ($k) exceeds series length ($n). " *
+            "Try reducing max_ar_depth or using a longer series."
+        ))
+    end
+
     c = (1 - sum(best_phi)) * Sbar
 
     fitted_vals = fill(NaN, n)
@@ -316,10 +409,19 @@ function ararma(y::Vector{<:Real}; max_ar_depth::Int=26, max_lag::Int=40, p::Int
     end
 
     residuals = Y .- fitted_vals
-    ϕ_ar, θ_ma, σ2_hat = fit_arma(p, q, residuals[k:end], options)
+    arma_residuals = residuals[k:end]
 
-    arma_resid = residuals[k:end]
-    n_eff = length(arma_resid)
+    # Ensure we have enough residuals for ARMA fitting
+    if length(arma_residuals) < max(p, q) + 2
+        throw(ArgumentError(
+            "Not enough residuals ($(length(arma_residuals))) for ARMA($p,$q) fitting. " *
+            "Try reducing max_ar_depth or p/q, or using a longer series."
+        ))
+    end
+
+    ϕ_ar, θ_ma, σ2_hat = fit_arma(p, q, arma_residuals, options)
+
+    n_eff = length(arma_residuals)
     k_param = p + q + 1  # +1 for σ²
 
     loglik = -0.5 * n_eff * (log(2π * σ2_hat) + 1)
@@ -346,7 +448,7 @@ function fitted(model::ArarmaModel)
     ϕ = model.arma_phi
     θ = model.arma_theta
 
-    use_arma = is_arma_stable(ϕ, θ)
+    use_arma = is_arma_usable(ϕ, θ)
 
     fitted_vals = fill(NaN, n)
     ar_resid = zeros(n)
@@ -405,8 +507,9 @@ function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
     Sbar = model.Sbar
     c = (1 - sum(model.lag_phi)) * Sbar
 
-    use_arma = is_arma_stable(ϕ, θ)
+    use_arma = is_arma_usable(ϕ, θ)
 
+    # Compute AR residuals for all in-sample observations
     ar_resid = zeros(n)
     for t in k:n
         idxs = t .- (1:(k-1))
@@ -414,9 +517,29 @@ function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
         ar_resid[t] = y[t] - ar_pred
     end
 
+    # Compute in-sample ARMA innovations (epsilon) using the full ARMA recursion
+    # This is critical for MA component to affect forecasts
+    epsilon = zeros(n)
+    if use_arma && q > 0
+        for t in k:n
+            ar_part = 0.0
+            if p > 0
+                ar_idxs = (t-p):(t-1)
+                ar_part = dot(ϕ, reverse(safe_slice(ar_resid, ar_idxs)))
+            end
+            ma_part = 0.0
+            if q > 0
+                ma_idxs = (t-q):(t-1)
+                ma_part = dot(θ, reverse(safe_slice(epsilon, ma_idxs)))
+            end
+            epsilon[t] = ar_resid[t] - ar_part - ma_part
+        end
+    end
+
     y_ext = [y; zeros(h)]
     ar_resid_ext = [ar_resid; zeros(h)]
-    ε_ext = zeros(n + h)
+    # Preserve in-sample innovations, future innovations are zero (E[epsilon] = 0)
+    epsilon_ext = [epsilon; zeros(h)]
     forecasts = zeros(h)
 
     for t in 1:h
@@ -426,17 +549,22 @@ function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
 
         arma_adj = 0.0
         if use_arma
-            ar_arma_idxs = (idx-p):(idx-1)
-            arma_adj += dot(ϕ, reverse(safe_slice(ar_resid_ext, ar_arma_idxs)))
-            if t <= q
+            # AR component on residuals
+            if p > 0
+                ar_arma_idxs = (idx-p):(idx-1)
+                arma_adj += dot(ϕ, reverse(safe_slice(ar_resid_ext, ar_arma_idxs)))
+            end
+            # MA component - uses actual in-sample innovations for first q steps
+            if q > 0
                 ma_idxs = (idx-q):(idx-1)
-                arma_adj += dot(θ, reverse(safe_slice(ε_ext, ma_idxs)))
+                arma_adj += dot(θ, reverse(safe_slice(epsilon_ext, ma_idxs)))
             end
         end
 
         forecasts[t] = ar_part + arma_adj
-        ε_ext[idx] = 0.0
-        ar_resid_ext[idx] = 0.0
+        # Update ar_resid for forecast (this is the ARMA adjustment, not zero)
+        ar_resid_ext[idx] = arma_adj
+        epsilon_ext[idx] = 0.0  # Future innovations are zero (expectation)
         y_ext[idx] = forecasts[t]
     end
 
@@ -462,7 +590,8 @@ end
 
 """
     auto_ararma(y::Vector{<:Real};
-                max_p::Int=4, max_q::Int=2,
+                min_p::Int=0, max_p::Int=4,
+                min_q::Int=0, max_q::Int=2,
                 crit::Symbol=:aic,            # or :bic
                 max_ar_depth::Int=26,
                 max_lag::Int=40,
@@ -471,7 +600,7 @@ end
 Automatic order selection wrapper around [`ararma`](@ref).
 
 # Behavior
-- Tries `(p, q)` across `p ∈ 0:max_p`, `q ∈ 0:max_q`, skipping `(0,0)`.
+- Tries `(p, q)` across `p ∈ min_p:max_p`, `q ∈ min_q:max_q`, skipping `(0,0)`.
 - Calls `ararma(y; p, q, ...)` for each pair, catching failures and continuing.
 - Scores by AIC (default) or BIC using the ARMA-stage likelihood.
 - Returns the best-scoring [`ArarmaModel`](@ref), or `nothing` if all attempts fail.
@@ -486,23 +615,29 @@ using Durbyn
 using Durbyn.Ararma
 
 ap = air_passengers();
-model = auto_ararma(y; max_p=4, max_q=2, crit=:bic)
-ŷ = fitted(m)
-r = residuals(m)
-fc = forecast(m; h=12, level=[80,95])
+model = auto_ararma(ap; min_p=1, max_p=4, min_q=0, max_q=2, crit=:bic)
+ŷ = fitted(model)
+r = residuals(model)
+fc = forecast(model; h=12, level=[80,95])
 plot(fc)
 ````
 
-References: 
+References:
 Parzen, E. (1982). *ARARMA Models for Time Series Analysis and Forecasting*. Journal of Forecasting, 1(1), 67-82.
 """
-function auto_ararma(y::Vector{<:Real}; max_p::Int=4, max_q::Int=2, 
-    crit::Symbol=:aic, max_ar_depth::Int=26, max_lag::Int=40, 
+function auto_ararma(y::Vector{<:Real}; min_p::Int=0, max_p::Int=4, min_q::Int=0, max_q::Int=2,
+    crit::Symbol=:aic, max_ar_depth::Int=26, max_lag::Int=40,
     options::NelderMeadOptions=NelderMeadOptions())
+
+    # Validate bounds
+    min_p < 0 && throw(ArgumentError("min_p must be non-negative. Got min_p=$min_p"))
+    min_q < 0 && throw(ArgumentError("min_q must be non-negative. Got min_q=$min_q"))
+    min_p > max_p && throw(ArgumentError("min_p ($min_p) cannot exceed max_p ($max_p)"))
+    min_q > max_q && throw(ArgumentError("min_q ($min_q) cannot exceed max_q ($max_q)"))
 
     best_score = Inf
     best_model = nothing
-    for p in 0:max_p, q in 0:max_q
+    for p in min_p:max_p, q in min_q:max_q
         if p == 0 && q == 0
             continue
         end

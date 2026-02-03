@@ -39,9 +39,14 @@ using Durbyn.ModelSpecs: ArarSpec, FittedArar, GroupedFittedModels, GroupedForec
         @test length(fc2.mean) == 12
     end
 
-    @testset "Invalid parameter ordering (should error)" begin
+    @testset "Parameter clamping" begin
+        # When max_ar_depth > max_lag, max_ar_depth gets clamped (with warning)
+        # This should NOT throw, but warn and clamp
+        fit = Durbyn.Ararma.arar(ap; max_ar_depth = 13, max_lag = 12)
+        @test fit isa ARAR
 
-        @test_throws ArgumentError Durbyn.Ararma.arar(ap; max_ar_depth = 13, max_lag = 12)
+        # max_ar_depth < 4 should still throw
+        @test_throws ArgumentError Durbyn.Ararma.arar(ap; max_ar_depth = 3, max_lag = 12)
     end
 
     @testset "Short series behavior" begin

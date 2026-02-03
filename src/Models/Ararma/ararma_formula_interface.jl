@@ -176,17 +176,20 @@ function ararma(formula::ModelFormula, data; max_ar_depth::Int=26, max_lag::Int=
     kwargs_dict[:max_lag] = max_lag
 
     if use_auto
-        
-        for key in [:p, :q]
+
+        # Remove kwargs that would override formula-specified bounds
+        for key in [:p, :q, :min_p, :max_p, :min_q, :max_q]
             if haskey(kwargs_dict, key)
-                @warn "Keyword argument '$(key)' is ignored when using formula interface with ranges. " *
+                @warn "Keyword argument '$(key)' is ignored when using formula interface. " *
                       "The formula specification takes precedence."
                 delete!(kwargs_dict, key)
             end
         end
 
         ararma_args = Dict{Symbol, Any}(
+            :min_p => min_p,
             :max_p => max_p,
+            :min_q => min_q,
             :max_q => max_q,
         )
 
@@ -195,11 +198,12 @@ function ararma(formula::ModelFormula, data; max_ar_depth::Int=26, max_lag::Int=
         return auto_ararma(y; pairs(ararma_args)...)
 
     else
-        
+
         p_val = min_p
         q_val = min_q
 
-        for key in [:max_p, :max_q, :crit]
+        # Remove kwargs not accepted by ararma() in fixed-order mode
+        for key in [:min_p, :max_p, :min_q, :max_q, :crit]
             if haskey(kwargs_dict, key)
                 @warn "Keyword argument '$(key)' is for auto_ararma and is ignored when all orders are fixed."
                 delete!(kwargs_dict, key)

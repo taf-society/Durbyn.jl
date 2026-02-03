@@ -85,7 +85,7 @@ fc_x = forecast(model; xreg=Xfuture, level=[0.8, 0.95])
 
 # Bootstrap intervals
 fc_boot = forecast(model; h=20, bootstrap=true, npaths=2000)
-````
+```
 
 # See also
 
@@ -133,9 +133,22 @@ function forecast(model::ArimaFit;
             end
         end
     else
-
-        Xnm = xreg isa NamedMatrix ? xreg :
-              NamedMatrix(Matrix(xreg), size(Matrix(xreg),2)==1 ? ["xreg"] : ["xreg$(i)" for i in 1:size(Matrix(xreg),2)])
+        # Handle plain matrix by using training column names for positional matching
+        if xreg isa AbstractMatrix && !(xreg isa NamedMatrix)
+            if !isempty(train_xcols)
+                # Use training column names for positional matching (excluding drift)
+                xreg_cols = filter(c -> c != "drift", train_xcols)
+                if size(xreg, 2) != length(xreg_cols)
+                    throw(ArgumentError("xreg has $(size(xreg,2)) columns but model expects $(length(xreg_cols)) (excluding drift)"))
+                end
+                Xnm = NamedMatrix(Matrix(xreg), xreg_cols)
+            else
+                # Fallback to auto-generated names
+                Xnm = NamedMatrix(Matrix(xreg), size(Matrix(xreg),2)==1 ? ["xreg"] : ["xreg$(i)" for i in 1:size(Matrix(xreg),2)])
+            end
+        else
+            Xnm = xreg
+        end
 
         # If model has drift but user's xreg doesn't, add it automatically
         if has_drift && !("drift" in Xnm.colnames)

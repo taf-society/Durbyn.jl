@@ -121,10 +121,15 @@ function auto_arima(
 
     # Trim leading/trailing missings and count non-missing in the trimmed span
     x = copy(y)
-    firstnm, serieslength, x = analyze_series(x)
+    firstnm, lastnm, serieslength, x = analyze_series(x)
+
+    # Check for all missing data before trying to slice xreg
+    if isnothing(firstnm)
+        error("All data are missing")
+    end
 
     if !isnothing(xreg)
-        indx = firstnm:size(xreg.data, 1)
+        indx = firstnm:lastnm
         xreg = select_rows(xreg, indx)
     end
     # Check constant data
@@ -144,7 +149,6 @@ function auto_arima(
         else
             fit = arima_rjh(x, m, order = PDQ(0, 0, 0), include_mean = false, kwargs...)
         end
-        fit.constant = true
         return fit
     end
 
@@ -152,7 +156,11 @@ function auto_arima(
         m = 1
     end
     if m < 1
-        @warn "m < 1 not supported; ignoring seasonality."
+        if seasonal
+            throw(ArgumentError("m must be ≥ 1 for seasonal models. Got m=$m"))
+        else
+            m = 1  # Non-seasonal case: m=1 is safe
+        end
     end
 
     # Cap per series length

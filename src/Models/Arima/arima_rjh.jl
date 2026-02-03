@@ -279,7 +279,6 @@ function arima_rjh(
     end
     
     fit.lambda = lambda
-    fit.lambda = lambda
-    
+
     return fit
 end

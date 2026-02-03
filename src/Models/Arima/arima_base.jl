@@ -425,9 +425,9 @@ function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, useResid, r
         sumlog[] += log(gain)
     end
 
-    # 5) optionally store standardized residual
+    # 5) optionally store raw innovation (not standardized)
     if useResid
-        rsResid[l] = resid / sqrt(gain)
+        rsResid[l] = resid
     end
 
     # 6) state update: a = anew + (M * resid)/gain
@@ -450,23 +450,23 @@ end
                              give_resid::Bool)
 
 Compute the Gaussian log-likelihood and related quantities for a univariate ARIMA model using the Kalman filter.
- 
-It runs a Kalman filter on the observed time series `y`, using the state-space representation stored in `model`.  
-It accumulates the innovation sum of squares and the log-determinant contributions required for the Gaussian likelihood.  
-If `give_resid` is true, the function also computes and returns the standardized residuals.
+
+It runs a Kalman filter on the observed time series `y`, using the state-space representation stored in `model`.
+It accumulates the innovation sum of squares and the log-determinant contributions required for the Gaussian likelihood.
+If `give_resid` is true, the function also computes and returns the raw residuals (innovations).
 
 # Arguments
 - `y::Vector{Float64}`: Observed time series (univariate).
 - `model::ArimaStateSpace`: State-space model, as returned by `initialize_arima_state`.
 - `update_start::Int`: The time index at which to begin updating the likelihood and residuals (typically 1).
-- `give_resid::Bool`: If true, also compute and return standardized residuals.
+- `give_resid::Bool`: If true, also compute and return residuals (raw innovations).
 
 # Returns
 A `Dict` with keys:
 - `"ssq"`: Sum of squared innovations.
 - `"sumlog"`: Accumulated log-determinants of the prediction error variances.
 - `"nu"`: Innovations (prediction errors).
-- `"resid"`: (only if `give_resid` is true) Standardized residuals.
+- `"resid"`: (only if `give_resid` is true) Raw residuals (innovations, i.e., prediction errors).
 
 # Notes
 - The arguments and behavior closely follow the C implementation in R's base ARIMA code.
@@ -639,6 +639,9 @@ outside the blocks corresponding to AR parameters are zero.
 function compute_arima_transform_gradient(x::AbstractArray, arma::AbstractArray)
     eps = 1e-3
     mp, mq, msp = arma[1:3]
+    if mp > 100 || msp > 100
+        throw(ArgumentError("AR order > 100 not supported (p=$mp, P=$msp)"))
+    end
     n = length(x)
     y = Matrix{Float64}(I, n, n)
 
@@ -2571,10 +2574,15 @@ function plot(
     return p
 end
 
-function predict_arima(model::ArimaFit, n_ahead::Int=1; 
+function predict_arima(model::ArimaFit, n_ahead::Int=1;
     newxreg::Union{Nothing, NamedMatrix}= nothing, se_fit::Bool=true)
 
     myncol(x) = isnothing(x) ? 0 : size(x, 2)
+
+    # Validate xreg consistency
+    if !isnothing(newxreg) && isnothing(model.xreg)
+        throw(ArgumentError("newxreg provided but model was fit without exogenous regressors"))
+    end
 
     if newxreg isa NamedMatrix
         newxreg = align_columns(newxreg, model.xreg.colnames)

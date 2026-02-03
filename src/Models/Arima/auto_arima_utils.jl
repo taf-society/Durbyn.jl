@@ -4,13 +4,13 @@ function analyze_series(x::AbstractVector)
     last = findlast(!, miss)
 
     if isnothing(first)
-        return (firstnonmiss = nothing, serieslength = 0, x_trim = x)
+        return (firstnonmiss = nothing, lastnonmiss = nothing, serieslength = 0, x_trim = x)
     end
 
     serieslength = count(!, @view miss[first:last])
-    x_trim = x[first:end]   # trim leading missings only
+    x_trim = x[first:last]   # Trim BOTH leading and trailing missings
 
-    (firstnonmiss = first, serieslength = serieslength, x_trim = x_trim)
+    (firstnonmiss = first, lastnonmiss = last, serieslength = serieslength, x_trim = x_trim)
 end
 
 function compute_approx_offset(;
@@ -241,7 +241,12 @@ function fit_custom_arima(
         end
         if !(isnan(fit.aic))
             fit.bic = fit.aic + npar * (log(nstar) - 2)
-            fit.aicc = fit.aic + 2 * npar * (npar + 1) / (nstar - npar - 1)
+            if nstar <= npar + 1
+                fit.aicc = Inf
+                @warn "AICc not computable: insufficient observations (n=$nstar, npar=$npar)"
+            else
+                fit.aicc = fit.aic + 2 * npar * (npar + 1) / (nstar - npar - 1)
+            end
             # Use direct field access instead of string comparison
             fit.ic = ic == "bic" ? fit.bic : (ic == "aicc" ? fit.aicc : fit.aic)
         else

@@ -211,7 +211,7 @@ function Base.show(io::IO, fit::ArimaFit)
 
     println(io, "\nSigma²: ", fit.sigma2)
     println(io, "Log-likelihood: ", fit.loglik)
-    if !isnan(fit.aic)
+    if !isnothing(fit.aic) && !isnan(fit.aic)
         println(io, "AIC: ", fit.aic)
     end
 end

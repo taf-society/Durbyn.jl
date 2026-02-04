@@ -143,7 +143,7 @@ function auto_arima(
                 x,
                 m,
                 order = PDQ(0, 0, 0),
-                fixed = mean2(x, omit_na = true),
+                fixed = [mean2(x, omit_na = true)],
                 kwargs...,
             )
         else
@@ -293,7 +293,7 @@ function auto_arima(
                     order = PDQ(0, d, 0),
                     seasonal_order = PDQ(0, D, 0),
                     include_constant = true,
-                    fixed = mean2(dx) ./ m,
+                    fixed = [mean2(dx) / m],
                     method = method,
                     kwargs...,
                 )
@@ -314,7 +314,7 @@ function auto_arima(
                     m,
                     order = PDQ(0, d, 0),
                     include_constant = true,
-                    fixed = mean2(dx),
+                    fixed = [mean2(dx)],
                     method = method,
                     kwargs...,
                 )

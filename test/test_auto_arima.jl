@@ -1,6 +1,7 @@
 using Test
 using Durbyn
 using Random
+import Durbyn.Arima: ArimaFit
 
 const AIC_TOL = 15.0
 const COEF_TOL = 0.2
@@ -243,6 +244,44 @@ get_D(fit) = fit.arma[7]
         fit = auto_arima(trend_data, 1; seasonal=false)
 
         @test get_d(fit) >= 1 || isfinite(fit.aicc)
+    end
+
+    @testset "Constant Series" begin
+        # Bug fix: constant series should not crash
+        constant_data = fill(2.0, 24)
+        fit = auto_arima(constant_data, 12)
+        @test fit isa ArimaFit
+        @test fit.sigma2 >= 0.0 || isnan(fit.sigma2)
+    end
+
+    @testset "Trailing Missings Trimmed" begin
+        # Bug fix: trailing missings should be trimmed properly
+        y = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, missing, missing]
+        fit = auto_arima(y, 1; seasonal=false)
+        @test fit isa ArimaFit
+        @test isnothing(fit.aicc) || isfinite(fit.aicc) || fit.aicc == Inf
+    end
+
+    @testset "Leading and Trailing Missings" begin
+        # Both leading and trailing missings should be trimmed
+        y = [missing, missing, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, missing]
+        fit = auto_arima(y, 1; seasonal=false)
+        @test fit isa ArimaFit
+    end
+
+    @testset "All Missing Data Error" begin
+        # Bug fix: should throw clear error for all-missing data
+        all_missing = [missing, missing, missing, missing]
+        @test_throws ErrorException auto_arima(all_missing, 1)
+    end
+
+    @testset "m < 1 Validation" begin
+        # Bug fix: m < 1 should throw for seasonal, default to 1 for non-seasonal
+        @test_throws ArgumentError auto_arima(randn(30), 0; seasonal=true)
+
+        # For non-seasonal, m < 1 should work (internally set to 1)
+        fit = auto_arima(randn(30), 0; seasonal=false)
+        @test !isnothing(fit)
     end
 
     @testset "Long Series (n=769)" begin

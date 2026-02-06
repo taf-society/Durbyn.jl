@@ -4,7 +4,7 @@ using Statistics
 
 import Durbyn.Utils: is_constant, is_constant_all, na_omit, na_omit_pair, isna
 import Durbyn.Utils: duplicated, complete_cases, as_integer, mean2, na_contiguous
-import Durbyn.Utils: na_action, as_vector, ModelFitError, evaluation_metrics
+import Durbyn.Utils: na_action, na_fail, as_vector, ModelFitError, evaluation_metrics
 import Durbyn.Utils: NamedMatrix, air_passengers, ausbeer, lynx, sunspots
 
 const EPS_SCALAR = 1e-10
@@ -393,6 +393,19 @@ const EPS_SCALAR = 1e-10
 
         @test result["mse"] >= 0
         @test result["mae"] >= 0
+    end
+
+    @testset "na_fail action" begin
+        clean_data = [1.0, 2.0, 3.0]
+        @test na_action(clean_data, "na_fail") == clean_data
+
+        missing_data = [1.0, missing, 3.0]
+        @test_throws ArgumentError na_action(missing_data, "na_fail")
+    end
+
+    @testset "na_interp action" begin
+        x = [1.0, missing, 3.0]
+        @test_throws ErrorException na_action(x, "na_interp")
     end
 
 end

@@ -8,6 +8,7 @@ import Durbyn.Stats: decompose, DecomposedTimeSeries
 import Durbyn.Stats: adf, ADF, kpss, KPSS
 import Durbyn.Stats: embed, diff, fourier, ndiffs, nsdiffs
 import Durbyn.Stats: ols, OlsFit, approx, approxfun, seasonal_strength
+import Durbyn.Stats: na_interp
 
 const EPS_SCALAR = 1e-6
 const EPS_VECTOR = 0.05
@@ -471,6 +472,136 @@ const REF_KPSS_STAT_AP = 2.8767
             @test length(strength) >= 1
             @test all(strength .< 0.5)
         end
+    end
+
+    @testset "na_interp (Missing Value Interpolation)" begin
+
+        @testset "Linear interpolation - interior gaps" begin
+            # Simple linear interpolation for interior missing values
+            x = Union{Float64,Missing}[1.0, 2.0, missing, 4.0, 5.0]
+            result = na_interp(x; linear=true)
+
+            @test length(result) == length(x)
+            @test !any(ismissing.(result))
+            @test result[1] ≈ 1.0
+            @test result[2] ≈ 2.0
+            @test result[3] ≈ 3.0  # Interpolated
+            @test result[4] ≈ 4.0
+            @test result[5] ≈ 5.0
+        end
+
+        @testset "Linear interpolation - multiple gaps" begin
+            x = Union{Float64,Missing}[1.0, missing, missing, 4.0, missing, 6.0]
+            result = na_interp(x; linear=true)
+
+            @test !any(ismissing.(result))
+            @test result[2] ≈ 2.0  # Interpolated
+            @test result[3] ≈ 3.0  # Interpolated
+            @test result[5] ≈ 5.0  # Interpolated
+        end
+
+        @testset "Linear interpolation - edge missing values" begin
+            # Leading and trailing missing values use rule=(2,2) constant extrapolation
+            # R's approx with rule=(2,2) extrapolates using the nearest value
+            x = Union{Float64,Missing}[missing, missing, 3.0, 4.0, 5.0, missing]
+            result = na_interp(x; linear=true)
+
+            @test !any(ismissing.(result))
+            # Leading missings extrapolated with first non-missing value (constant)
+            @test result[1] ≈ 3.0  # Extrapolated with nearest
+            @test result[2] ≈ 3.0  # Extrapolated with nearest
+            # Trailing missing extrapolated with last non-missing value (constant)
+            @test result[6] ≈ 5.0  # Extrapolated with nearest
+        end
+
+        @testset "NaN values treated as missing" begin
+            x = [1.0, NaN, 3.0, 4.0, NaN]
+            result = na_interp(x; linear=true)
+
+            @test !any(isnan.(result))
+            @test result[2] ≈ 2.0  # Was NaN, now interpolated
+        end
+
+        @testset "No missing values - returns input unchanged" begin
+            x = [1.0, 2.0, 3.0, 4.0, 5.0]
+            result = na_interp(x; linear=true)
+
+            @test result == x
+        end
+
+        @testset "Seasonal interpolation with AirPassengers" begin
+            # Create a copy with some missing values
+            ap_miss = copy(AirPassengers)
+            ap_miss[50] = NaN
+            ap_miss[100] = NaN
+
+            result = na_interp(ap_miss; m=12)
+
+            @test length(result) == length(ap_miss)
+            @test !any(isnan.(result))
+            # Interpolated values should be reasonable (within seasonal pattern)
+            @test result[50] > 150 && result[50] < 300
+            @test result[100] > 200 && result[100] < 400
+        end
+
+        @testset "Box-Cox transformation support" begin
+            # Test with positive data and lambda
+            x = Union{Float64,Missing}[100.0, missing, 300.0, 400.0, 500.0]
+            result = na_interp(x; linear=true, lambda=0.5)
+
+            @test !any(ismissing.(result))
+            @test all(result .> 0)  # Box-Cox preserves positivity
+            # The interpolated value should be reasonable
+            @test result[2] > 100 && result[2] < 300
+        end
+
+        @testset "Log transformation (lambda=0)" begin
+            x = Union{Float64,Missing}[10.0, missing, 1000.0]
+            result = na_interp(x; linear=true, lambda=0.0)
+
+            @test !any(ismissing.(result))
+            @test all(result .> 0)
+            # Log interpolation: geometric mean-ish behavior
+            @test result[2] > 10 && result[2] < 1000
+        end
+
+        @testset "Automatic linear fallback for short series" begin
+            # With m=12, a series of 5 elements should fall back to linear
+            x = Union{Float64,Missing}[1.0, missing, 3.0, 4.0, 5.0]
+            result = na_interp(x; m=12)
+
+            @test !any(ismissing.(result))
+            @test result[2] ≈ 2.0
+        end
+
+        @testset "Automatic linear when m=1" begin
+            x = Union{Float64,Missing}[1.0, missing, 3.0, 4.0, 5.0]
+            result = na_interp(x; m=1)
+
+            @test !any(ismissing.(result))
+            @test result[2] ≈ 2.0
+        end
+
+        @testset "Error on all missing" begin
+            x = Union{Float64,Missing}[missing, missing, missing]
+            @test_throws ErrorException na_interp(x)
+        end
+
+        @testset "Single non-missing value - requires at least two" begin
+            # When only one value exists, interpolation is not possible
+            # R's approx also requires at least 2 non-NA values
+            x = Union{Float64,Missing}[missing, 5.0, missing]
+            @test_throws ErrorException na_interp(x; linear=true)
+        end
+
+        @testset "Integer input converted to Float" begin
+            x = Union{Int,Missing}[1, missing, 3, 4, 5]
+            result = na_interp(x; linear=true)
+
+            @test eltype(result) <: AbstractFloat
+            @test result[2] ≈ 2.0
+        end
+
     end
 
 end

@@ -57,7 +57,7 @@ import .Tbats: tbats, TBATSModel
 import .Theta: theta, auto_theta, ThetaFit, ThetaModelType, STM, OTM, DSTM, DOTM
 import .Diffusion: diffusion, fit_diffusion, DiffusionFit, DiffusionModelType, Bass, Gompertz, GSGompertz, Weibull
 import .TableOps: select, query, arrange, groupby, mutate, summarise, summarize, pivot_longer, pivot_wider, glimpse, GroupedTable
-import .Stats: acf, pacf, ACFResult, PACFResult
+import .Stats: acf, pacf, ACFResult, PACFResult, na_interp
 
 export air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
 export Formula, parse_formula, compile, model_matrix, model_frame
@@ -82,7 +82,7 @@ export tbats, TBATSModel
 export theta, auto_theta, ThetaFit, ThetaModelType, STM, OTM, DSTM, DOTM
 export diffusion, fit_diffusion, DiffusionFit, DiffusionModelType, Bass, Gompertz, GSGompertz, Weibull
 export select, query, arrange, groupby, mutate, summarise, summarize, pivot_longer, pivot_wider, glimpse, GroupedTable
-export acf, pacf, ACFResult, PACFResult
+export acf, pacf, ACFResult, PACFResult, na_interp
 
 include("glimpse_extensions.jl")
 

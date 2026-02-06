@@ -312,13 +312,13 @@ function na_contiguous(x::AbstractArray)
     return x
 end
 
-# function na_fail(x::Union{AbstractArray,DataFrame})
-#     if all(complete_cases(x))
-#         return x
-#     else
-#         throw(ArgumentError("missing values in x"))
-#     end
-# end
+function na_fail(x::AbstractArray)
+    if all(complete_cases(x))
+        return x
+    else
+        throw(ArgumentError("missing values in object"))
+    end
+end
 
 
 function check_component(container, key)
@@ -364,12 +364,12 @@ function na_action(x::AbstractArray, type::String="na_contiguous")
     end
 end
 
-function na_interp(x, m; lambda=nothing, linear=nothing)
-    if isnothing(linear)
-        linear = (m <= 1 || sum(!ismissing.(x)) <= 2 * m)
-    end
-
-    println("just a test place holder:", lambda)
+function na_interp(x::AbstractArray)
+    throw(ErrorException(
+        "na_interp is available in the Stats module. " *
+        "Call `Durbyn.na_interp(x; m=period)` directly, or use " *
+        "na_action_type=\"na_contiguous\" (default) or \"na_fail\" instead."
+    ))
 end
 
 function evaluation_metrics(actual, pred)

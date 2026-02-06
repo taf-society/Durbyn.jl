@@ -226,14 +226,16 @@ function na_interp(x::AbstractVector{T};
         xu = result.y
     else
         # Seasonal interpolation using MSTL
-        # First, fill gaps with a preliminary fit using Fourier + polynomial
+        # First, fill gaps with a preliminary fit using Fourier + orthogonal polynomials
+        # (Matching R's na.interp approach which uses poly(x, 3) for trend)
         K = min(div(freq, 2), 5)
 
-        # Build design matrix: Fourier terms + polynomial trend
+        # Build design matrix: Fourier terms + orthogonal polynomial trend
         fourier_terms = _fourier_matrix(n, freq, K)
-        poly_degree = min(max(div(n, 10), 1), 6)
-        poly_terms = _poly_matrix(tt, poly_degree)
-        X = hcat(fourier_terms, poly_terms)
+        # Use orthogonal polynomials of degree 3 for trend (matches R's poly(x, 3))
+        poly_degree = min(3, n - 1)  # Can't have more terms than observations - 1
+        trend_terms = hcat(ones(n), _poly_matrix(collect(tt), poly_degree))
+        X = hcat(fourier_terms, trend_terms)
 
         # Get non-missing rows for fitting
         X_valid = X[.!missng, :]
@@ -246,9 +248,10 @@ function na_interp(x::AbstractVector{T};
             fit = ols(y_valid, X_valid)
             pred = X * fit.coef
             pred_miss = pred[missng]
-            # Check if predicted values are reasonable (within 2x the data range)
-            pred_range_ok = all(pred_miss .>= rangex[1] - drangex) &&
-                           all(pred_miss .<= rangex[2] + drangex)
+            # Check if predicted values are reasonable (within 0.5x the data range extension)
+            # Use a tighter check to avoid corrupting MSTL with bad extrapolations
+            pred_range_ok = all(pred_miss .>= rangex[1] - 0.5 * drangex) &&
+                           all(pred_miss .<= rangex[2] + 0.5 * drangex)
             if pred_range_ok
                 xu[missng] .= pred_miss
             else
@@ -262,6 +265,35 @@ function na_interp(x::AbstractVector{T};
             # Use simple linear interpolation for initial fill
             result = approx(idx, xu[idx]; xout=collect(tt), rule=(2, 2))
             xu = result.y
+        end
+
+        # Additional refinement: adjust preliminary fill using seasonal means
+        # This helps when Fourier extrapolation gives poor estimates at edge positions
+        for i in 1:n
+            if missng[i]
+                # Find values at same seasonal position
+                month = ((i - 1) % freq) + 1
+                same_month_idx = [j for j in 1:n if ((j - 1) % freq) + 1 == month && !missng[j]]
+                if !isempty(same_month_idx)
+                    # Compute seasonal mean and trend adjustment
+                    same_month_vals = origx[same_month_idx]
+                    seasonal_mean = mean(same_month_vals)
+                    # Blend with Fourier prediction if the difference is large
+                    if abs(xu[i] - seasonal_mean) > 0.3 * drangex
+                        # Estimate trend at position i
+                        if length(same_month_idx) >= 2
+                            # Linear trend through same-month values
+                            trend_slope = (same_month_vals[end] - same_month_vals[1]) /
+                                         (same_month_idx[end] - same_month_idx[1])
+                            # Extrapolate to position i
+                            nearest_idx = same_month_idx[argmin(abs.(same_month_idx .- i))]
+                            xu[i] = origx[nearest_idx] + trend_slope * (i - nearest_idx)
+                        else
+                            xu[i] = seasonal_mean
+                        end
+                    end
+                end
+            end
         end
 
         # Now apply robust MSTL
@@ -327,17 +359,51 @@ function _fourier_matrix(n::Int, period::Int, K::Int)
 end
 
 """
-Helper function to create polynomial design matrix for na_interp.
+Helper function to create orthogonal polynomial design matrix for na_interp.
+Uses three-term recurrence to match R's poly() function exactly.
 """
 function _poly_matrix(tt::AbstractVector, degree::Int)
     n = length(tt)
-    # Normalize to [-1, 1] for numerical stability
-    t_norm = 2 .* (tt .- minimum(tt)) ./ max(1, maximum(tt) - minimum(tt)) .- 1
-
-    X = zeros(n, degree)
-    for d in 1:degree
-        X[:, d] .= t_norm .^ d
+    if degree <= 0
+        return zeros(n, 0)
     end
 
-    return X
+    x = collect(Float64, tt)
+
+    # Three-term recurrence for orthogonal polynomials (matching R's poly())
+    # P_0(x) = 1 (not included in output)
+    # P_1(x) = (x - alpha_1) / sqrt(norm2_2 / norm2_1)
+    # P_k(x) = [(x - alpha_k) * P_{k-1}(x) - sqrt(norm2_k / norm2_{k-1}) * P_{k-2}(x)] / sqrt(norm2_{k+1} / norm2_k)
+
+    # Compute alpha (centering constants) and norm2 (squared norms)
+    alpha = zeros(degree)
+    norm2 = zeros(degree + 2)
+    norm2[1] = 1.0
+    norm2[2] = Float64(n)
+
+    P = zeros(n, degree + 1)  # P[:, 1] = P_0, P[:, 2] = P_1, etc.
+    P[:, 1] .= 1.0
+
+    # Mean of x
+    xbar = mean(x)
+    alpha[1] = xbar
+
+    # P_1: centered x, scaled
+    P[:, 2] .= x .- xbar
+    norm2[3] = sum(P[:, 2].^2)
+
+    # Compute remaining polynomials using three-term recurrence
+    for k in 2:degree
+        alpha[k] = sum(x .* P[:, k].^2) / norm2[k + 1]
+        P[:, k + 1] .= (x .- alpha[k]) .* P[:, k] .- (norm2[k + 1] / norm2[k]) .* P[:, k - 1]
+        norm2[k + 2] = sum(P[:, k + 1].^2)
+    end
+
+    # Normalize to unit norm and return columns 2:(degree+1) (skip P_0)
+    result = zeros(n, degree)
+    for k in 1:degree
+        result[:, k] .= P[:, k + 1] ./ sqrt(norm2[k + 2])
+    end
+
+    return result
 end

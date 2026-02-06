@@ -1,7 +1,7 @@
 module Stats
 import Base: show, summary
 import Statistics: mean, std, quantile, minimum, maximum, var, median
-import LinearAlgebra: diag, dot
+import LinearAlgebra: diag, dot, qr
 
 using ..Optimize
 import ..Utils: na_omit, as_integer, mean2, is_constant, match_arg, NamedMatrix, isna, duplicated, complete_cases

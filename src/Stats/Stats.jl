@@ -1,6 +1,6 @@
 module Stats
 import Base: show, summary
-import Statistics: mean, std, quantile, minimum, maximum, var
+import Statistics: mean, std, quantile, minimum, maximum, var, median
 import LinearAlgebra: diag, dot
 
 using ..Optimize

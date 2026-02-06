@@ -240,12 +240,26 @@ function na_interp(x::AbstractVector{T};
         y_valid = xu[.!missng]
 
         # Fit OLS and predict missing values
+        # Use linear interpolation as fallback if OLS fails or gives extreme values
+        use_linear_fill = false
         try
             fit = ols(y_valid, X_valid)
             pred = X * fit.coef
-            xu[missng] .= pred[missng]
+            pred_miss = pred[missng]
+            # Check if predicted values are reasonable (within 2x the data range)
+            pred_range_ok = all(pred_miss .>= rangex[1] - drangex) &&
+                           all(pred_miss .<= rangex[2] + drangex)
+            if pred_range_ok
+                xu[missng] .= pred_miss
+            else
+                use_linear_fill = true
+            end
         catch
-            # If OLS fails, use simple linear interpolation for initial fill
+            use_linear_fill = true
+        end
+
+        if use_linear_fill
+            # Use simple linear interpolation for initial fill
             result = approx(idx, xu[idx]; xout=collect(tt), rule=(2, 2))
             xu = result.y
         end

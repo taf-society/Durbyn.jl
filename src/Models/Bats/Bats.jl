@@ -1,7 +1,7 @@
 module Bats
 
-import ..Utils: na_contiguous, is_constant
-import ..Stats: box_cox, box_cox!, inv_box_cox, box_cox_lambda
+import ..Utils: is_constant
+import ..Stats: box_cox, box_cox!, inv_box_cox, box_cox_lambda, na_contiguous
 import ..Arima: auto_arima
 import ..Generics: Forecast, forecast, fitted
 import ..Optimize: optim

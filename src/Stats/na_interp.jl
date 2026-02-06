@@ -1,4 +1,122 @@
 """
+    na_contiguous(x::AbstractArray)
+
+Extract the longest contiguous segment of non-missing values from `x`.
+
+# Arguments
+- `x::AbstractArray`: Input array that may contain missing values.
+
+# Returns
+The longest contiguous segment of `x` without missing values.
+
+# Example
+```julia
+x = [missing, 1.0, 2.0, 3.0, missing, 4.0, missing]
+na_contiguous(x)  # Returns [1.0, 2.0, 3.0]
+```
+"""
+function na_contiguous(x::AbstractArray)
+    good = .!ismissing.(x)
+    if sum(good) == 0
+        error("all times contain an NA")
+    end
+    tt = cumsum(Int[!g for g in good])
+    ln = [sum(tt .== i) for i = 0:maximum(tt)]
+    seg = findfirst(v -> v == maximum(ln), ln) - 1
+    keep = tt .== seg
+    st = findfirst(keep)
+
+    if !good[st]
+        st += 1
+    end
+
+    en = findlast(keep)
+    omit = Int[]
+    n = length(x)
+
+    if st > 1
+        append!(omit, 1:(st-1))
+    end
+
+    if en < n
+        append!(omit, (en+1):n)
+    end
+
+    if length(omit) > 0
+        x = x[st:en]
+    end
+
+    return x
+end
+
+"""
+    na_fail(x::AbstractArray)
+
+Return `x` unchanged if it contains no missing values; otherwise throw an error.
+
+# Arguments
+- `x::AbstractArray`: Input array to check.
+
+# Returns
+The input array `x` if no missing values are present.
+
+# Throws
+`ArgumentError` if `x` contains any missing values.
+
+# Example
+```julia
+na_fail([1.0, 2.0, 3.0])  # Returns [1.0, 2.0, 3.0]
+na_fail([1.0, missing, 3.0])  # Throws ArgumentError
+```
+"""
+function na_fail(x::AbstractArray)
+    if all(complete_cases(x))
+        return x
+    else
+        throw(ArgumentError("missing values in object"))
+    end
+end
+
+"""
+    na_action(x::AbstractArray, type::String="na_contiguous"; m::Union{Int,Nothing}=nothing)
+
+Handle missing data in a vector `x` based on the specified `type` of action.
+
+# Arguments
+- `x::AbstractArray`: The input vector containing data which may have missing values.
+- `type::String`: The type of action to take on the missing data:
+    - `"na_contiguous"` (default): Extract the longest contiguous segment without missing values.
+    - `"na_interp"`: Interpolate missing values (requires `m` for seasonal data).
+    - `"na_fail"`: Throw an error if any missing values are present.
+- `m::Union{Int,Nothing}`: Seasonal period for `na_interp`. Required for seasonal interpolation.
+
+# Returns
+The vector `x` after applying the specified missing data handling action.
+
+# Example
+```julia
+x = [1.0, 2.0, missing, 4.0, 5.0]
+na_action(x, "na_contiguous")  # Returns longest contiguous segment
+na_action(x, "na_interp")      # Returns [1.0, 2.0, 3.0, 4.0, 5.0] (interpolated)
+na_action(x, "na_fail")        # Throws ArgumentError
+```
+
+# See also
+[`na_contiguous`](@ref), [`na_interp`](@ref), [`na_fail`](@ref)
+"""
+function na_action(x::AbstractArray, type::String="na_contiguous"; m::Union{Int,Nothing}=nothing)
+    if type == "na_contiguous"
+        return na_contiguous(x)
+    elseif type == "na_interp"
+        return na_interp(x; m=m)
+    elseif type == "na_fail"
+        return na_fail(x)
+    else
+        error("Invalid type: $type. Must be one of \"na_contiguous\", \"na_interp\", or \"na_fail\".")
+    end
+end
+
+"""
     na_interp(x::AbstractVector{T};
               m::Union{Int,Nothing}=nothing,
               lambda::Union{Nothing,Real}=nothing,

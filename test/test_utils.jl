@@ -3,9 +3,10 @@ using Durbyn
 using Statistics
 
 import Durbyn.Utils: is_constant, is_constant_all, na_omit, na_omit_pair, isna
-import Durbyn.Utils: duplicated, complete_cases, as_integer, mean2, na_contiguous
-import Durbyn.Utils: na_action, na_fail, as_vector, ModelFitError, evaluation_metrics
+import Durbyn.Utils: duplicated, complete_cases, as_integer, mean2
+import Durbyn.Utils: as_vector, ModelFitError, evaluation_metrics
 import Durbyn.Utils: NamedMatrix, air_passengers, ausbeer, lynx, sunspots
+import Durbyn.Stats: na_contiguous, na_action, na_fail, na_interp
 
 const EPS_SCALAR = 1e-10
 
@@ -404,8 +405,10 @@ const EPS_SCALAR = 1e-10
     end
 
     @testset "na_interp action" begin
-        x = [1.0, missing, 3.0]
-        @test_throws ErrorException na_action(x, "na_interp")
+        x = Union{Float64,Missing}[1.0, missing, 3.0]
+        result = na_action(x, "na_interp")
+        @test !any(ismissing.(result))
+        @test result[2] ≈ 2.0  # Interpolated value
     end
 
 end

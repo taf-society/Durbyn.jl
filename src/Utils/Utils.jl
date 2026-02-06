@@ -6,6 +6,7 @@ import Statistics: mean
 export NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind, setrow!
 export Formula, parse_formula, compile, model_matrix, model_frame, as_vector
 export air_passengers, ausbeer, lynx, sunspots, pedestrian_counts, simulate_seasonal_data
+export complete_cases
 include("named_matrix.jl")
 include("model_frame.jl")
 include("math.jl")
@@ -278,49 +279,6 @@ function mean2(x::AbstractVector{<:Union{Missing,Number}}; omit_na::Bool=false)
     return mean(x)
 end
 
-function na_contiguous(x::AbstractArray)
-    good = .!ismissing.(x)
-    if sum(good) == 0
-        error("all times contain an NA")
-    end
-    tt = cumsum(Int[!g for g in good])
-    ln = [sum(tt .== i) for i = 0:maximum(tt)]
-    seg = findfirst(x -> x == maximum(ln), ln) - 1
-    keep = tt .== seg
-    st = findfirst(keep)
-
-    if !good[st]
-        st += 1
-    end
-
-    en = findlast(keep)
-    omit = Int[]
-    n = length(x)
-
-    if st > 1
-        append!(omit, 1:(st-1))
-    end
-
-    if en < n
-        append!(omit, (en+1):n)
-    end
-
-    if length(omit) > 0
-        x = x[st:en]
-    end
-
-    return x
-end
-
-function na_fail(x::AbstractArray)
-    if all(complete_cases(x))
-        return x
-    else
-        throw(ArgumentError("missing values in object"))
-    end
-end
-
-
 function check_component(container, key)
     if isa(container, Dict) && haskey(container, key)
         return container[key]
@@ -329,47 +287,6 @@ function check_component(container, key)
     else
         return nothing
     end
-end
-
-"""
-    na_action(x::AbstractArray, type="na_contiguous")
-
-    Handle missing data in a vector `x` based on the specified `type` of action.
-
-    # Arguments
-    - `x::AbstractArray`: The input vector containing data which may have missing values.
-    - `type::Strin`: The type of action to take on the missing data. This should be a `String` and can be one of:
-        - `"na_contiguous"`: Handle missing data by treating contiguous blocks of missing values.
-        - `"na_interp"`: Handle missing data by interpolation.
-       - `"na_fail"`: Handle missing data by failing (raising an error).
-
-    # Returns
-    The vector `x` after applying the specified missing data handling action.
-
-    # Example
-    ```julia
-    x = [1, 2, missing, 4, 5]
-    result = na_action(x, "na_interp")
-    ```
-    """
-function na_action(x::AbstractArray, type::String="na_contiguous")
-    if type == "na_contiguous"
-        return na_contiguous(x)
-    elseif type == "na_interp"
-        return na_interp(x)
-    elseif type == "na_fail"
-        return na_fail(x)
-    else
-        error("Invalid type")
-    end
-end
-
-function na_interp(x::AbstractArray)
-    throw(ErrorException(
-        "na_interp is available in the Stats module. " *
-        "Call `Durbyn.na_interp(x; m=period)` directly, or use " *
-        "na_action_type=\"na_contiguous\" (default) or \"na_fail\" instead."
-    ))
 end
 
 function evaluation_metrics(actual, pred)

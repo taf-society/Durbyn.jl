@@ -218,7 +218,8 @@ function compute_forecast(h, last_state, trend_type, season_type, damped, m, sig
         G[2, 1] = params["beta"]
     end
     if season_type == "A"
-        G[3, 1] = params["gamma"]
+        gamma_idx = (trend_type == "N") ? 2 : 3
+        G[gamma_idx, 1] = params["gamma"]
     end
 
     mu = zeros(h)

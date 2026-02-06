@@ -1870,12 +1870,13 @@ function ets_refit(
     model::ETS;
     biasadj::Bool = false,
     use_initial_values::Bool = false,
+    nmse::Int = 3,
     kwargs...,
 )
     alpha = max(model.par["alpha"], 1e-10)
-    beta = model.par["beta"]
-    gamma = model.par["gamma"]
-    phi = model.par["phi"]
+    beta = get(model.par, "beta", nothing)
+    gamma = get(model.par, "gamma", nothing)
+    phi = get(model.par, "phi", nothing)
 
     modelcomponents = string(model.components[1], model.components[2], model.components[3])
     damped = model.components[4]
@@ -1885,7 +1886,12 @@ function ets_refit(
         trendtype = string(modelcomponents[2])
         seasontype = string(modelcomponents[3])
 
-        initstates = Vector(model.initstate[1, :])
+        # Handle both 1D and 2D initstate arrays
+        if ndims(model.initstate) == 1
+            initstates = Vector(model.initstate)
+        else
+            initstates = Vector(model.initstate[1, :])
+        end
 
         lik, amse, e, states = calculate_residuals(
             y,
@@ -1998,8 +2004,25 @@ function validate_and_set_model_params(model, y, m, damped, restrict, additive_o
     end
 
     data_positive = minimum(y) > 0
-    if !data_positive && errortype == "M"
-        throw(ArgumentError("Inappropriate model for data with negative or zero values"))
+    if !data_positive
+        if errortype == "M"
+            throw(ArgumentError(
+                "Multiplicative error models require strictly positive data. " *
+                "Data contains zero or negative values."
+            ))
+        end
+        if trendtype == "M"
+            throw(ArgumentError(
+                "Multiplicative trend models require strictly positive data. " *
+                "Data contains zero or negative values."
+            ))
+        end
+        if seasontype == "M"
+            throw(ArgumentError(
+                "Multiplicative seasonal models require strictly positive data. " *
+                "Data contains zero or negative values."
+            ))
+        end
     end
 
     if !isnothing(damped)
@@ -2118,7 +2141,7 @@ function fit_small_dataset(
             beta = beta,
             gamma = false,
             seasonal = "additive",
-            exponential = (trendtype == 'M'),
+            exponential = (trendtype == "M"),
             phi = phi,
             lambda = lambda,
             biasadj = biasadj,
@@ -2137,7 +2160,7 @@ function fit_small_dataset(
             beta = false,
             gamma = false,
             seasonal = "additive",
-            exponential = (trendtype == 'M'),
+            exponential = (trendtype == "M"),
             phi = phi,
             lambda = lambda,
             biasadj = biasadj,
@@ -2405,18 +2428,20 @@ function ets_base_model(
         na_action_type,
     )
 
-    if typeof(model) == ETS
-        model = ets_refit(
+    if model isa ETS
+        refit_result = ets_refit(
             y,
             m,
             model,
             biasadj = biasadj,
-            use_initial_values = use_initial_values;
-            kwargs...,
+            use_initial_values = use_initial_values,
+            nmse = nmse,
         )
-        if typeof(model) == ETS
-            return model
+        if refit_result isa ETS
+            return refit_result
         end
+        # EtsRefit was returned, extract model string for further processing
+        model = refit_result.model
     end
 
     errortype, trendtype, seasontype, npars, data_positive =
@@ -2478,8 +2503,7 @@ function ets_base_model(
             inv_box_cox(model["fitted"], lambda = lambda, biasadj = biasadj, fvar = sigma2)
     end
 
-    initstates = transpose(model["states"])
-    initstates = initstates[1, :]
+    initstates = model["states"][1, :]
 
     model = EtsModel(
         model["fitted"],

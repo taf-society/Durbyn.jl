@@ -511,4 +511,30 @@ using Durbyn.TableOps
         @test holt_panel_fit isa GroupedFittedModels
         @test holt_panel_fit.successful == 2
     end
+
+    @testset "ETS Model Refit" begin
+        ap = air_passengers()
+
+        @testset "Refit with use_initial_values=false" begin
+            fit1 = ets(ap, 12, "AAA")
+            new_data = ap[1:100]
+            fit2 = ets(new_data, 12, fit1, use_initial_values=false)
+            @test fit2 isa ETS
+        end
+
+        @testset "Refit with use_initial_values=true" begin
+            fit1 = ets(ap, 12, "AAN")
+            new_data = ap[1:100]
+            fit2 = ets(new_data, 12, fit1, use_initial_values=true)
+            @test fit2 isa ETS
+        end
+    end
+
+    @testset "Non-positive data validation" begin
+        non_positive = [0.0, 1.0, 2.0, -1.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+
+        @test_throws ArgumentError ets(non_positive, 1, "MNN")
+        @test_throws ArgumentError ets(non_positive, 1, "AMN")
+        @test_throws ArgumentError ets(non_positive .+ 2, 4, "ANM")
+    end
 end

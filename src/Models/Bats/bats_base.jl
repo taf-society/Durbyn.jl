@@ -1310,7 +1310,7 @@ function fitSpecificBATS(
                 lambda = init_box_cox
             else
 
-                lambda = box_cox_lambda(y, 1; lower = 0.0, upper = 1.5)
+                lambda = box_cox_lambda(y, 1; lower = bc_lower, upper = bc_upper)
             end
 
             y_transformed, lambda = box_cox(y, 1; lambda=lambda)
@@ -1715,6 +1715,7 @@ function filterSpecifics(
                 use_beta = trend,
                 use_damping = damping,
                 seasonal_periods = best_seasonal_periods,
+                starting_params = starting_params,
                 ar_coefs = ar_coefs,
                 ma_coefs = ma_coefs,
                 init_box_cox = init_box_cox,
@@ -1735,6 +1736,78 @@ function filterSpecifics(
     else
         return first_model
     end
+end
+
+function fit_previous_bats_model(y::Vector{Float64}, old_model::BATSModel)
+    # Handle constant model edge case
+    if isempty(old_model.parameters)
+        return create_constant_model(y)
+    end
+
+    # Extract frozen parameters
+    paramz = unparameterise(old_model.parameters[:vect], old_model.parameters[:control])
+    seasonal_periods = old_model.seasonal_periods
+    p = isnothing(paramz.ar_coefs) ? 0 : length(paramz.ar_coefs)
+    q = isnothing(paramz.ma_coefs) ? 0 : length(paramz.ma_coefs)
+
+    # Apply Box-Cox if old model used it
+    if !isnothing(paramz.lambda)
+        if any(yi -> yi <= 0, y)
+            @warn "New data has non-positive values but old model used Box-Cox (lambda=$(paramz.lambda)). Results may contain NaN."
+        end
+        y_transformed, _ = box_cox(y, 1; lambda=paramz.lambda)
+    else
+        y_transformed = y
+    end
+
+    # Rebuild matrices from frozen parameters
+    w = make_wmatrix(paramz.small_phi, seasonal_periods, paramz.ar_coefs, paramz.ma_coefs)
+    g_result = make_gmatrix(paramz.alpha, paramz.beta, paramz.gamma_v, seasonal_periods, p, q)
+    F = make_fmatrix(
+        paramz.alpha,
+        paramz.beta,
+        paramz.small_phi,
+        seasonal_periods,
+        g_result.gamma_bold_matrix,
+        paramz.ar_coefs,
+        paramz.ma_coefs,
+    )
+
+    # Seed states are already stored in Box-Cox transformed space
+    x_nought = collect(Float64, vec(old_model.seed_states))
+
+    # Run calc_model on new data
+    result = calc_model(y_transformed, x_nought, F, g_result.g, w)
+
+    # Compute variance and back-transform
+    variance = sum(abs2, result.e) / length(y)
+    fitted_values = !isnothing(paramz.lambda) ?
+        inv_box_cox(result.y_hat; lambda=paramz.lambda) : result.y_hat
+
+    # Compute likelihood and AIC
+    n = length(y)
+    if !isnothing(paramz.lambda)
+        likelihood = n * log(sum(abs2, result.e)) - 2 * (paramz.lambda - 1) * sum(log.(y))
+    else
+        likelihood = n * log(sum(abs2, result.e))
+    end
+    n_params = length(old_model.parameters[:vect]) + size(old_model.seed_states, 1)
+    aic = likelihood + 2 * n_params
+
+    method_label = bats_descriptor(paramz.lambda, paramz.ar_coefs, paramz.ma_coefs,
+                                    paramz.small_phi, seasonal_periods)
+
+    return BATSModel(
+        paramz.lambda, paramz.alpha, paramz.beta, paramz.small_phi,
+        paramz.gamma_v, paramz.ar_coefs, paramz.ma_coefs, seasonal_periods,
+        collect(fitted_values), collect(result.e), result.x,
+        old_model.seed_states, variance, aic, likelihood,
+        0,  # optim_return_code (no optimization)
+        y,  # caller swaps in orig_y
+        Dict{Symbol,Any}(:vect => old_model.parameters[:vect],
+                          :control => old_model.parameters[:control]),
+        method_label,
+    )
 end
 
 """
@@ -1825,7 +1898,10 @@ function bats(
     y = y_contig
 
     if model !== nothing
-        return fit_previous_bats_model(y, model)
+        result = fit_previous_bats_model(y, model)
+        result.y = orig_y
+        result.method = bats_descriptor(result)
+        return result
     end
 
     if is_constant(y)
@@ -1840,6 +1916,9 @@ function bats(
     end
 
     if any(yi -> yi <= 0, y)
+        if use_box_cox === true || (use_box_cox isa AbstractVector && any(use_box_cox))
+            @warn "Series contains non-positive values. Box-Cox transformation disabled."
+        end
         use_box_cox = false
     end
 

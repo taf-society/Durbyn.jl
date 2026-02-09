@@ -1,5 +1,5 @@
 """
-    croston_classic(x::Vector; init_strategy::String = "mean", number_of_params::Int = 2,
+    croston_classic(x::AbstractVector; init_strategy::String = "mean", number_of_params::Int = 2,
                     cost_metric::String = "mar", optimize_init::Bool = true, rm_missing::Bool = false)
         -> IntermittentDemandCrostonFit
 
@@ -7,7 +7,7 @@ Forecast intermittent demand using the classical Croston (1972) method.
 
 # Arguments
 
-- `x::Vector`: Input time series vector representing intermittent demand (including zeros and possibly `missing` values).
+- `x::AbstractVector`: Input time series vector representing intermittent demand (including zeros and possibly `missing` values).
   Must contain at least two non-zero values.
 
 - `init_strategy::String`: Initialization strategy for smoothing. Default is `"mean"`.
@@ -111,7 +111,7 @@ International Journal of Production Economics, 156, 180–190.
 https://doi.org/10.1016/j.ijpe.2014.06.007
 """
 
-function croston_classic(x::Vector;
+function croston_classic(x::AbstractVector;
     init_strategy::String = "mean",
     number_of_params::Int = 2,
     cost_metric::String = "mar",
@@ -123,7 +123,7 @@ end
 
 
 """
-    croston_sba(x::Vector; init_strategy::String = "mean", number_of_params::Int = 2,
+    croston_sba(x::AbstractVector; init_strategy::String = "mean", number_of_params::Int = 2,
                 cost_metric::String = "mar", optimize_init::Bool = true, rm_missing::Bool = false)
         -> IntermittentDemandCrostonFit
 
@@ -131,7 +131,7 @@ Forecast intermittent demand using the Syntetos-Boylan Approximation (SBA) - **R
 
 # Arguments
 
-- `x::Vector`: Input time series vector representing intermittent demand (including zeros and possibly `missing` values).
+- `x::AbstractVector`: Input time series vector representing intermittent demand (including zeros and possibly `missing` values).
   Must contain at least two non-zero values.
 
 - `init_strategy::String`: Initialization strategy for smoothing. Default is `"mean"`.
@@ -250,7 +250,7 @@ Kourentzes, N. (2014). *On intermittent demand model optimisation and selection*
 International Journal of Production Economics, 156, 180–190.
 https://doi.org/10.1016/j.ijpe.2014.06.007
 """
-function croston_sba(x::Vector;
+function croston_sba(x::AbstractVector;
     init_strategy::String = "mean",
     number_of_params::Int = 2,
     cost_metric::String = "mar",
@@ -261,7 +261,7 @@ function croston_sba(x::Vector;
 end
 
 """
-    croston_sbj(x::Vector; init_strategy::String = "mean", number_of_params::Int = 2,
+    croston_sbj(x::AbstractVector; init_strategy::String = "mean", number_of_params::Int = 2,
                 cost_metric::String = "mar", optimize_init::Bool = true, rm_missing::Bool = false)
         -> IntermittentDemandCrostonFit
 
@@ -269,7 +269,7 @@ Forecast intermittent demand using the Shale-Boylan-Johnston (SBJ) bias correcti
 
 # Arguments
 
-- `x::Vector`: Input time series vector representing intermittent demand (including zeros and possibly `missing` values).
+- `x::AbstractVector`: Input time series vector representing intermittent demand (including zeros and possibly `missing` values).
   Must contain at least two non-zero values.
 
 - `init_strategy::String`: Initialization strategy for smoothing. Default is `"mean"`.
@@ -391,7 +391,7 @@ Kourentzes, N. (2014). *On intermittent demand model optimisation and selection*
 International Journal of Production Economics, 156, 180–190.
 https://doi.org/10.1016/j.ijpe.2014.06.007
 """
-function croston_sbj(x::Vector;
+function croston_sbj(x::AbstractVector;
     init_strategy::String = "mean",
     number_of_params::Int = 2,
     cost_metric::String = "mar",
@@ -402,58 +402,3 @@ function croston_sbj(x::Vector;
 end
 
 
-"""
-plot(object::IntermittentDemandForecast; show_fitted::Bool = false) -> Plot
-
-Visualize an intermittent demand forecast result, including historical data, forecast mean, and optionally fitted values.
-
-Arguments
-
-object::IntermittentDemandForecast: The forecast result to plot.
-
-show_fitted::Bool: Whether to include in-sample fitted values on the plot. Defaults to false.
-
-Returns
-
-Plot: A Plots.jl object showing the historical demand, forecast horizon, and optionally fitted values.
-
-Description
-
-This function generates a time series plot from an IntermittentDemandForecast object. It displays the historical input series and the forecast mean. If show_fitted is true, the fitted values from the in-sample model are also included as a dashed overlay.
-
-Useful for validating forecast quality and understanding model behavior visually.
-"""
-function plot(object::IntermittentDemandForecast; show_fitted::Bool = false)
-
-    history = object.model.x
-    n_history = length(history)
-    mean_fc = object.mean
-    time_history = 1:n_history
-    time_object = (n_history+1):(n_history+length(mean_fc))
-
-    p = Plots.plot(
-        time_history,
-        history,
-        label = "Historical Data",
-        lw = 2,
-        title = "Intermittent Demand Forecast using " * object.method * " Method",
-        xlabel = "Time",
-        ylabel = "Value",
-        linestyle = :dash,
-    )
-
-    Plots.plot!(time_object, mean_fc, label = "Forecast Mean", lw = 3, color = :blue)
-
-    if show_fitted
-        fitted_val = fitted(object.model)
-        Plots.plot!(
-            time_history,
-            fitted_val,
-            label = "Fitted Values",
-            lw = 3,
-            linestyle = :dash,
-            color = :blue,
-        )
-    end
-    return p
-end

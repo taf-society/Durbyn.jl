@@ -5,19 +5,20 @@ Structure representing the results and configuration for a Croston-based
 intermittent demand forecasting method.
 
 # Fields
-- `weights::AbstractArray`: Smoothing parameters for demand and interval. 
+- `weights::AbstractArray`: Smoothing parameters for demand and interval.
 
-- `initial::AbstractArray`: Initial values for demand and interval smoothing. 
+- `initial::AbstractArray`: Initial values for demand and interval smoothing.
 
 - `method::String`: The Croston method used. One of:
-    - `"Croston-Shale-Boylan-Johnston Bias Correction Method"`
-    - `"Croston Method with Syntetos-Boylan Approximation"`
-    - `"Classical Croston Method"`
+    - `"croston"` (Classical Croston Method)
+    - `"sba"` (Croston Method with Syntetos-Boylan Approximation)
+    - `"sbj"` (Croston-Shale-Boylan-Johnston Bias Correction Method)
 
-- `na_rm::Bool`: Logical value indicating whether missing (`missing`) values should be removed 
-  prior to fitting the model.
+- `na_rm::Bool`: Whether missing values were removed prior to fitting. When `true`,
+  `x` contains the cleaned series (missings already removed).
 
-- `x::AbstractArray`: The input demand time series data.
+- `x::AbstractArray`: The demand time series used for fitting. When `na_rm=true`,
+  this is the cleaned series with missing values removed.
 
 """
 struct IntermittentDemandCrostonFit
@@ -29,21 +30,19 @@ struct IntermittentDemandCrostonFit
 end
 
 """
-IntermittentDemandForecast
+    IntermittentDemandForecast
 
 A container for storing the results of an intermittent demand forecast model.
 
-Fields
+# Fields
+- `mean::Any`: The mean forecast values over the prediction horizon, typically a vector
+  of numeric values. `nothing` when `h=0`.
 
-mean::Any: The mean forecast values over the prediction horizon, typically a vector of numeric values.
+- `model::IntermittentDemandCrostonFit`: The fitted model containing smoothing weights,
+  initial values, method, and input data.
 
-model::IntermittentDemandCrostonFit: A dictionary containing detailed output from the fitted forecasting model, including in-sample forecasts, smoothing weights, initial values, and model components.
-
-method::Any: A label describing the forecasting method used, such as "Classical Croston Method", "Croston Method with Syntetos-Boylan Approximation", or "Croston Method with Shale-Boylan-Johnston Bias Correction".
-
-Description
-
-This struct serves as a standardized return object for various Croston-based forecasting methods, helping users interpret, validate, or visualize forecast results from intermittent demand models.
+- `method::Any`: A label describing the forecasting method used
+  (`"croston"`, `"sba"`, or `"sbj"`).
 """
 struct IntermittentDemandForecast
     mean::Any
@@ -64,7 +63,11 @@ end
 function show(io::IO, forecast::IntermittentDemandForecast)
     println(io, "IntermittentDemandForecast:")
     println(io, "  Method:     ", forecast.method)
-    println(io, "  Mean (first 5 values): ", forecast.mean[1:min(5, end)])
+    if !isnothing(forecast.mean)
+        println(io, "  Mean (first 5 values): ", forecast.mean[1:min(5, end)])
+    else
+        println(io, "  Mean: not yet forecasted")
+    end
     println(io, "  Model Summary:")
     show(io, forecast.model)
 end
@@ -99,7 +102,7 @@ function croston_opt(x, method, cost, w, nop, init, init_opt)
     elseif isnothing(w) && init_opt
         p0 = [fill(0.05, nop)..., init[1], init[2]]
         lbound = [fill(0, nop)..., 0, 1]
-        ubound = [fill(1, nop)..., maximum(x), minimum(intervals)]
+        ubound = [fill(1, nop)..., maximum(x), maximum(intervals)]
 
         cost_fn = p -> croston_cost(p, x, cost, method, w,
             nop, true, init, true, lbound, ubound)
@@ -120,6 +123,10 @@ function croston_opt(x, method, cost, w, nop, init, init_opt)
         wopt = result.x_opt
 
         wopt = [w..., wopt...]
+
+    else
+        # Fixed weights, no init optimization: use weights and init as-is
+        wopt = [w..., init...]
     end
 
     return Dict("w" => wopt[1:nop], "init" => wopt[(nop+1):(nop+2)])
@@ -155,11 +162,15 @@ end
 function pred_crost(x,h,w,init,method,na_rm)
 
     if na_rm
-        x = filter(!ismissing, x)
+        x = collect(filter(!ismissing, x))
+    else
+        if any(ismissing, x)
+            throw(ArgumentError("Input contains missing values. Use rm_missing=true to remove them."))
+        end
     end
     n = length(x)
 
-    @assert sum(x .!= 0) >= 2 "I need at least two non-zero values to model your time series."
+    sum(x .!= 0) >= 2 || throw(ArgumentError("Need at least two non-zero values to model the time series."))
     nzd = findall(xi -> xi != 0, x)
     k = length(nzd)
     z = x[nzd]
@@ -211,7 +222,7 @@ function pred_crost(x,h,w,init,method,na_rm)
         z_out = nothing
     end
 
-    w = length(w) == 1 ? [w, w] : w
+    w = length(w) == 1 ? [w[1], w[1]] : w
 
     c_in = Dict("Demand" => z_in, "Interval" => x_in)
     c_out = h > 0 ? Dict("Demand" => z_out, "Interval" => x_out) : NaN
@@ -237,7 +248,6 @@ function fit_croston(x, method::String="croston", cost::String="mse",
     method = match_arg(method, ["croston", "sba", "sbj"])
     cost = match_arg(cost, ["mar", "msr", "mae", "mse"])
     init_strategy = match_arg(init_strategy, ["naive", "mean"])
-    y = copy(x)
 
     if !(nop in [1, 2])
         @warn "nop can be either 1 or 2. Overriden to 2."
@@ -245,10 +255,14 @@ function fit_croston(x, method::String="croston", cost::String="mse",
     end
 
     if na_rm
-        x = filter(!ismissing, x)
+        x = collect(filter(!ismissing, x))
+    else
+        if any(ismissing, x)
+            throw(ArgumentError("Input contains missing values. Use rm_missing=true to remove them."))
+        end
     end
 
-    @assert sum(x .!= 0) >= 2 "Need at least two non-zero values to model the time series."
+    sum(x .!= 0) >= 2 || throw(ArgumentError("Need at least two non-zero values to model the time series."))
 
     nzd = findall(!=(0), x)
     intervals = [nzd[1]; diff(nzd)]
@@ -258,7 +272,7 @@ function fit_croston(x, method::String="croston", cost::String="mse",
 
     opt = croston_opt(x, method, cost, nothing, nop, init, optimize_init)
 
-    return IntermittentDemandCrostonFit(opt["w"], opt["init"], method, na_rm, y)
+    return IntermittentDemandCrostonFit(opt["w"], opt["init"], method, na_rm, x)
 end
 
 function predict_croston(model::IntermittentDemandCrostonFit, h::Int)
@@ -266,10 +280,13 @@ function predict_croston(model::IntermittentDemandCrostonFit, h::Int)
     w = model.weights
     init = model.initial
     method = model.method
-    na_rm = model.na_rm
     x = model.x
 
-    return pred_crost(x, h, w, init, method, na_rm)
+    if any(ismissing, x)
+        throw(ArgumentError("model.x contains missing values. Refit with rm_missing=true or provide clean data."))
+    end
+
+    return pred_crost(x, h, w, init, method, false)
 end
 
 
@@ -297,7 +314,7 @@ Generate forecasts for intermittent demand using a fitted Croston-based model.
 ```julia
 fit = croston_classic(demand_series)
 fc = forecast(fit, h=12)
-println(fc.forecast)
+println(fc.mean)
 ````
 
 """
@@ -332,10 +349,13 @@ function fitted(object::IntermittentDemandCrostonFit)
     w = object.weights
     init = object.initial
     method = object.method
-    na_rm = object.na_rm
     x = object.x
 
-    return pred_crost(x, 0, w, init, method, na_rm)["frc_in"]
+    if any(ismissing, x)
+        throw(ArgumentError("model.x contains missing values. Refit with rm_missing=true or provide clean data."))
+    end
+
+    return pred_crost(x, 0, w, init, method, false)["frc_in"]
 end
 
 function fitted(object::IntermittentDemandForecast)

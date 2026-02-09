@@ -53,6 +53,10 @@ using Test
         include("test_croston.jl")
     end
 
+    @testset "Intermittent Demand Model" begin
+        include("test_intermittent_demand.jl")
+    end
+
     @testset "Theta Model" begin
         include("test_theta.jl")
     end

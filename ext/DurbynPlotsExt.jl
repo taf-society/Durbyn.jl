@@ -4,7 +4,7 @@ using Durbyn
 using Plots
 import Tables
 
-import Durbyn: plot, Forecast, ACFResult, PACFResult
+import Durbyn: plot, Forecast, ACFResult, PACFResult, IntermittentDemandForecast
 
 function Durbyn.plot(forecast::Durbyn.Generics.Forecast; show_fitted=true, show_residuals=false)
     n_history = length(forecast.x)
@@ -172,6 +172,46 @@ function Durbyn.plot(forecast::Durbyn.Generics.Forecast; show_fitted=true, show_
         return Plots.plot(p, p_resid, layout=(2, 1), size=(900, 800))
     end
 
+    return p
+end
+
+"""
+    plot(object::IntermittentDemandForecast; show_fitted::Bool = false) -> Plot
+
+Visualize an intermittent demand forecast result, including historical data, forecast mean,
+and optionally fitted values.
+"""
+function Durbyn.plot(object::IntermittentDemandForecast; show_fitted::Bool = false)
+    history = object.model.x
+    n_history = length(history)
+    mean_fc = object.mean
+    time_history = 1:n_history
+    time_forecast = (n_history+1):(n_history+length(mean_fc))
+
+    p = Plots.plot(
+        time_history,
+        history,
+        label = "Historical Data",
+        lw = 2,
+        title = "Intermittent Demand Forecast using " * object.method * " Method",
+        xlabel = "Time",
+        ylabel = "Value",
+        linestyle = :dash,
+    )
+
+    Plots.plot!(time_forecast, mean_fc, label = "Forecast Mean", lw = 3, color = :blue)
+
+    if show_fitted
+        fitted_val = Durbyn.fitted(object.model)
+        Plots.plot!(
+            time_history,
+            fitted_val,
+            label = "Fitted Values",
+            lw = 3,
+            linestyle = :dash,
+            color = :blue,
+        )
+    end
     return p
 end
 

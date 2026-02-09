@@ -29,3 +29,37 @@ import Durbyn.Generics: Forecast, forecast, fitted
     @test all(isfinite, vec(fc.lower))
 
 end
+
+@testset "BATS refit with model kwarg" begin
+    ap = air_passengers()
+    fit1 = bats(ap[1:120], 12; use_arma_errors=false)
+    fit2 = bats(ap, 12; model=fit1)
+
+    @test fit2 isa BATSModel
+    @test length(fit2.fitted_values) == 144
+    @test all(isfinite, fit2.fitted_values)
+    @test isfinite(fit2.variance)
+
+    # Parameters frozen from old model
+    @test fit2.alpha == fit1.alpha
+    @test fit2.lambda == fit1.lambda
+    @test fit2.seasonal_periods == fit1.seasonal_periods
+
+    # Forecasting works
+    fc = forecast(fit2; h=12)
+    @test length(fc.mean) == 12
+    @test all(isfinite, fc.mean)
+end
+
+@testset "BATS warns on Box-Cox with non-positive data" begin
+    data = [-1.0; collect(1.0:99.0)]
+    @test_logs (:warn, r"non-positive") match_mode=:any bats(data; use_box_cox=true)
+end
+
+@testset "BATS nonseasonal" begin
+    ap = air_passengers()
+    fit = bats(ap)
+    @test fit isa BATSModel
+    fc = forecast(fit; h=10)
+    @test length(fc.mean) == 10
+end

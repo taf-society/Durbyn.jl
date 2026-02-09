@@ -132,9 +132,16 @@ function croston_opt(x, method, cost, w, nop, init, init_opt)
     return Dict("w" => wopt[1:nop], "init" => wopt[(nop+1):(nop+2)])
 end
 
-function croston_cost(params, x, cost_metric, method, fixed_weights, num_params, optimize_weights, 
+function croston_cost(params, x, cost_metric, method, fixed_weights, num_params, optimize_weights,
     initial_values, optimize_inits, lower_bounds, upper_bounds)
-    forecast_input = nothing
+
+    # Check bounds first to avoid computing with invalid params (e.g. division by near-zero interval)
+    total_param_count = num_params * optimize_weights + 2 * optimize_inits
+    for i in 1:total_param_count
+        if params[i] < lower_bounds[i] || params[i] > upper_bounds[i]
+            return 9e99
+        end
+    end
 
     if optimize_weights
         weights = params[1:num_params]
@@ -147,16 +154,7 @@ function croston_cost(params, x, cost_metric, method, fixed_weights, num_params,
     forecast_result = pred_crost(x, 0, collect(weights), inits, method, false)
     forecast_input = forecast_result["frc_in"]
 
-    error = evaluation_metrics(x, forecast_input)[cost_metric]
-
-    total_param_count = num_params * optimize_weights + 2 * optimize_inits
-    for i in 1:total_param_count
-        if params[i] < lower_bounds[i] || params[i] > upper_bounds[i]
-            return 9e99
-        end
-    end
-
-    return error
+    return evaluation_metrics(x, forecast_input)[cost_metric]
 end
 
 function pred_crost(x,h,w,init,method,na_rm)

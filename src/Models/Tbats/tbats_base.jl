@@ -665,7 +665,7 @@ function fitSpecificTBATS(
             if init_box_cox !== nothing
                 lambda = init_box_cox
             else
-                lambda = box_cox_lambda(y, 1; lower = 0.0, upper = 1.5)
+                lambda = box_cox_lambda(y, 1; lower = bc_lower, upper = bc_upper)
             end
             y_transformed, lambda = box_cox(y, 1; lambda=lambda)
         else
@@ -1196,6 +1196,7 @@ function filterTBATSSpecifics(
     ar_coefs = p > 0 ? zeros(Float64, p) : Float64[]
     ma_coefs = q > 0 ? zeros(Float64, q) : Float64[]
 
+    starting_params = first_model.parameters
 
     second_model = try
         fitSpecificTBATS(
@@ -1205,6 +1206,7 @@ function filterTBATSSpecifics(
             use_damping = damping,
             seasonal_periods = seasonal_periods,
             k_vector = k_vector,
+            starting_params = starting_params,
             ar_coefs = ar_coefs,
             ma_coefs = ma_coefs,
             init_box_cox = init_box_cox,
@@ -1225,6 +1227,82 @@ function filterTBATSSpecifics(
     else
         return first_model
     end
+end
+
+function fitPreviousTBATSModel(y::Vector{Float64}; model::TBATSModel)
+    # Handle constant model edge case
+    if isempty(model.parameters)
+        return create_constant_tbats_model(y)
+    end
+
+    # Extract frozen parameters
+    paramz = unparameterise_tbats(model.parameters[:vect], model.parameters[:control])
+    seasonal_periods = model.seasonal_periods
+    k_vector = model.k_vector
+    p = isnothing(paramz.ar_coefs) ? 0 : length(paramz.ar_coefs)
+    q = isnothing(paramz.ma_coefs) ? 0 : length(paramz.ma_coefs)
+    tau = isnothing(k_vector) ? 0 : 2 * sum(k_vector)
+
+    # Apply Box-Cox if old model used it
+    if !isnothing(paramz.lambda)
+        if any(yi -> yi <= 0, y)
+            @warn "New data has non-positive values but old model used Box-Cox (lambda=$(paramz.lambda)). Results may contain NaN."
+        end
+        y_transformed, _ = box_cox(y, 1; lambda=paramz.lambda)
+    else
+        y_transformed = y
+    end
+
+    # Rebuild matrices from frozen parameters
+    w = make_tbats_wmatrix(paramz.small_phi, k_vector, paramz.ar_coefs, paramz.ma_coefs, tau)
+    g_result = make_tbats_gmatrix(paramz.alpha, paramz.beta, paramz.gamma_one_v, paramz.gamma_two_v, k_vector, p, q)
+    F = make_tbats_fmatrix(
+        paramz.alpha,
+        paramz.beta,
+        paramz.small_phi,
+        seasonal_periods,
+        k_vector,
+        g_result.gamma_bold_matrix,
+        paramz.ar_coefs,
+        paramz.ma_coefs,
+    )
+
+    # Seed states are already stored in Box-Cox transformed space
+    x_nought = collect(Float64, vec(model.seed_states))
+
+    # Run calc_model_tbats on new data
+    result = calc_model_tbats(y_transformed, x_nought, F, g_result.g, w)
+
+    # Compute variance and back-transform
+    variance = sum(abs2, result.e) / length(y)
+    fitted_values = !isnothing(paramz.lambda) ?
+        inv_box_cox(result.y_hat; lambda=paramz.lambda) : result.y_hat
+
+    # Compute likelihood and AIC
+    n = length(y)
+    if !isnothing(paramz.lambda)
+        likelihood = n * log(sum(abs2, result.e)) - 2 * (paramz.lambda - 1) * sum(log.(y))
+    else
+        likelihood = n * log(sum(abs2, result.e))
+    end
+    n_params = length(model.parameters[:vect]) + size(model.seed_states, 1)
+    aic = likelihood + 2 * n_params
+
+    method_label = tbats_descriptor(paramz.lambda, paramz.ar_coefs, paramz.ma_coefs,
+                                     paramz.small_phi, seasonal_periods, k_vector)
+
+    return TBATSModel(
+        paramz.lambda, paramz.alpha, paramz.beta, paramz.small_phi,
+        paramz.gamma_one_v, paramz.gamma_two_v,
+        paramz.ar_coefs, paramz.ma_coefs, seasonal_periods, k_vector,
+        collect(fitted_values), collect(result.e), result.x,
+        model.seed_states, variance, aic, likelihood,
+        0,  # optim_return_code (no optimization)
+        y,  # caller swaps in orig_y
+        Dict{Symbol,Any}(:vect => model.parameters[:vect],
+                          :control => model.parameters[:control]),
+        method_label,
+    )
 end
 
 """
@@ -1298,7 +1376,10 @@ function tbats(
 
     if model !== nothing
         if model isa TBATSModel
-            return fitPreviousTBATSModel(y, model = model)
+            result = fitPreviousTBATSModel(y; model = model)
+            result.y = orig_y
+            result.method = tbats_descriptor(result)
+            return result
         elseif model isa BATSModel
             return bats(orig_y; model = model)
         else
@@ -1314,6 +1395,9 @@ function tbats(
     end
 
     if any(yi -> yi <= 0, y)
+        if use_box_cox === true || (use_box_cox isa AbstractVector && any(use_box_cox))
+            @warn "Series contains non-positive values. Box-Cox transformation disabled."
+        end
         use_box_cox = false
     end
 

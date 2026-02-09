@@ -118,6 +118,13 @@ using Durbyn.TableOps
             fc_levels = forecast(fit; h=12, level=[80, 95])
             @test size(fc_levels.upper) == (12, 2)
             @test size(fc_levels.lower) == (12, 2)
+
+            # Forecast with confidence intervals for non-seasonal model
+            fit_ann = ets(ap, 1, "ANN")
+            fc_ann = forecast(fit_ann; h=6, level=[80, 95])
+            @test fc_ann isa Forecast
+            @test size(fc_ann.upper) == (6, 2)
+            @test size(fc_ann.lower) == (6, 2)
         end
 
         @testset "Constant series handling" begin

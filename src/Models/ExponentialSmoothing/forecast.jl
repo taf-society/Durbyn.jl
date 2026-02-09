@@ -540,9 +540,9 @@ function simulate_ets(
     trend = ets_model_type_code(components[2])
     season = ets_model_type_code(components[3])
     alpha = check_component(par, "alpha")
-    beta = ifelse(trend == "N", 0.0, check_component(par, "beta"))
-    gamma = ifelse(season == "N", 0.0, check_component(par, "gamma"))
-    phi = ifelse(!components[4], 1.0, check_component(par, "phi"))
+    beta = (trend == 0) ? 0.0 : check_component(par, "beta")
+    gamma = (season == 0) ? 0.0 : check_component(par, "gamma")
+    phi = components[4] ? check_component(par, "phi") : 1.0
 
     simulate_ets_base(
         initstate,
@@ -559,7 +559,7 @@ function simulate_ets(
         e,
     )
 
-    if isnan(y[1])
+    if abs(y[1] - (-99999.0)) < 1e-7
         error("Problem with multiplicative damped trend")
     end
 

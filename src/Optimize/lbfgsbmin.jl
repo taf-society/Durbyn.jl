@@ -1,3 +1,4 @@
+import LinearAlgebra
 using LinearAlgebra: dot, norm
 
 struct LBFGSBOptions

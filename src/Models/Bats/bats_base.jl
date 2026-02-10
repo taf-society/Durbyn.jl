@@ -33,6 +33,7 @@ mutable struct BATSModel
     y::Vector{Float64}
     parameters::Dict{Symbol,Any}
     method::String
+    biasadj::Bool
 end
 
 function bats_descriptor(
@@ -1261,6 +1262,7 @@ function fitSpecificBATS(
     bc_lower::Float64 = 0.0,
     bc_upper::Float64 = 1.0,
     biasadj::Bool = false,
+    kwargs...,
 )
 
 
@@ -1313,8 +1315,6 @@ function fitSpecificBATS(
                 bc_period = (seasonal_periods === nothing || isempty(seasonal_periods)) ? 1 : first(seasonal_periods)
                 lambda = box_cox_lambda(y, bc_period; lower = bc_lower, upper = bc_upper)
             end
-
-            y_transformed, lambda = box_cox(y, 1; lambda=lambda)
         else
             lambda = nothing
         end
@@ -1326,7 +1326,7 @@ function fitSpecificBATS(
         lambda = paramz.lambda
         alpha = paramz.alpha
         beta_v = paramz.beta
-        b = 0.0
+        b = isnothing(paramz.beta) ? nothing : 0.0
         small_phi = paramz.small_phi
         gamma_v = paramz.gamma_v
 
@@ -1808,6 +1808,7 @@ function fit_previous_bats_model(y::Vector{Float64}, old_model::BATSModel)
         Dict{Symbol,Any}(:vect => old_model.parameters[:vect],
                           :control => old_model.parameters[:control]),
         method_label,
+        old_model.biasadj,
     )
 end
 
@@ -1867,6 +1868,7 @@ function bats(
     bc_upper::Real = 1.0,
     biasadj::Bool = false,
     model = nothing,
+    kwargs...,
 )
 
     if ndims(y) != 1
@@ -1899,8 +1901,8 @@ function bats(
     y = y_contig
 
     if model !== nothing
-        result = fit_previous_bats_model(y, model)
-        result.y = orig_y
+        result = fit_previous_bats_model(collect(Float64, y), model)
+        result.y = collect(Float64, orig_y)
         result.method = bats_descriptor(result)
         return result
     end
@@ -1975,6 +1977,7 @@ function bats(
                         bc_lower = bc_lower,
                         bc_upper = bc_upper,
                         biasadj = biasadj,
+                        kwargs...,
                     )
                 catch e
                     @warn "    Model failed: $e"
@@ -2032,6 +2035,7 @@ function bats(
         orig_y,
         Dict{Symbol,Any}(:vect => best_model.parameters.vect, :control => best_model.parameters.control),
         method_label,
+        biasadj,
     )
 
     return result
@@ -2056,10 +2060,11 @@ function bats(
     bc_upper::Real = 1.0,
     biasadj::Bool = false,
     model = nothing,
+    kwargs...,
 )
     return bats(
         y,
-        [m],
+        [m];
         use_box_cox = use_box_cox,
         use_trend = use_trend,
         use_damped_trend = use_damped_trend,
@@ -2068,6 +2073,7 @@ function bats(
         bc_upper = bc_upper,
         biasadj = biasadj,
         model = model,
+        kwargs...,
     )
 end
 
@@ -2097,13 +2103,14 @@ function create_constant_model(y::Vector{Float64})
         y,
         Dict{Symbol,Any}(),
         bats_descriptor(nothing, nothing, nothing, nothing, nothing),
+        false,
     )
 end
 
 function forecast(
     model::BATSModel;
     h::Union{Int,Nothing} = nothing,
-    level::Vector{Int} = [80, 95],
+    level::AbstractVector{<:Real} = [80, 95],
     fan::Bool = false,
     biasadj::Union{Bool,Nothing} = nothing,
 )
@@ -2217,12 +2224,8 @@ function forecast(
 
     if !isnothing(model.lambda)
         λ = model.lambda
-
-        if biasadj === nothing
-            y_fc_out = inv_box_cox(y_forecast; lambda=λ, fvar=variance)
-        else
-            y_fc_out = inv_box_cox(y_forecast; lambda=λ, biasadj=biasadj, fvar=variance)
-        end
+        ba = biasadj === nothing ? model.biasadj : biasadj
+        y_fc_out = inv_box_cox(y_forecast; lambda=λ, biasadj=ba, fvar=variance)
 
         lb_out = inv_box_cox(lower_bounds; lambda=λ)
         ub_out = inv_box_cox(upper_bounds; lambda=λ)

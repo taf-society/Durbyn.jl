@@ -36,6 +36,7 @@ mutable struct TBATSModel
     y::Vector{Float64}
     parameters::Dict{Symbol,Any}
     method::String
+    biasadj::Bool
 end
 
 function tbats_descriptor(
@@ -211,11 +212,7 @@ function make_tbats_fmatrix(
     if has_seasonal
         pos = 0
         for (m, k) in zip(seasonal_periods, k_vector)
-            if m == 2
-                Ci = zeros(1, 1)
-            else
-                Ci = make_ci_matrix(k, Float64(m))
-            end
+            Ci = make_ci_matrix(k, Float64(m))
             Si = make_si_matrix(k, Float64(m))
             Ai = make_ai_matrix(Ci, Si, k)
 
@@ -626,6 +623,7 @@ function fitSpecificTBATS(
     bc_lower::Float64 = 0.0,
     bc_upper::Float64 = 1.0,
     biasadj::Bool = false,
+    kwargs...,
 )
     y = collect(float.(y))
 
@@ -668,7 +666,6 @@ function fitSpecificTBATS(
                 bc_period = (seasonal_periods === nothing || isempty(seasonal_periods)) ? 1 : first(seasonal_periods)
                 lambda = box_cox_lambda(y, bc_period; lower = bc_lower, upper = bc_upper)
             end
-            y_transformed, lambda = box_cox(y, 1; lambda=lambda)
         else
             lambda = nothing
         end
@@ -677,7 +674,7 @@ function fitSpecificTBATS(
         lambda = paramz.lambda
         alpha = paramz.alpha
         beta_v = paramz.beta
-        b = 0.0
+        b = isnothing(paramz.beta) ? nothing : 0.0
         small_phi = paramz.small_phi
         gamma_one_v = paramz.gamma_one_v
         gamma_two_v = paramz.gamma_two_v
@@ -1194,8 +1191,8 @@ function filterTBATSSpecifics(
         return first_model
     end
 
-    ar_coefs = p > 0 ? zeros(Float64, p) : Float64[]
-    ma_coefs = q > 0 ? zeros(Float64, q) : Float64[]
+    ar_coefs = p > 0 ? zeros(Float64, p) : nothing
+    ma_coefs = q > 0 ? zeros(Float64, q) : nothing
 
     starting_params = first_model.parameters
 
@@ -1303,6 +1300,7 @@ function fitPreviousTBATSModel(y::Vector{Float64}; model::TBATSModel)
         Dict{Symbol,Any}(:vect => model.parameters[:vect],
                           :control => model.parameters[:control]),
         method_label,
+        model.biasadj,
     )
 end
 
@@ -1349,6 +1347,7 @@ function tbats(
     bc_upper::Real = 1.0,
     biasadj::Bool = false,
     model = nothing,
+    kwargs...,
 )
 
     if ndims(y) != 1
@@ -1377,8 +1376,8 @@ function tbats(
 
     if model !== nothing
         if model isa TBATSModel
-            result = fitPreviousTBATSModel(y; model = model)
-            result.y = orig_y
+            result = fitPreviousTBATSModel(collect(Float64, y); model = model)
+            result.y = collect(Float64, orig_y)
             result.method = tbats_descriptor(result)
             return result
         elseif model isa BATSModel
@@ -1734,6 +1733,7 @@ function tbats(
                         bc_lower = bc_lower,
                         bc_upper = bc_upper,
                         biasadj = biasadj,
+                        kwargs...,
                     )
                 elseif trend || !damping
                     new_model = filterTBATSSpecifics(
@@ -1748,6 +1748,7 @@ function tbats(
                         bc_lower = bc_lower,
                         bc_upper = bc_upper,
                         biasadj = biasadj,
+                        kwargs...,
                     )
                 else
                     continue
@@ -1811,6 +1812,7 @@ function tbats(
             :control => best_model.parameters.control,
         ),
         method_label,
+        biasadj,
     )
 
     return result
@@ -1835,10 +1837,11 @@ function tbats(
     bc_upper::Real = 1.0,
     biasadj::Bool = false,
     model = nothing,
+    kwargs...,
 )
     return tbats(
         y,
-        [m],
+        [m];
         use_box_cox = use_box_cox,
         use_trend = use_trend,
         use_damped_trend = use_damped_trend,
@@ -1847,6 +1850,7 @@ function tbats(
         bc_upper = bc_upper,
         biasadj = biasadj,
         model = model,
+        kwargs...,
     )
 end
 
@@ -1876,13 +1880,14 @@ function create_constant_tbats_model(y::Vector{Float64})
         y,
         Dict{Symbol,Any}(),
         tbats_descriptor(nothing, nothing, nothing, nothing, nothing, nothing),
+        false,
     )
 end
 
 function forecast(
     model::TBATSModel;
     h::Union{Int,Nothing} = nothing,
-    level::Vector{Int} = [80, 95],
+    level::AbstractVector{<:Real} = [80, 95],
     fan::Bool = false,
     biasadj::Union{Bool,Nothing} = nothing,
 )
@@ -1994,12 +1999,8 @@ function forecast(
 
     if !isnothing(model.lambda)
         λ = model.lambda
-
-        if biasadj === nothing
-            y_fc_out = inv_box_cox(y_forecast; lambda=λ, fvar=variance)
-        else
-            y_fc_out = inv_box_cox(y_forecast; lambda=λ, biasadj=biasadj, fvar=variance)
-        end
+        ba = biasadj === nothing ? model.biasadj : biasadj
+        y_fc_out = inv_box_cox(y_forecast; lambda=λ, biasadj=ba, fvar=variance)
 
         lb_out = inv_box_cox(lower_bounds; lambda=λ)
         ub_out = inv_box_cox(upper_bounds; lambda=λ)

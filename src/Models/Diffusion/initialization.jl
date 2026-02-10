@@ -40,8 +40,8 @@ function bass_init(y::AbstractVector{<:Real})
 
     c0, c1, c2 = cf[1], cf[2], cf[3]
 
-    # Solve quadratic c2*m² + c1*m + c0 = 0 for m
-    # Using quadratic formula
+    # Match R: m <- polyroot(cf); m <- Re(m); m <- max(m)
+    # Solve quadratic c0 + c1*m + c2*m² = 0 for m
     discriminant = c1^2 - 4 * c2 * c0
 
     if discriminant < 0 || abs(c2) < 1e-12
@@ -54,16 +54,10 @@ function bass_init(y::AbstractVector{<:Real})
         m1 = (-c1 + sqrt_disc) / (2 * c2)
         m2 = (-c1 - sqrt_disc) / (2 * c2)
 
-        # Select positive root larger than current cumulative
-        if m1 > Y[end] && m1 > 0
-            m = m1
-        elseif m2 > Y[end] && m2 > 0
-            m = m2
-        else
-            m = max(m1, m2, Y[end] * 1.5)
-        end
+        # R takes max of real parts of all roots
+        m = max(m1, m2)
 
-        # Compute p and q from coefficients
+        # Compute p and q from coefficients (matches R: p <- cf[1]/m; q <- cf[2]+p)
         if abs(m) > 1e-12
             p = c0 / m
             q = c1 + p
@@ -73,9 +67,9 @@ function bass_init(y::AbstractVector{<:Real})
         end
     end
 
-    # Match R behavior: only ensure parameters are positive
-    # R's bassInit doesn't clamp, just returns the values from regression
-    # The check init[1] < max(y) => init[1] = max(y) happens in diffusionEstim
+    # Ensure positive parameters - R doesn't clamp in bassInit but
+    # the check init[1] < max(y) => init[1] = max(y) happens in diffusionEstim.
+    # We clamp here defensively to avoid NaN propagation.
     if m <= 0
         m = Y[end]
     end

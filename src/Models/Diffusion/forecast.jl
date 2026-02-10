@@ -214,13 +214,20 @@ pred = predict(fit, 1:20)  # Predict for periods 1-20
 ```
 """
 function predict(fit::DiffusionFit, t::AbstractVector{<:Real})
-    n_max = Int(maximum(t))
+    # Validate time points are positive integers
+    for ti in t
+        if ti != floor(ti) || ti < 1
+            throw(ArgumentError("Time points must be positive integers, got $ti"))
+        end
+    end
+
+    t_int = Int.(t)
+    n_max = maximum(t_int)
 
     # Generate curve up to max time point
     curve = get_curve(fit.model_type, n_max, fit.params)
 
     # Extract values at requested time points
-    t_int = Int.(t)
     adoption = [curve.adoption[i] for i in t_int]
     cumulative = [curve.cumulative[i] for i in t_int]
 

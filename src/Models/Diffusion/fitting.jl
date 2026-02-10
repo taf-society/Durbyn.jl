@@ -228,6 +228,11 @@ function fit_diffusion(y::AbstractVector{<:Real};
     T = Float64
     y_original = collect(T.(y))
 
+    # Validate input data (matches R's cleanna which errors on internal NAs)
+    if any(!isfinite, y_original)
+        throw(ArgumentError("Input data contains NaN or Inf values"))
+    end
+
     # Handle leading zeros based on cleanlead parameter
     if cleanlead
         y_clean, offset = _cleanzero(y_original)
@@ -366,12 +371,31 @@ function fit_diffusion(y::AbstractVector{<:Real};
                              fixed_params, loss, cumulative, mscal_factor)
     end
 
-    # Optimize
+    # Optimize with fallback on convergence failure (matches R's runOptim fallback chain)
     result = optim(x0, objective;
                    method=method,
                    lower=lower,
                    upper=upper,
                    control=Dict("maxit" => maxiter))
+
+    # Fallback: if primary method fails to converge, try alternative methods
+    if result.convergence != 0 && method == "L-BFGS-B"
+        # Try Nelder-Mead as fallback (no bounds, cost function handles invalid params)
+        result_nm = optim(x0, objective;
+                          method="Nelder-Mead",
+                          control=Dict("maxit" => maxiter))
+        if result_nm.value < result.value
+            result = result_nm
+        end
+    elseif result.convergence != 0 && method != "Nelder-Mead"
+        # Try Nelder-Mead for any other failing method
+        result_nm = optim(x0, objective;
+                          method="Nelder-Mead",
+                          control=Dict("maxit" => maxiter))
+        if result_nm.value < result.value
+            result = result_nm
+        end
+    end
 
     # Extract optimized parameters
     opt_params = result.par

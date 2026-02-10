@@ -665,7 +665,8 @@ function fitSpecificTBATS(
             if init_box_cox !== nothing
                 lambda = init_box_cox
             else
-                lambda = box_cox_lambda(y, 1; lower = bc_lower, upper = bc_upper)
+                bc_period = (seasonal_periods === nothing || isempty(seasonal_periods)) ? 1 : first(seasonal_periods)
+                lambda = box_cox_lambda(y, bc_period; lower = bc_lower, upper = bc_upper)
             end
             y_transformed, lambda = box_cox(y, 1; lambda=lambda)
         else
@@ -1409,7 +1410,8 @@ function tbats(
 
     box_cox_values = normalize_bool_vector(use_box_cox)
     if any(box_cox_values)
-        init_box_cox = box_cox_lambda(y, 1; lower = bc_lower, upper = bc_upper)
+        bc_period = (seasonal_periods === nothing || isempty(seasonal_periods)) ? 1 : first(seasonal_periods)
+        init_box_cox = box_cox_lambda(y, bc_period; lower = bc_lower, upper = bc_upper)
     else
         init_box_cox = nothing
     end

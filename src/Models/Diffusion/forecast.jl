@@ -39,6 +39,10 @@ fc.upper[2]    # 95% upper bounds
 ```
 """
 function forecast(fit::DiffusionFit; h::Int, level::Vector{Int}=[80, 95])
+    if h < 1
+        throw(ArgumentError("Forecast horizon h must be a positive integer, got $h"))
+    end
+
     n = length(fit.y)
 
     n_extended = n + h

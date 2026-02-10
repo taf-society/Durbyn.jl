@@ -38,24 +38,27 @@ function bass_init(y::AbstractVector{<:Real})
 
     discriminant = c1^2 - 4 * c2 * c0
 
-    if discriminant < 0 || abs(c2) < 1e-12
-        m = Y[end] * 1.5
-        p = T(0.03)
-        q = T(0.38)
+    if abs(c2) < 1e-12
+        if abs(c1) > 1e-12
+            m = -c0 / c1
+        else
+            m = Y[end] * 1.5
+        end
+    elseif discriminant < 0
+        m = -c1 / (2 * c2)
     else
         sqrt_disc = sqrt(discriminant)
         m1 = (-c1 + sqrt_disc) / (2 * c2)
         m2 = (-c1 - sqrt_disc) / (2 * c2)
-
         m = max(m1, m2)
+    end
 
-        if abs(m) > 1e-12
-            p = c0 / m
-            q = c1 + p
-        else
-            p = T(0.03)
-            q = T(0.38)
-        end
+    if abs(m) > 1e-12
+        p = c0 / m
+        q = c1 + p
+    else
+        p = T(0.03)
+        q = T(0.38)
     end
 
     if m <= 0

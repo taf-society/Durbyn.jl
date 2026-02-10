@@ -46,7 +46,7 @@ function diffusion_cost(params::Vector{Float64}, y::Vector{Float64}, Y::Vector{F
 
     if loss == 2
         return sum(errors .^ 2)
-    elseif loss == 1
+    elseif loss == 1 || loss == -1
         return sum(abs.(errors))
     else
         return sum(abs.(errors) .^ loss)
@@ -335,6 +335,12 @@ function fit_diffusion(y::AbstractVector{<:Real};
     else
         lower = fill(T(-Inf), length(x0))
         upper = fill(T(Inf), length(x0))
+    end
+
+    for i in eachindex(x0)
+        if x0[i] < lower[i]
+            x0[i] = lower[i]
+        end
     end
 
     function objective(params)

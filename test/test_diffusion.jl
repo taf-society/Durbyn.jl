@@ -87,12 +87,13 @@ using Durbyn
         @test hasfield(typeof(init), :p)
         @test hasfield(typeof(init), :q)
 
-        # Market potential should be at least as large as cumulative adoption
-        @test init.m >= sum(y)
+        # All values should be finite (clamping to positive is caller's job, matching R)
+        @test isfinite(init.m)
+        @test isfinite(init.p)
+        @test isfinite(init.q)
 
-        # p and q should be positive
-        @test init.p > 0
-        @test init.q > 0
+        # Market potential should be reasonable
+        @test init.m >= sum(y)
     end
 
     @testset "Gompertz Initialization" begin
@@ -895,23 +896,32 @@ using Durbyn
         y_complex = [1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 5.0, 8.0, 13.0, 21.0]
         init = Durbyn.Diffusion.bass_init(y_complex)
 
-        @test init.m > 0
-        @test init.p > 0
-        @test init.q > 0
+        # bass_init matches R: no clamping, values may be negative (caller handles)
         @test isfinite(init.m)
         @test isfinite(init.p)
         @test isfinite(init.q)
 
-        # Verify it does NOT fall back to Y[end]*1.5 default when real-part logic applies
+        # Verify it uses -c1/(2*c2) for complex discriminant, NOT Y[end]*1.5 fallback
         Y = cumsum(Float64.(y_complex))
         cf = hcat(ones(10), Y, Y .^ 2) \ Float64.(y_complex)
         disc = cf[2]^2 - 4 * cf[3] * cf[1]
         if disc < 0 && abs(cf[3]) >= 1e-12
             expected_m = -cf[2] / (2 * cf[3])
-            if expected_m > 0
-                @test init.m ≈ expected_m rtol=1e-10
-            end
+            @test init.m ≈ expected_m rtol=1e-10
         end
+
+        # p and q should be consistent with the regression coefficients
+        if abs(init.m) > 1e-12
+            @test init.p ≈ cf[1] / init.m rtol=1e-10
+            @test init.q ≈ cf[2] + init.p rtol=1e-10
+        end
+
+        # Even with negative init, fit_diffusion should still work (caller clamps)
+        fit = fit_diffusion(y_complex, model_type=Bass)
+        @test fit isa DiffusionFit
+        @test fit.params.m > 0
+        @test fit.params.p > 0
+        @test fit.params.q > 0
     end
 
     @testset "Bass Init Degenerate Quadratic (c2 ≈ 0)" begin
@@ -919,10 +929,9 @@ using Durbyn
         y_linear = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
         init = Durbyn.Diffusion.bass_init(y_linear)
 
-        @test init.m > 0
-        @test init.p > 0
-        @test init.q > 0
         @test isfinite(init.m)
+        @test isfinite(init.p)
+        @test isfinite(init.q)
     end
 
     @testset "Loss = -1 Matches L1" begin

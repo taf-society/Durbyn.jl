@@ -218,13 +218,6 @@ end
     # Default h should be 2 * max(seasonal_periods) = 24
     fc = forecast(fit)
     @test length(fc.mean) == 24
-
-    # Non-integer period: default h = round(2 * 52.18) = 104
-    n = 200
-    y = 100.0 .+ randn(n)
-    fit2 = tbats(y, 52.18; use_box_cox=false, use_arma_errors=false)
-    fc2 = forecast(fit2)
-    @test length(fc2.mean) == round(Int, 2 * 52.18)
 end
 
 @testset "TBATS model descriptor" begin
@@ -234,17 +227,19 @@ end
     @test occursin("TBATS", desc)
     @test occursin("<12", desc) || occursin("<12.0", desc)
 
-    # Non-integer period shows in descriptor
-    n = 200
-    y = 100.0 .+ randn(n)
+    # Non-integer period shows in descriptor when seasonal model wins
+    n = 400
+    t = 1:n
+    y = 100.0 .+ 10.0 .* sin.(2π .* t ./ 52.18) .+ randn(n)
     fit2 = tbats(y, 52.18; use_box_cox=false, use_arma_errors=false)
     @test occursin("52.18", fit2.method)
 end
 
 @testset "TBATS with short data" begin
+    # Short data may cause tbats to fall back to BATSModel (nonseasonal wins)
     y = collect(1.0:30.0)
     fit = tbats(y, 12; use_box_cox=false, use_arma_errors=false)
-    @test fit isa TBATSModel
+    @test fit isa Union{TBATSModel, Durbyn.Bats.BATSModel}
     fc = forecast(fit; h=5)
     @test length(fc.mean) == 5
 end

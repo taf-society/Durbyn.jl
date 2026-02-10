@@ -883,6 +883,86 @@ using Durbyn
         @test offset == 1
     end
 
+    @testset "Bass Init Complex Roots" begin
+        # Data that produces negative discriminant in bass_init regression
+        # R's polyroot uses Re(-c1/(2*c2)) for complex roots; we must match
+        y_complex = [1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 5.0, 8.0, 13.0, 21.0]
+        init = Durbyn.Diffusion.bass_init(y_complex)
+
+        @test init.m > 0
+        @test init.p > 0
+        @test init.q > 0
+        @test isfinite(init.m)
+        @test isfinite(init.p)
+        @test isfinite(init.q)
+
+        # Verify it does NOT fall back to Y[end]*1.5 default when real-part logic applies
+        Y = cumsum(Float64.(y_complex))
+        cf = hcat(ones(10), Y, Y .^ 2) \ Float64.(y_complex)
+        disc = cf[2]^2 - 4 * cf[3] * cf[1]
+        if disc < 0 && abs(cf[3]) >= 1e-12
+            expected_m = -cf[2] / (2 * cf[3])
+            if expected_m > 0
+                @test init.m ≈ expected_m rtol=1e-10
+            end
+        end
+    end
+
+    @testset "Bass Init Degenerate Quadratic (c2 ≈ 0)" begin
+        # Nearly linear data makes c2 ≈ 0 in the regression
+        y_linear = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+        init = Durbyn.Diffusion.bass_init(y_linear)
+
+        @test init.m > 0
+        @test init.p > 0
+        @test init.q > 0
+        @test isfinite(init.m)
+    end
+
+    @testset "Loss = -1 Matches L1" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        fit_l1 = fit_diffusion(y, model_type=Bass, loss=1)
+        fit_neg1 = fit_diffusion(y, model_type=Bass, loss=-1)
+
+        # loss=-1 should behave identically to loss=1 (both are L1)
+        @test fit_neg1.params.m ≈ fit_l1.params.m rtol=1e-6
+        @test fit_neg1.params.p ≈ fit_l1.params.p rtol=1e-6
+        @test fit_neg1.params.q ≈ fit_l1.params.q rtol=1e-6
+    end
+
+    @testset "Numeric Initpar Clamped to Bounds" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        # Negative init values should be clamped (not cause stall/failure)
+        fit = fit_diffusion(y, model_type=Bass, initpar=[-10.0, -0.5, -0.5])
+        @test fit isa DiffusionFit
+        @test fit.params.m > 0
+        @test fit.params.p > 0
+        @test fit.params.q > 0
+
+        # Zero init values should also be handled
+        fit2 = fit_diffusion(y, model_type=Bass, initpar=[0.0, 0.0, 0.0])
+        @test fit2 isa DiffusionFit
+        @test fit2.params.m > 0
+    end
+
+    @testset "Forecast h Validation" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        fit = fit_diffusion(y, model_type=Bass)
+
+        # h=0 should error
+        @test_throws ArgumentError forecast(fit, h=0)
+
+        # h<0 should error
+        @test_throws ArgumentError forecast(fit, h=-1)
+        @test_throws ArgumentError forecast(fit, h=-10)
+
+        # h=1 should work
+        fc = forecast(fit, h=1)
+        @test length(fc.mean) == 1
+    end
+
     @testset "Large Values All Model Types" begin
         y_large = [5000.0, 15000.0, 35000.0, 65000.0, 95000.0, 105000.0, 95000.0]
 

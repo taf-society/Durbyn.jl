@@ -1310,7 +1310,8 @@ function fitSpecificBATS(
                 lambda = init_box_cox
             else
 
-                lambda = box_cox_lambda(y, 1; lower = bc_lower, upper = bc_upper)
+                bc_period = (seasonal_periods === nothing || isempty(seasonal_periods)) ? 1 : first(seasonal_periods)
+                lambda = box_cox_lambda(y, bc_period; lower = bc_lower, upper = bc_upper)
             end
 
             y_transformed, lambda = box_cox(y, 1; lambda=lambda)
@@ -1936,7 +1937,8 @@ function bats(
 
     init_box_cox = nothing
     if any(box_cox_values)
-        init_box_cox = box_cox_lambda(y, 1; lower = bc_lower, upper = bc_upper)
+        bc_period = (m === nothing || isempty(m)) ? 1 : first(m)
+        init_box_cox = box_cox_lambda(y, bc_period; lower = bc_lower, upper = bc_upper)
     end
 
     if use_trend === nothing

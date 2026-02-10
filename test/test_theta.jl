@@ -270,6 +270,16 @@ const THETA_LOWER = 0.5
             @test_throws ArgumentError auto_theta(AirPassengers, 1; nmse=0)
             @test_throws ArgumentError auto_theta(AirPassengers, 1; nmse=31)
         end
+
+        @testset "Tiny dataset guard (n <= 3)" begin
+            @test_throws ArgumentError auto_theta([1.0, 2.0, 3.0], 1)
+            @test_throws ArgumentError auto_theta([1.0, 2.0], 1)
+            @test_throws ArgumentError auto_theta([1.0], 1)
+            @test_throws ArgumentError theta([1.0, 2.0, 3.0], 1; model_type=STM)
+
+            fit = auto_theta([1.0, 2.0, 3.0, 4.0], 1)
+            @test isfinite(fit.mse)
+        end
     end
 
     @testset "Decomposition Types" begin

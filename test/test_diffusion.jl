@@ -423,4 +423,475 @@ using Durbyn
         @test fit1.params.q ≈ fit2.params.q
     end
 
+    # =========================================================================
+    # Additional tests for parameter recovery, forecasting, edge cases, etc.
+    # =========================================================================
+
+    @testset "Gompertz Parameter Recovery" begin
+        true_m, true_a, true_b = 1000.0, 5.0, 0.5
+        true_curve = Durbyn.Diffusion.gompertz_curve(20, true_m, true_a, true_b)
+        y = true_curve.adoption
+
+        fit = fit_diffusion(y, model_type=Gompertz)
+
+        # Parameters should be reasonably close
+        @test abs(fit.params.m - true_m) / true_m < 0.3
+        @test fit.params.a > 0
+        @test fit.params.b > 0
+        @test fit.mse < 1.0  # Near-perfect data should have tiny MSE
+    end
+
+    @testset "GSGompertz Parameter Recovery" begin
+        true_m, true_a, true_b, true_c = 1000.0, 0.1, 0.5, 1.0
+        true_curve = Durbyn.Diffusion.gsgompertz_curve(20, true_m, true_a, true_b, true_c)
+        y = true_curve.adoption
+
+        fit = fit_diffusion(y, model_type=GSGompertz)
+
+        @test fit.params.m > 0
+        @test fit.params.a > 0
+        @test fit.params.b > 0
+        @test fit.params.c > 0
+        # GSGompertz has 4 parameters and can be ill-conditioned; allow larger MSE
+        @test fit.mse < 10.0
+    end
+
+    @testset "Weibull Parameter Recovery" begin
+        true_m, true_a, true_b = 1000.0, 5.0, 2.0
+        true_curve = Durbyn.Diffusion.weibull_curve(20, true_m, true_a, true_b)
+        y = true_curve.adoption
+
+        fit = fit_diffusion(y, model_type=Weibull)
+
+        @test abs(fit.params.m - true_m) / true_m < 0.3
+        @test fit.params.a > 0
+        @test fit.params.b > 0
+        @test fit.mse < 1.0
+    end
+
+    @testset "Forecast for Gompertz" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        fit = fit_diffusion(y, model_type=Gompertz)
+        fc = forecast(fit, h=5)
+
+        @test length(fc.mean) == 5
+        @test length(fc.upper) == 2
+        @test length(fc.lower) == 2
+        for i in 1:5
+            @test fc.upper[1][i] >= fc.mean[i]
+            @test fc.mean[i] >= fc.lower[1][i]
+        end
+    end
+
+    @testset "Forecast for GSGompertz" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        fit = fit_diffusion(y, model_type=GSGompertz)
+        fc = forecast(fit, h=5)
+
+        @test length(fc.mean) == 5
+        @test length(fc.upper) == 2
+        @test length(fc.lower) == 2
+        for i in 1:5
+            @test fc.upper[1][i] >= fc.mean[i]
+            @test fc.mean[i] >= fc.lower[1][i]
+        end
+    end
+
+    @testset "Forecast for Weibull" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        fit = fit_diffusion(y, model_type=Weibull)
+        fc = forecast(fit, h=5)
+
+        @test length(fc.mean) == 5
+        @test length(fc.upper) == 2
+        @test length(fc.lower) == 2
+        for i in 1:5
+            @test fc.upper[1][i] >= fc.mean[i]
+            @test fc.mean[i] >= fc.lower[1][i]
+        end
+    end
+
+    @testset "Forecast Lower Bounds Non-negative" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        fit = fit_diffusion(y, model_type=Bass)
+        fc = forecast(fit, h=10)
+
+        # Lower bounds should be clamped at 0
+        for lv_idx in 1:length(fc.lower)
+            @test all(fc.lower[lv_idx] .>= 0.0)
+        end
+    end
+
+    @testset "Predict Function" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        fit = fit_diffusion(y, model_type=Bass)
+
+        # Predict for periods 1-20
+        pred = Durbyn.Diffusion.predict(fit, 1:20)
+        @test length(pred.adoption) == 20
+        @test length(pred.cumulative) == 20
+
+        # Cumulative should be monotonically increasing
+        for i in 2:20
+            @test pred.cumulative[i] >= pred.cumulative[i-1]
+        end
+
+        # Predict values at in-sample periods should match fitted values
+        pred_insample = Durbyn.Diffusion.predict(fit, 1:10)
+        for i in 1:10
+            @test pred_insample.adoption[i] ≈ fit.fitted[i] atol=1e-10
+        end
+    end
+
+    @testset "Predict Validation" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        fit = fit_diffusion(y, model_type=Bass)
+
+        # Non-integer time points should error
+        @test_throws ArgumentError Durbyn.Diffusion.predict(fit, [1.5, 2.5])
+
+        # Non-positive time points should error
+        @test_throws ArgumentError Durbyn.Diffusion.predict(fit, [0, 1, 2])
+        @test_throws ArgumentError Durbyn.Diffusion.predict(fit, [-1, 1, 2])
+    end
+
+    @testset "Preset Initialization" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        for model_type in [Bass, Gompertz, GSGompertz, Weibull]
+            fit = fit_diffusion(y, model_type=model_type, initpar="preset")
+            @test fit isa DiffusionFit
+            @test fit.model_type == model_type
+            @test fit.params.m > 0
+        end
+    end
+
+    @testset "Numeric Initpar" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        # Bass: 3 params
+        fit_bass = fit_diffusion(y, model_type=Bass, initpar=[500.0, 0.03, 0.38])
+        @test fit_bass isa DiffusionFit
+
+        # Gompertz: 3 params
+        fit_gomp = fit_diffusion(y, model_type=Gompertz, initpar=[500.0, 5.0, 0.5])
+        @test fit_gomp isa DiffusionFit
+
+        # GSGompertz: 4 params
+        fit_gsg = fit_diffusion(y, model_type=GSGompertz, initpar=[500.0, 0.1, 0.5, 1.0])
+        @test fit_gsg isa DiffusionFit
+
+        # Weibull: 3 params
+        fit_wb = fit_diffusion(y, model_type=Weibull, initpar=[500.0, 5.0, 2.0])
+        @test fit_wb isa DiffusionFit
+
+        # Wrong number of params should error
+        @test_throws ArgumentError fit_diffusion(y, model_type=Bass, initpar=[500.0, 0.03])
+        @test_throws ArgumentError fit_diffusion(y, model_type=GSGompertz, initpar=[500.0, 0.1, 0.5])
+    end
+
+    @testset "mscal=false" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        fit_scaled = fit_diffusion(y, model_type=Bass, mscal=true)
+        fit_unscaled = fit_diffusion(y, model_type=Bass, mscal=false)
+
+        # Both should produce valid fits
+        @test fit_scaled isa DiffusionFit
+        @test fit_unscaled isa DiffusionFit
+        @test fit_scaled.params.m > 0
+        @test fit_unscaled.params.m > 0
+    end
+
+    @testset "Linearise Spelling" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        # British spelling should be accepted
+        fit = fit_diffusion(y, model_type=Bass, initpar="linearise")
+        @test fit isa DiffusionFit
+    end
+
+    @testset "NaN/Inf Input Validation" begin
+        # NaN in data
+        y_nan = [5.0, NaN, 35.0, 65.0, 95.0]
+        @test_throws ArgumentError fit_diffusion(y_nan, model_type=Bass)
+
+        # Inf in data
+        y_inf = [5.0, Inf, 35.0, 65.0, 95.0]
+        @test_throws ArgumentError fit_diffusion(y_inf, model_type=Bass)
+
+        # -Inf in data
+        y_neginf = [5.0, -Inf, 35.0, 65.0, 95.0]
+        @test_throws ArgumentError fit_diffusion(y_neginf, model_type=Bass)
+    end
+
+    @testset "Too Few Observations" begin
+        # Less than 3 observations
+        @test_throws ArgumentError fit_diffusion([5.0, 10.0], model_type=Bass)
+
+        # 3 observations but only 2 non-zero after cleanlead
+        @test_throws ArgumentError fit_diffusion([0.0, 0.0, 0.0, 5.0, 10.0], model_type=Bass, cleanlead=false)
+    end
+
+    @testset "Integer Input" begin
+        # Integer vector should be accepted and converted
+        y = [5, 10, 25, 45, 70, 85, 75, 50, 30, 15]
+        fit = fit_diffusion(y, model_type=Bass)
+        @test fit isa DiffusionFit
+        @test fit.params.m > 0
+    end
+
+    @testset "Single Leading Zero" begin
+        y = [0.0, 5.0, 15.0, 35.0, 65.0, 95.0]
+        fit = fit_diffusion(y, model_type=Bass, cleanlead=true)
+        @test fit.offset == 1
+        @test length(fit.y) == 5
+    end
+
+    @testset "Very Small Values" begin
+        y = [0.001, 0.002, 0.005, 0.01, 0.008, 0.005, 0.003]
+        fit = fit_diffusion(y, model_type=Bass)
+        @test fit isa DiffusionFit
+        @test fit.params.m > 0
+    end
+
+    @testset "Monotonically Increasing (No Peak)" begin
+        y = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
+        fit = fit_diffusion(y, model_type=Bass)
+        @test fit isa DiffusionFit
+        @test fit.params.m > 0
+    end
+
+    @testset "Fixed Parameters for Non-Bass Models" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        # Gompertz: fix m
+        fit_gomp = fit_diffusion(y, model_type=Gompertz, w=(m=1000.0, a=nothing, b=nothing))
+        @test fit_gomp.params.m ≈ 1000.0 atol=1e-3
+
+        # GSGompertz: fix m
+        fit_gsg = fit_diffusion(y, model_type=GSGompertz, w=(m=1000.0, a=nothing, b=nothing, c=nothing))
+        @test fit_gsg.params.m ≈ 1000.0 atol=1e-3
+
+        # Weibull: fix m
+        fit_wb = fit_diffusion(y, model_type=Weibull, w=(m=1000.0, a=nothing, b=nothing))
+        @test fit_wb.params.m ≈ 1000.0 atol=1e-3
+    end
+
+    @testset "Fully Fixed Parameters for All Models" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        # Bass: all fixed
+        fit_bass = fit_diffusion(y, model_type=Bass, w=(m=500.0, p=0.03, q=0.38))
+        @test fit_bass.params.m ≈ 500.0
+        @test fit_bass.params.p ≈ 0.03
+        @test fit_bass.params.q ≈ 0.38
+
+        # Gompertz: all fixed
+        fit_gomp = fit_diffusion(y, model_type=Gompertz, w=(m=500.0, a=5.0, b=0.5))
+        @test fit_gomp.params.m ≈ 500.0
+        @test fit_gomp.params.a ≈ 5.0
+        @test fit_gomp.params.b ≈ 0.5
+
+        # GSGompertz: all fixed
+        fit_gsg = fit_diffusion(y, model_type=GSGompertz, w=(m=500.0, a=0.1, b=0.5, c=1.0))
+        @test fit_gsg.params.m ≈ 500.0
+        @test fit_gsg.params.a ≈ 0.1
+        @test fit_gsg.params.b ≈ 0.5
+        @test fit_gsg.params.c ≈ 1.0
+
+        # Weibull: all fixed
+        fit_wb = fit_diffusion(y, model_type=Weibull, w=(m=500.0, a=5.0, b=2.0))
+        @test fit_wb.params.m ≈ 500.0
+        @test fit_wb.params.a ≈ 5.0
+        @test fit_wb.params.b ≈ 2.0
+    end
+
+    @testset "Show Method for All Model Types" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        for (model_type, expected_name) in [(Bass, "Bass"), (Gompertz, "Gompertz"),
+                                             (GSGompertz, "GSGompertz"), (Weibull, "Weibull")]
+            fit = fit_diffusion(y, model_type=model_type)
+            io = IOBuffer()
+            show(io, fit)
+            output = String(take!(io))
+
+            @test occursin("Diffusion Model", output)
+            @test occursin(expected_name, output)
+            @test occursin("Observations", output)
+            @test occursin("MSE", output)
+            @test occursin("Parameters", output)
+        end
+    end
+
+    @testset "Show Method with Offset" begin
+        y = [0.0, 0.0, 5.0, 15.0, 35.0, 65.0, 95.0]
+        fit = fit_diffusion(y, model_type=Bass, cleanlead=true)
+        io = IOBuffer()
+        show(io, fit)
+        output = String(take!(io))
+
+        @test occursin("leading zeros removed", output)
+    end
+
+    @testset "Cumulative Adoption Consistency" begin
+        # For all model types: cumulative[end] should be close to sum of adoption
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        for model_type in [Bass, Gompertz, GSGompertz, Weibull]
+            fit = fit_diffusion(y, model_type=model_type)
+
+            # fitted cumulative should equal cumsum of fitted adoption
+            expected_cum = cumsum(fit.fitted)
+            for i in 1:length(fit.fitted)
+                @test fit.cumulative[i] ≈ expected_cum[i] atol=1e-8
+            end
+        end
+    end
+
+    @testset "Residuals Consistency" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        for model_type in [Bass, Gompertz, GSGompertz, Weibull]
+            fit = fit_diffusion(y, model_type=model_type)
+
+            # residuals = actual - fitted
+            for i in 1:length(y)
+                @test fit.residuals[i] ≈ (fit.y[i] - fit.fitted[i]) atol=1e-10
+            end
+
+            # MSE should be mean of squared residuals
+            @test fit.mse ≈ sum(fit.residuals .^ 2) / length(fit.residuals) atol=1e-10
+        end
+    end
+
+    @testset "L3 Loss Function" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        fit = fit_diffusion(y, model_type=Bass, loss=3)
+        @test fit isa DiffusionFit
+        @test fit.loss == 3
+    end
+
+    @testset "Forecast Method String" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        for (model_type, name) in [(Bass, "Bass"), (Gompertz, "Gompertz"),
+                                    (GSGompertz, "GSGompertz"), (Weibull, "Weibull")]
+            fit = fit_diffusion(y, model_type=model_type)
+            fc = forecast(fit, h=3)
+            @test occursin(name, fc.method)
+        end
+    end
+
+    @testset "Curve Generation Adoption Sums to Cumulative" begin
+        # For all curve types: cumsum(adoption) == cumulative
+        curve_bass = Durbyn.Diffusion.bass_curve(20, 1000.0, 0.03, 0.38)
+        @test cumsum(curve_bass.adoption) ≈ curve_bass.cumulative atol=1e-8
+
+        curve_gomp = Durbyn.Diffusion.gompertz_curve(20, 1000.0, 5.0, 0.5)
+        @test cumsum(curve_gomp.adoption) ≈ curve_gomp.cumulative atol=1e-8
+
+        curve_gsg = Durbyn.Diffusion.gsgompertz_curve(20, 1000.0, 0.1, 0.5, 1.0)
+        @test cumsum(curve_gsg.adoption) ≈ curve_gsg.cumulative atol=1e-8
+
+        curve_wb = Durbyn.Diffusion.weibull_curve(20, 1000.0, 5.0, 2.0)
+        @test cumsum(curve_wb.adoption) ≈ curve_wb.cumulative atol=1e-8
+    end
+
+    @testset "get_curve Dispatch" begin
+        params_bass = (m=1000.0, p=0.03, q=0.38)
+        curve = Durbyn.Diffusion.get_curve(Bass, 10, params_bass)
+        @test length(curve.cumulative) == 10
+        @test length(curve.adoption) == 10
+
+        params_gomp = (m=1000.0, a=5.0, b=0.5)
+        curve = Durbyn.Diffusion.get_curve(Gompertz, 10, params_gomp)
+        @test length(curve.cumulative) == 10
+
+        params_gsg = (m=1000.0, a=0.1, b=0.5, c=1.0)
+        curve = Durbyn.Diffusion.get_curve(GSGompertz, 10, params_gsg)
+        @test length(curve.cumulative) == 10
+
+        params_wb = (m=1000.0, a=5.0, b=2.0)
+        curve = Durbyn.Diffusion.get_curve(Weibull, 10, params_wb)
+        @test length(curve.cumulative) == 10
+    end
+
+    @testset "Preset Init Values Match R" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        y_sum = sum(y)
+
+        # Bass preset: (0.5, 0.5, 0.5) with m scaled
+        init = Durbyn.Diffusion.preset_init(Bass, y)
+        @test init.m ≈ 0.5 * 10 * y_sum
+        @test init.p ≈ 0.5
+        @test init.q ≈ 0.5
+
+        # Gompertz preset: (1, 1, 1) with m scaled
+        init = Durbyn.Diffusion.preset_init(Gompertz, y)
+        @test init.m ≈ 1.0 * 10 * y_sum
+        @test init.a ≈ 1.0
+        @test init.b ≈ 1.0
+
+        # GSGompertz preset: (0.5, 0.5, 0.5, 0.5) with m scaled
+        init = Durbyn.Diffusion.preset_init(GSGompertz, y)
+        @test init.m ≈ 0.5 * 10 * y_sum
+        @test init.a ≈ 0.5
+        @test init.b ≈ 0.5
+        @test init.c ≈ 0.5
+
+        # Weibull preset: (0.5, 0.5, 0.5) with m scaled
+        init = Durbyn.Diffusion.preset_init(Weibull, y)
+        @test init.m ≈ 0.5 * 10 * y_sum
+        @test init.a ≈ 0.5
+        @test init.b ≈ 0.5
+    end
+
+    @testset "Preset Init Without mscal" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        init = Durbyn.Diffusion.preset_init(Bass, y; mscal=false)
+        @test init.m ≈ 0.5
+        @test init.p ≈ 0.5
+        @test init.q ≈ 0.5
+    end
+
+    @testset "Cleanzero Utility" begin
+        # Leading zeros
+        cleaned, offset = Durbyn.Diffusion._cleanzero([0.0, 0.0, 5.0, 10.0])
+        @test cleaned == [5.0, 10.0]
+        @test offset == 2
+
+        # No leading zeros
+        cleaned, offset = Durbyn.Diffusion._cleanzero([5.0, 10.0, 15.0])
+        @test cleaned == [5.0, 10.0, 15.0]
+        @test offset == 0
+
+        # All zeros
+        cleaned, offset = Durbyn.Diffusion._cleanzero([0.0, 0.0, 0.0])
+        @test offset == 0  # Returns original when all zeros
+
+        # Trailing zeros
+        cleaned, offset = Durbyn.Diffusion._cleanzero([5.0, 10.0, 0.0, 0.0]; lead=false)
+        @test cleaned == [5.0, 10.0]
+        @test offset == 2
+
+        # Single leading zero
+        cleaned, offset = Durbyn.Diffusion._cleanzero([0.0, 5.0, 10.0])
+        @test cleaned == [5.0, 10.0]
+        @test offset == 1
+    end
+
+    @testset "Large Values All Model Types" begin
+        y_large = [5000.0, 15000.0, 35000.0, 65000.0, 95000.0, 105000.0, 95000.0]
+
+        for model_type in [Bass, Gompertz, GSGompertz, Weibull]
+            fit = fit_diffusion(y_large, model_type=model_type)
+            @test fit isa DiffusionFit
+            @test fit.params.m > 0
+            @test isfinite(fit.mse)
+        end
+    end
+
 end

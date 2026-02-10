@@ -144,14 +144,10 @@ function tbats(formula::ModelFormula, data; kwargs...)
     # Convert seasonal_periods to the format expected by tbats()
     if !isnothing(tbats_term.seasonal_periods)
         if tbats_term.seasonal_periods isa Real
-            # Convert single value to vector of Int (TBATS internally handles this)
             m = [tbats_term.seasonal_periods]
         else
-            m = collect(tbats_term.seasonal_periods)
+            m = collect(Float64, tbats_term.seasonal_periods)
         end
-        # Convert to Int vector for tbats (it expects Vector{Int})
-        # Note: TBATS handles non-integer periods internally via Fourier representation
-        m = round.(Int, m)
     else
         m = nothing
     end

@@ -23,7 +23,7 @@ mutable struct TBATSModel
     gamma_two_values::Union{Vector{Float64},Nothing}
     ar_coefficients::Union{Vector{Float64},Nothing}
     ma_coefficients::Union{Vector{Float64},Nothing}
-    seasonal_periods::Union{Vector{Int},Nothing}
+    seasonal_periods::Union{Vector{<:Real},Nothing}
     k_vector::Union{Vector{Int},Nothing}
     fitted_values::Vector{Float64}
     errors::Vector{Float64}
@@ -44,7 +44,7 @@ function tbats_descriptor(
     ar_coefficients::Union{Vector{Float64},Nothing},
     ma_coefficients::Union{Vector{Float64},Nothing},
     damping_parameter::Union{Float64,Nothing},
-    seasonal_periods::Union{Vector{Int},Nothing},
+    seasonal_periods::Union{Vector{<:Real},Nothing},
     k_vector::Union{Vector{Int},Nothing},
 )
     lambda_str = isnothing(lambda) ? "1" : string(round(lambda, digits = 3))
@@ -147,7 +147,7 @@ function make_tbats_fmatrix(
     alpha::Float64,
     beta::Union{Float64,Nothing},
     small_phi::Union{Float64,Nothing},
-    seasonal_periods::Union{Vector{Int},Nothing},
+    seasonal_periods::Union{Vector{<:Real},Nothing},
     k_vector::Union{Vector{Int},Nothing},
     gamma_bold_matrix::Union{Matrix{Float64},Nothing},
     ar_coefs::Union{Vector{Float64},Nothing},
@@ -613,7 +613,7 @@ function fitSpecificTBATS(
     use_box_cox::Bool,
     use_beta::Bool,
     use_damping::Bool,
-    seasonal_periods::Union{Vector{Int},Nothing} = nothing,
+    seasonal_periods::Union{Vector{<:Real},Nothing} = nothing,
     k_vector::Union{Vector{Int},Nothing} = nothing,
     starting_params = nothing,
     x_nought = nothing,
@@ -628,8 +628,9 @@ function fitSpecificTBATS(
     y = collect(float.(y))
 
     if seasonal_periods !== nothing
-        seasonal_periods = sort!(Int.(seasonal_periods))
-        k_vector = Int.(k_vector)
+        perm = sortperm(seasonal_periods)
+        seasonal_periods = seasonal_periods[perm]
+        k_vector = k_vector[perm]
     end
 
     if starting_params === nothing
@@ -663,7 +664,7 @@ function fitSpecificTBATS(
             if init_box_cox !== nothing
                 lambda = init_box_cox
             else
-                bc_period = (seasonal_periods === nothing || isempty(seasonal_periods)) ? 1 : first(seasonal_periods)
+                bc_period = (seasonal_periods === nothing || isempty(seasonal_periods)) ? 1 : round(Int, first(seasonal_periods))
                 lambda = box_cox_lambda(y, bc_period; lower = bc_lower, upper = bc_upper)
             end
         else
@@ -937,7 +938,7 @@ function calc_likelihood_tbats(
     opt_env::Dict{Symbol,Any};
     use_beta::Bool,
     use_small_phi::Bool,
-    seasonal_periods::Union{Vector{Int},Nothing},
+    seasonal_periods::Union{Vector{<:Real},Nothing},
     k_vector::Union{Vector{Int},Nothing},
     p::Int = 0,
     q::Int = 0,
@@ -1039,7 +1040,7 @@ function calc_likelihood_tbats_notransform(
     x_nought::AbstractMatrix;
     use_beta::Bool,
     use_small_phi::Bool,
-    seasonal_periods::Union{Vector{Int},Nothing},
+    seasonal_periods::Union{Vector{<:Real},Nothing},
     k_vector::Union{Vector{Int},Nothing},
     p::Int = 0,
     q::Int = 0,
@@ -1132,7 +1133,7 @@ function filterTBATSSpecifics(
     box_cox::Bool,
     trend::Bool,
     damping::Bool,
-    seasonal_periods::Vector{Int},
+    seasonal_periods::Vector{<:Real},
     k_vector::Vector{Int},
     use_arma_errors::Bool;
     aux_model::Union{TBATSModel,NamedTuple,Nothing} = nothing,
@@ -1274,7 +1275,7 @@ function fitPreviousTBATSModel(y::Vector{Float64}; model::TBATSModel)
     # Compute variance and back-transform
     variance = sum(abs2, result.e) / length(y)
     fitted_values = !isnothing(paramz.lambda) ?
-        inv_box_cox(result.y_hat; lambda=paramz.lambda) : result.y_hat
+        inv_box_cox(result.y_hat; lambda=paramz.lambda, biasadj=model.biasadj, fvar=variance) : result.y_hat
 
     # Compute likelihood and AIC
     n = length(y)
@@ -1338,7 +1339,7 @@ descriptor `TBATS(omega, {p,q}, phi, <m1,k1>,...,<mJ,kJ>)`.
 """
 function tbats(
     y::AbstractVector{<:Real},
-    m::Union{Vector{Int},Nothing} = nothing;
+    m::Union{Vector{<:Real},Nothing} = nothing;
     use_box_cox::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
     use_trend::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
     use_damped_trend::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
@@ -1347,6 +1348,7 @@ function tbats(
     bc_upper::Real = 1.0,
     biasadj::Bool = false,
     model = nothing,
+    k::Union{Vector{Int},Int,Nothing} = nothing,
     kwargs...,
 )
 
@@ -1363,16 +1365,20 @@ function tbats(
         copy(m)
     end
 
-    seasonal_periods = unique(max.(seasonal_periods, 1))
-    if all(seasonal_periods .== 1)
-        seasonal_periods = nothing
-    end
-
     y_contig = na_contiguous(y)
     if length(y_contig) != orig_len
         @warn "Missing values encountered. Using longest contiguous portion of time series"
     end
     y = y_contig
+
+    seasonal_periods = seasonal_periods[seasonal_periods .< length(y)]
+    if isempty(seasonal_periods)
+        seasonal_periods = [1]
+    end
+    seasonal_periods = unique(max.(seasonal_periods, 1))
+    if all(seasonal_periods .== 1)
+        seasonal_periods = nothing
+    end
 
     if model !== nothing
         if model isa TBATSModel
@@ -1388,8 +1394,8 @@ function tbats(
     end
 
     if is_constant(y)
-        m_const = create_constant_tbats_model(y)
-        m_const.y = orig_y
+        m_const = create_constant_tbats_model(collect(Float64, y))
+        m_const.y = collect(Float64, orig_y)
         m_const.method = tbats_descriptor(m_const)
         return m_const
     end
@@ -1409,7 +1415,7 @@ function tbats(
 
     box_cox_values = normalize_bool_vector(use_box_cox)
     if any(box_cox_values)
-        bc_period = (seasonal_periods === nothing || isempty(seasonal_periods)) ? 1 : first(seasonal_periods)
+        bc_period = (seasonal_periods === nothing || isempty(seasonal_periods)) ? 1 : round(Int, first(seasonal_periods))
         init_box_cox = box_cox_lambda(y, bc_period; lower = bc_lower, upper = bc_upper)
     else
         init_box_cox = nothing
@@ -1455,14 +1461,34 @@ function tbats(
         seasonal_periods = seasonal_periods[.!mask]
     end
 
-    k_vector = ones(Int, length(seasonal_periods))
+    user_k = k
+    if user_k !== nothing
+        if user_k isa Int
+            user_k = fill(user_k, length(seasonal_periods))
+        end
+        if length(user_k) != length(seasonal_periods)
+            throw(ArgumentError("k must have the same length as seasonal_periods (got $(length(user_k)) vs $(length(seasonal_periods)))"))
+        end
+        if any(ki -> ki < 1, user_k)
+            throw(ArgumentError("k values must be positive integers"))
+        end
+        for (i, period) in enumerate(seasonal_periods)
+            max_k = floor(Int, (period - 1) / 2)
+            if user_k[i] > max_k
+                throw(ArgumentError("k[$(i)]=$(user_k[i]) exceeds max Fourier order $(max_k) for seasonal period $(period)"))
+            end
+        end
+        k_vector = collect(Int, user_k)
+    else
+        k_vector = ones(Int, length(seasonal_periods))
+    end
 
     function safe_fitSpecificTBATS(
         y_num;
         use_box_cox::Bool,
         use_beta::Bool,
         use_damping::Bool,
-        seasonal_periods::Vector{Int},
+        seasonal_periods::Vector{<:Real},
         k_vector::Vector{Int},
         init_box_cox,
         bc_lower,
@@ -1503,12 +1529,17 @@ function tbats(
 
     best_aic = best_model === nothing ? Inf : getfield(best_model, :AIC)
 
+    if user_k !== nothing
+        # User provided k — skip k-search, go straight to model selection
+        @goto k_search_done
+    end
+
     for (i, period) in enumerate(seasonal_periods)
         if period == 2
             continue
         end
 
-        max_k = fld(period - 1, 2)
+        max_k = floor(Int, (period - 1) / 2)
 
         if i != 1
             current_k = 2
@@ -1517,7 +1548,7 @@ function tbats(
                     current_k += 1
                     continue
                 end
-                latter = div(period, current_k)
+                latter = period / current_k
                 if any(seasonal_periods[1:i-1] .% latter .== 0)
                     max_k = current_k - 1
                     break
@@ -1706,6 +1737,8 @@ function tbats(
         end
     end
 
+    @label k_search_done
+
     aux_model = best_model
 
     if nonseasonal_model.AIC < (best_model === nothing ? Inf : best_model.AIC)
@@ -1821,14 +1854,14 @@ end
 
 
 """
-    tbats(y::AbstractVector, m::Int; kwargs...)
+    tbats(y::AbstractVector, m::Real; kwargs...)
 
 Convenience wrapper for `tbats` when a single seasonal period is supplied as
-an `Int`. It forwards all keyword arguments to the primary `tbats` method.
+a scalar. It forwards all keyword arguments to the primary `tbats` method.
 """
 function tbats(
     y::AbstractVector{<:Real},
-    m::Int;
+    m::Real;
     use_box_cox::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
     use_trend::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
     use_damped_trend::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
@@ -1898,9 +1931,9 @@ function forecast(
 
     if h === nothing
         if isnothing(seasonal_periods) || isempty(seasonal_periods)
-            h = (ts_frequency == 1) ? 10 : 2 * ts_frequency
+            h = (ts_frequency == 1) ? 10 : round(Int, 2 * ts_frequency)
         else
-            h = 2 * maximum(seasonal_periods)
+            h = round(Int, 2 * maximum(seasonal_periods))
         end
     elseif h <= 0
         throw(ArgumentError("Forecast horizon out of bounds"))

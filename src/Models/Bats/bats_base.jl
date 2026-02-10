@@ -1783,7 +1783,7 @@ function fit_previous_bats_model(y::Vector{Float64}, old_model::BATSModel)
     # Compute variance and back-transform
     variance = sum(abs2, result.e) / length(y)
     fitted_values = !isnothing(paramz.lambda) ?
-        inv_box_cox(result.y_hat; lambda=paramz.lambda) : result.y_hat
+        inv_box_cox(result.y_hat; lambda=paramz.lambda, biasadj=old_model.biasadj, fvar=variance) : result.y_hat
 
     # Compute likelihood and AIC
     n = length(y)
@@ -1882,6 +1882,12 @@ function bats(
         m = [1]
     end
 
+    y_contig = na_contiguous(y)
+    if length(y_contig) != orig_len
+        @warn "Missing values encountered. Using longest contiguous portion of time series"
+    end
+    y = y_contig
+
     m = m[m.<length(y)]
 
     if isempty(m)
@@ -1894,12 +1900,6 @@ function bats(
         m = nothing
     end
 
-    y_contig = na_contiguous(y)
-    if length(y_contig) != orig_len
-        @warn "Missing values encountered. Using longest contiguous portion of time series"
-    end
-    y = y_contig
-
     if model !== nothing
         result = fit_previous_bats_model(collect(Float64, y), model)
         result.y = collect(Float64, orig_y)
@@ -1909,11 +1909,11 @@ function bats(
 
     if is_constant(y)
         @info "Series is constant. Returning trivial BATS model."
-        m_const = create_constant_model(y)
+        m_const = create_constant_model(collect(Float64, y))
 
 
         m_const.method = bats_descriptor(m_const)
-        m_const.y = orig_y
+        m_const.y = collect(Float64, orig_y)
 
         return m_const
     end

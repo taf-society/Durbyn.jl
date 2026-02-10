@@ -43,6 +43,12 @@ function forecast(fit::DiffusionFit; h::Int, level::Vector{Int}=[80, 95])
         throw(ArgumentError("Forecast horizon h must be a positive integer, got $h"))
     end
 
+    for lv in level
+        if lv <= 0 || lv >= 100
+            throw(ArgumentError("Confidence levels must be between 0 and 100 (exclusive), got $lv"))
+        end
+    end
+
     n = length(fit.y)
 
     n_extended = n + h
@@ -206,7 +212,7 @@ pred = predict(fit, 1:20)  # Predict for periods 1-20
 """
 function predict(fit::DiffusionFit, t::AbstractVector{<:Real})
     for ti in t
-        if ti != floor(ti) || ti < 1
+        if !isfinite(ti) || ti != floor(ti) || ti < 1
             throw(ArgumentError("Time points must be positive integers, got $ti"))
         end
     end

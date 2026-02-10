@@ -553,6 +553,12 @@ using Durbyn
         # Non-positive time points should error
         @test_throws ArgumentError Durbyn.Diffusion.predict(fit, [0, 1, 2])
         @test_throws ArgumentError Durbyn.Diffusion.predict(fit, [-1, 1, 2])
+
+        # Inf/NaN time points should throw ArgumentError (not InexactError)
+        @test_throws ArgumentError Durbyn.Diffusion.predict(fit, [Inf])
+        @test_throws ArgumentError Durbyn.Diffusion.predict(fit, [-Inf])
+        @test_throws ArgumentError Durbyn.Diffusion.predict(fit, [NaN])
+        @test_throws ArgumentError Durbyn.Diffusion.predict(fit, [1.0, Inf, 3.0])
     end
 
     @testset "Preset Initialization" begin
@@ -961,6 +967,43 @@ using Durbyn
         # h=1 should work
         fc = forecast(fit, h=1)
         @test length(fc.mean) == 1
+    end
+
+    @testset "Forecast Level Validation" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        fit = fit_diffusion(y, model_type=Bass)
+
+        # level=0 should error
+        @test_throws ArgumentError forecast(fit, h=5, level=[0])
+
+        # level=100 should error
+        @test_throws ArgumentError forecast(fit, h=5, level=[100])
+
+        # level>100 should error
+        @test_throws ArgumentError forecast(fit, h=5, level=[150])
+
+        # level<0 should error
+        @test_throws ArgumentError forecast(fit, h=5, level=[-10])
+
+        # Valid levels should work
+        fc = forecast(fit, h=5, level=[50, 80, 95, 99])
+        @test length(fc.upper) == 4
+        @test length(fc.lower) == 4
+    end
+
+    @testset "Bass Init No-Clamp Consistency" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+        init = Durbyn.Diffusion.bass_init(y)
+
+        # p and q should be consistent with m (derived from same regression)
+        Y = cumsum(Float64.(y))
+        X = hcat(ones(10), Y, Y .^ 2)
+        cf = X \ Float64.(y)
+
+        if abs(init.m) > 1e-12
+            @test init.p ≈ cf[1] / init.m rtol=1e-10
+            @test init.q ≈ cf[2] + init.p rtol=1e-10
+        end
     end
 
     @testset "Large Values All Model Types" begin

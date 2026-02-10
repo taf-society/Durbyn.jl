@@ -61,16 +61,6 @@ function bass_init(y::AbstractVector{<:Real})
         q = T(0.38)
     end
 
-    if m <= 0
-        m = Y[end]
-    end
-    if p <= 0
-        p = T(0.03)
-    end
-    if q <= 0
-        q = T(0.38)
-    end
-
     return (m=m, p=p, q=q)
 end
 

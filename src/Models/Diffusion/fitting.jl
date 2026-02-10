@@ -255,12 +255,18 @@ function fit_diffusion(y::AbstractVector{<:Real};
     else
         initpar_norm = initpar == "linearise" ? "linearize" : initpar
 
-        init_params = get_init(model_type, y_clean;
-                               initpar=initpar_norm,
-                               loss=loss,
-                               mscal=mscal,
-                               method=method,
-                               maxiter=maxiter)
+        try
+            init_params = get_init(model_type, y_clean;
+                                   initpar=initpar_norm,
+                                   loss=loss,
+                                   mscal=mscal,
+                                   method=method,
+                                   maxiter=maxiter)
+        catch
+            @warn "Linearization failed, reverting to preset initial values"
+            init_params = preset_init(model_type, y_clean; mscal=mscal)
+            initpar_norm = "preset"
+        end
         is_linearize = initpar_norm == "linearize"
     end
 

@@ -292,7 +292,7 @@ Respects the caller's method and maxiter settings.
 function _fit_bass_for_init(y::AbstractVector{<:Real}, loss::Int, mscal::Bool,
                             method::String, maxiter::Int)
     fit = fit_diffusion(y; model_type=Bass, loss=loss, mscal=mscal, cleanlead=true,
-                        method=method, maxiter=maxiter, initpar="linearize")
+                        cumulative=false, method=method, maxiter=maxiter, initpar="linearize")
     return fit.params
 end
 

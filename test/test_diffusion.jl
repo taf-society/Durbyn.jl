@@ -1026,4 +1026,28 @@ using Durbyn
         end
     end
 
+    @testset "Linearization Fallback to Preset" begin
+        y_tricky = [1e-15, 1e-15, 1e-15, 1e-15, 1e-15, 1e-15, 1e-15, 1e-15, 1e-15, 1e-15]
+
+        for model_type in [Gompertz, GSGompertz, Weibull]
+            fit = fit_diffusion(y_tricky, model_type=model_type)
+            @test fit isa DiffusionFit
+            @test isfinite(fit.mse)
+        end
+    end
+
+    @testset "Cumulative=false in Bass Init for Gompertz/GSGompertz" begin
+        y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
+
+        fit_gomp = fit_diffusion(y, model_type=Gompertz)
+        @test fit_gomp isa DiffusionFit
+        @test fit_gomp.params.m > 0
+        @test isfinite(fit_gomp.mse)
+
+        fit_gsg = fit_diffusion(y, model_type=GSGompertz)
+        @test fit_gsg isa DiffusionFit
+        @test fit_gsg.params.m > 0
+        @test isfinite(fit_gsg.mse)
+    end
+
 end

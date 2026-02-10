@@ -410,6 +410,11 @@ function fit_theta_model(y::AbstractVector{T}, m::Int, model_type::ThetaModelTyp
                          theta::Union{T, Nothing}=nothing,
                          nmse::Int=3) where T<:Real
     y = collect(Float64.(y))
+    n = length(y)
+
+    if n <= 3
+        throw(ArgumentError("Time series too short: need at least 4 observations, got $n"))
+    end
 
     init_params = init_theta_parameters(y, model_type;
                                         initial_level=initial_level,
@@ -524,6 +529,10 @@ function auto_theta(y::AbstractVector{<:Real}, m::Int;
 
     if nmse < 1 || nmse > 30
         throw(ArgumentError("nmse must be between 1 and 30"))
+    end
+
+    if n <= 3
+        throw(ArgumentError("Time series too short: need at least 4 observations, got $n"))
     end
 
     if is_constant(y)

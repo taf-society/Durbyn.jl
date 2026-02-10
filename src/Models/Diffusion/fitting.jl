@@ -28,29 +28,22 @@ function diffusion_cost(params::Vector{Float64}, y::Vector{Float64}, Y::Vector{F
     T = Float64
     n = length(y)
 
-    # Reconstruct full parameter set
     full_params = _reconstruct_params(params, model_type, fixed_params, mscal_factor)
 
-    # Always check for positive parameters - diffusion curves require positive params
-    # This also handles the ibound case and protects against numerical gradient steps
-    # that might temporarily violate bounds
     for (k, v) in pairs(full_params)
         if v <= 0 || !isfinite(v)
             return T(1e200)
         end
     end
 
-    # Generate curve (now safe since all params are positive and finite)
     curve = get_curve(model_type, n, full_params)
 
-    # Compute cost
     if cumulative
         errors = Y .- curve.cumulative
     else
         errors = y .- curve.adoption
     end
 
-    # Handle loss function
     if loss == 2
         return sum(errors .^ 2)
     elseif loss == 1
@@ -68,7 +61,6 @@ Reconstruct full parameter NamedTuple from optimization vector and fixed values.
 function _reconstruct_params(opt_params::Vector{Float64}, model_type::DiffusionModelType,
                               fixed_params::Dict{Symbol, Float64}, mscal_factor::Float64)
 
-    # Determine which parameters are being optimized
     param_names = _get_param_names(model_type)
     opt_idx = 1
     result = Dict{Symbol, Float64}()
@@ -82,8 +74,6 @@ function _reconstruct_params(opt_params::Vector{Float64}, model_type::DiffusionM
         end
     end
 
-    # Rescale market potential ONLY if it was optimized (not fixed)
-    # Fixed m values should remain as the user specified them
     if haskey(result, :m) && !haskey(fixed_params, :m)
         result[:m] = result[:m] * mscal_factor
     end
@@ -228,12 +218,10 @@ function fit_diffusion(y::AbstractVector{<:Real};
     T = Float64
     y_original = collect(T.(y))
 
-    # Validate input data (matches R's cleanna which errors on internal NAs)
     if any(!isfinite, y_original)
         throw(ArgumentError("Input data contains NaN or Inf values"))
     end
 
-    # Handle leading zeros based on cleanlead parameter
     if cleanlead
         y_clean, offset = _cleanzero(y_original)
     else
@@ -252,16 +240,12 @@ function fit_diffusion(y::AbstractVector{<:Real};
         throw(ArgumentError("Need at least 3 non-zero observations for diffusion fitting"))
     end
 
-    # Compute cumulative for cleaned data
     Y_clean = cumsum(y_clean)
 
-    # Get initial parameters
-    # Handle different initpar types (matches R behavior)
     param_names = _get_param_names(model_type)
     n_params = length(param_names)
 
     if initpar isa AbstractVector
-        # Numeric init vector provided (matches R's is.numeric(initpar) path)
         if length(initpar) != n_params
             throw(ArgumentError("$model_type requires $n_params parameters for initpar, got $(length(initpar))"))
         end
@@ -269,7 +253,6 @@ function fit_diffusion(y::AbstractVector{<:Real};
         init_params = _dict_to_params(init_dict, model_type)
         is_linearize = false
     else
-        # String initpar - normalize spelling
         initpar_norm = initpar == "linearise" ? "linearize" : initpar
 
         init_params = get_init(model_type, y_clean;
@@ -281,8 +264,6 @@ function fit_diffusion(y::AbstractVector{<:Real};
         is_linearize = initpar_norm == "linearize"
     end
 
-    # R check: if init[1] < max(y) then init[1] = max(y)
-    # This only applies in the linearize path (not preset or numeric)
     if is_linearize
         max_y = maximum(y_clean)
         if init_params.m < max_y
@@ -292,7 +273,6 @@ function fit_diffusion(y::AbstractVector{<:Real};
         end
     end
 
-    # Determine which parameters to optimize vs fix
     fixed_params = Dict{Symbol, Float64}()
     opt_param_names = Symbol[]
 
@@ -308,9 +288,7 @@ function fit_diffusion(y::AbstractVector{<:Real};
         opt_param_names = param_names
     end
 
-    # Handle fully fixed parameters (match R behavior - no optimization needed)
     if isempty(opt_param_names)
-        # All parameters are fixed - just compute the fit directly
         full_params = _dict_to_params(Dict{Symbol, Float64}(
             name => T(getproperty(w, name)) for name in param_names
         ), model_type)
@@ -329,24 +307,21 @@ function fit_diffusion(y::AbstractVector{<:Real};
             y_clean,
             y_original,
             offset,
-            full_params,  # init_params same as final for fixed
+            full_params,
             loss,
             cumulative
         )
     end
 
-    # Compute scaling factor (ensure non-zero to avoid division errors)
     y_sum = sum(y_clean)
     mscal_factor = mscal && y_sum > 0 ? 10 * y_sum : one(T)
 
-    # Build initial parameter vector for optimization
     init_dict = _params_to_dict(init_params)
     x0 = T[]
 
     for name in param_names
         if !(name in keys(fixed_params))
             val = init_dict[name]
-            # Scale m if needed
             if name == :m && mscal
                 val = val / mscal_factor
             end
@@ -354,9 +329,6 @@ function fit_diffusion(y::AbstractVector{<:Real};
         end
     end
 
-    # Handle bounds based on method (matches R's checkInit behavior)
-    # L-BFGS-B: uses explicit lower bounds
-    # Other methods: no explicit bounds (cost function handles invalid params internally)
     if method == "L-BFGS-B"
         lower = fill(T(1e-9), length(x0))
         upper = fill(T(Inf), length(x0))
@@ -365,22 +337,18 @@ function fit_diffusion(y::AbstractVector{<:Real};
         upper = fill(T(Inf), length(x0))
     end
 
-    # Create objective function
     function objective(params)
         return diffusion_cost(params, y_clean, Y_clean, model_type,
                              fixed_params, loss, cumulative, mscal_factor)
     end
 
-    # Optimize with fallback on convergence failure (matches R's runOptim fallback chain)
     result = optim(x0, objective;
                    method=method,
                    lower=lower,
                    upper=upper,
                    control=Dict("maxit" => maxiter))
 
-    # Fallback: if primary method fails to converge, try alternative methods
     if result.convergence != 0 && method == "L-BFGS-B"
-        # Try Nelder-Mead as fallback (no bounds, cost function handles invalid params)
         result_nm = optim(x0, objective;
                           method="Nelder-Mead",
                           control=Dict("maxit" => maxiter))
@@ -388,7 +356,6 @@ function fit_diffusion(y::AbstractVector{<:Real};
             result = result_nm
         end
     elseif result.convergence != 0 && method != "Nelder-Mead"
-        # Try Nelder-Mead for any other failing method
         result_nm = optim(x0, objective;
                           method="Nelder-Mead",
                           control=Dict("maxit" => maxiter))
@@ -397,14 +364,11 @@ function fit_diffusion(y::AbstractVector{<:Real};
         end
     end
 
-    # Extract optimized parameters
     opt_params = result.par
     final_params = _reconstruct_params(opt_params, model_type, fixed_params, mscal_factor)
 
-    # Generate fitted curve for cleaned data only (matches R behavior)
     curve = get_curve(model_type, n_clean, final_params)
 
-    # Compute residuals and MSE on cleaned data
     residuals = y_clean .- curve.adoption
     mse = mean(residuals .^ 2)
 

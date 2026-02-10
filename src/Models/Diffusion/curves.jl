@@ -36,18 +36,15 @@ function bass_curve(n::Int, m::Real, p::Real, q::Real)
     imitators = zeros(T, n)
 
     for t in 1:n
-        # Cumulative adoption using Bass formula
         exp_term = exp(-(p + q) * t)
         cumulative[t] = m * (1 - exp_term) / (1 + (q / p) * exp_term)
     end
 
-    # Adoption per period (first differences)
     adoption[1] = cumulative[1]
     for t in 2:n
         adoption[t] = cumulative[t] - cumulative[t-1]
     end
 
-    # Innovators and imitators decomposition (R convention: uses current cumulative)
     for t in 1:n
         innovators[t] = p * (m - cumulative[t])
         imitators[t] = adoption[t] - innovators[t]
@@ -87,7 +84,6 @@ function gompertz_curve(n::Int, m::Real, a::Real, b::Real)
         cumulative[t] = m * exp(-a * exp(-b * t))
     end
 
-    # Adoption per period
     adoption[1] = cumulative[1]
     for t in 2:n
         adoption[t] = cumulative[t] - cumulative[t-1]
@@ -131,7 +127,6 @@ function gsgompertz_curve(n::Int, m::Real, a::Real, b::Real, c::Real)
         cumulative[t] = m * (1 - exp_term) * (1 + a * exp_term)^(-c)
     end
 
-    # Adoption per period
     adoption[1] = cumulative[1]
     for t in 2:n
         adoption[t] = cumulative[t] - cumulative[t-1]
@@ -170,7 +165,6 @@ function weibull_curve(n::Int, m::Real, a::Real, b::Real)
         cumulative[t] = m * (1 - exp(-(t / a)^b))
     end
 
-    # Adoption per period
     adoption[1] = cumulative[1]
     for t in 2:n
         adoption[t] = cumulative[t] - cumulative[t-1]

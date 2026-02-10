@@ -28,24 +28,17 @@ function bass_init(y::AbstractVector{<:Real})
     y = collect(T.(y))
     n = length(y)
 
-    # Cumulative adoption
     Y = cumsum(y)
 
-    # Build design matrix for regression: y ~ 1 + Y + Y²
     X = hcat(ones(T, n), Y, Y .^ 2)
 
-    # Solve least squares: coefficients are [c0, c1, c2]
-    # where y = c0 + c1*Y + c2*Y²
     cf = X \ y
 
     c0, c1, c2 = cf[1], cf[2], cf[3]
 
-    # Match R: m <- polyroot(cf); m <- Re(m); m <- max(m)
-    # Solve quadratic c0 + c1*m + c2*m² = 0 for m
     discriminant = c1^2 - 4 * c2 * c0
 
     if discriminant < 0 || abs(c2) < 1e-12
-        # Fallback: use last cumulative value as market estimate
         m = Y[end] * 1.5
         p = T(0.03)
         q = T(0.38)
@@ -54,10 +47,8 @@ function bass_init(y::AbstractVector{<:Real})
         m1 = (-c1 + sqrt_disc) / (2 * c2)
         m2 = (-c1 - sqrt_disc) / (2 * c2)
 
-        # R takes max of real parts of all roots
         m = max(m1, m2)
 
-        # Compute p and q from coefficients (matches R: p <- cf[1]/m; q <- cf[2]+p)
         if abs(m) > 1e-12
             p = c0 / m
             q = c1 + p
@@ -67,9 +58,6 @@ function bass_init(y::AbstractVector{<:Real})
         end
     end
 
-    # Ensure positive parameters - R doesn't clamp in bassInit but
-    # the check init[1] < max(y) => init[1] = max(y) happens in diffusionEstim.
-    # We clamp here defensively to avoid NaN propagation.
     if m <= 0
         m = Y[end]
     end
@@ -115,12 +103,10 @@ function gompertz_init(y::AbstractVector{<:Real};
     y = collect(T.(y))
     n = length(y)
 
-    # Remove leading zeros for initialization
     y_clean, offset = _cleanzero(y)
     n_clean = length(y_clean)
 
     if n_clean < 3
-        # Fallback to simple estimates
         Y = cumsum(y)
         m = Y[end] * 1.5
         a = T(5.0)
@@ -128,15 +114,11 @@ function gompertz_init(y::AbstractVector{<:Real};
         return (m=m, a=a, b=b)
     end
 
-    # Cumulative adoption
     Y = cumsum(y_clean)
 
-    # Select three time points: start, middle, end (matches R)
     t0 = [1, max(1, floor(Int, (1 + n_clean) / 2)), n_clean]
     x0 = [Y[t0[1]], Y[t0[2]], Y[t0[3]]]
 
-    # Handle duplicate values (matches R: anyDuplicated perturbs ANY duplicate, not just adjacent)
-    # R: if(anyDuplicated(x0) > 0) { x0[anyDuplicated(x0)] <- x0[anyDuplicated(x0)]+(x0[anyDuplicated(x0)]*0.00001) }
     seen = Set{T}()
     for i in 1:3
         if x0[i] in seen
@@ -146,10 +128,7 @@ function gompertz_init(y::AbstractVector{<:Real};
         end
     end
 
-    # Get m from Bass (use optimization if requested, matches R's gompertzInit)
     if use_bass_optim
-        # Call fit_diffusion with Bass model - matches R's diffusionEstim call
-        # Pass through method and maxiter to respect caller's settings
         bass_fit = _fit_bass_for_init(y_clean, loss, mscal, method, maxiter)
         m = bass_fit.m
     else
@@ -157,10 +136,8 @@ function gompertz_init(y::AbstractVector{<:Real};
         m = bass_params.m
     end
 
-    # Ensure x0 values are positive for log
     x0 = max.(x0, T(1e-10))
 
-    # Compute a and b using Jukic et al. (2004) formulas (matches R exactly)
     log_x0 = log.(x0)
 
     denom = log_x0[3] - 2 * log_x0[2] + log_x0[1]
@@ -168,25 +145,19 @@ function gompertz_init(y::AbstractVector{<:Real};
     diff2 = log_x0[3] - log_x0[2]
 
     if abs(denom) < 1e-12 || abs(diff1) < 1e-12 || abs(diff2) < 1e-12
-        # Fallback
         a = T(5.0)
         b = T(0.5)
     else
-        # R formula: a = (-(diff1^2 / denom)) * (diff1/diff2)^(2*t0[1]/(t0[3]-t0[1]))
-        # R keeps signed ratio, not abs
         ratio = diff1 / diff2
         if ratio <= 0
-            # Can't take log of non-positive, fallback
             a = T(5.0)
             b = T(0.5)
         else
             exp_factor = 2 * t0[1] / (t0[3] - t0[1])
             a = (-diff1^2 / denom) * ratio^exp_factor
 
-            # R formula: b = (-2 / (t0[3] - t0[1])) * log((diff2)/(diff1))
             b = (-2 / (t0[3] - t0[1])) * log(diff2 / diff1)
 
-            # Ensure positive (R doesn't explicitly do this but expects positive)
             if a <= 0
                 a = T(5.0)
             end
@@ -231,9 +202,7 @@ function gsgompertz_init(y::AbstractVector{<:Real};
                          maxiter::Int=500)
     T = Float64
 
-    # Get Bass parameters (use optimization if requested, matches R's gsgInit)
     if use_bass_optim
-        # Pass through method and maxiter to respect caller's settings
         bass_params = _fit_bass_for_init(y, loss, mscal, method, maxiter)
     else
         bass_params = bass_init(y)
@@ -243,14 +212,10 @@ function gsgompertz_init(y::AbstractVector{<:Real};
     p = bass_params.p
     q = bass_params.q
 
-    # Convert to GSGompertz parameters (assuming c=1, per Bemmaor 1994)
-    # R: a <- what[2] / what[3]  # the shape parameter beta
-    # R: b <- what[2] + what[3]  # the scale parameter b
     a = abs(q) > 1e-12 ? p / q : T(0.1)
     b = p + q
     c = T(1.0)
 
-    # Ensure positive (R doesn't clamp but expects positive)
     if a <= 0
         a = T(0.1)
     end
@@ -282,38 +247,28 @@ function weibull_init(y::AbstractVector{<:Real})
     y = collect(T.(y))
     n = length(y)
 
-    # Cumulative adoption
     Y = cumsum(y)
 
-    # Median rank using Bernard's approximation: (i - 0.3) / (n + 0.4)
     mdrk = [(i - 0.3) / (n + 0.4) for i in 1:n]
 
-    # Ensure median ranks are in valid range
     mdrk = clamp.(mdrk, T(1e-10), T(1.0 - 1e-10))
 
-    # R approach: log(Y) ~ log(log(L/(L-mdrk)))
-    # This regresses cumulative adoption on the Weibull linearization
-    L = T(1.0)  # Fixed as in R
+    L = T(1.0)
 
     X = log.(log.(L ./ (L .- mdrk)))
     Z = log.(Y)
 
-    # Filter invalid values
     valid = isfinite.(X) .& isfinite.(Z)
     X_valid = X[valid]
     Z_valid = Z[valid]
 
     if length(X_valid) < 2
-        # Fallback
         m = Y[end] * 1.5
         a = T(n / 2)
         b = T(2.0)
         return (m=m, a=a, b=b)
     end
 
-    # Fit: Z = intercept + slope * X
-    # In R: wbfit <- lm(log(Y) ~ log(log(L/(L-mdrk))))
-    # coef[2] = b, a = exp(-coef[1]/b)
     X_mat = hcat(ones(length(X_valid)), X_valid)
     cf = X_mat \ Z_valid
 
@@ -321,8 +276,6 @@ function weibull_init(y::AbstractVector{<:Real})
     a = exp(-(cf[1] / b))
     m = Y[end]
 
-    # Match R behavior: m = Y[end], only ensure positive params
-    # R doesn't inflate m here, just uses Y[end]
     if m <= 0
         m = Y[end]
     end
@@ -345,8 +298,6 @@ Respects the caller's method and maxiter settings.
 """
 function _fit_bass_for_init(y::AbstractVector{<:Real}, loss::Int, mscal::Bool,
                             method::String, maxiter::Int)
-    # Fit Bass model - this will be called from gompertz_init and gsgompertz_init
-    # when use_bass_optim=true. Pass through method and maxiter to match R behavior.
     fit = fit_diffusion(y; model_type=Bass, loss=loss, mscal=mscal, cleanlead=true,
                         method=method, maxiter=maxiter, initpar="linearize")
     return fit.params
@@ -455,13 +406,10 @@ function get_init(model_type::DiffusionModelType, y::AbstractVector{<:Real};
                   mscal::Bool=true,
                   method::String="L-BFGS-B",
                   maxiter::Int=500)
-    # Handle preset initialization (matches R's initpar="preset")
     if initpar == "preset"
         return preset_init(model_type, y; mscal=mscal)
     end
 
-    # Default: linearize initialization
-    # For Gompertz/GSGompertz, use Bass optimization (matches R's initpar="linearize")
     use_bass_optim = true
 
     if model_type == Bass

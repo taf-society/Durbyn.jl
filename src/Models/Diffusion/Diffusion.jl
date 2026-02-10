@@ -26,28 +26,22 @@ and market penetration analysis.
 ```julia
 using Durbyn
 
-# Sample adoption data (units per period)
 y = [5, 10, 25, 45, 70, 85, 75, 50, 30, 15]
 
-# Fit Bass diffusion model
 fit = diffusion(y)
 fit = diffusion(y, model_type=Bass)
 
-# Fit Gompertz model
 fit = diffusion(y, model_type=Gompertz)
 
-# Generate 5-period forecast
 fc = forecast(fit, h=5)
 
-# Access results
-fc.mean        # Point forecasts
-fc.lower[1]    # 80% lower prediction bounds
-fc.upper[2]    # 95% upper prediction bounds
+fc.mean
+fc.lower[1]
+fc.upper[2]
 
-# Access fitted parameters
-fit.params.m   # Market potential
-fit.params.p   # Innovation coefficient (Bass)
-fit.params.q   # Imitation coefficient (Bass)
+fit.params.m
+fit.params.p
+fit.params.q
 ```
 """
 module Diffusion
@@ -63,19 +57,10 @@ export DiffusionModelType, Bass, Gompertz, GSGompertz, Weibull
 export bass_curve, gompertz_curve, gsgompertz_curve, weibull_curve
 export bass_init, gompertz_init, gsgompertz_init, weibull_init
 
-# Type definitions
 include("types.jl")
-
-# Curve generation functions
 include("curves.jl")
-
-# Parameter initialization
 include("initialization.jl")
-
-# Fitting logic
 include("fitting.jl")
-
-# Forecasting
 include("forecast.jl")
 
 end

@@ -39,16 +39,13 @@ fc.upper[2]    # 95% upper bounds
 ```
 """
 function forecast(fit::DiffusionFit; h::Int, level::Vector{Int}=[80, 95])
-    n = length(fit.y)  # Length of cleaned data
+    n = length(fit.y)
 
-    # Generate extended curve from t=1 (adjusted time origin after offset removal)
     n_extended = n + h
     curve = get_curve(fit.model_type, n_extended, fit.params)
 
-    # Extract forecast portion
     forecasts = curve.adoption[(n+1):n_extended]
 
-    # Compute prediction intervals
     intervals = compute_prediction_intervals(fit, h, level)
 
     lower = [intervals["lo_$lv"] for lv in level]
@@ -90,7 +87,6 @@ function compute_prediction_intervals(fit::DiffusionFit, h::Int, level::Vector{I
     T = Float64
     n = length(fit.y)
 
-    # Compute residual standard deviation (using corrected variance)
     valid_residuals = fit.residuals[isfinite.(fit.residuals)]
     if length(valid_residuals) < 2
         sigma = T(1.0)
@@ -98,14 +94,11 @@ function compute_prediction_intervals(fit::DiffusionFit, h::Int, level::Vector{I
         sigma = std(valid_residuals, corrected=true)
     end
 
-    # Generate extended curve for forecast values
     n_extended = n + h
     curve = get_curve(fit.model_type, n_extended, fit.params)
     forecasts = curve.adoption[(n+1):n_extended]
 
-    # For diffusion models, prediction uncertainty can scale with the forecast magnitude
-    # Use a combination of constant variance and proportional variance
-    cv = sigma / max(mean(abs.(fit.fitted)), T(1e-10))  # Coefficient of variation
+    cv = sigma / max(mean(abs.(fit.fitted)), T(1e-10))
 
     intervals = Dict{String, Vector{T}}()
 
@@ -113,7 +106,6 @@ function compute_prediction_intervals(fit::DiffusionFit, h::Int, level::Vector{I
         alpha = (100 - lv) / 100
         z = _quantile_normal(1 - alpha / 2)
 
-        # Scale standard error with forecast magnitude but add floor
         se = max.(sigma, cv .* abs.(forecasts))
 
         intervals["lo_$lv"] = max.(forecasts .- z .* se, T(0.0))
@@ -133,7 +125,6 @@ function _quantile_normal(p::Real)
     T = Float64
     p = T(p)
 
-    # Handle edge cases
     if p <= 0
         return T(-Inf)
     elseif p >= 1
@@ -142,7 +133,6 @@ function _quantile_normal(p::Real)
         return T(0.0)
     end
 
-    # Rational approximation constants (Abramowitz and Stegun 26.2.23)
     a = [
         -3.969683028665376e+01,
          2.209460984245205e+02,
@@ -177,18 +167,15 @@ function _quantile_normal(p::Real)
     p_high = T(1.0) - p_low
 
     if p < p_low
-        # Rational approximation for lower region
         q = sqrt(-2 * log(p))
         return (((((c[1]*q + c[2])*q + c[3])*q + c[4])*q + c[5])*q + c[6]) /
                ((((d[1]*q + d[2])*q + d[3])*q + d[4])*q + 1)
     elseif p <= p_high
-        # Rational approximation for central region
         q = p - T(0.5)
         r = q * q
         return (((((a[1]*r + a[2])*r + a[3])*r + a[4])*r + a[5])*r + a[6])*q /
                (((((b[1]*r + b[2])*r + b[3])*r + b[4])*r + b[5])*r + 1)
     else
-        # Rational approximation for upper region
         q = sqrt(-2 * log(1 - p))
         return -(((((c[1]*q + c[2])*q + c[3])*q + c[4])*q + c[5])*q + c[6]) /
                 ((((d[1]*q + d[2])*q + d[3])*q + d[4])*q + 1)
@@ -214,7 +201,6 @@ pred = predict(fit, 1:20)  # Predict for periods 1-20
 ```
 """
 function predict(fit::DiffusionFit, t::AbstractVector{<:Real})
-    # Validate time points are positive integers
     for ti in t
         if ti != floor(ti) || ti < 1
             throw(ArgumentError("Time points must be positive integers, got $ti"))
@@ -224,10 +210,8 @@ function predict(fit::DiffusionFit, t::AbstractVector{<:Real})
     t_int = Int.(t)
     n_max = maximum(t_int)
 
-    # Generate curve up to max time point
     curve = get_curve(fit.model_type, n_max, fit.params)
 
-    # Extract values at requested time points
     adoption = [curve.adoption[i] for i in t_int]
     cumulative = [curve.cumulative[i] for i in t_int]
 

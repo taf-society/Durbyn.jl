@@ -354,25 +354,50 @@ function fit_diffusion(y::AbstractVector{<:Real};
                              fixed_params, loss, cumulative, mscal_factor)
     end
 
-    result = optim(x0, objective;
-                   method=method,
-                   lower=lower,
-                   upper=upper,
-                   control=Dict("maxit" => maxiter))
+    function _run_optim(x0_start)
+        res = optim(x0_start, objective;
+                    method=method,
+                    lower=lower,
+                    upper=upper,
+                    control=Dict("maxit" => maxiter))
 
-    if result.convergence != 0 && method == "L-BFGS-B"
-        result_nm = optim(x0, objective;
-                          method="Nelder-Mead",
-                          control=Dict("maxit" => maxiter))
-        if result_nm.value < result.value
-            result = result_nm
+        if method != "Nelder-Mead"
+            res_nm = optim(x0_start, objective;
+                           method="Nelder-Mead",
+                           control=Dict("maxit" => maxiter))
+            if res_nm.value < res.value
+                res = res_nm
+            end
         end
-    elseif result.convergence != 0 && method != "Nelder-Mead"
-        result_nm = optim(x0, objective;
-                          method="Nelder-Mead",
-                          control=Dict("maxit" => maxiter))
-        if result_nm.value < result.value
-            result = result_nm
+
+        return res
+    end
+
+    result = _run_optim(x0)
+
+    if length(x0) >= 2
+        for scale in [10.0, 100.0, 1000.0]
+            for idx in eachindex(x0)
+                x0_alt = copy(x0)
+                x0_alt[idx] = max(x0[idx] * scale, lower[idx])
+                alt_result = _run_optim(x0_alt)
+                if alt_result.value < result.value
+                    result = alt_result
+                end
+            end
+        end
+
+        if length(x0) >= 4
+            for probe in [1.0, 10.0, 100.0, 1000.0, 10000.0]
+                for idx in 2:length(x0)
+                    x0_alt = copy(x0)
+                    x0_alt[idx] = max(probe, lower[idx])
+                    alt_result = _run_optim(x0_alt)
+                    if alt_result.value < result.value
+                        result = alt_result
+                    end
+                end
+            end
         end
     end
 

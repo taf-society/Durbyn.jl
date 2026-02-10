@@ -46,6 +46,10 @@ using Test
     end
 
     @testset "TBATS Model" begin
+        include("test_tbats.jl")
+    end
+
+    @testset "TBATS Formula Interface" begin
         include("test_tbats_formula.jl")
     end
 

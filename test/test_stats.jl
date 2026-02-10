@@ -180,6 +180,20 @@ const REF_KPSS_STAT_AP = 2.8767
             end
         end
 
+        @testset "inv_box_cox Dict fvar path (R parity)" begin
+            # R: InvBoxCox(c(1,2,3), 0.5, TRUE, list(level=95, upper=c(2,3.5,5), lower=c(0,0.5,1)))
+            # R result: 2.3150794429  4.1464287465  6.5103177716
+            x_trans = [1.0, 2.0, 3.0]
+            fvar_dict = Dict(:level => [95.0],
+                             :upper => [2.0, 3.5, 5.0],
+                             :lower => [0.0, 0.5, 1.0])
+            result = inv_box_cox(x_trans; lambda=0.5, biasadj=true, fvar=fvar_dict)
+
+            @test result[1] ≈ 2.3150794429 atol=1e-6
+            @test result[2] ≈ 4.1464287465 atol=1e-6
+            @test result[3] ≈ 6.5103177716 atol=1e-6
+        end
+
         @testset "box_cox! in-place version" begin
             output = similar(ap)
             box_cox!(output, ap, 12; lambda=0.5)

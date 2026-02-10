@@ -326,6 +326,139 @@ const REFERENCE_SD_AP = 119.9663
         @test all(isnan.(fc.upper[1]))
     end
 
+    @testset "Level validation errors (meanf)" begin
+        fit = meanf(AirPassengers, 12)
+        @test_throws Exception forecast(fit; h=5, level=[-10.0])
+        @test_throws Exception forecast(fit; h=5, level=[110.0])
+        @test_throws Exception forecast(fit; h=5, level=[0.0])
+    end
+
+    @testset "Fan mode mean invariance (meanf)" begin
+        fit = meanf(AirPassengers, 12)
+        fc_no_fan = forecast(fit; h=10, level=[80.0, 95.0])
+        fc_fan = forecast(fit; h=10, level=[80.0, 95.0], fan=true)
+
+        # fan=true changes only the intervals, not the point forecast
+        @test fc_fan.mean ≈ fc_no_fan.mean atol=EPS_SCALAR
+        # But the number of levels differs (fan produces 51:3:99)
+        @test length(fc_fan.level) > length(fc_no_fan.level)
+    end
+
+    @testset "lambda=\"auto\" for meanf" begin
+        fit = meanf(AirPassengers, 12; lambda="auto")
+        @test !isnothing(fit.lambda)
+        @test isfinite(fit.lambda)
+
+        fc = forecast(fit; h=10)
+        @test all(isfinite.(fc.mean))
+        @test all(fc.mean .> 0)
+    end
+
+    @testset "lambda=\"auto\" with non-positive values (meanf)" begin
+        # Auto lambda filters to positive values only
+        y_with_zeros = Float64[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+        fit = meanf(y_with_zeros, 1; lambda="auto")
+        @test !isnothing(fit.lambda)
+        @test isfinite(fit.lambda)
+    end
+
+    @testset "Box-Cox with zeros and lambda=0 (meanf)" begin
+        y_with_zero = Float64[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+        # lambda=0 → log transform; Julia filters zeros (warns), R would produce -Inf
+        fit = @test_logs (:warn, r"non-positive") meanf(y_with_zero, 1; lambda=0.0)
+        @test fit.n == 5  # zero excluded
+        @test isfinite(fit.mu)
+    end
+
+    @testset "Box-Cox with zeros and lambda<0 (meanf)" begin
+        y_with_zero = Float64[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+        fit = @test_logs (:warn, r"non-positive") meanf(y_with_zero, 1; lambda=-0.5)
+        @test fit.n == 5  # zero excluded
+        @test isfinite(fit.mu)
+    end
+
+    @testset "Bias-adjustment small-n regression (meanf)" begin
+        # With small n, the t/z ratio in the R-compatible variance matters.
+        # Verify biasadj produces finite, reasonable results for n=3..5.
+        for n in 3:5
+            y = Float64.(1:n)
+            fit = meanf(y, 1; lambda=0.5, biasadj=true)
+            fc = forecast(fit; h=3, level=[95.0])
+            @test all(isfinite.(fc.mean))
+            # Bias-adjusted mean should differ from non-adjusted
+            fc_no = forecast(meanf(y, 1; lambda=0.5, biasadj=false); h=3)
+            @test fc.mean != fc_no.mean
+        end
+    end
+
+    @testset "R reference: meanf biasadj small-n (lambda=0.5)" begin
+        # R: meanf(c(1,2,3), h=3, lambda=0.5, biasadj=TRUE, level=c(80,95))
+        y3 = [1.0, 2.0, 3.0]
+        fit3 = meanf(y3, 1; lambda=0.5, biasadj=true)
+        fc3 = forecast(fit3; h=3, level=[80.0, 95.0])
+        @test all(isapprox.(fc3.mean, 2.7760112791, atol=1e-4))
+        @test fc3.lower[1][1] ≈ 0.3396946242 atol=1e-3
+        @test fc3.upper[1][1] ≈ 4.7582571684 atol=1e-3
+        @test fc3.lower[2][1] ≈ -0.1950746219 atol=1e-3
+        @test fc3.upper[2][1] ≈ 10.2774663652 atol=1e-3
+
+        # R: meanf(c(1,2,3,4), h=3, lambda=0.5, biasadj=TRUE, level=c(80,95))
+        y4 = [1.0, 2.0, 3.0, 4.0]
+        fit4 = meanf(y4, 1; lambda=0.5, biasadj=true)
+        fc4 = forecast(fit4; h=3, level=[80.0, 95.0])
+        @test all(isapprox.(fc4.mean, 2.9716666467, atol=1e-4))
+        @test fc4.lower[1][1] ≈ 0.5600892575 atol=1e-3
+        @test fc4.upper[1][1] ≈ 5.4044210534 atol=1e-3
+
+        # R: meanf(c(1,2,3,4,5), h=3, lambda=0.5, biasadj=TRUE, level=c(80,95))
+        y5 = [1.0, 2.0, 3.0, 4.0, 5.0]
+        fit5 = meanf(y5, 1; lambda=0.5, biasadj=true)
+        fc5 = forecast(fit5; h=3, level=[80.0, 95.0])
+        @test all(isapprox.(fc5.mean, 3.3808238368, atol=1e-4))
+        @test fc5.lower[1][1] ≈ 0.7380904235 atol=1e-3
+        @test fc5.upper[1][1] ≈ 6.2190935432 atol=1e-3
+        @test fc5.lower[2][1] ≈ 0.0385562688 atol=1e-3
+        @test fc5.upper[2][1] ≈ 9.9639684855 atol=1e-3
+
+        # Without biasadj for comparison
+        fit5_no = meanf(y5, 1; lambda=0.5, biasadj=false)
+        fc5_no = forecast(fit5_no; h=3, level=[80.0, 95.0])
+        @test all(isapprox.(fc5_no.mean, 2.8105398233, atol=1e-4))
+    end
+
+    @testset "R reference: meanf biasadj lambda=0 (log)" begin
+        # R: meanf(c(2,4,6,8,10), h=3, lambda=0, biasadj=TRUE, level=c(80,95))
+        y = [2.0, 4.0, 6.0, 8.0, 10.0]
+        fit = meanf(y, 1; lambda=0.0, biasadj=true)
+        fc = forecast(fit; h=3, level=[80.0, 95.0])
+        @test all(isapprox.(fc.mean, 7.7439739967, atol=1e-4))
+        @test fc.lower[1][1] ≈ 1.7919060656 atol=1e-3
+        @test fc.upper[1][1] ≈ 15.1501610734 atol=1e-3
+    end
+
+    @testset "R reference: meanf biasadj AirPassengers" begin
+        # R: meanf(AirPassengers, h=5, lambda=0.5, biasadj=TRUE, level=c(80,95))
+        fit = meanf(AirPassengers, 12; lambda=0.5, biasadj=true)
+        fc = forecast(fit; h=5, level=[80.0, 95.0])
+        @test all(isapprox.(fc.mean, 280.6931260448, atol=0.1))
+        @test fc.lower[1][1] ≈ 138.4018740926 atol=0.5
+        @test fc.upper[1][1] ≈ 439.3208761357 atol=0.5
+        @test fc.lower[2][1] ≈ 86.5507506528 atol=0.5
+        @test fc.upper[2][1] ≈ 548.5502545995 atol=0.5
+    end
+
+    @testset "R reference: meanf bootstrap + biasadj + lambda" begin
+        # R: meanf(c(2,4,6,8,10), h=3, lambda=0.5, biasadj=TRUE, bootstrap=TRUE)
+        # Bootstrap intervals are stochastic; just verify mean is biasadj and finite.
+        y = [2.0, 4.0, 6.0, 8.0, 10.0]
+        fit = meanf(y, 1; lambda=0.5, biasadj=true)
+        fc = forecast(fit; h=3, level=[80.0, 95.0], bootstrap=true, npaths=5000)
+        @test all(isfinite.(fc.mean))
+        # Biasadj mean should be higher than non-biasadj
+        fc_no = forecast(meanf(y, 1; lambda=0.5, biasadj=false); h=3)
+        @test fc.mean[1] > fc_no.mean[1]
+    end
+
 end
 
 # =============================================================================
@@ -443,12 +576,16 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         end
     end
 
-    @testset "rwf alias" begin
-        fit1 = rw(AirPassengers, drift=true)
-        fit2 = rwf(AirPassengers, drift=true)
+    @testset "rwf convenience wrapper" begin
+        # rwf returns a Forecast, not a NaiveFit
+        fc = rwf(AirPassengers; drift=true, h=10)
+        @test fc isa Durbyn.Generics.Forecast
+        @test length(fc.mean) == 10
 
-        @test fit1.drift == fit2.drift
-        @test fit1.sigma2 == fit2.sigma2
+        # Should match two-step rw() + forecast()
+        fit = rw(AirPassengers, drift=true)
+        fc2 = forecast(fit; h=10)
+        @test fc.mean ≈ fc2.mean atol=EPS_SCALAR
     end
 
     @testset "Minimum Length Error (n == 1)" begin
@@ -748,6 +885,169 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         # Position 3 (forecast indices 3, 6): should use y[9]=9.0
         @test fc.mean[3] == 9.0
         @test fc.mean[6] == 9.0
+    end
+
+    # =================================================================
+    # Gap tests: level validation, fan invariance, m=1 parity,
+    # lambda="auto", Box-Cox zeros, biasadj small-n, constant series
+    # =================================================================
+
+    @testset "Level validation errors (naive/snaive/rw)" begin
+        fit_n  = naive(AirPassengers, 12)
+        fit_s  = snaive(AirPassengers, 12)
+        fit_rw = rw(AirPassengers, 12)
+
+        for fit in (fit_n, fit_s, fit_rw)
+            @test_throws Exception forecast(fit; h=5, level=[-10.0])
+            @test_throws Exception forecast(fit; h=5, level=[110.0])
+            @test_throws Exception forecast(fit; h=5, level=[0.0])
+        end
+    end
+
+    @testset "Fan mode mean invariance (naive/snaive/rw)" begin
+        y = AirPassengers
+
+        fit_n  = naive(y, 12)
+        fit_s  = snaive(y, 12)
+        fit_rw = rw(y, 12, drift=true)
+
+        for (fit, label) in ((fit_n, "naive"), (fit_s, "snaive"), (fit_rw, "rw"))
+            fc_no_fan = forecast(fit; h=12, level=[80, 95])
+            fc_fan    = forecast(fit; h=12, level=[80, 95], fan=true)
+
+            @test fc_fan.mean ≈ fc_no_fan.mean atol=EPS_SCALAR
+            @test length(fc_fan.level) > length(fc_no_fan.level)
+        end
+    end
+
+    @testset "snaive vs naive when m=1" begin
+        y = AirPassengers
+        fit_naive  = naive(y)
+        fit_snaive = snaive(y, 1)
+
+        fc_n = forecast(fit_naive;  h=12, level=[80, 95])
+        fc_s = forecast(fit_snaive; h=12, level=[80, 95])
+
+        # Point forecasts should be identical
+        @test fc_n.mean ≈ fc_s.mean atol=EPS_SCALAR
+
+        # Prediction intervals should also match
+        @test fc_n.lower[1] ≈ fc_s.lower[1] atol=EPS_PI
+        @test fc_n.upper[1] ≈ fc_s.upper[1] atol=EPS_PI
+        @test fc_n.lower[2] ≈ fc_s.lower[2] atol=EPS_PI
+        @test fc_n.upper[2] ≈ fc_s.upper[2] atol=EPS_PI
+    end
+
+    @testset "lambda=\"auto\" path (naive/snaive/rw)" begin
+        y = AirPassengers
+
+        fit_n  = naive(y, 12; lambda="auto")
+        fit_s  = snaive(y, 12; lambda="auto")
+        fit_rw = rw(y, 12; lambda="auto")
+
+        for fit in (fit_n, fit_s, fit_rw)
+            @test !isnothing(fit.lambda)
+            @test isfinite(fit.lambda)
+            fc = forecast(fit; h=10)
+            @test all(isfinite.(fc.mean))
+            @test all(fc.mean .> 0)
+        end
+    end
+
+    @testset "lambda=\"auto\" with non-positive values" begin
+        # Auto lambda filters to positive values; non-positive are skipped
+        y = Float64[-1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]
+        fit = naive(y; lambda="auto")
+        @test !isnothing(fit.lambda)
+        @test isfinite(fit.lambda)
+    end
+
+    @testset "Box-Cox with zeros and lambda=0 (naive/snaive/rw)" begin
+        y_with_zero = Float64[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0,
+                              9.0, 10.0, 11.0, 12.0]
+
+        # Julia filters zeros for lambda=0 (warns), unlike R which produces -Inf
+        fit_n = @test_logs (:warn, r"non-positive") naive(y_with_zero; lambda=0.0)
+        @test isfinite(fit_n.sigma2)
+
+        fit_s = @test_logs (:warn, r"non-positive") snaive(y_with_zero, 4; lambda=0.0)
+        @test isfinite(fit_s.sigma2)
+
+        fit_rw = @test_logs (:warn, r"non-positive") rw(y_with_zero; lambda=0.0)
+        @test isfinite(fit_rw.sigma2)
+    end
+
+    @testset "Box-Cox with zeros and lambda<0 (naive/snaive/rw)" begin
+        y_with_zero = Float64[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0,
+                              9.0, 10.0, 11.0, 12.0]
+
+        fit_n = @test_logs (:warn, r"non-positive") naive(y_with_zero; lambda=-0.5)
+        @test isfinite(fit_n.sigma2)
+
+        fit_s = @test_logs (:warn, r"non-positive") snaive(y_with_zero, 4; lambda=-0.5)
+        @test isfinite(fit_s.sigma2)
+
+        fit_rw = @test_logs (:warn, r"non-positive") rw(y_with_zero; lambda=-0.5)
+        @test isfinite(fit_rw.sigma2)
+    end
+
+    @testset "Bias-adjustment small-n regression (naive)" begin
+        # With small n, the t/z variance ratio matters for biasadj.
+        for n in 3:5
+            y = Float64.(1:n)
+            fit = naive(y; lambda=0.5, biasadj=true)
+            fc = forecast(fit; h=3, level=[95.0])
+            @test all(isfinite.(fc.mean))
+
+            fit_no = naive(y; lambda=0.5, biasadj=false)
+            fc_no = forecast(fit_no; h=3)
+            @test fc.mean != fc_no.mean
+        end
+    end
+
+    @testset "Constant series for snaive" begin
+        constant = fill(10.0, 50)
+        fit = snaive(constant, 12)
+
+        @test fit.sigma2 == 0.0
+        @test all(skipmissing(fit.residuals) .== 0.0)
+
+        fc = forecast(fit; h=24)
+        @test all(fc.mean .== 10.0)
+    end
+
+    @testset "Constant series for rw" begin
+        constant = fill(10.0, 50)
+
+        # Without drift
+        fit = rw(constant)
+        @test fit.sigma2 == 0.0
+        fc = forecast(fit; h=10)
+        @test all(fc.mean .== 10.0)
+
+        # With drift (drift should be 0)
+        fit_d = rw(constant, drift=true)
+        @test fit_d.drift ≈ 0.0 atol=EPS_SCALAR
+        fc_d = forecast(fit_d; h=10)
+        @test all(fc_d.mean .≈ 10.0)
+    end
+
+    @testset "R reference: naive biasadj AirPassengers (lambda=0.5)" begin
+        # R: forecast(naive(AirPassengers, lambda=0.5, biasadj=TRUE), h=5, level=c(80,95))
+        fit = naive(AirPassengers, 12; lambda=0.5, biasadj=true)
+        fc = forecast(fit; h=5, level=[80.0, 95.0])
+
+        r_mean = [432.8257013406, 433.6514026812, 434.4771040219, 435.3028053625, 436.1285067031]
+        r_lower80 = [384.9478533301, 366.2526073297, 352.2227709010, 340.6079281731, 330.5363995045]
+        r_upper80 = [481.7643681826, 503.1718356958, 519.9138936373, 534.2409578781, 547.0247080594]
+
+        for i in 1:5
+            @test fc.mean[i] ≈ r_mean[i] atol=0.5
+        end
+        for i in 1:5
+            @test fc.lower[1][i] ≈ r_lower80[i] atol=1.0
+            @test fc.upper[1][i] ≈ r_upper80[i] atol=1.0
+        end
     end
 
 end

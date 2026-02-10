@@ -62,9 +62,11 @@ function meanf(y::AbstractArray, m::Int;
     # Apply Box-Cox transformation if specified
     if !isnothing(lambda)
         # Pre-filter values based on lambda:
-        # - lambda <= 0: requires positive values
+        # - lambda <= 0: requires strictly positive values (zeros excluded)
         # - lambda > 0: signed transform handles negatives AND zeros
         #   For x=0: (sign(0) * |0|^lambda - 1) / lambda = -1/lambda (finite)
+        # NOTE: R allows zeros for lambda=0 (producing log(0)=-Inf which propagates).
+        # Julia excludes zeros to avoid -Inf, issuing a warning instead.
         if lambda isa String
             # Auto lambda - need positive values for estimation
             transform_mask = valid_mask .& (x_orig .> 0)
@@ -171,6 +173,10 @@ end
 Generate forecasts from a fitted mean model.
 
 Returns a `Forecast` object for consistency with other forecasting methods.
+
+!!! note "Difference from R"
+    `level` values must be strictly positive. R allows `level=0` (producing zero-width
+    intervals); Julia rejects it as a nonsensical input.
 """
 function forecast(object::MeanFit;
                   h::Int=10,
@@ -275,11 +281,16 @@ function forecast(object::MeanFit;
 
     # Back-transform to original scale
     if !isnothing(lambda)
-        # Compute forecast variance for bias adjustment
-        fvar = sd_trans^2 * (1.0 + 1.0 / n)
-
-        if biasadj && fvar > 0
-            f = inv_box_cox(f_trans; lambda=lambda, biasadj=true, fvar=fvar)
+        if biasadj && n > 1
+            # R-compatible: derive variance from prediction intervals.
+            # R's InvBoxCox computes fvar from the interval width, which accounts for
+            # the t-distribution quantile used in interval construction. For small n,
+            # the t/z ratio inflates variance relative to the naive sd^2*(1+1/n).
+            max_idx = argmax(level)
+            fvar_info = Dict(:level => [level[max_idx]],
+                             :upper => upper_trans[max_idx],
+                             :lower => lower_trans[max_idx])
+            f = inv_box_cox(f_trans; lambda=lambda, biasadj=true, fvar=fvar_info)
         else
             f = inv_box_cox(f_trans; lambda=lambda)
         end

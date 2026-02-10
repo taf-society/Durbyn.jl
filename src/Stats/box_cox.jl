@@ -277,7 +277,7 @@ function inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing
             end
             level = mean((level, 1.0))
 
-            q = quantile(Normal(), level)
+            q = dist_quantile(Normal(), level)
             fvar_local = ((upper .- lower) ./ (q * 2)) .^ 2
         end
 

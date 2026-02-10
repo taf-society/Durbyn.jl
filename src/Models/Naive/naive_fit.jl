@@ -65,6 +65,10 @@ Formally: y_{T+h|T} = y_T for all h = 1, 2, ...
 # Returns
 `NaiveFit` - Fitted naive model
 
+!!! note "Difference from R"
+    Julia requires at least 2 non-missing observations; R has no minimum-length check
+    and may return forecasts with NA/NaN intervals for very short series.
+
 # Examples
 ```julia
 y = randn(100)
@@ -101,9 +105,11 @@ function naive(y::AbstractVector, m::Int=1;
 
         # Pre-filter values based on lambda:
         # - lambda = "auto": need positive values for lambda estimation
-        # - lambda <= 0: requires positive values (log for lambda=0, or domain restriction for lambda<0)
+        # - lambda <= 0: requires strictly positive values (zeros excluded)
         # - lambda > 0: signed transform handles negatives AND zeros
         #   For x=0: (sign(0) * |0|^lambda - 1) / lambda = -1/lambda (finite)
+        # NOTE: R allows zeros for lambda=0 (producing log(0)=-Inf which propagates).
+        # Julia excludes zeros to avoid -Inf, issuing a warning instead.
         if lambda isa String
             # Auto lambda - need positive values for estimation
             transform_mask = valid_mask .& (x .> 0)
@@ -261,6 +267,10 @@ Formally: y_{T+h|T} = y_{T+h-m*k} where k = ceil(h/m)
 # Returns
 `NaiveFit` - Fitted seasonal naive model
 
+!!! note "Difference from R"
+    Julia requires `length(y) > m` (series longer than one seasonal cycle). R has no
+    such check and may return forecasts with NA/NaN intervals when `n <= m`.
+
 # Examples
 ```julia
 # Monthly data with yearly seasonality
@@ -305,9 +315,11 @@ function snaive(y::AbstractVector, m::Int;
 
         # Pre-filter values based on lambda:
         # - lambda = "auto": need positive values for lambda estimation
-        # - lambda <= 0: requires positive values (log for lambda=0, or domain restriction for lambda<0)
+        # - lambda <= 0: requires strictly positive values (zeros excluded)
         # - lambda > 0: signed transform handles negatives AND zeros
         #   For x=0: (sign(0) * |0|^lambda - 1) / lambda = -1/lambda (finite)
+        # NOTE: R allows zeros for lambda=0 (producing log(0)=-Inf which propagates).
+        # Julia excludes zeros to avoid -Inf, issuing a warning instead.
         if lambda isa String
             # Auto lambda - need positive values for estimation
             transform_mask = valid_mask .& (x .> 0)
@@ -466,6 +478,11 @@ With drift: y_{T+h|T} = y_T + h * drift, where drift = mean of first differences
 # Returns
 `NaiveFit` - Fitted random walk model
 
+!!! note "Difference from R"
+    Julia requires at least 2 non-missing observations; R has no minimum-length check.
+    In R, `rwf()` returns a forecast directly; here `rw()` returns a fit — use
+    [`rwf`](@ref) for a one-step call that returns a `Forecast`.
+
 # Examples
 ```julia
 # Random walk without drift (same as naive)
@@ -480,7 +497,7 @@ fc = forecast(fit2, h=10)
 # See Also
 - [`naive`](@ref) - Naive method (equivalent to rw without drift)
 - [`snaive`](@ref) - Seasonal naive
-- [`rwf`](@ref) - Alias for `rw`
+- [`rwf`](@ref) - Convenience wrapper returning `Forecast`
 """
 function rw(y::AbstractVector, m::Int=1;
             drift::Bool=false,
@@ -508,9 +525,11 @@ function rw(y::AbstractVector, m::Int=1;
 
         # Pre-filter values based on lambda:
         # - lambda = "auto": need positive values for lambda estimation
-        # - lambda <= 0: requires positive values (log for lambda=0, or domain restriction for lambda<0)
+        # - lambda <= 0: requires strictly positive values (zeros excluded)
         # - lambda > 0: signed transform handles negatives AND zeros
         #   For x=0: (sign(0) * |0|^lambda - 1) / lambda = -1/lambda (finite)
+        # NOTE: R allows zeros for lambda=0 (producing log(0)=-Inf which propagates).
+        # Julia excludes zeros to avoid -Inf, issuing a warning instead.
         if lambda isa String
             # Auto lambda - need positive values for estimation
             transform_mask = valid_mask .& (x .> 0)
@@ -771,11 +790,40 @@ function rw(y::AbstractVector, m::Int=1;
 end
 
 """
-    rwf
+    rwf(y::AbstractVector, m::Int=1; h::Int=10, level=[80, 95], drift::Bool=false,
+        lambda=nothing, biasadj::Bool=false, fan::Bool=false)
 
-Alias for `rw` (random walk forecast).
+Random walk forecast - convenience wrapper that fits via [`rw`](@ref) and returns
+a `Forecast` directly, matching R's `rwf()` API.
+
+# Arguments
+- `y::AbstractVector` - Time series data
+- `m::Int=1` - Seasonal period
+
+# Keyword Arguments
+- `h::Int=10` - Forecast horizon
+- `level::Vector{<:Real}=[80, 95]` - Confidence levels for prediction intervals
+- `drift::Bool=false` - Include drift term
+- `lambda::Union{Nothing, Float64}=nothing` - Box-Cox transformation parameter
+- `biasadj::Bool=false` - Apply bias adjustment for Box-Cox back-transformation
+- `fan::Bool=false` - If true, generate fan chart levels
+
+# Returns
+`Forecast` - Forecast object (not a fit)
+
+# See Also
+- [`rw`](@ref) - Returns a `NaiveFit` (fit-only, two-step workflow)
 """
-const rwf = rw
+function rwf(y::AbstractVector, m::Int=1;
+             h::Int=10,
+             level::Vector{<:Real}=[80, 95],
+             drift::Bool=false,
+             lambda::Union{Nothing, Float64, String}=nothing,
+             biasadj::Bool=false,
+             fan::Bool=false)
+    fit = rw(y, m; drift=drift, lambda=lambda, biasadj=biasadj)
+    return forecast(fit; h=h, level=level, fan=fan)
+end
 
 function Base.show(io::IO, fit::NaiveFit)
     println(io, fit.method)

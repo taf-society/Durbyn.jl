@@ -100,6 +100,10 @@ fc.upper[2]     # 95% upper bound
 fc.lower[1]     # 80% lower bound
 ```
 
+!!! note "Difference from R"
+    `level` values must be strictly positive. R allows `level=0` (producing zero-width
+    intervals); Julia rejects it as a nonsensical input.
+
 # See Also
 - [`naive`](@ref)
 - [`snaive`](@ref)

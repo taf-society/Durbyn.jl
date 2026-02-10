@@ -225,7 +225,6 @@ const REFERENCE_SD_AP = 119.9663
         fit = meanf(AirPassengers, 12)
         fc = forecast(fit, 12)
 
-        # mu_original is back-transformed, so compare that
         @test all(abs.(fc.mean .- fit.mu_original) .<= EPS_SCALAR)
 
         n = length(AirPassengers)
@@ -238,7 +237,6 @@ const REFERENCE_SD_AP = 119.9663
     @testset "Bootstrap Intervals" begin
         fit = meanf(AirPassengers, 12)
 
-        # Test bootstrap path doesn't error and produces valid intervals
         fc_boot = forecast(fit, 10, [80.0, 95.0], false, true, 1000)
 
         @test !isempty(fc_boot.mean)
@@ -249,7 +247,6 @@ const REFERENCE_SD_AP = 119.9663
         @test length(fc_boot.lower) == 2
         @test length(fc_boot.lower[1]) == 10
 
-        # Intervals should bracket the mean
         @test all(fc_boot.lower[1] .< fc_boot.mean)
         @test all(fc_boot.upper[1] .> fc_boot.mean)
     end
@@ -257,7 +254,6 @@ const REFERENCE_SD_AP = 119.9663
     @testset "MeanFit Structure Updated" begin
         fit = meanf(AirPassengers, 12)
 
-        # Test new fields exist
         @test hasfield(MeanFit, :x)
         @test hasfield(MeanFit, :mu)
         @test hasfield(MeanFit, :mu_original)
@@ -271,18 +267,12 @@ const REFERENCE_SD_AP = 119.9663
     @testset "Box-Cox Scale Consistency" begin
         fit = meanf(AirPassengers, 12, 0.0)
 
-        # mu is on transformed scale (log)
         @test isapprox(fit.mu, mean(log.(AirPassengers)), atol=EPS_SCALAR)
-
-        # sd is on transformed scale
         @test isapprox(fit.sd, std(log.(AirPassengers)), atol=EPS_SCALAR)
 
-        # fitted values are on original scale (back-transformed)
-        @test all(fit.fitted .> 0)  # Back-transformed, should be positive
+        @test all(fit.fitted .> 0)
         @test isapprox(fit.fitted[1], fit.mu_original, atol=EPS_SCALAR)
 
-        # R's meanf: residuals stay on TRANSFORMED scale (res = x - fits where x is transformed)
-        # residuals[i] = log(y[i]) - mu_trans
         @test isapprox(fit.residuals[1], log(AirPassengers[1]) - fit.mu, atol=EPS_SCALAR)
     end
 
@@ -292,21 +282,17 @@ const REFERENCE_SD_AP = 119.9663
 
         @test fit.n == 1
         @test fit.mu == 100.0
-        @test fit.sd == 0.0  # sd of single observation
+        @test fit.sd == 0.0
 
-        # Forecast should work but produce infinite intervals (like R)
         fc = forecast(fit, 5, [80.0, 95.0])
         @test length(fc.mean) == 5
         @test all(fc.mean .== 100.0)
 
-        # Intervals should be infinite (TDist(0) not defined, so we use Inf)
         @test all(fc.lower[1] .== -Inf)
         @test all(fc.upper[1] .== Inf)
     end
 
     @testset "meanf with n == 1 and lambda < 0" begin
-        # With lambda < 0, infinite upper bounds become NaN after inv_box_cox
-        # This is correct mathematical behavior - the Box-Cox transform domain is bounded
         single_obs = [100.0]
         fit = meanf(single_obs, 1, -0.5)
 
@@ -318,11 +304,7 @@ const REFERENCE_SD_AP = 119.9663
         @test length(fc.mean) == 5
         @test all(isfinite.(fc.mean))
 
-        # Lower bounds: -Inf on transformed scale → 0 on original scale (for lambda < 0)
         @test all(fc.lower[1] .== 0.0)
-
-        # Upper bounds: +Inf on transformed scale → NaN (exceeds inv_box_cox domain)
-        # This is correct behavior matching R's InvBoxCox
         @test all(isnan.(fc.upper[1]))
     end
 
@@ -338,9 +320,7 @@ const REFERENCE_SD_AP = 119.9663
         fc_no_fan = forecast(fit; h=10, level=[80.0, 95.0])
         fc_fan = forecast(fit; h=10, level=[80.0, 95.0], fan=true)
 
-        # fan=true changes only the intervals, not the point forecast
         @test fc_fan.mean ≈ fc_no_fan.mean atol=EPS_SCALAR
-        # But the number of levels differs (fan produces 51:3:99)
         @test length(fc_fan.level) > length(fc_no_fan.level)
     end
 
@@ -355,7 +335,6 @@ const REFERENCE_SD_AP = 119.9663
     end
 
     @testset "lambda=\"auto\" with non-positive values (meanf)" begin
-        # Auto lambda filters to positive values only
         y_with_zeros = Float64[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
         fit = meanf(y_with_zeros, 1; lambda="auto")
         @test !isnothing(fit.lambda)
@@ -364,35 +343,30 @@ const REFERENCE_SD_AP = 119.9663
 
     @testset "Box-Cox with zeros and lambda=0 (meanf)" begin
         y_with_zero = Float64[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
-        # lambda=0 → log transform; Julia filters zeros (warns), R would produce -Inf
         fit = @test_logs (:warn, r"non-positive") meanf(y_with_zero, 1; lambda=0.0)
-        @test fit.n == 5  # zero excluded
+        @test fit.n == 5
         @test isfinite(fit.mu)
     end
 
     @testset "Box-Cox with zeros and lambda<0 (meanf)" begin
         y_with_zero = Float64[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
         fit = @test_logs (:warn, r"non-positive") meanf(y_with_zero, 1; lambda=-0.5)
-        @test fit.n == 5  # zero excluded
+        @test fit.n == 5
         @test isfinite(fit.mu)
     end
 
     @testset "Bias-adjustment small-n regression (meanf)" begin
-        # With small n, the t/z ratio in the R-compatible variance matters.
-        # Verify biasadj produces finite, reasonable results for n=3..5.
         for n in 3:5
             y = Float64.(1:n)
             fit = meanf(y, 1; lambda=0.5, biasadj=true)
             fc = forecast(fit; h=3, level=[95.0])
             @test all(isfinite.(fc.mean))
-            # Bias-adjusted mean should differ from non-adjusted
             fc_no = forecast(meanf(y, 1; lambda=0.5, biasadj=false); h=3)
             @test fc.mean != fc_no.mean
         end
     end
 
-    @testset "R reference: meanf biasadj small-n (lambda=0.5)" begin
-        # R: meanf(c(1,2,3), h=3, lambda=0.5, biasadj=TRUE, level=c(80,95))
+    @testset "meanf biasadj small-n (lambda=0.5)" begin
         y3 = [1.0, 2.0, 3.0]
         fit3 = meanf(y3, 1; lambda=0.5, biasadj=true)
         fc3 = forecast(fit3; h=3, level=[80.0, 95.0])
@@ -402,7 +376,6 @@ const REFERENCE_SD_AP = 119.9663
         @test fc3.lower[2][1] ≈ -0.1950746219 atol=1e-3
         @test fc3.upper[2][1] ≈ 10.2774663652 atol=1e-3
 
-        # R: meanf(c(1,2,3,4), h=3, lambda=0.5, biasadj=TRUE, level=c(80,95))
         y4 = [1.0, 2.0, 3.0, 4.0]
         fit4 = meanf(y4, 1; lambda=0.5, biasadj=true)
         fc4 = forecast(fit4; h=3, level=[80.0, 95.0])
@@ -410,7 +383,6 @@ const REFERENCE_SD_AP = 119.9663
         @test fc4.lower[1][1] ≈ 0.5600892575 atol=1e-3
         @test fc4.upper[1][1] ≈ 5.4044210534 atol=1e-3
 
-        # R: meanf(c(1,2,3,4,5), h=3, lambda=0.5, biasadj=TRUE, level=c(80,95))
         y5 = [1.0, 2.0, 3.0, 4.0, 5.0]
         fit5 = meanf(y5, 1; lambda=0.5, biasadj=true)
         fc5 = forecast(fit5; h=3, level=[80.0, 95.0])
@@ -420,14 +392,12 @@ const REFERENCE_SD_AP = 119.9663
         @test fc5.lower[2][1] ≈ 0.0385562688 atol=1e-3
         @test fc5.upper[2][1] ≈ 9.9639684855 atol=1e-3
 
-        # Without biasadj for comparison
         fit5_no = meanf(y5, 1; lambda=0.5, biasadj=false)
         fc5_no = forecast(fit5_no; h=3, level=[80.0, 95.0])
         @test all(isapprox.(fc5_no.mean, 2.8105398233, atol=1e-4))
     end
 
-    @testset "R reference: meanf biasadj lambda=0 (log)" begin
-        # R: meanf(c(2,4,6,8,10), h=3, lambda=0, biasadj=TRUE, level=c(80,95))
+    @testset "meanf biasadj lambda=0 (log)" begin
         y = [2.0, 4.0, 6.0, 8.0, 10.0]
         fit = meanf(y, 1; lambda=0.0, biasadj=true)
         fc = forecast(fit; h=3, level=[80.0, 95.0])
@@ -436,8 +406,7 @@ const REFERENCE_SD_AP = 119.9663
         @test fc.upper[1][1] ≈ 15.1501610734 atol=1e-3
     end
 
-    @testset "R reference: meanf biasadj AirPassengers" begin
-        # R: meanf(AirPassengers, h=5, lambda=0.5, biasadj=TRUE, level=c(80,95))
+    @testset "meanf biasadj AirPassengers" begin
         fit = meanf(AirPassengers, 12; lambda=0.5, biasadj=true)
         fc = forecast(fit; h=5, level=[80.0, 95.0])
         @test all(isapprox.(fc.mean, 280.6931260448, atol=0.1))
@@ -447,23 +416,16 @@ const REFERENCE_SD_AP = 119.9663
         @test fc.upper[2][1] ≈ 548.5502545995 atol=0.5
     end
 
-    @testset "R reference: meanf bootstrap + biasadj + lambda" begin
-        # R: meanf(c(2,4,6,8,10), h=3, lambda=0.5, biasadj=TRUE, bootstrap=TRUE)
-        # Bootstrap intervals are stochastic; just verify mean is biasadj and finite.
+    @testset "meanf bootstrap + biasadj + lambda" begin
         y = [2.0, 4.0, 6.0, 8.0, 10.0]
         fit = meanf(y, 1; lambda=0.5, biasadj=true)
         fc = forecast(fit; h=3, level=[80.0, 95.0], bootstrap=true, npaths=5000)
         @test all(isfinite.(fc.mean))
-        # Biasadj mean should be higher than non-biasadj
         fc_no = forecast(meanf(y, 1; lambda=0.5, biasadj=false); h=3)
         @test fc.mean[1] > fc_no.mean[1]
     end
 
 end
-
-# =============================================================================
-# Tests for naive, snaive, rw functions
-# =============================================================================
 
 import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
@@ -482,10 +444,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
     @testset "Naive Fitted Values" begin
         fit = naive(AirPassengers)
 
-        # First fitted value should be missing
         @test ismissing(fit.fitted[1])
 
-        # Fitted values should be lagged original values
         for t in 2:length(AirPassengers)
             @test fit.fitted[t] == AirPassengers[t-1]
         end
@@ -504,12 +464,10 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         fit = naive(AirPassengers, 12)
         fc = forecast(fit, h=10)
 
-        # All forecasts should equal last observation
         @test all(fc.mean .== AirPassengers[end])
 
-        # Prediction intervals should widen with horizon
-        @test fc.lower[1][1] > fc.lower[1][10]  # 80% lower bound
-        @test fc.upper[1][1] < fc.upper[1][10]  # 80% upper bound
+        @test fc.lower[1][1] > fc.lower[1][10]
+        @test fc.upper[1][1] < fc.upper[1][10]
     end
 
     @testset "Seasonal Naive (snaive)" begin
@@ -520,12 +478,10 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         @test fit.m == 12
         @test fit.method == "Seasonal naive method"
 
-        # First m fitted values should be missing
         for t in 1:12
             @test ismissing(fit.fitted[t])
         end
 
-        # Fitted values should be lagged by m
         for t in 13:length(AirPassengers)
             @test fit.fitted[t] == AirPassengers[t-12]
         end
@@ -535,7 +491,6 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         fit = snaive(AirPassengers, 12)
         fc = forecast(fit, h=24)
 
-        # Forecasts should cycle through last m values
         last_season = AirPassengers[end-11:end]
         for i in 1:12
             @test fc.mean[i] == last_season[i]
@@ -551,7 +506,6 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         @test isnothing(fit.drift)
         @test isnothing(fit.drift_se)
 
-        # Should be equivalent to naive
         fit_naive = naive(AirPassengers)
         @test fit.fitted[2:end] == fit_naive.fitted[2:end]
     end
@@ -563,12 +517,10 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         @test !isnothing(fit.drift)
         @test !isnothing(fit.drift_se)
 
-        # Drift should be (last - first) / (n - 1)
         n = length(AirPassengers)
         expected_drift = (AirPassengers[n] - AirPassengers[1]) / (n - 1)
         @test fit.drift ≈ expected_drift atol=EPS_SCALAR
 
-        # Forecasts should include drift trend
         fc = forecast(fit, h=10)
         for i in 1:10
             expected = AirPassengers[end] + i * fit.drift
@@ -577,12 +529,10 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
     end
 
     @testset "rwf convenience wrapper" begin
-        # rwf returns a Forecast, not a NaiveFit
         fc = rwf(AirPassengers; drift=true, h=10)
         @test fc isa Durbyn.Generics.Forecast
         @test length(fc.mean) == 10
 
-        # Should match two-step rw() + forecast()
         fit = rw(AirPassengers, drift=true)
         fc2 = forecast(fit; h=10)
         @test fc.mean ≈ fc2.mean atol=EPS_SCALAR
@@ -599,7 +549,7 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         short_series = [1.0, 2.0, 3.0]
 
         @test_throws ArgumentError snaive(short_series, 4)
-        @test_throws ArgumentError snaive(short_series, 3)  # n must be > m, not >= m
+        @test_throws ArgumentError snaive(short_series, 3)
     end
 
     @testset "Box-Cox Transformation" begin
@@ -608,10 +558,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         @test fit.lambda == 0.0
         @test !isnothing(fit.y_transformed)
 
-        # Transformed data should be log
         @test fit.y_transformed ≈ log.(AirPassengers) atol=EPS_SCALAR
 
-        # Fitted values should be back-transformed
         @test all(skipmissing(fit.fitted) .> 0)
 
         fc = forecast(fit, h=10)
@@ -621,9 +569,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
     end
 
     @testset "Box-Cox Bias Adjustment" begin
-        # Use data with clear trend for noticeable difference
         y = 10.0 .+ collect(1.0:50.0) .+ 0.5 .* randn(50)
-        y = abs.(y)  # Ensure positive for Box-Cox
+        y = abs.(y)
 
         fit_no_bias = naive(y, lambda=0.5, biasadj=false)
         fit_with_bias = naive(y, lambda=0.5, biasadj=true)
@@ -631,16 +578,12 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         @test fit_no_bias.biasadj == false
         @test fit_with_bias.biasadj == true
 
-        # Forecasts with bias adjustment should generally be slightly higher
         fc_no_bias = forecast(fit_no_bias, h=10)
         fc_with_bias = forecast(fit_with_bias, h=10)
 
-        # Both should produce valid forecasts
         @test all(isfinite.(fc_no_bias.mean))
         @test all(isfinite.(fc_with_bias.mean))
 
-        # Bias-adjusted forecasts typically differ from non-adjusted
-        # (may be higher or lower depending on data, but should differ)
         @test fc_no_bias.mean != fc_with_bias.mean
     end
 
@@ -669,18 +612,15 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         fit = naive(AirPassengers, 12)
         fc = forecast(fit, h=12, level=[80, 95])
 
-        # Lower < mean < upper
         @test all(fc.lower[1] .< fc.mean)
         @test all(fc.lower[2] .< fc.mean)
         @test all(fc.mean .< fc.upper[1])
         @test all(fc.mean .< fc.upper[2])
 
-        # 95% interval wider than 80%
         width_80 = fc.upper[1] .- fc.lower[1]
         width_95 = fc.upper[2] .- fc.lower[2]
         @test all(width_95 .> width_80)
 
-        # Intervals widen with horizon (naive variance = h * sigma2)
         @test width_80[1] < width_80[12]
         @test width_95[1] < width_95[12]
     end
@@ -689,13 +629,10 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         fit = snaive(AirPassengers, 12)
         fc = forecast(fit, h=24, level=[80, 95])
 
-        # Intervals should step up at seasonal boundaries
         width_80 = fc.upper[1] .- fc.lower[1]
 
-        # Within first season (h=1 to 12), widths should be constant
         @test all(width_80[1:12] .≈ width_80[1])
 
-        # Second season (h=13 to 24) should have wider intervals
         @test width_80[13] > width_80[12]
         @test all(width_80[13:24] .≈ width_80[13])
     end
@@ -726,15 +663,11 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
             @test fit isa NaiveFit
             @test length(fit.x) == 8
-            @test isnan(fit.x[3])  # missing converted to NaN
+            @test isnan(fit.x[3])
             @test isnan(fit.x[6])
 
-            # R's lagwalk fill strategy: only fill lagged values at positions where y is NA
-            # y[4] is NOT NA, so lagged[4] = y[3] = NA stays missing
             @test ismissing(fit.fitted[4])
-            # Fitted at t=5 should use t=4 which is 4.0
             @test fit.fitted[5] == 4.0
-            # y[7] is NOT NA, so lagged[7] = y[6] = NA stays missing
             @test ismissing(fit.fitted[7])
 
             fc = forecast(fit, h=5)
@@ -746,12 +679,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             fit = snaive(y_with_missing, 4)
 
             @test fit isa NaiveFit
-            # First 4 fitted values are missing (lag period)
             @test all(ismissing.(fit.fitted[1:4]))
-            # R's fill strategy: fill lagged at positions where y is NA
-            # y[5] is NOT NA, so lagged[5] = y[1] = NA stays missing
             @test ismissing(fit.fitted[5])
-            # Fitted at t=6 uses t=2 which is 2.0
             @test fit.fitted[6] == 2.0
         end
 
@@ -761,7 +690,6 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
             @test fit isa NaiveFit
             @test !isnothing(fit.drift)
-            # Drift computed from first to last non-missing
             @test isfinite(fit.drift)
 
             fc = forecast(fit, h=5)
@@ -770,36 +698,30 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
         @testset "Error on insufficient non-missing data" begin
             y_mostly_missing = Union{Float64, Missing}[missing, missing, 1.0, missing]
-            @test_throws ArgumentError naive(y_mostly_missing)  # only 1 non-missing
+            @test_throws ArgumentError naive(y_mostly_missing)
 
             y_snaive_insufficient = Union{Float64, Missing}[1.0, 2.0, missing, missing, missing]
-            @test_throws ArgumentError snaive(y_snaive_insufficient, 4)  # 2 non-missing <= m=4
+            @test_throws ArgumentError snaive(y_snaive_insufficient, 4)
         end
     end
 
     @testset "Trailing Missing Values" begin
         @testset "naive with trailing missings" begin
-            # Last 2 observations are missing
             y = Union{Float64, Missing}[1.0, 2.0, 3.0, 4.0, 5.0, missing, missing]
             fit = naive(y)
 
-            # Forecast should use last non-missing value (5.0)
             fc = forecast(fit, h=5)
             @test all(fc.mean .== 5.0)
             @test all(isfinite.(fc.mean))
         end
 
         @testset "snaive with trailing missings" begin
-            # Seasonal period 3, with missing in last season
             y = Union{Float64, Missing}[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, missing, 9.0]
             fit = snaive(y, 3)
 
             fc = forecast(fit, h=6)
-            # Position 1: should use y[7]=7.0 (or y[4]=4.0 as fallback)
-            # Position 2: should use y[8]=missing, fall back to y[5]=5.0
-            # Position 3: should use y[9]=9.0
             @test fc.mean[1] == 7.0
-            @test fc.mean[2] == 5.0  # Fallback for missing position
+            @test fc.mean[2] == 5.0
             @test fc.mean[3] == 9.0
             @test all(isfinite.(fc.mean))
         end
@@ -808,11 +730,9 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             y = Union{Float64, Missing}[1.0, 2.0, 3.0, 4.0, 5.0, missing, missing]
             fit = rw(y, drift=true)
 
-            # Forecast should use last non-missing value
             fc = forecast(fit, h=5)
             @test all(isfinite.(fc.mean))
-            # First forecast should be close to 5.0 + drift
-            @test fc.mean[1] > 5.0  # Positive drift expected
+            @test fc.mean[1] > 5.0
         end
     end
 
@@ -821,22 +741,18 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             y = [10.0, 20.0]
             fit = naive(y)
 
-            # Only 1 residual (at t=2), res = 20 - 10 = 10
-            # R uses MSE = mean(res^2) = 100, not centered variance (which would be 0)
             @test fit.sigma2 == 100.0
 
             fc = forecast(fit, h=5)
             @test all(fc.mean .== 20.0)
-            # With sigma2 > 0, intervals are now wider (matching R behavior)
             @test all(fc.lower[1] .< fc.mean)
             @test all(fc.upper[1] .> fc.mean)
         end
 
         @testset "snaive with m+1 observations" begin
-            y = [1.0, 2.0, 3.0, 4.0, 5.0]  # m=4, so only 1 residual at t=5
+            y = [1.0, 2.0, 3.0, 4.0, 5.0]
             fit = snaive(y, 4)
 
-            # res = 5 - 1 = 4, MSE = 16
             @test fit.sigma2 == 16.0
             fc = forecast(fit, h=4)
             @test all(isfinite.(fc.mean))
@@ -846,51 +762,32 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             y = [10.0, 20.0]
             fit = rw(y, drift=true)
 
-            # Drift should be (20 - 10) / 1 = 10
             @test fit.drift == 10.0
-            # With drift, R uses (n-1) divisor via var(corrected=true)
-            # Only 1 residual, so sigma2 = var([0.0], corrected=true) which is NaN or 0
-            # But with MSE approach for drift case, it's the variance of residuals
-            # residual = 20 - (10 + 10) = 0, so sigma2 = var([0], corrected=true) = 0
             @test fit.sigma2 == 0.0
-            # drift_se should also be 0 (or very small)
             @test fit.drift_se == 0.0
 
             fc = forecast(fit, h=3)
-            @test fc.mean[1] ≈ 30.0 atol=EPS_SCALAR  # 20 + 1*10
-            @test fc.mean[2] ≈ 40.0 atol=EPS_SCALAR  # 20 + 2*10
-            @test fc.mean[3] ≈ 50.0 atol=EPS_SCALAR  # 20 + 3*10
+            @test fc.mean[1] ≈ 30.0 atol=EPS_SCALAR
+            @test fc.mean[2] ≈ 40.0 atol=EPS_SCALAR
+            @test fc.mean[3] ≈ 50.0 atol=EPS_SCALAR
         end
     end
 
     @testset "Seasonal Position with All NaN Values" begin
-        # Test case: all values at position 2 in the season are missing
-        # m=3, positions are: 1, 2, 3, 1, 2, 3, 1, 2, 3
-        # indices:           1, 2, 3, 4, 5, 6, 7, 8, 9
-        # Make position 2 (indices 2, 5, 8) all NaN
         y = Union{Float64, Missing}[1.0, missing, 3.0, 4.0, missing, 6.0, 7.0, missing, 9.0]
         fit = snaive(y, 3)
 
         fc = forecast(fit, h=6)
 
-        # Position 1 (forecast indices 1, 4): should use y[7]=7.0
         @test fc.mean[1] == 7.0
         @test fc.mean[4] == 7.0
 
-        # Position 2 (forecast indices 2, 5): all values are missing
-        # Should return NaN for these positions
         @test isnan(fc.mean[2])
         @test isnan(fc.mean[5])
 
-        # Position 3 (forecast indices 3, 6): should use y[9]=9.0
         @test fc.mean[3] == 9.0
         @test fc.mean[6] == 9.0
     end
-
-    # =================================================================
-    # Gap tests: level validation, fan invariance, m=1 parity,
-    # lambda="auto", Box-Cox zeros, biasadj small-n, constant series
-    # =================================================================
 
     @testset "Level validation errors (naive/snaive/rw)" begin
         fit_n  = naive(AirPassengers, 12)
@@ -928,10 +825,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         fc_n = forecast(fit_naive;  h=12, level=[80, 95])
         fc_s = forecast(fit_snaive; h=12, level=[80, 95])
 
-        # Point forecasts should be identical
         @test fc_n.mean ≈ fc_s.mean atol=EPS_SCALAR
 
-        # Prediction intervals should also match
         @test fc_n.lower[1] ≈ fc_s.lower[1] atol=EPS_PI
         @test fc_n.upper[1] ≈ fc_s.upper[1] atol=EPS_PI
         @test fc_n.lower[2] ≈ fc_s.lower[2] atol=EPS_PI
@@ -955,7 +850,6 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
     end
 
     @testset "lambda=\"auto\" with non-positive values" begin
-        # Auto lambda filters to positive values; non-positive are skipped
         y = Float64[-1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]
         fit = naive(y; lambda="auto")
         @test !isnothing(fit.lambda)
@@ -966,7 +860,6 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         y_with_zero = Float64[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0,
                               9.0, 10.0, 11.0, 12.0]
 
-        # Julia filters zeros for lambda=0 (warns), unlike R which produces -Inf
         fit_n = @test_logs (:warn, r"non-positive") naive(y_with_zero; lambda=0.0)
         @test isfinite(fit_n.sigma2)
 
@@ -992,7 +885,6 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
     end
 
     @testset "Bias-adjustment small-n regression (naive)" begin
-        # With small n, the t/z variance ratio matters for biasadj.
         for n in 3:5
             y = Float64.(1:n)
             fit = naive(y; lambda=0.5, biasadj=true)
@@ -1019,21 +911,18 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
     @testset "Constant series for rw" begin
         constant = fill(10.0, 50)
 
-        # Without drift
         fit = rw(constant)
         @test fit.sigma2 == 0.0
         fc = forecast(fit; h=10)
         @test all(fc.mean .== 10.0)
 
-        # With drift (drift should be 0)
         fit_d = rw(constant, drift=true)
         @test fit_d.drift ≈ 0.0 atol=EPS_SCALAR
         fc_d = forecast(fit_d; h=10)
         @test all(fc_d.mean .≈ 10.0)
     end
 
-    @testset "R reference: naive biasadj AirPassengers (lambda=0.5)" begin
-        # R: forecast(naive(AirPassengers, lambda=0.5, biasadj=TRUE), h=5, level=c(80,95))
+    @testset "naive biasadj AirPassengers (lambda=0.5)" begin
         fit = naive(AirPassengers, 12; lambda=0.5, biasadj=true)
         fc = forecast(fit; h=5, level=[80.0, 95.0])
 

@@ -6,8 +6,6 @@ prediction intervals that account for forecast horizon and method-specific
 variance characteristics.
 """
 
-# Helper functions for finding valid values (moved outside forecast for performance)
-
 """
     _find_last_valid(arr)
 
@@ -20,7 +18,7 @@ function _find_last_valid(arr)
             return arr[i]
         end
     end
-    return NaN  # All values are NaN
+    return NaN
 end
 
 """
@@ -40,8 +38,6 @@ Returns NaN if no valid value found at this seasonal position.
 """
 function _find_last_valid_at_season(arr, pos, period)
     n = length(arr)
-    # Start from the most recent occurrence of this position
-    # Index i has position mod1(i, period), so we find the most recent index with this position
     start_idx = n - mod(n - pos, period)
     for idx in start_idx:-period:1
         if idx >= 1 && !isnan(arr[idx])
@@ -94,15 +90,10 @@ y = randn(100)
 fit = naive(y)
 fc = forecast(fit, h=12)
 
-# Access results
-fc.mean         # Point forecasts
-fc.upper[2]     # 95% upper bound
-fc.lower[1]     # 80% lower bound
+fc.mean
+fc.upper[2]
+fc.lower[1]
 ```
-
-!!! note "Difference from R"
-    `level` values must be strictly positive. R allows `level=0` (producing zero-width
-    intervals); Julia rejects it as a nonsensical input.
 
 # See Also
 - [`naive`](@ref)
@@ -123,14 +114,10 @@ function forecast(object::NaiveFit;
     lambda = object.lambda
     biasadj = object.biasadj
 
-    # Adjust levels for fan or percentage
-    # R's approach: if ALL levels are in (0, 1), treat as fractions; otherwise percentages
-    # Note: level=1 is treated as 1% (percentage), not 100% (fraction)
     if fan
         level = collect(51.0:3:99.0)
     else
-        # R: if(min(level) > 0 && max(level) < 1) level <- 100*level
-        all_fraction = all(lv -> 0.0 < lv < 1.0, level)  # Strict < 1.0 (like R)
+        all_fraction = all(lv -> 0.0 < lv < 1.0, level)
 
         if all_fraction
             level = 100.0 .* level
@@ -141,30 +128,19 @@ function forecast(object::NaiveFit;
 
     nconf = length(level)
 
-    # Get transformed data for forecasting (if lambda was used)
     if !isnothing(lambda) && !isnothing(object.y_transformed)
         y_trans = object.y_transformed
     else
         y_trans = x
     end
 
-    # Generate point forecasts on transformed scale
     if !isnothing(object.drift)
-        # RW with drift: forecast = last valid transformed value + h * drift
         last_trans = _find_last_valid(y_trans)
         f_trans = [last_trans + i * object.drift for i in 1:h]
     elseif lag == 1
-        # Naive: forecast = last valid transformed value
         last_trans = _find_last_valid(y_trans)
         f_trans = fill(Float64(last_trans), h)
     else
-        # Seasonal naive: forecast by cycling through last m values
-        # This matches R's forecast package behavior:
-        #   future = tail(fits, lag)
-        #   fc = rep(future, fullperiods)[1:h]
-        #
-        # Formula: simple_idx = n - m + mod1(i, m) gives the index of the
-        # value from the same seasonal position in the most recent complete cycle
         f_trans = Vector{Float64}(undef, h)
         for i in 1:h
             pos = mod1(i, m)
@@ -173,14 +149,11 @@ function forecast(object::NaiveFit;
             if simple_idx >= 1 && !isnan(y_trans[simple_idx])
                 f_trans[i] = y_trans[simple_idx]
             else
-                # Fall back to finding last valid at this seasonal position
                 f_trans[i] = _find_last_valid_at_season(y_trans, pos, m)
             end
         end
     end
 
-    # Calculate standard errors on transformed scale
-    # Handle NaN/negative sigma2 with warning (can indicate data issues)
     if isnan(sigma2)
         @warn "Residual variance (sigma2) is NaN, using 0. This may indicate Box-Cox transformation issues or insufficient data."
         sigma2 = 0.0
@@ -193,21 +166,16 @@ function forecast(object::NaiveFit;
 
     for i in 1:h
         if !isnothing(object.drift) && !isnothing(object.drift_se)
-            # RW with drift: SE^2 = h * sigma2 + h^2 * drift_se^2
             drift_se = isnan(object.drift_se) ? 0.0 : object.drift_se
             se[i] = sqrt(i * sigma2 + i^2 * drift_se^2)
         elseif lag == 1
-            # Naive/RW without drift: SE = sqrt(h) * sigma
             se[i] = sqrt(i) * sigma
         else
-            # Seasonal naive: SE based on complete seasons
-            # SE = sqrt(k) * sigma, where k = ceil(h/m)
             k = ceil(Int, i / m)
             se[i] = sqrt(k) * sigma
         end
     end
 
-    # Calculate prediction intervals using Normal quantiles on transformed scale
     lower_trans = Vector{Vector{Float64}}(undef, nconf)
     upper_trans = Vector{Vector{Float64}}(undef, nconf)
 
@@ -219,19 +187,15 @@ function forecast(object::NaiveFit;
         upper_trans[j] = f_trans .+ z .* se
     end
 
-    # Apply inverse Box-Cox transformation if needed
     if !isnothing(lambda)
-        # Compute forecast variance for bias adjustment
         fvar = se .^ 2
 
         if biasadj
-            # Bias-adjusted back-transformation for point forecast
             f = inv_box_cox(f_trans; lambda=lambda, biasadj=true, fvar=fvar)
         else
             f = inv_box_cox(f_trans; lambda=lambda)
         end
 
-        # Back-transform intervals (without bias adjustment for bounds)
         lower = Vector{Vector{Float64}}(undef, nconf)
         upper = Vector{Vector{Float64}}(undef, nconf)
         for j in 1:nconf
@@ -244,21 +208,17 @@ function forecast(object::NaiveFit;
         upper = upper_trans
     end
 
-    # Convert to Float64 vectors
     mean_vec = Float64.(f)
     x_data = Float64.(object.x)
 
-    # Warn if all forecasts are NaN (indicates no valid data to forecast from)
     if all(isnan, mean_vec)
         @warn "All forecast values are NaN. This typically indicates all observations " *
               "at the required lag positions are missing."
     end
 
-    # Fitted values and residuals (already on original scale in NaiveFit)
     fitted_vals = object.fitted
     residuals_vals = object.residuals
 
-    # Keep level as-is (don't round to avoid mislabeling e.g., 99.5 → 100)
     level_out = Float64.(level)
 
     return Forecast(

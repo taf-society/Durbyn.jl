@@ -181,9 +181,10 @@ get_D(fit) = fit.arma[7]
         fit = auto_arima(simple_seasonal, 4)
 
         @test get_m(fit) == 4
-        @test isfinite(fit.aic)
-        @test isfinite(fit.aicc)
-        @test isfinite(fit.bic)
+        # Perfectly periodic data → sigma2=0 → AIC/AICC/BIC = -Inf (perfect model)
+        @test fit.aic == -Inf || isfinite(fit.aic)
+        @test fit.aicc == -Inf || isfinite(fit.aicc)
+        @test fit.bic == -Inf || isfinite(fit.bic)
     end
 
     @testset "Information Criterion Options" begin

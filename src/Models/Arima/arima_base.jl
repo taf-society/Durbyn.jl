@@ -418,16 +418,18 @@ function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, useResid, r
         gain += delta[j] * M[r+j]
     end
 
-    # 4) update ssq, sumlog, nu if gain is “safe”
+    # 4) update ssq, sumlog, nu if gain is "safe"
+    #    Guard gain > 0: C's log(negative) returns NaN silently;
+    #    Julia throws DomainError. Use NaN to match C behaviour.
     if gain < 1e4
         nu[] += 1
         ssq[] += resid^2 / gain
-        sumlog[] += log(gain)
+        sumlog[] += gain > 0 ? log(gain) : NaN
     end
 
-    # 5) optionally store raw innovation (not standardized)
+    # 5) store standardized innovation (matching R's arima.c: rsResid[l] = resid/sqrt(gain))
     if useResid
-        rsResid[l] = resid
+        rsResid[l] = gain > 0 ? resid / sqrt(gain) : NaN
     end
 
     # 6) state update: a = anew + (M * resid)/gain
@@ -1408,7 +1410,7 @@ mp, mq, msp, msq, ns = arma
         end
         v = mp + mq
         if msp > 0
-            transform_unconstrained_to_ar_params!(msp, params_in[v+1:end], params[v+1:end])
+            transform_unconstrained_to_ar_params!(msp, @view(params_in[v+1:end]), @view(params[v+1:end]))
         end
     end
 
@@ -1940,12 +1942,13 @@ function arima(
         end
 
         s2 = resss[1] / nu
-        if s2 <= 0 || !isfinite(s2)
+        if s2 < 0 || isnan(s2) || s2 == Inf
             return typemax(Float64)
         end
 
         result = 0.5 * (log(s2) + resss[2] / nu)
-        return isfinite(result) ? result : typemax(Float64)
+        # NaN/+Inf → bad parameters; -Inf → perfect fit (s2=0), valid like R
+        return isnan(result) || result == Inf ? typemax(Float64) : result
     end
     # Conditional sum of squares objective
     function armaCSS(p)
@@ -1961,13 +1964,15 @@ function arima(
         ross = compute_css_residuals(x_in, arma, trarma[1], trarma[2], ncond)
         sigma2 = ross[:sigma2]
 
-        # Safety check for log of non-positive value
-        if sigma2 <= 0 || !isfinite(sigma2)
+        # sigma2 < 0 or NaN/Inf → bad parameters
+        # sigma2 == 0 → perfect fit (log returns -Inf, matching R behavior)
+        if sigma2 < 0 || isnan(sigma2) || sigma2 == Inf
             return typemax(Float64)
         end
 
         result = 0.5 * log(sigma2)
-        return isfinite(result) ? result : typemax(Float64)
+        # NaN/+Inf → bad parameters; -Inf → perfect fit (sigma2=0), valid like R
+        return isnan(result) || result == Inf ? typemax(Float64) : result
     end
     
     n = length(x)
@@ -2103,19 +2108,12 @@ function arima(
         else
             ctrl = copy(optim_control)
             ctrl["parscale"] = parscale
-
+            # CSS needs larger finite-difference step and more iterations
+            if !haskey(ctrl, "ndeps")
+                ctrl["ndeps"] = fill(1e-2, sum(mask))
+            end
             if !haskey(ctrl, "maxit")
                 ctrl["maxit"] = 500
-            end
-
-            if !haskey(ctrl, "gtol")
-                ctrl["gtol"] = 1e-6
-            end
-
-            # Use larger step size for numerical gradient.
-            if !haskey(ctrl, "ndeps")
-                nparams = sum(mask)
-                ctrl["ndeps"] = fill(1e-2, nparams)
             end
 
             opt = optim(
@@ -2164,7 +2162,15 @@ function arima(
         end
 
     else
-        if method == "CSS-ML"
+        if method in ["CSS-ML", "ML"]
+            # CSS pre-initialization for better starting values.
+            # For ML, temporarily set ncond for CSS computation.
+            if method == "ML"
+                ncond = order.d + seasonal.d * m
+                ncond1 = order.p + seasonal.p * m
+                ncond += isnothing(n_cond) ? ncond1 : max(n_cond, ncond1)
+            end
+
             if no_optim
                 res = (
                     converged = true,
@@ -2174,18 +2180,13 @@ function arima(
             else
                 ctrl = copy(optim_control)
                 ctrl["parscale"] = parscale
-
+                # CSS pre-init needs larger finite-difference step and more iterations
+                if !haskey(ctrl, "ndeps")
+                    ctrl["ndeps"] = fill(1e-2, sum(mask))
+                end
                 if !haskey(ctrl, "maxit")
                     ctrl["maxit"] = 500
                 end
-                if !haskey(ctrl, "ndeps")
-                    nparams = sum(mask)
-                    ctrl["ndeps"] = fill(1e-2, nparams)
-                end
-
-                # Note: Do NOT set gtol here - R's vmmin doesn't have gradient norm convergence
-                # Setting gtol > 0 causes early termination at local minima
-                # If user hasn't specified gtol, leave it at default (0) to match R
 
                 opt = optim(
                     init[mask],
@@ -2207,13 +2208,12 @@ function arima(
             if arma[1] > 0 && !ar_check(init[1:arma[1]])
                 error("Non-stationary AR part from CSS")
             end
-            
 
             if arma[3] > 0 && !ar_check(init[(sum(arma[1:2]) + 1):(sum(arma[1:2]) + arma[3])])
                 error("Non-stationary seasonal AR part from CSS")
             end
 
-            n_cond = 0
+            ncond = 0
         end
 
         if transform_pars
@@ -2254,16 +2254,6 @@ function arima(
         else
             ctrl = copy(optim_control)
             ctrl["parscale"] = parscale
-
-            if !haskey(ctrl, "maxit")
-                ctrl["maxit"] = 500
-            end
-
-            
-            if !haskey(ctrl, "ndeps")
-                nparams = sum(mask)
-                ctrl["ndeps"] = fill(1e-2, nparams)
-            end
 
             opt = optim(
                 init[mask],
@@ -2361,7 +2351,7 @@ function arima(
     if method != "CSS"
         aic = value + 2 * sum(mask) + 2
     else
-        aic = NaN
+        aic = nothing
     end
     loglik = -0.5 * value
 

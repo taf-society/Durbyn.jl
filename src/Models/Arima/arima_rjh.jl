@@ -5,7 +5,10 @@ has_coef(fit::ArimaFit, name::AbstractString) = any(==(name), fit.coef.colnames)
 npar(fit::ArimaFit) = count(identity, fit.mask) + 1
 
 function n_and_nstar(fit::ArimaFit)
-    n = fit.nobs - fit.n_cond
+    # R's Arima() computes n = count(non-NA residuals) = length(x) for all
+    # methods (CSS sets first ncond residuals to 0, not NA; ML/CSS-ML are
+    # all valid). So n = length(y) always.
+    n = length(fit.y)
     d = Int(fit.arma[6])
     D = Int(fit.arma[7])
     m = Int(fit.arma[5])

@@ -145,6 +145,7 @@ nothing
 
 julia> drop_constant_columns(nm2; allow_empty=true).data
 3*0 Matrix{Int64}
+```
 """
 function drop_constant_columns(X::NamedMatrix; allow_empty::Bool=false)
      constmask = is_constant(X)
@@ -211,6 +212,7 @@ get_elements(nm; row="A", col="y")
 get_elements(nm; row=[1,2], col=["x","z"])
 get_elements(nm; row=2)
 get_elements(nm; col="z")
+```
 """
 function get_elements(
     nm::NamedMatrix;
@@ -284,6 +286,7 @@ get_vector(nm; row="A")         # => [0.1, 0.2, 0.3]
 get_vector(nm; col="y")         # => [0.2, 0.5]
 get_vector(nm; row=2)           # => [0.4, 0.5, 0.6]
 get_vector(nm; col=3)           # => [0.3, 0.6]
+```
 """
 function get_vector(
     nm::NamedMatrix;
@@ -346,7 +349,7 @@ A new `NamedMatrix{T}` with `dift` as the first column and `dift_name` as its co
 nm = NamedMatrix([1 2; 3 4; 5 6], ["x1", "x2"])
 nm2 = add_drift_term(nm, [10, 20, 30], "dift")
 nm2.colnames  # ["dift", "x1", "x2"]
-````
+```
 """
 function add_drift_term(nm::NamedMatrix, dift::AbstractArray, dift_name::String)
     if length(dift) != size(nm.data, 1)
@@ -381,7 +384,7 @@ nm = NamedMatrix([1 2; 3 4; 5 6], ["x1", "x2"])
 newcols = [7; 8; 9]  # Single column (vector)
 nm2 = cbind(nm, reshape(newcols, :, 1), ["x3"])
 nm2.colnames  # ["x1", "x2", "x3"]
-````
+```
 """
 function cbind(nm::NamedMatrix{T}, newcols::AbstractMatrix{T}, newcolnames::Vector{String}; prepend::Bool=false) where {T}
     if size(newcols, 1) != size(nm.data, 1)

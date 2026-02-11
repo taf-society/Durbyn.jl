@@ -28,7 +28,7 @@ opts = NelderMeadOptions(abstol=1e-4, maxit=100, trace=true)
 
 # With bounds
 opts = NelderMeadOptions(project_to_bounds=true, lower=[0.0, 0.0], upper=[10.0, 10.0])
-````
+```
 """
 struct NelderMeadOptions
     abstol::Float64

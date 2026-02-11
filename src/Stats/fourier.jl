@@ -21,10 +21,8 @@ function base_fourier(x, K, times, period)
     p = p[.!k]
     labels = labels[.!repeat(k, inner=2)]
 
-    # Ensure 'k' is correctly formed to avoid indexing errors
     k = abs.(2 .* p .- round.(2 .* p)) .> eps(Float64)
-    
-    # Initialize matrix X
+
     X = zeros(Float64, length(times), 2 * length(p))
     
     for j in eachindex(p)
@@ -37,8 +35,7 @@ function base_fourier(x, K, times, period)
     colnames = labels
     valid_columns = .!isnan.(sum(X, dims=1))
     
-    # Convert valid_columns to a vector for indexing
-    X = X[:, vec(valid_columns)]  
+    X = X[:, vec(valid_columns)]
     
     return X
 end

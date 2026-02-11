@@ -620,7 +620,7 @@ model = auto_ararma(ap; min_p=1, max_p=4, min_q=0, max_q=2, crit=:bic)
 r = residuals(model)
 fc = forecast(model; h=12, level=[80,95])
 plot(fc)
-````
+```
 
 References:
 Parzen, E. (1982). *ARARMA Models for Time Series Analysis and Forecasting*. Journal of Forecasting, 1(1), 67-82.

@@ -43,7 +43,6 @@ Includes an approximate p-value when critical values are available.
 function summary(x::OCSB)
     stat = round(x.teststat; digits=4)
     tstr = x.type === :seasonal ? "seasonal" : String(x.type)
-    # Try to include a p-value if we can compute it; otherwise omit.
     pstr = try
         pv = round(pvalue(x); digits=4)
         ", p=$(pv)"
@@ -58,7 +57,6 @@ Pretty printer for plain-text displays.
 Respects `io[:compact]` and prints a compact single-line form if requested.
 """
 function show(io::IO, ::MIME"text/plain", x::OCSB)
-    # Honor compact contexts even in text/plain
     if get(io, :compact, false)
         print(io, "OCSB(", round(x.teststat; digits=4), ")")
         return
@@ -70,22 +68,18 @@ function show(io::IO, ::MIME"text/plain", x::OCSB)
     println(io, "AR lag order (p): ", x.lag)
     println(io, "Test statistic (t on Z₅): ", round(x.teststat; digits=4))
 
-    # Optionally show an approximate p-value if critical values exist
     has_cvals = !isempty(x.cval) && !isempty(x.clevels) && length(x.cval) == length(x.clevels)
     if has_cvals
         try
             pv = round(pvalue(x); digits=4)
             println(io, "Approx. p-value (interp.): ", pv)
         catch
-            # ignore if pvalue computation fails
         end
     end
 
     if has_cvals
         println(io, "\nCritical values:")
-        # pair and print; keep user order (often 10%, 5%, 1%)
         for (α, cv) in zip(x.clevels, x.cval)
-            # format levels like 10%, 5%, 1%
             lvl = isa(α, Number) ? "$(Int(round(100α)))%" : string(α)
             println(io, "  ", lpad(lvl, 4), " : ", round(cv; digits=4))
         end
@@ -275,7 +269,6 @@ function ocsb(
 )
     @assert m ≥ 2 "Data must be seasonal (m ≥ 2) to use ocsb."
 
-    # Normalize to lowercase symbol for robustness
     lmeth = Symbol(lowercase(string(lag_method)))
     @assert lmeth in (:fixed, :aic, :bic, :aicc) "lag_method must be one of: :fixed, :AIC, :BIC, :AICc."
 
@@ -287,7 +280,7 @@ function ocsb(
             for p in 1:maxlag; icvals[p] = aic_lm(fits[p]); end
         elseif lmeth == :bic
             for p in 1:maxlag; icvals[p] = bic_lm(fits[p]); end
-        else  # :aicc
+        else
             for p in 1:maxlag; icvals[p] = aicc_lm(fits[p]); end
         end
         id = argmin(icvals) 

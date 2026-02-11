@@ -313,7 +313,7 @@ Generate forecasts for intermittent demand using a fitted Croston-based model.
 fit = croston_classic(demand_series)
 fc = forecast(fit, h=12)
 println(fc.mean)
-````
+```
 
 """
 function forecast(object::IntermittentDemandCrostonFit; h::Int = 10)

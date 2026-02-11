@@ -117,7 +117,7 @@ false
 
 julia> is_constant(Float64[])
 true
-````
+```
 """
 function is_constant(data::AbstractVector)
     isempty(data) && return true
@@ -160,7 +160,7 @@ julia> is_constant(X)
 
 julia> all(is_constant, eachcol(X))
 false
-````
+```
 """
 function is_constant(X::AbstractMatrix)
     map(is_constant, eachcol(X))

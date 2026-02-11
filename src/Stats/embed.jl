@@ -64,7 +64,6 @@ function embed(x::AbstractVector{T}, dimension::Integer=1) where {T}
     end
     m = n - d + 1
     y = Matrix{T}(undef, m, d)
-    # R puts the highest lag first (d, d-1, ..., 1)
     for k in 1:d
         start = d - k + 1
         y[:, k] = view(x, start : start + m - 1)
@@ -81,7 +80,7 @@ function embed(x::AbstractMatrix{T}, dimension::Integer=1) where {T}
     rows = n - d + 1
     y = Matrix{T}(undef, rows, d * p)
     for j in 1:p
-        col_embed = embed(view(x, :, j), d)  # rows x d (with R ordering)
+        col_embed = embed(view(x, :, j), d)
         for k in 1:d
             y[:, j + (k - 1) * p] = view(col_embed, :, k)
         end

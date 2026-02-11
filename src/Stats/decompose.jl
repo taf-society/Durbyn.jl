@@ -14,12 +14,11 @@ A structure representing a decomposed time series, which includes the original t
 
 # Example
 ```julia
-# Creating an example decomposed time series
 x = [1.0, 2.0, 3.0, 4.0, 5.0]
 seasonal = [0.1, 0.2, 0.1, 0.2, 0.1]
 trend = [0.5, 1.0, 1.5, 2.0, 2.5]
 random = [0.4, 0.8, 1.4, 1.8, 2.4]
-figure = []  # This can be filled with figures related to the decomposition
+figure = []
 type = "Additive"
 m = 2
 ```

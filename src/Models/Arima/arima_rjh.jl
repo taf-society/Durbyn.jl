@@ -186,7 +186,7 @@ fitx = arima_rjh(
     include_mean = false,
     method = "ML"
 )
-````
+```
 """
 function arima_rjh(
     y,

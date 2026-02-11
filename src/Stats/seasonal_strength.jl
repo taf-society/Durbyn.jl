@@ -1,5 +1,4 @@
 function seasonal_strength(res::MSTLResult)
-    # variance ignoring NaNs (if any)
     var_nan(v) = begin
         mask = .!isnan.(v)
         any(mask) ? var(view(v, mask)) : 0.0

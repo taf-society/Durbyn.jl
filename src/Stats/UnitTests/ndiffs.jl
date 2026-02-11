@@ -189,7 +189,6 @@ function run_unit_root_check(xvec::AbstractVector;
 
         elseif test === :adf
             t = adf(; y=xvec, type=adf_type, kwargs...)
-            # ADF teststat is a NamedMatrix, cval is a Matrix; extract tau row
             tau_stat = t.teststat.data[1, 1]
             tau_cvals = vec(t.cval[1, :])
             p = norm_p(only(approx(tau_cvals, t.clevels, xout=[tau_stat], rule=2).y))

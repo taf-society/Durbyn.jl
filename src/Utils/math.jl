@@ -43,7 +43,7 @@ julia> row_sums(nm)
 2-element Vector{Float64}:
  NaN
  15.0
-````
+```
 
 """
 function row_sums(M::AbstractMatrix; na_rm::Bool=false)
@@ -151,7 +151,7 @@ julia> col_sums(nm; nan_rm=true)
  5.0
  7.0
  6.0
-````
+```
 
 """
 function col_sums(M::AbstractMatrix; na_rm::Bool=false)
@@ -232,7 +232,7 @@ julia> col_sums(A)
  5.0
  7.0
  9.0
-````
+```
 
 """
 function row_sums(M::AbstractMatrix{<:Real})

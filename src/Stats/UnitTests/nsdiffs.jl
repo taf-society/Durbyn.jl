@@ -128,7 +128,6 @@ end
 
 
 function compute_D(x::AbstractVector{<:Real}, m::Int, testv::Val, α::Real, maxD::Int; kwargs...)
-    # base: don't even try if test says no
     dodiff = run_test(x, m, testv, α; kwargs...)
     return compute_D_inner(x, m, testv, α, maxD, 0, dodiff; kwargs...)
 end
@@ -151,12 +150,11 @@ function compute_D_inner(x::AbstractVector{<:Real}, m::Int, testv::Val,
 end
 
 function run_test(x::AbstractVector{<:Real}, m::Int, ::Val{:seas}, α::Real; kwargs...)
-    # Threshold chosen to mirror R version.
     try
         s = seasonal_strength(x, m, kwargs...)
         return !isempty(s) && s[1] > 0.64
     catch e
-        rankword = "first"  # caller handles ranks via recursion depth; message stays simple here
+        rankword = "first"
         @warn "Seasonality heuristic failed while testing the $rankword difference. " *
               "From $(nameof(typeof(e))): $(sprint(showerror, e)). " *
               "Proceeding as if no seasonal difference is needed."

@@ -146,7 +146,7 @@ The Box-Cox transformation as given by Bickel & Doksum 1981.
 A numeric vector of the same length as `x`.
 """
 function box_cox(x::AbstractVector{<:Number}, m::Int; lambda::Union{String,Number}="auto")
-    x = copy(x)  # don't mutate caller's data
+    x = copy(x)
     if lambda == "auto"
         lambda = box_cox_lambda(x, m, lower=-0.9)
     end

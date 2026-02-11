@@ -1,7 +1,5 @@
-# Filter both missing values and NaN values from a vector
 function _skipmissing_to_vec(x)
     floats = float.(x)
-    # Filter out both missing and NaN values
     return collect(v for v in skipmissing(floats) if !isnan(v))
 end
 _isconstant(v::AbstractVector) = is_constant(v)
@@ -35,16 +33,13 @@ function _ols(y::AbstractVector{<:Real}, X::AbstractMatrix{<:Real})
     end
 end
 
-# handling heteroskedasticity and autocorrelation in data
 function _bartlett_LRV(res::Vector{Float64}, n::Int, lmax::Int)
     if lmax == 0
         return nothing
     end
     idx = 1:lmax
-    # autocovariance sums γ̂_l = ∑_{t=l+1}^{n} res_t * res_{t-l}
     xcov = [dot(@view(res[(l+1):end]), @view(res[1:(end-l)])) for l in idx]
     bartlett = 1 .- (idx ./ (lmax + 1))
-    # returns the 2/n * sum(w_l * γ̂_l)
     return (2 / n) * dot(bartlett, xcov)
 end
 
@@ -68,7 +63,7 @@ function _pvalue_from_cvals(teststat::Float64, cvals::Vector{Float64}, probs::Ve
             return y1 + t * (y2 - y1)
         end
     end
-    return ys[end]  # fallback (shouldn’t hit)
+    return ys[end]
 end
 
 

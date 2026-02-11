@@ -250,7 +250,7 @@ Equivalent to calling [`numgrad`](@ref) with `ndeps = fill(1e-3, n)`.
 f(n, x, ex) = sum(x.^2)
 x = [1.0, 2.0, 3.0]
 g = numgrad(f, 3, x, nothing)
-````
+```
 """
 function numgrad(
     f::Function,

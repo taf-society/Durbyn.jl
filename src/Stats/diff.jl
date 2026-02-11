@@ -48,7 +48,7 @@ function diff(x::AbstractVector; lag::Int=1, differences::Int=1)
         throw(ArgumentError("Bad value for 'lag' or 'differences'"))
     end
     if lag * differences >= length(x)
-        return x[1:0]  # empty
+        return x[1:0]
     end
 
     r = copy(x)

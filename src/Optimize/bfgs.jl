@@ -101,7 +101,7 @@ Perform the standard **BFGS inverse Hessian update**:
 
 ```math
 B_{k+1} = B_k + \frac{(1 + c' B_k c / D_1)}{D_1} t t' - \frac{1}{D_1} (t (B_k c)' + (B_k c) t')
-````
+```
 
 where `t` is the parameter step, `c` is the gradient difference, and
 `D1 = t' * c`.

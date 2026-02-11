@@ -33,7 +33,7 @@ Formula(Symbol("y"), Vector{Vector{Symbol}}[[Symbol("x1")], [Symbol("x2")], [Sym
 
 julia> Formula("~ x1 + x2 - 1").intercept
 false
-````
+```
 
 """
 struct Formula
@@ -98,7 +98,7 @@ Formula(:y, Vector{Vector{Symbol}}[[ :x1 ], [ :x2 ]], true)
 
 julia> parse_formula("~ a*b - 1")
 Formula(nothing, Vector{Vector{Symbol}}[[ :a ], [ :b ], [ :a, :b ]], false)
-````
+```
 
 """
 function parse_formula(formula::AbstractString)::Formula
@@ -200,7 +200,7 @@ julia> cf = compile(f, ["y","x1","x2"]);
 julia> cf.yidx
 
 julia> cf.rhs_idxs
-````
+```
 """
 function compile(f::Formula, colnames::Vector{String})::CompiledFormula
     ix = Dict{Symbol,Int}(Symbol(c) => i for (i, c) in pairs(colnames))
@@ -282,7 +282,7 @@ julia> y  = nm.data[:, 1];
 julia> X4 = model_matrix(y, NamedMatrix{Float64}(nm.data[:, 2:end], nm.rownames, nm.colnames[2:end]));
 julia> X5 = model_matrix(y, NamedMatrix{Float64}(nm.data[:, 2:end], nm.rownames, nm.colnames[2:end]);
                          intercept=false);
-````
+```
 
 """
 function model_matrix(cf::CompiledFormula, nm::NamedMatrix{T};
@@ -381,7 +381,7 @@ julia> Xs = NamedMatrix{Float64}(nm.data[:, 2:end], nm.rownames, nm.colnames[2:e
 
 julia> mf4 = model_frame(y, Xs);                  # with intercept
 julia> mf5 = model_frame(y, Xs; intercept=false); # no intercept
-````
+```
 """
 function model_frame(f::Formula, nm::NamedMatrix{T}; kwargs...) where {T<:Number}
     cf = compile(f, nm.colnames)

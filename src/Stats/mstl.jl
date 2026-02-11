@@ -119,12 +119,10 @@ function mstl(
     n = length(x)
     @assert n > 0 "x must be non-empty"
 
-    # Keep a copy of original
     orig = collect(float.(x))
     xu   = copy(orig)
 
     if any(isnan, xu)
-        # R's na.interp uses frequency(x) which for msts is floor(max(seasonal.periods))
         interp_m = isa(m, Integer) ? Int(m) : Int(floor(maximum(m)))
         xu = na_interp(xu; m=interp_m)
     end
@@ -146,7 +144,7 @@ function mstl(
         )
     end
 
-    default_windows = collect(11:4:31)  # R: 7 + 4*seq(6) -> 11,15,19,23,27,31
+    default_windows = collect(11:4:31)
     swin = if isnothing(s_window)
         [default_windows[mod1(i, length(default_windows))] for i in 1:length(pers)]
     elseif isa(s_window, Integer)
@@ -201,7 +199,6 @@ function Base.show(io::IO, res::MSTLResult)
     end
     println(io, "  lambda: ", isnothing(res.lambda) ? "nothing" : string(res.lambda))
 
-    # Preview trend & remainder
     println(io, "Trend     (first $k): ", res.trend[1:k])
     if !isempty(res.seasonals)
         for (i, p) in enumerate(res.m)
@@ -275,7 +272,6 @@ function summary(res::MSTLResult; digits::Integer=4)
         println("  ", rpad(string(name), 16), " ", fmt(pct), "%")
     end
 
-    # Metadata
     println("Metadata: periods=", isempty(res.m) ? "[]" : string(res.m),
             ", lambda=", isnothing(res.lambda) ? "nothing" : string(res.lambda))
     return nothing

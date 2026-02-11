@@ -28,7 +28,6 @@ function _kpss(y, type::Symbol=:mu, lags::Symbol=:short, use_lag::Union{Nothing,
     type in (:mu, :tau) || error("type must be :mu or :tau")
     lags in (:short, :long, :nil) || error("lags must be :short, :long, or :nil")
 
-    # lmax
     lmax =
         if !isnothing(use_lag)
             L = Int(use_lag)
@@ -41,16 +40,15 @@ function _kpss(y, type::Symbol=:mu, lags::Symbol=:short, use_lag::Union{Nothing,
             trunc(Int, 4 * (n / 100)^0.25)
         elseif lags == :long
             trunc(Int, 12 * (n / 100)^0.25)
-        else  # :nil
+        else
             0
         end
 
-    # residuals under H0
     if type == :mu
         cval = [0.347, 0.463, 0.574, 0.739]
         clevels = [0.10, 0.05, 0.025, 0.01]
         res = yv .- mean(yv)
-    else # :tau
+    else
         cval = [0.119, 0.146, 0.176, 0.216]
         clevels = [0.10, 0.05, 0.025, 0.01]
         trend = collect(1:n)
@@ -59,14 +57,13 @@ function _kpss(y, type::Symbol=:mu, lags::Symbol=:short, use_lag::Union{Nothing,
         res = fit.residuals
     end
 
-    # Statistic
     S = cumsum(res)
     numerator = sum(S .^ 2) / n^2
     s2 = sum(res .^ 2) / n
     if lmax == 0
         denominator = s2
     else
-        add = _bartlett_LRV(res, n, lmax)  # 2/n * ∑ w_l γ̂_l
+        add = _bartlett_LRV(res, n, lmax)
         denominator = s2 + add
     end
 

@@ -41,7 +41,6 @@ function regularize_values(x, y; ties::Union{Function,Symbol}=mean, warn_collaps
         throw(ArgumentError("ties=:ordered requires x to be nondecreasing"))
     end
 
-    # collapse duplicates if not ordered
     if !ordered
         ux = unique(x)
         if length(ux) < nx

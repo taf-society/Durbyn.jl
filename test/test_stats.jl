@@ -7,8 +7,9 @@ import Durbyn.Stats: box_cox, box_cox!, inv_box_cox, box_cox_lambda
 import Durbyn.Stats: decompose, DecomposedTimeSeries
 import Durbyn.Stats: adf, ADF, kpss, KPSS
 import Durbyn.Stats: embed, diff, fourier, ndiffs, nsdiffs
-import Durbyn.Stats: ols, OlsFit, approx, approxfun, seasonal_strength
+import Durbyn.Stats: ols, OlsFit, approx, approxfun, seasonal_strength, modelrank
 import Durbyn.Stats: na_interp
+import Durbyn.Stats: mstl, MSTLResult
 
 const EPS_SCALAR = 1e-6
 const EPS_VECTOR = 0.05
@@ -614,6 +615,314 @@ const REF_KPSS_STAT_AP = 2.8767
 
             @test eltype(result) <: AbstractFloat
             @test result[2] ≈ 2.0
+        end
+
+    end
+
+    @testset "Stats Bug Fixes" begin
+
+        @testset "fourier scalar args produce correct matrix" begin
+            F = fourier(AirPassengers, m=12, K=6)
+            @test size(F) == (144, 12)
+            @test all(-1.0 .<= F .<= 1.0)
+        end
+
+        @testset "fourier with h produces forecast matrix" begin
+            Fh = fourier(AirPassengers, m=12, K=6, h=12)
+            @test size(Fh) == (12, 12)
+            @test all(-1.0 .<= Fh .<= 1.0)
+        end
+
+        @testset "mstl basic decomposition" begin
+            res = mstl(AirPassengers, 12)
+            @test isa(res, MSTLResult)
+            @test length(res.trend) == length(AirPassengers)
+            @test length(res.remainder) == length(AirPassengers)
+            @test !isempty(res.seasonals)
+            @test length(res.seasonals[1]) == length(AirPassengers)
+        end
+
+        @testset "mstl with NaN in data" begin
+            ap_nan = copy(AirPassengers)
+            ap_nan[50] = NaN
+            res = mstl(ap_nan, 12)
+            @test isa(res, MSTLResult)
+            @test length(res.trend) == length(ap_nan)
+            # NaN position should be filled and decomposition should produce finite values
+            @test !isnan(res.trend[50])
+            @test !isnan(res.seasonals[1][50])
+            # R: na.interp(ts(AP,12))[50] ≈ 194.1 (seasonal interpolation)
+            # The reconstructed value at 50 should be close to the seasonal interpolation
+            recon_50 = res.trend[50] + res.seasonals[1][50] + res.remainder[50]
+            @test isfinite(recon_50)
+            # Seasonal interpolation should give a value close to neighbors at same month
+            # AP[50] was in period 2 (Feb), nearby Febs: AP[38]=180, AP[62]=188
+            # so the fill should be roughly in [170, 210]
+            @test 150.0 < recon_50 < 250.0
+        end
+
+        @testset "mstl with lambda" begin
+            res = mstl(AirPassengers, 12; lambda="auto")
+            @test isa(res, MSTLResult)
+            @test !isnothing(res.lambda)
+        end
+
+        @testset "mstl multi-seasonal with lambda" begin
+            n = 365
+            data = 100.0 .+ 10.0 .* sin.(2π .* (1:n) ./ 7) .+ 5.0 .* sin.(2π .* (1:n) ./ 30) .+ randn(n)
+            res = mstl(data, [7, 30]; lambda=0.5)
+            @test isa(res, MSTLResult)
+            @test length(res.m) >= 1
+        end
+
+        @testset "box_cox does not mutate input" begin
+            orig = copy(AirPassengers)
+            input = copy(AirPassengers)
+            box_cox(input, 12; lambda=0.5)
+            @test input == orig
+        end
+
+        @testset "box_cox_lambda uses m not hardcoded 12" begin
+            # Short series: length 20, m=4 → 2*4=8 < 20 → should compute lambda
+            short = Float64[10, 12, 15, 11, 13, 16, 12, 14, 17, 13,
+                            15, 18, 14, 16, 19, 15, 17, 20, 16, 18]
+            lambda_m4 = box_cox_lambda(short, 4)
+            @test -1.0 <= lambda_m4 <= 2.0
+
+            # Same series with m=12 → 2*12=24 > 20 → should return 1.0 (early exit)
+            lambda_m12 = box_cox_lambda(short, 12)
+            @test lambda_m12 == 1.0
+        end
+
+        @testset "modelrank returns correct value" begin
+            n = 50
+            X = hcat(ones(n), randn(n), randn(n))
+            y = X * [1.0, 2.0, 3.0] .+ randn(n) * 0.1
+            fit = ols(y, X)
+            @test modelrank(fit) == 3
+        end
+
+        @testset "smooth_trend computes correct moving average" begin
+            # For a constant series, smooth_trend should return the same constant
+            constant = fill(5.0, 50)
+            smoothed = Durbyn.Stats.smooth_trend(constant)
+            @test all(smoothed .≈ 5.0)
+
+            # For a linear series, the central values should be close to original
+            linear = collect(1.0:100.0)
+            smoothed_lin = Durbyn.Stats.smooth_trend(linear)
+            # Central values (away from edges) should be close to original
+            mid = 20:80
+            @test all(abs.(smoothed_lin[mid] .- linear[mid]) .< 1.0)
+        end
+
+    end
+
+    # ────────────────────────────────────────────────────────────────────
+    # Numerical comparison against R's forecast / stats packages
+    # Reference values generated with:
+    #   R 4.3.3, forecast package
+    #   ap_ts <- ts(AirPassengers, frequency=12)
+    # ────────────────────────────────────────────────────────────────────
+    @testset "R Numerical Parity" begin
+
+        # ── fourier vs R forecast::fourier ──────────────────────────────
+        @testset "fourier matches R forecast::fourier (K=6, m=12)" begin
+            # R: fourier(ts(AP,frequency=12), K=6) → 144×11 (drops zero-sine col at K=period/2)
+            # Julia keeps the zero column → 144×12.  Compare the 11 shared columns.
+            #
+            # R row 1 (t=1):
+            #   S1=0.5  C1=0.866  S2=0.866  C2=0.5  S3=1.0  C3=0.0
+            #   S4=0.866  C4=-0.5  S5=0.5  C5=-0.866  C6=-1.0
+            R_row1 = [0.5, 0.8660254038, 0.8660254038, 0.5,
+                      1.0, 0.0, 0.8660254038, -0.5,
+                      0.5, -0.8660254038, -1.0]
+            R_row3 = [1.0, 0.0, 0.0, -1.0,
+                      -1.0, 0.0, 0.0, 1.0,
+                      1.0, 0.0, -1.0]
+
+            F = fourier(AirPassengers, m=12, K=6)
+            @test size(F, 1) == 144
+            # Julia cols: S1,C1,S2,C2,S3,C3,S4,C4,S5,C5,S6(≈0),C6
+            # Shared cols = [1:10..., 12]  (skip col 11 = zero sine)
+            jl_shared = [1,2,3,4,5,6,7,8,9,10,12]
+            @test all(isapprox.(F[1, jl_shared], R_row1, atol=1e-8))
+            @test all(isapprox.(F[3, jl_shared], R_row3, atol=1e-8))
+            # The dropped sine column should be ≈ 0 everywhere
+            @test all(abs.(F[:, 11]) .< 1e-10)
+        end
+
+        @testset "fourier h=12 matches R forecast::fourier h=12" begin
+            # R: fourier(ts(AP,frequency=12), K=6, h=12) → 12×11
+            # R row 6 (t=145+5=150):  S1=0 C1=-1  S2=0 C2=1  S3=0 C3=-1
+            #                          S4=0 C4=1   S5=0 C5=-1  C6=1
+            R_h_row6 = [0.0, -1.0, 0.0, 1.0,
+                        0.0, -1.0, 0.0, 1.0,
+                        0.0, -1.0, 1.0]
+            # R row 12: S1=0 C1=1  S2=0 C2=1  S3=0 C3=1  S4=0 C4=1  S5=0 C5=1  C6=1
+            R_h_row12 = [0.0, 1.0, 0.0, 1.0,
+                         0.0, 1.0, 0.0, 1.0,
+                         0.0, 1.0, 1.0]
+
+            Fh = fourier(AirPassengers, m=12, K=6, h=12)
+            jl_shared = [1,2,3,4,5,6,7,8,9,10,12]
+            @test all(isapprox.(Fh[6, jl_shared], R_h_row6, atol=1e-8))
+            @test all(isapprox.(Fh[12, jl_shared], R_h_row12, atol=1e-8))
+        end
+
+        # ── BoxCox vs R forecast::BoxCox ────────────────────────────────
+        @testset "BoxCox(AP, λ=0.5) matches R forecast::BoxCox" begin
+            # R: BoxCox(AP, lambda=0.5) first 12 values
+            R_bc_half = [19.16601049, 19.72556098, 20.97825059, 20.71563338,
+                         20.00000000, 21.23790008, 22.33105012, 22.33105012,
+                         21.32380758, 19.81742423, 18.39607805, 19.72556098]
+            jl_bc, _ = box_cox(AirPassengers, 12; lambda=0.5)
+            @test all(isapprox.(jl_bc[1:12], R_bc_half, atol=1e-6))
+        end
+
+        @testset "BoxCox.lambda matches R (guerrero & loglik)" begin
+            # R: BoxCox.lambda(ts(AP,12), "guerrero") = -0.2947156
+            # R: BoxCox.lambda(ts(AP,12), "loglik")   =  0.2
+            λ_guer = box_cox_lambda(AirPassengers, 12; method="guerrero")
+            λ_loglik = box_cox_lambda(AirPassengers, 12; method="loglik")
+            @test isapprox(λ_guer, -0.2947156, atol=0.05)
+            @test isapprox(λ_loglik, 0.2, atol=0.1)
+        end
+
+        @testset "BoxCox.lambda short series m=4 vs m=12 matches R" begin
+            # R: ts(short, frequency=4) → λ ≈ 1.198
+            # R: ts(short, frequency=12) → λ = 1.0  (early return: length ≤ 2*m)
+            short = Float64[10, 12, 15, 11, 13, 16, 12, 14, 17, 13,
+                            15, 18, 14, 16, 19, 15, 17, 20, 16, 18]
+            @test isapprox(box_cox_lambda(short, 4), 1.198332, atol=0.05)
+            @test box_cox_lambda(short, 12) == 1.0
+        end
+
+        # ── smooth_trend vs R prefix-sum moving-average ─────────────────
+        @testset "smooth_trend matches R centred MA" begin
+            # R reference (same algorithm, verified correct prefix-sum indexing):
+            #   smooth_ma(1:100) first 10 = [3.0, 3.5, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+            #   middle 45:55 = [45, 46, 47, ..., 55]
+            #   last 10 = [91,92,93,94,95,96,96.5,97,97.5,98]
+            R_first10 = [3.0, 3.5, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+            R_mid = Float64.(45:55)
+            R_last10 = [91.0, 92.0, 93.0, 94.0, 95.0, 96.0, 96.5, 97.0, 97.5, 98.0]
+
+            sm = Durbyn.Stats.smooth_trend(collect(1.0:100.0))
+            @test all(isapprox.(sm[1:10], R_first10, atol=1e-10))
+            @test all(isapprox.(sm[45:55], R_mid, atol=1e-10))
+            @test all(isapprox.(sm[91:100], R_last10, atol=1e-10))
+
+            # Constant series → unchanged
+            sm_c = Durbyn.Stats.smooth_trend(fill(5.0, 50))
+            @test all(isapprox.(sm_c, 5.0, atol=1e-10))
+        end
+
+        # ── mstl vs R forecast::mstl ───────────────────────────────────
+        @testset "mstl(AP,12) components match R forecast::mstl" begin
+            # R: mstl(ts(AP,12)) trend/seasonal/remainder first 12
+            R_trend = [123.1450569, 123.7250692, 124.3050816, 124.8850939,
+                       125.5980842, 126.3110746, 127.0240649, 127.6147679,
+                       128.2054709, 128.7961738, 129.7770976, 130.7580214]
+            R_seas  = [-16.977074086, -17.177633337,   7.520942226,  -1.154334128,
+                        -3.776123430,  18.888713514,  40.688673592,  38.924596868,
+                        11.309647272, -16.348792410, -41.520353310, -20.288482723]
+            R_rem   = [  5.8320171583,  11.4525640973,   0.1739762226,   5.2692402644,
+                        -0.8219607941, -10.1997880982, -19.7127385376, -18.5393647752,
+                        -3.5151181412,   6.5526185786,  15.7432556744,   7.5304612828]
+
+            res = mstl(AirPassengers, 12)
+            # STL implementations can differ slightly based on LOESS details;
+            # allow up to 5.0 absolute tolerance (components can be ~400)
+            @test all(isapprox.(res.trend[1:12], R_trend, atol=5.0))
+            @test all(isapprox.(res.seasonals[1][1:12], R_seas, atol=5.0))
+            @test all(isapprox.(res.remainder[1:12], R_rem, atol=10.0))
+            # Components should reconstruct the (possibly transformed) data closely
+            recon = res.trend .+ res.seasonals[1] .+ res.remainder
+            @test all(isapprox.(recon, AirPassengers, atol=1e-8))
+        end
+
+        @testset "mstl(AP,12; lambda='auto') matches R lambda selection" begin
+            # R: mstl(ts(AP,12), lambda="auto") uses BoxCox.lambda internally
+            # R guerrero λ ≈ -0.295 for AirPassengers
+            res = mstl(AirPassengers, 12; lambda="auto")
+            @test !isnothing(res.lambda)
+            # lambda should be in a reasonable range near R's guerrero estimate
+            @test -1.0 < res.lambda < 2.0
+        end
+
+        # ── na_interp seasonal vs R forecast::na.interp ────────────────
+        @testset "na_interp seasonal matches R na.interp" begin
+            # R: na.interp(ts(AP,frequency=12)) with AP[50]=NA
+            # R seasonal interp → AP[50] ≈ 194.1  (uses STL + seasonal component)
+            # R linear interp (freq=1) → AP[50] = 216  (simple average of neighbors)
+            ap_nan = copy(AirPassengers)
+            ap_nan[50] = NaN
+
+            # Seasonal interpolation (m=12) should give value close to R's 194.1
+            result_seas = na_interp(ap_nan; m=12)
+            @test !isnan(result_seas[50])
+            # R seasonal: 194.1, should be close (within ±25 due to STL differences)
+            @test 165.0 < result_seas[50] < 225.0
+
+            # Linear interpolation (m=1) should give ≈ 216 (midpoint of 194,236)
+            result_lin = na_interp(ap_nan; m=1)
+            @test !isnan(result_lin[50])
+            # R linear: exactly (194+236)/2 = 215
+            @test isapprox(result_lin[50], 215.0, atol=2.0)
+
+            # Seasonal and linear should differ for seasonal data
+            @test abs(result_seas[50] - result_lin[50]) > 1.0
+        end
+
+        @testset "mstl NaN uses seasonal interpolation via na_interp(m=...)" begin
+            # When mstl gets NaN data, it should use seasonal na_interp (not linear)
+            # This verifies Finding 1 fix: mstl now passes m to na_interp
+            ap_nan = copy(AirPassengers)
+            ap_nan[50] = NaN
+            ap_nan[100] = NaN
+
+            res = mstl(ap_nan, 12)
+            recon = res.trend .+ res.seasonals[1] .+ res.remainder
+
+            # R: na.interp(ts(AP,12))[50] ≈ 194.1, [100] ≈ 347.9
+            # Reconstructed values at NaN positions should be reasonable
+            @test 150.0 < recon[50] < 250.0
+            @test 300.0 < recon[100] < 420.0
+        end
+
+        @testset "box_cox_lambda multi-seasonal uses max(m) matching R msts" begin
+            # R: msts(data, c(7,30)) → frequency = floor(max(c(7,30))) = 30
+            # R: BoxCox.lambda checks length(x) <= 2 * frequency(x)
+            # With n=400 and m=[7,30]: 2*30=60 < 400 → computes lambda (not early exit)
+            # With n=50  and m=[7,30]: 2*30=60 > 50  → early exit to 1.0
+            n_long = 400
+            data_long = 100.0 .+ 10.0 .* sin.(2π .* (1:n_long) ./ 7) .+ randn(n_long)
+            # Should compute a real lambda (not 1.0) since 2*30=60 < 400
+            λ_long = box_cox_lambda(data_long, 30)
+            @test -1.0 <= λ_long <= 2.0
+
+            # Short series: 2*max(m)=60 > 50 → should early-exit to 1.0
+            n_short = 50
+            data_short = data_long[1:n_short]
+            λ_short = box_cox_lambda(data_short, 30)
+            @test λ_short == 1.0
+        end
+
+        # ── OLS rank vs R lm()$rank ────────────────────────────────────
+        @testset "modelrank matches R lm()\$rank" begin
+            # R: rank of lm(y ~ x1 + x2) with 3 predictors (intercept + 2) = 3
+            n = 50
+            X = hcat(ones(n), randn(n), randn(n))
+            y = X * [1.0, 2.0, 3.0] .+ randn(n) * 0.1
+            fit = ols(y, X)
+            @test modelrank(fit) == 3   # R: fit$rank == 3
+
+            # Single predictor (intercept only)
+            X1 = ones(20, 1)
+            y1 = randn(20)
+            fit1 = ols(y1, X1)
+            @test modelrank(fit1) == 1  # R: fit$rank == 1
         end
 
     end

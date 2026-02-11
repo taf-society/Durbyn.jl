@@ -36,11 +36,11 @@ function smooth_trend(x::AbstractVector{<:Real})
     n = length(x)
     w = max(3, min(n, Int(clamp(round(n ÷ 10), 5, 101))))
     k = (w - 1) ÷ 2
-    cumsums = cumsumvcat = vcat(0.0, cumsum(Float64.(x)))
+    cumsums = vcat(0.0, cumsum(Float64.(x)))
     y = similar(x, Float64)
     @inbounds for t in 1:n
         a = max(1, t - k); b = min(n, t + k)
-        y[t] = (cumsums[b] - cumsums[a-1]) / (b - a + 1)
+        y[t] = (cumsums[b+1] - cumsums[a]) / (b - a + 1)
     end
     return y
 end
@@ -124,12 +124,15 @@ function mstl(
     xu   = copy(orig)
 
     if any(isnan, xu)
-        na_interpolate!(xu)
+        # R's na.interp uses frequency(x) which for msts is floor(max(seasonal.periods))
+        interp_m = isa(m, Integer) ? Int(m) : Int(floor(maximum(m)))
+        xu = na_interp(xu; m=interp_m)
     end
 
     λ = lambda
     if !isnothing(lambda)
-        xu , λ = box_cox(xu, m; lambda = λ)
+        bc_m = isa(m, Integer) ? Int(m) : maximum(Int.(m))
+        xu, λ = box_cox(xu, bc_m; lambda = λ)
     end
 
     pers = isa(m, Integer) ? [Int(m)] : sort(collect(Int.(m)))

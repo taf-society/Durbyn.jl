@@ -120,9 +120,13 @@ coefs(model::OlsFit) = model.coef
 """
     modelrank(model::OlsFit)
 
-Returns the rank of the OlsFit.
+Returns the number of estimated coefficients in the model.
+
+Note: this assumes full column rank in the design matrix, which `ols`
+requires (it solves via `X \\ y`).  For rank-deficient problems, use a
+QR-based solver that exposes the true numerical rank.
 """
-modelrank(model::OlsFit) = rank(model.X)
+modelrank(model::OlsFit) = length(model.coef)
 
 
 function show(io::IO, model::OlsFit)

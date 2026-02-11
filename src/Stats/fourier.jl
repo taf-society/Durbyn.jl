@@ -67,10 +67,10 @@ println(result)
 """
 function fourier(x::Vector{T}; m::Int, K::Int, h::Union{Int, Nothing}=nothing) where T
     if isnothing(h)
-        out = base_fourier(x, K, 1:length(x), m)
+        out = base_fourier(x, [K], 1:length(x), [m])
         @assert size(out) == (size(x, 1), 2 * K) "Dimentions are wrong!"
     else
-        out = base_fourier(x, K, length(x) .+ (1:h), m)
+        out = base_fourier(x, [K], length(x) .+ (1:h), [m])
         @assert size(out) == (h, 2 * K) "Dimentions are wrong!"
     end
     

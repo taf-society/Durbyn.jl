@@ -8,7 +8,7 @@ import Durbyn.Stats: decompose, DecomposedTimeSeries
 import Durbyn.Stats: adf, ADF, kpss, KPSS
 import Durbyn.Stats: embed, diff, fourier, ndiffs, nsdiffs
 import Durbyn.Stats: ols, OlsFit, approx, approxfun, seasonal_strength, modelrank
-import Durbyn.Stats: na_interp
+import Durbyn.Stats: na_interp, na_contiguous, na_fail
 import Durbyn.Stats: mstl, MSTLResult
 
 const EPS_SCALAR = 1e-6
@@ -923,6 +923,119 @@ const REF_KPSS_STAT_AP = 2.8767
             y1 = randn(20)
             fit1 = ols(y1, X1)
             @test modelrank(fit1) == 1  # R: fit$rank == 1
+        end
+
+    end
+
+    # ────────────────────────────────────────────────────────────────────
+    # Round 2 bug fixes — R numerical parity
+    # ────────────────────────────────────────────────────────────────────
+    @testset "Round 2 Bug Fixes + R Parity" begin
+
+        # ── ndiffs string-API honours type and max_d ──────────────────
+        @testset "ndiffs string-API passes type and max_d correctly" begin
+            # R: ndiffs(ts(AP,12), test="kpss", type="level", max.d=0) = 0
+            @test ndiffs(; x=AirPassengers, test="kpss", type="level", max_d=0) == 0
+
+            # R: ndiffs(ts(AP,12), test="kpss", type="level") = 1
+            @test ndiffs(; x=AirPassengers, test="kpss", type="level") == 1
+
+            # R: ndiffs(ts(AP,12), test="kpss", type="trend") = 0
+            @test ndiffs(; x=AirPassengers, test="kpss", type="trend") == 0
+        end
+
+        @testset "ndiffs matches R forecast::ndiffs" begin
+            # R: ndiffs(ts(AP,12), test="kpss") = 1
+            @test ndiffs(AirPassengers; test=:kpss) == 1
+
+            # R: ndiffs(ts(AP,12), test="adf") = 1
+            @test ndiffs(AirPassengers; test=:adf) == 1
+
+            # Positional vs keyword API should agree
+            @test ndiffs(AirPassengers; test=:kpss, deterministic=:level) ==
+                  ndiffs(; x=AirPassengers, test="kpss", type="level")
+            @test ndiffs(AirPassengers; test=:kpss, deterministic=:trend) ==
+                  ndiffs(; x=AirPassengers, test="kpss", type="trend")
+        end
+
+        # ── diff on integer matrix ────────────────────────────────────
+        @testset "diff integer matrix returns Float64 with NaN" begin
+            m = [1 2; 3 4; 5 6; 7 8]
+            result = diff(m; lag=1)
+            @test eltype(result) == Float64
+            @test size(result) == (4, 2)
+            @test all(isnan.(result[1, :]))
+            # R: diff(matrix(c(1,3,5,7,2,4,6,8),4,2)) rows 2-4 = [2,2] each
+            @test result[2, :] == [2.0, 2.0]
+            @test result[3, :] == [2.0, 2.0]
+            @test result[4, :] == [2.0, 2.0]
+        end
+
+        @testset "diff integer vector returns Float64 with NaN" begin
+            # R: diff(c(1L,3L,6L,10L)) = c(2,3,4)
+            # Julia keeps same length with NaN prefix
+            d = diff([1, 3, 6, 10]; lag=1)
+            @test eltype(d) <: AbstractFloat
+            @test isnan(d[1])
+            @test d[2:end] ≈ [2.0, 3.0, 4.0]
+        end
+
+        # ── na_contiguous treats NaN as NA ────────────────────────────
+        @testset "na_contiguous treats NaN as missing" begin
+            # R: na.contiguous(c(NA,1,2,3,NA,4,NA)) = c(1,2,3)
+            result = na_contiguous([NaN, 1.0, 2.0, 3.0, NaN, 4.0, NaN])
+            @test result == [1.0, 2.0, 3.0]
+
+            # Also works with actual missing values
+            result2 = na_contiguous(Union{Float64,Missing}[missing, 1.0, 2.0, 3.0, missing])
+            @test collect(skipmissing(result2)) == [1.0, 2.0, 3.0]
+
+            # Mixed NaN and missing
+            result3 = na_contiguous(Union{Float64,Missing}[NaN, missing, 5.0, 6.0, 7.0, NaN])
+            @test result3 == [5.0, 6.0, 7.0]
+        end
+
+        @testset "na_fail treats NaN as missing" begin
+            # Should throw on NaN
+            @test_throws ArgumentError na_fail([1.0, NaN, 2.0])
+
+            # Should throw on missing
+            @test_throws ArgumentError na_fail(Union{Float64,Missing}[1.0, missing, 2.0])
+
+            # Should pass on clean data
+            @test na_fail([1.0, 2.0, 3.0]) == [1.0, 2.0, 3.0]
+        end
+
+        # ── approx with missing + na_rm=false ─────────────────────────
+        @testset "approx handles missing with na_rm=false" begin
+            # R: approx(c(1,2,3), c(NA,2,3), xout=1.5, na.rm=FALSE)
+            # R errors: "missing values in x are not allowed" when x has NA
+            # With NA only in y, R returns NaN for interpolated region
+            # Our fix: convert missing→NaN so it doesn't crash with MethodError
+
+            # missing in y only, na_rm=false: should not crash
+            r = approx([1.0, 2.0, 3.0], Union{Float64,Missing}[missing, 2.0, 3.0];
+                       na_rm=false, xout=[2.5])
+            @test length(r.y) == 1
+            @test !ismissing(r.y[1])  # returns Float64, not missing
+
+            # na_rm=true (default) should still work fine
+            r2 = approx([1.0, 2.0, 3.0], Union{Float64,Missing}[missing, 2.0, 3.0];
+                        xout=[2.5])
+            @test r2.y[1] ≈ 2.5
+        end
+
+        # ── mstl period filter boundary (odd vs even n) ──────────────
+        @testset "mstl period filter matches R (2*p < n)" begin
+            # R: n=101, period=50 → 50 < 101/2=50.5 → keep
+            data_101 = randn(101) .+ 100.0
+            res_101 = mstl(data_101, [50])
+            @test 50 in res_101.m  # period 50 should be kept
+
+            # R: n=100, period=50 → 50 >= 100/2=50.0 → drop
+            data_100 = randn(100) .+ 100.0
+            res_100 = mstl(data_100, [50])
+            @test isempty(res_100.m)  # period 50 should be dropped
         end
 
     end

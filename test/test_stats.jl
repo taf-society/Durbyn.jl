@@ -931,4 +931,53 @@ const REF_KPSS_STAT_AP = 2.8767
 
     end
 
+    @testset "Round 3 Bug Fixes" begin
+
+        @testset "guerrero accepts non-Float64 input" begin
+            int_data = Int[10, 12, 15, 11, 13, 16, 12, 14, 17, 13,
+                           15, 18, 14, 16, 19, 15, 17, 20, 16, 18]
+            λ = box_cox_lambda(int_data, 4; method="guerrero")
+            @test -1.0 <= λ <= 2.0
+
+            f32_data = Float32[10, 12, 15, 11, 13, 16, 12, 14, 17, 13,
+                               15, 18, 14, 16, 19, 15, 17, 20, 16, 18]
+            λ32 = box_cox_lambda(f32_data, 4; method="guerrero")
+            @test -1.0 <= λ32 <= 2.0
+
+            @test isapprox(λ, λ32, atol=0.01)
+        end
+
+        @testset "bcloglik handles NaN as missing" begin
+            clean = Float64[10, 12, 15, 11, 13, 16, 12, 14, 17, 13,
+                            15, 18, 14, 16, 19, 15, 17, 20, 16, 18]
+            λ_clean = box_cox_lambda(clean, 4; method="loglik")
+
+            with_nan = copy(clean)
+            with_nan[5] = NaN
+            λ_nan = box_cox_lambda(with_nan, 4; method="loglik")
+
+            @test !isnan(λ_nan)
+            @test -1.0 <= λ_nan <= 2.0
+        end
+
+        @testset "guerrero handles NaN as missing" begin
+            clean = Float64[10, 12, 15, 11, 13, 16, 12, 14, 17, 13,
+                            15, 18, 14, 16, 19, 15, 17, 20, 16, 18]
+            λ_clean = box_cox_lambda(clean, 4; method="guerrero")
+
+            with_nan = copy(clean)
+            with_nan[5] = NaN
+            λ_nan = box_cox_lambda(with_nan, 4; method="guerrero")
+
+            @test !isnan(λ_nan)
+            @test -1.0 <= λ_nan <= 2.0
+        end
+
+        @testset "box_cox_lambda NaN-heavy series returns 1.0 on short effective length" begin
+            short_with_nan = Float64[10, NaN, 15, NaN, 13]
+            @test box_cox_lambda(short_with_nan, 4) == 1.0
+        end
+
+    end
+
 end

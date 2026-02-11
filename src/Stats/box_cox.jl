@@ -1,21 +1,34 @@
-function guer_cv(lam::Float64, x::Array{Float64,1}, m::Int; nonseasonal_length::Int=2)
+function _nanmean(v)
+    vals = filter(!isnan, v)
+    isempty(vals) ? NaN : mean(vals)
+end
+
+function _nanstd(v)
+    vals = filter(!isnan, v)
+    length(vals) < 2 ? NaN : std(vals)
+end
+
+function guer_cv(lam::Float64, x::Vector{Float64}, m::Int; nonseasonal_length::Int=2)
     period = max(nonseasonal_length, m)
     nobsf = length(x)
     nyr = div(nobsf, period)
     nobst = nyr * period
     x_mat = reshape(x[(end-nobst+1):end], period, nyr)
-    x_mean = vec(mean(x_mat, dims=1))
-    x_sd = vec(std(x_mat, dims=1))
+    x_mean = [_nanmean(x_mat[:, j]) for j in 1:nyr]
+    x_sd = [_nanstd(x_mat[:, j]) for j in 1:nyr]
     x_rat = x_sd ./ x_mean .^ (1 - lam)
-    return std(x_rat) / mean(x_rat)
+    valid_rat = filter(!isnan, x_rat)
+    length(valid_rat) < 2 && return Inf
+    return _nanstd(valid_rat) / _nanmean(valid_rat)
 end
 
-function guerrero(x::Array{Float64,1}, m::Int, lower::Float64=-1.0, upper::Float64=2.0, nonseasonal_length::Int=2)
-    if any(x .<= 0)
+function guerrero(x::AbstractVector{<:Number}, m::Int, lower::Real=-1.0, upper::Real=2.0, nonseasonal_length::Int=2)
+    xf = Vector{Float64}([ismissing(v) ? NaN : Float64(v) for v in x])
+    if any(v -> !isnan(v) && v <= 0, xf)
         println("Warning: Guerrero's method for selecting a Box-Cox parameter (lambda) is given for strictly positive data.")
     end
 
-    result = Optimize.fmin(lam -> guer_cv(lam, x, m, nonseasonal_length=nonseasonal_length), lower, upper)
+    result = Optimize.fmin(lam -> guer_cv(lam, xf, m, nonseasonal_length=nonseasonal_length), Float64(lower), Float64(upper))
     return result.x_opt
 end
 
@@ -28,39 +41,41 @@ function qr_residuals(X, y)
 end
 
 function bcloglik(x::AbstractArray, m::Int; lower::Float64 = -1.0, upper::Float64 = 2.0, is_ts::Bool = true)
-    x = filter(!ismissing, x)
-    n = length(x)
-    
-    if any(x .<= 0)
+    n_orig = length(x)
+    good = [!ismissing(v) && !(v isa AbstractFloat && isnan(v)) for v in x]
+    xc = Vector{Float64}([Float64(x[i]) for i in 1:n_orig if good[i]])
+
+    if any(xc .<= 0)
         error("x must be positive")
     end
-    
-    logx = log.(x)
+
+    logx = log.(xc)
     xdot = exp(mean(logx))
 
     if !is_ts
-        
-        X = ones(n, 1)
+        X_full = ones(n_orig, 1)
     else
-        t = collect(1:n)
+        t = collect(1:n_orig)
         if m > 1
             s = mod1.(t, m)
-            D = zeros(n, m-1)
+            D = zeros(n_orig, m-1)
             for j in 2:m
                 D[:, j-1] .= (s .== j)
             end
-            X = hcat(ones(n), t, D)
+            X_full = hcat(ones(n_orig), t, D)
         else
-            X = hcat(ones(n), t)
+            X_full = hcat(ones(n_orig), t)
         end
     end
+
+    X = X_full[good, :]
 
     λs = collect(lower:0.05:upper)
     loglik = similar(λs)
 
     for (i, λ) in enumerate(λs)
         xt = if abs(λ) > 0.02
-            (x .^ λ .- 1) ./ λ
+            (xc .^ λ .- 1) ./ λ
         else
             logx .* (1 .+ (λ .* logx)/2 .* (1 .+ (λ .* logx)/3 .* (1 .+ (λ .* logx)/4)))
         end
@@ -69,7 +84,7 @@ function bcloglik(x::AbstractArray, m::Int; lower::Float64 = -1.0, upper::Float6
         β = X \ z
         r = z .- X*β
 
-        loglik[i] = -n/2 * log(sum(abs2, r))
+        loglik[i] = -n_orig/2 * log(sum(abs2, r))
     end
 
     return λs[argmax(loglik)]
@@ -112,11 +127,11 @@ transformations. Journal of Forecasting, 12, 37–48.
 function box_cox_lambda(x::AbstractVector{<:Number}, m::Int;
     method::String="guerrero", lower::Float64=-1.0, upper::Float64=2.0,
     nonseasonal_length::Int=2, is_ts::Bool=true)
-    if any(collect(skipmissing(x)) .<= 0)
+    if any(v -> !ismissing(v) && !(v isa AbstractFloat && isnan(v)) && v <= 0, x)
         lower = max(lower, 0.0)
     end
 
-    if length(collect(skipmissing(x))) <= 2 * m
+    if length(x) <= 2 * m
         return 1.0
     end
 

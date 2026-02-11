@@ -229,6 +229,7 @@ yt = [1:6... , 5, 4, 3:-1:1...]
 res_mean = approx(xt, yt; xout=xt, ties=mean)       # collapse ties by mean
 res_min  = approx(xt, yt; xout=xt, ties=min)        # collapse ties by min
 res_ord  = approx(xt, yt; xout=xt, ties=:ordered)   # assume already ordered
+```
 """
 function approx(x::AbstractVector, y::AbstractVector;
                 xout::Union{AbstractVector,Nothing}=nothing,
@@ -407,6 +408,8 @@ yt = [1:6..., 5, 4, 3:-1:1...]
 gmean = approxfun(xt, yt; ties=mean)     # collapse ties
 gord  = approxfun(xt, yt; ties=:ordered) # assume already ordered
 gmean(xt)
+```
+
 """
 function approxfun(x::AbstractVector, y::AbstractVector;
                    method::Symbol=:linear,

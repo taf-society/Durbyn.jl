@@ -104,7 +104,7 @@ An [`MSTLResult`](@ref) containing:
 ```julia
 y = rand(200) .+ 2sin.(2π*(1:200)/7) .+ 0.5sin.(2π*(1:200)/30)
 res = mstl(y; m=[7,30], iterate=2, s_window=[11,23], robust=true)
-````
+```
 
 """
 function mstl(

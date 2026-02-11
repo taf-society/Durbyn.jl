@@ -951,6 +951,15 @@ const REF_KPSS_STAT_AP = 2.8767
             # R: ndiffs(ts(AP,12), test="adf") = 1
             @test ndiffs(AirPassengers; test=:adf) == 1
 
+            # R: ndiffs(ts(AP,12), test="pp") = 1
+            @test ndiffs(AirPassengers; test=:pp) == 1
+
+            # R: ndiffs(ts(AP,12), test="pp", type="trend") = 0
+            @test ndiffs(AirPassengers; test=:pp, deterministic=:trend) == 0
+
+            # R: ndiffs(ts(AP,12), test="adf", type="trend") = 0
+            @test ndiffs(AirPassengers; test=:adf, deterministic=:trend) == 0
+
             # Positional vs keyword API should agree
             @test ndiffs(AirPassengers; test=:kpss, deterministic=:level) ==
                   ndiffs(; x=AirPassengers, test="kpss", type="level")
@@ -1020,9 +1029,17 @@ const REF_KPSS_STAT_AP = 2.8767
             @test !ismissing(r.y[1])  # returns Float64, not missing
 
             # na_rm=true (default) should still work fine
+            # R: approx(c(1,2,3), c(NA,2,3), xout=2.5)$y = 2.5
             r2 = approx([1.0, 2.0, 3.0], Union{Float64,Missing}[missing, 2.0, 3.0];
                         xout=[2.5])
             @test r2.y[1] ≈ 2.5
+
+            # R: approx(c(1,2,3), c(NA,2,3), xout=c(1.5,2.5), rule=1, na.rm=FALSE)
+            # R returns y = [NA, 2.5]
+            r3 = approx([1.0, 2.0, 3.0], Union{Float64,Missing}[missing, 2.0, 3.0];
+                        xout=[1.5, 2.5], rule=1, na_rm=false)
+            @test isnan(r3.y[1])   # NA in y propagates as NaN
+            @test r3.y[2] ≈ 2.5   # valid interpolation unaffected
         end
 
         # ── mstl period filter boundary (odd vs even n) ──────────────

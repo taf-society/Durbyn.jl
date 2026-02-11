@@ -54,6 +54,7 @@ julia> embed(X, 2)  # size: (4-2+1) x (2*2) == 3 x 4
  3  30  2  20
  4  40  3  30
 # columns: col1_lag2, col2_lag2, col1_lag1, col2_lag1
+```
 """
 function embed(x::AbstractVector{T}, dimension::Integer=1) where {T}
     n = length(x)

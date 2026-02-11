@@ -120,7 +120,7 @@ using StatsBase # (only if you need helpers elsewhere)
 y = randn(200) .+ 0.5 # stationary with mean shift
 out = kpss(y; type = :mu, lags = :short)
 # @show out.teststat, out.cval, out.clevels
-````
+```
 
 ```julia
 # Linear trend case and user-specified lag:

@@ -28,11 +28,9 @@ Compute the **seasonal strength** of each seasonal component in an MSTL decompos
 
 For each seasonal component `sᵢ`, the seasonal strength is defined as
 
-```
-
+```julia
 strengthᵢ = clamp(1 - var(R) / var(R + sᵢ), 0, 1)
-
-````
+```
 
 where `R` is the remainder from the MSTL decomposition.  
 A value near 1 indicates a strong seasonal signal, while values near 0 indicate little
@@ -63,6 +61,7 @@ strengths = seasonal_strength(res)
 
 # Convenience form: run mstl inside
 seasonal_strength(y; m=[7,30], iterate=2)
+```
 """
 function seasonal_strength(
     x::AbstractVector{T},

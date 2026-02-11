@@ -16,7 +16,7 @@ A struct that holds the results of ordinary least squares (OLS) linear regressio
 ```julia
 ols_model = ols(y, X)
 println(ols_model.coef)
-````
+```
 
 """
 struct OlsFit

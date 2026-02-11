@@ -110,7 +110,7 @@ julia> ap = air_passengers();
 
 julia>  adf(ap)
 julia> adf(y = ap)
-````
+```
 """
 function adf(y; type::Symbol=:none, lags::Int=1, selectlags::Symbol=:fixed)
 

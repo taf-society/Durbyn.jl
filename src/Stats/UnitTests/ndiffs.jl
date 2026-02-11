@@ -84,7 +84,7 @@ d2 = ndiffs(diff(log.(AirPassengers), 12);    # supply transformed series
 
 # With explicit KPSS lag selection:
 d3 = ndiffs(x; test = :kpss, type = :level, use_lag = 8)
-
+```
 """
 function ndiffs(x::AbstractVector;
     alpha::Real=0.05,
@@ -167,7 +167,7 @@ function run_unit_root_check(xvec::AbstractVector;
     kwargs...)::Union{Bool,Missing}
 
     kpss_type = deterministic === :trend ? "tau" : "mu"
-    adf_type = deterministic === :trend ? :trend : :drift
+    adf_type = deterministic === :trend ? "trend" : "drift"
     pp_model = deterministic === :trend ? "trend" : "constant"
 
     function with_kpss_lag(y; kwargs...)
@@ -189,7 +189,10 @@ function run_unit_root_check(xvec::AbstractVector;
 
         elseif test === :adf
             t = adf(; y=xvec, type=adf_type, kwargs...)
-            p = norm_p(only(approx(t.cval, t.clevels, xout=[t.teststat[1]], rule=2).y))
+            # ADF teststat is a NamedMatrix, cval is a Matrix; extract tau row
+            tau_stat = t.teststat.data[1, 1]
+            tau_cvals = vec(t.cval[1, :])
+            p = norm_p(only(approx(tau_cvals, t.clevels, xout=[tau_stat], rule=2).y))
             return p === missing ? missing : p > alpha
 
         elseif test === :pp

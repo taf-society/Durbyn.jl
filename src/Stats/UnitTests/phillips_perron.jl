@@ -105,6 +105,7 @@ pp_tr.auxstat  # Z-tau-mu and Z-tau-beta
 # Random walk (should fail to reject unit root more often)
 rw = cumsum(randn(n))
 pp_rw = phillips_perron(rw; type=:Z_tau, model=:constant)
+```
 """
 function phillips_perron(
     x;

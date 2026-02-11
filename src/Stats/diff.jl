@@ -107,7 +107,7 @@ function diff(x::AbstractMatrix; lag::Int=1, differences::Int=1)
         return x[1:0, :]
     end
 
-    r = copy(x)
+    r = Matrix{Float64}(x)
     tmp = similar(r)
     for _ in 1:differences
         for j in 1:ncol

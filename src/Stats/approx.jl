@@ -262,8 +262,8 @@ function approx(x::AbstractVector, y::AbstractVector;
         throw(ArgumentError("invalid interpolation method"))
     f = float(f)
 
-    xv = collect(float.(x))
-    yv = collect(float.(y))
+    xv = collect(Float64[ismissing(v) ? NaN : Float64(v) for v in x])
+    yv = collect(Float64[ismissing(v) ? NaN : Float64(v) for v in y])
     _approxtest(xv, yv, method, f; na_rm=na_rm)
 
     if isnothing(xout)
@@ -437,8 +437,8 @@ function approxfun(x::AbstractVector, y::AbstractVector;
         throw(ArgumentError("invalid interpolation method"))
     f = float(f)
 
-    xv = collect(float.(x))
-    yv = collect(float.(y))
+    xv = collect(Float64[ismissing(v) ? NaN : Float64(v) for v in x])
+    yv = collect(Float64[ismissing(v) ? NaN : Float64(v) for v in y])
     _approxtest(xv, yv, method, f; na_rm=na_rm)
 
     return v -> begin

@@ -136,7 +136,7 @@ function mstl(
     end
 
     pers = isa(m, Integer) ? [Int(m)] : sort(collect(Int.(m)))
-    pers = [p for p in pers if p > 1 && p < n ÷ 2]
+    pers = [p for p in pers if p > 1 && 2 * p < n]
     
     if isempty(pers)
         trend = smooth_trend(xu)

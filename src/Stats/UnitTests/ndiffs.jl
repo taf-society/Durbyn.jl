@@ -156,7 +156,7 @@ function ndiffs(;
     test = Symbol(test)
     type = Symbol(type)
 
-    ndiffs(x, alpha=alpha, test=test, type=type, max_d=max_d, kwargs...)
+    ndiffs(x, alpha=alpha, test=test, deterministic=type, maxd=max_d, kwargs...)
 end
 
 function run_unit_root_check(xvec::AbstractVector;

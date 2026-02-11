@@ -16,7 +16,7 @@ na_contiguous(x)  # Returns [1.0, 2.0, 3.0]
 ```
 """
 function na_contiguous(x::AbstractArray)
-    good = .!ismissing.(x)
+    good = [!ismissing(v) && !(v isa AbstractFloat && isnan(v)) for v in x]
     if sum(good) == 0
         error("all times contain an NA")
     end
@@ -70,7 +70,8 @@ na_fail([1.0, missing, 3.0])  # Throws ArgumentError
 ```
 """
 function na_fail(x::AbstractArray)
-    if all(complete_cases(x))
+    has_na = any(v -> ismissing(v) || (v isa AbstractFloat && isnan(v)), x)
+    if !has_na
         return x
     else
         throw(ArgumentError("missing values in object"))

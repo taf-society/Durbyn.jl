@@ -26,7 +26,7 @@ function stlest!(y::AbstractVector{Float64}, n::Int, len::Int, ideg::Int,
     range = float(n) - 1.0
     h = max(xs - float(nleft), float(nright) - xs)
     if len > n
-        h += float(len - n) / 2.0
+        h += float((len - n) ÷ 2)
     end
     h9 = 0.999 * h
     h1 = 0.001 * h

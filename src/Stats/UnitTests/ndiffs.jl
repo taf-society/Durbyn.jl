@@ -93,7 +93,7 @@ function ndiffs(x::AbstractVector;
     maxd::Integer=2,
     kwargs...)::Int
 
-    xclean = collect(skipmissing(x))
+    xclean = [Float64(v) for v in x if !ismissing(v) && !(v isa AbstractFloat && isnan(v))]
     if isempty(xclean)
         return 0
     end

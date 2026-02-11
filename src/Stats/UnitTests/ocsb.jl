@@ -68,7 +68,8 @@ function show(io::IO, ::MIME"text/plain", x::OCSB)
     println(io, "AR lag order (p): ", x.lag)
     println(io, "Test statistic (t on Z₅): ", round(x.teststat; digits=4))
 
-    has_cvals = !isempty(x.cval) && !isempty(x.clevels) && length(x.cval) == length(x.clevels)
+    cvals = x.cval isa AbstractVector ? x.cval : [x.cval]
+    has_cvals = !isempty(cvals) && !isempty(x.clevels) && length(cvals) == length(x.clevels)
     if has_cvals
         try
             pv = round(pvalue(x); digits=4)
@@ -79,7 +80,7 @@ function show(io::IO, ::MIME"text/plain", x::OCSB)
 
     if has_cvals
         println(io, "\nCritical values:")
-        for (α, cv) in zip(x.clevels, x.cval)
+        for (α, cv) in zip(x.clevels, cvals)
             lvl = isa(α, Number) ? "$(Int(round(100α)))%" : string(α)
             println(io, "  ", lpad(lvl, 4), " : ", round(cv; digits=4))
         end

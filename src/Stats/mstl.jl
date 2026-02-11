@@ -108,18 +108,18 @@ res = mstl(y; m=[7,30], iterate=2, s_window=[11,23], robust=true)
 
 """
 function mstl(
-    x::AbstractVector{T},
+    x::AbstractVector,
     m::Union{Integer,AbstractVector{<:Integer}};
     lambda::Union{Nothing,Real, String} = nothing,
     iterate::Integer = 2,
     s_window = nothing,
     stl_kwargs...,
-) where {T<:Real}
+)
 
     n = length(x)
     @assert n > 0 "x must be non-empty"
 
-    orig = collect(float.(x))
+    orig = Vector{Float64}([ismissing(v) ? NaN : Float64(v) for v in x])
     xu   = copy(orig)
 
     if any(isnan, xu)

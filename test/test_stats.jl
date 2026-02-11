@@ -5,7 +5,7 @@ using Statistics
 import Durbyn.Stats: acf, pacf, ACFResult, PACFResult
 import Durbyn.Stats: box_cox, box_cox!, inv_box_cox, box_cox_lambda
 import Durbyn.Stats: decompose, DecomposedTimeSeries
-import Durbyn.Stats: adf, ADF, kpss, KPSS
+import Durbyn.Stats: adf, ADF, kpss, KPSS, ocsb, OCSB
 import Durbyn.Stats: embed, diff, fourier, ndiffs, nsdiffs
 import Durbyn.Stats: ols, OlsFit, approx, approxfun, seasonal_strength, modelrank
 import Durbyn.Stats: na_interp, na_contiguous, na_fail
@@ -976,6 +976,59 @@ const REF_KPSS_STAT_AP = 2.8767
         @testset "box_cox_lambda NaN-heavy series returns 1.0 on short effective length" begin
             short_with_nan = Float64[10, NaN, 15, NaN, 13]
             @test box_cox_lambda(short_with_nan, 4) == 1.0
+        end
+
+    end
+
+    @testset "Round 4 Bug Fixes" begin
+
+        @testset "OCSB show does not crash on scalar cval" begin
+            ap = air_passengers()
+            result = ocsb(ap, 12)
+            @test result.cval isa Float64
+            buf = IOBuffer()
+            show(buf, MIME("text/plain"), result)
+            output = String(take!(buf))
+            @test occursin("OCSB Seasonal Unit Root Test", output)
+            @test occursin("Test statistic", output)
+
+            buf2 = IOBuffer()
+            show(IOContext(buf2, :compact => true), result)
+            compact_output = String(take!(buf2))
+            @test startswith(compact_output, "OCSB(")
+        end
+
+        @testset "ndiffs filters NaN from input" begin
+            ap = air_passengers()
+            ap_nan = copy(ap)
+            ap_nan[[5, 20, 80]] .= NaN
+
+            d_kpss = ndiffs(ap_nan; test=:kpss)
+            @test d_kpss isa Int
+            @test 0 <= d_kpss <= 2
+
+            d_pp = ndiffs(ap_nan; test=:pp)
+            @test d_pp isa Int
+            @test 0 <= d_pp <= 2
+
+            d_adf = ndiffs(ap_nan; test=:adf)
+            @test d_adf isa Int
+            @test 0 <= d_adf <= 2
+
+            @test ndiffs(ap; test=:kpss) == ndiffs(ap_nan; test=:kpss)
+        end
+
+        @testset "mstl handles missing values" begin
+            ap = air_passengers()
+            ap_miss = Vector{Union{Missing, Float64}}(ap)
+            ap_miss[5] = missing
+            ap_miss[20] = missing
+
+            result = mstl(ap_miss, 12)
+            @test length(result.trend) == length(ap)
+            @test !any(ismissing, result.trend)
+            @test length(result.seasonals[1]) == length(ap)
+            @test length(result.remainder) == length(ap)
         end
 
     end

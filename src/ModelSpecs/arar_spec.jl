@@ -111,3 +111,27 @@ struct FittedArar <: AbstractFittedModel
         new(spec, fit, target_col, schema)
     end
 end
+
+function extract_metrics(model::FittedArar)
+    metrics = Dict{Symbol, Float64}()
+    metrics[:sigma2] = model.fit.sigma2
+    return metrics
+end
+
+function Base.show(io::IO, spec::ArarSpec)
+    print(io, "ArarSpec: ", spec.formula.target)
+end
+
+function Base.show(io::IO, fitted::FittedArar)
+    print(io, "FittedArar: lags=", fitted.fit.best_lag)
+    print(io, ", σ² = ", round(fitted.fit.sigma2, digits=4))
+end
+
+function Base.show(io::IO, ::MIME"text/plain", fitted::FittedArar)
+    println(io, "FittedArar")
+    println(io, "  Target: ", fitted.target_col)
+    println(io, "  Selected lags: ", fitted.fit.best_lag)
+    println(io, "  AR coefficients: ", round.(fitted.fit.best_phi, digits=4))
+    println(io, "  σ²: ", round(fitted.fit.sigma2, digits=6))
+    println(io, "  n: ", length(fitted.fit.y))
+end

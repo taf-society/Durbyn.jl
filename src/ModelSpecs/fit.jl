@@ -1090,7 +1090,10 @@ fc = forecast(fitted, h = 12, level = [90, 95, 99])
 - [`ArarSpec`](@ref)
 - [`fit`](@ref)
 """
-function forecast(fitted::FittedArar; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+function forecast(fitted::FittedArar; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for ARAR forecasts."
+    end
     parent_mod = parentmodule(@__MODULE__)
     Generics_mod = getfield(parent_mod, :Generics)
 
@@ -1230,7 +1233,10 @@ fc = forecast(fitted, h = 12, level = [90, 95, 99])
 - [`ArarmaSpec`](@ref)
 - [`fit`](@ref)
 """
-function forecast(fitted::FittedArarma; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+function forecast(fitted::FittedArarma; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for ARARMA forecasts."
+    end
     parent_mod = parentmodule(@__MODULE__)
     Generics_mod = getfield(parent_mod, :Generics)
 
@@ -1378,7 +1384,10 @@ fc = forecast(fitted, h = 12, biasadj = true)
 - [`BatsSpec`](@ref)
 - [`fit`](@ref)
 """
-function forecast(fitted::FittedBats; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+function forecast(fitted::FittedBats; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for BATS forecasts."
+    end
     parent_mod = parentmodule(@__MODULE__)
     Generics_mod = getfield(parent_mod, :Generics)
 
@@ -1547,7 +1556,10 @@ fc.level       # Confidence levels
 - [`TbatsSpec`](@ref)
 - [`fit`](@ref)
 """
-function forecast(fitted::FittedTbats; h::Int, level::Vector{<:Real} = [80, 95], kwargs...)
+function forecast(fitted::FittedTbats; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for TBATS forecasts."
+    end
     parent_mod = parentmodule(@__MODULE__)
     Generics_mod = getfield(parent_mod, :Generics)
 

@@ -150,3 +150,37 @@ struct FittedTheta <: AbstractFittedModel
         new(spec, fit, target_col, schema, m)
     end
 end
+
+function extract_metrics(model::FittedTheta)
+    metrics = Dict{Symbol, Float64}()
+    if isfinite(model.fit.mse)
+        metrics[:mse] = model.fit.mse
+    end
+    return metrics
+end
+
+function Base.show(io::IO, spec::ThetaSpec)
+    print(io, "ThetaSpec: ", spec.formula.target)
+    if !isnothing(spec.m)
+        print(io, ", m=", spec.m)
+    end
+end
+
+function Base.show(io::IO, fitted::FittedTheta)
+    print(io, "FittedTheta: ", fitted.fit.model_type)
+    print(io, ", MSE = ", round(fitted.fit.mse, digits=4))
+end
+
+function Base.show(io::IO, ::MIME"text/plain", fitted::FittedTheta)
+    println(io, "FittedTheta")
+    println(io, "  Target: ", fitted.target_col)
+    println(io, "  Model: ", fitted.fit.model_type)
+    println(io, "  m: ", fitted.m)
+    println(io, "  Alpha: ", round(fitted.fit.alpha, digits=4))
+    println(io, "  Theta: ", round(fitted.fit.theta, digits=4))
+    if fitted.fit.decompose
+        println(io, "  Decomposition: ", fitted.fit.decomposition_type)
+    end
+    println(io, "  MSE: ", round(fitted.fit.mse, digits=6))
+    println(io, "  n: ", length(fitted.fit.y))
+end

@@ -149,3 +149,47 @@ struct FittedBats <: AbstractFittedModel
         new(spec, fit, target_col, schema)
     end
 end
+
+function extract_metrics(model::FittedBats)
+    metrics = Dict{Symbol, Float64}()
+    if isfinite(model.fit.AIC)
+        metrics[:aic] = model.fit.AIC
+    end
+    if isfinite(model.fit.likelihood)
+        metrics[:loglik] = model.fit.likelihood
+    end
+    metrics[:sigma2] = model.fit.variance
+    return metrics
+end
+
+function Base.show(io::IO, spec::BatsSpec)
+    print(io, "BatsSpec: ", spec.formula.target)
+end
+
+function Base.show(io::IO, fitted::FittedBats)
+    print(io, "FittedBats: ", fitted.fit.method)
+    if isfinite(fitted.fit.AIC)
+        print(io, ", AIC = ", round(fitted.fit.AIC, digits=2))
+    end
+end
+
+function Base.show(io::IO, ::MIME"text/plain", fitted::FittedBats)
+    println(io, "FittedBats")
+    println(io, "  Target: ", fitted.target_col)
+    println(io, "  Model: ", fitted.fit.method)
+    if !isnothing(fitted.fit.lambda)
+        println(io, "  Lambda: ", round(fitted.fit.lambda, digits=4))
+    end
+    println(io, "  Alpha: ", round(fitted.fit.alpha, digits=4))
+    if !isnothing(fitted.fit.beta)
+        println(io, "  Beta: ", round(fitted.fit.beta, digits=4))
+    end
+    if !isnothing(fitted.fit.damping_parameter)
+        println(io, "  Damping: ", round(fitted.fit.damping_parameter, digits=4))
+    end
+    if isfinite(fitted.fit.AIC)
+        println(io, "  AIC: ", round(fitted.fit.AIC, digits=4))
+    end
+    println(io, "  σ²: ", round(fitted.fit.variance, digits=6))
+    println(io, "  n: ", length(fitted.fit.y))
+end

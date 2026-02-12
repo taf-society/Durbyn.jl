@@ -8,6 +8,13 @@ using Durbyn
 
 const ON_CI = get(ENV, "CI", "false") == "true"
 
+DocMeta.setdocmeta!(
+    Durbyn,
+    :DocTestSetup,
+    :(using Durbyn; using Durbyn.Utils: is_constant, is_constant_all, head, tail);
+    recursive = true,
+)
+
 makedocs(
     sitename = "Durbyn.jl",
     modules  = [Durbyn],

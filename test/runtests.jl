@@ -80,4 +80,8 @@ using Test
     @testset "Accuracy Module" begin
         include("test_accuracy.jl")
     end
+
+    @testset "ModelSpecs Bug Fixes" begin
+        include("test_model_specs.jl")
+    end
 end

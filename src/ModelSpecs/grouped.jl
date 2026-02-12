@@ -751,7 +751,7 @@ function forecast(fitted::GroupedFittedModels;
                   parallel::Bool = true,
                   progress::Bool = false,
                   kwargs...)
-    xreg_cols = _xreg_columns(fitted.spec)
+    xreg_cols = _xreg_columns(fitted)
 
     grouped_newdata = isnothing(newdata) ? nothing :
         _prepare_grouped_newdata(fitted, newdata, h, xreg_cols)
@@ -870,8 +870,8 @@ function _prepare_grouped_newdata(fitted::GroupedFittedModels,
                                   newdata,
                                   h::Int,
                                   xreg_cols::Vector{Symbol})
-    if newdata isa Dict{NamedTuple, Any}
-        return Dict{NamedTuple, Any}(newdata)
+    if newdata isa AbstractDict{<:NamedTuple}
+        return Dict{NamedTuple, Any}(k => v for (k, v) in newdata)
     elseif Tables.istable(newdata)
         tbl = Tables.columntable(newdata)
 
@@ -977,4 +977,27 @@ function _xreg_columns(spec::AbstractModelSpec)
         return Symbol[]
     end
     return Symbol[]
+end
+
+"""
+    _xreg_columns(fitted::GroupedFittedModels)
+
+Extract exogenous column names from a GroupedFittedModels container.
+
+For ArimaSpec with auto_xreg, inspects the first successful FittedArima model
+to retrieve the auto-selected column names that `_xreg_columns(spec)` cannot see.
+"""
+function _xreg_columns(fitted::GroupedFittedModels)
+    cols = _xreg_columns(fitted.spec)
+
+    if fitted.spec isa ArimaSpec && fitted.spec.auto_xreg && isempty(cols)
+        for key in fitted.groups
+            model = fitted.models[key]
+            if model isa FittedArima && !isempty(model.xreg_cols)
+                return copy(model.xreg_cols)
+            end
+        end
+    end
+
+    return cols
 end

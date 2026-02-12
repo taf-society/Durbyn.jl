@@ -1720,8 +1720,7 @@ function forecast(fitted::FittedTheta; h::Int, level::Vector{<:Real} = [80, 95],
     parent_mod = parentmodule(@__MODULE__)
     Generics_mod = getfield(parent_mod, :Generics)
 
-    level_int = Int.(level)
-    return Generics_mod.forecast(fitted.fit; h=h, level=level_int, kwargs...)
+    return Generics_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
 end
 
 function fit(spec::ThetaSpec, panel::PanelData; kwargs...)
@@ -2193,11 +2192,14 @@ function fit(spec::MeanfSpec, data;
 
     # Allow kwargs to override spec values
     use_lambda = isnothing(lambda) ? spec.lambda : lambda
+    use_biasadj = isnothing(biasadj) ? spec.biasadj : biasadj
 
     parent_mod = parentmodule(@__MODULE__)
     Naive_mod = getfield(parent_mod, :Naive)
 
-    meanf_fit = Naive_mod.meanf(target_vector, seasonal_period, use_lambda)
+    meanf_fit = Naive_mod.meanf(target_vector, seasonal_period;
+                                 lambda=use_lambda,
+                                 biasadj=use_biasadj)
 
     return FittedMeanf(spec, meanf_fit, target_col, tbl, seasonal_period)
 end
@@ -2217,7 +2219,7 @@ function forecast(fitted::FittedMeanf; h::Int, level::Vector{<:Real} = [80, 95],
 
     # Convert level to Float64 for meanf forecast
     level_f64 = Float64.(level)
-    return Naive_mod.forecast(fitted.fit, h, level_f64)
+    return Naive_mod.forecast(fitted.fit; h=h, level=level_f64, kwargs...)
 end
 
 function fit(spec::MeanfSpec, panel::PanelData; kwargs...)
@@ -2230,6 +2232,187 @@ function fit(spec::MeanfSpec, panel::PanelData; kwargs...)
     end
     if !haskey(kwdict, :m) && !isnothing(panel.m)
         kwdict[:m] = resolve_m(panel.m, spec)
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+# =============================================================================
+# Diffusion Model Fitting and Forecasting
+# =============================================================================
+
+"""
+    _diffusion_model_type(sym::Union{Symbol, Nothing})
+
+Convert a Symbol from DiffusionTerm to a DiffusionModelType enum value.
+"""
+function _diffusion_model_type(sym::Union{Symbol, Nothing})
+    isnothing(sym) && return nothing
+    parent_mod = parentmodule(@__MODULE__)
+    Diff_mod = getfield(parent_mod, :Diffusion)
+    mapping = Dict{Symbol, Any}(
+        :Bass => Diff_mod.Bass,
+        :Gompertz => Diff_mod.Gompertz,
+        :GSGompertz => Diff_mod.GSGompertz,
+        :Weibull => Diff_mod.Weibull,
+    )
+    haskey(mapping, sym) || throw(ArgumentError(
+        "Unknown diffusion model type ':$(sym)'. " *
+        "Valid types: :Bass, :Gompertz, :GSGompertz, :Weibull"))
+    return mapping[sym]
+end
+
+"""
+    _diffusion_fixed_params(term::DiffusionTerm)
+
+Build the `w` named tuple of fixed parameters from a DiffusionTerm.
+Returns `nothing` if no parameters are fixed.
+"""
+function _diffusion_fixed_params(term)
+    pairs_list = Pair{Symbol, Union{Float64, Nothing}}[]
+    for field in (:m, :p, :q, :a, :b, :c)
+        val = getfield(term, field)
+        if !isnothing(val)
+            push!(pairs_list, field => val)
+        end
+    end
+    isempty(pairs_list) && return nothing
+    return NamedTuple(pairs_list)
+end
+
+"""
+    fit(spec::DiffusionSpec, data; groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+
+Fit a diffusion model specification to data (single series or grouped).
+
+# Arguments
+- `spec::DiffusionSpec` - Diffusion model specification created with `@formula`
+- `data` - Tables.jl-compatible data
+
+# Keyword Arguments
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+- Additional kwargs passed to underlying `diffusion` function
+
+# Returns
+- If `groupby=nothing`: `FittedDiffusion` - Single fitted model
+- If `groupby` specified: `GroupedFittedModels` - Fitted models for each group
+
+# Examples
+```julia
+spec = DiffusionSpec(@formula(adoption = diffusion()))
+fitted = fit(spec, data)
+
+spec = DiffusionSpec(@formula(adoption = diffusion(model=:Bass)))
+fitted = fit(spec, data)
+
+# Grouped
+fitted = fit(spec, data, groupby=:product)
+```
+"""
+function fit(spec::DiffusionSpec, data;
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           groupby=groupby,
+                           datecol=datecol,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           kwargs...)
+    end
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    # Extract options from DiffusionTerm and spec
+    diff_terms = filter(t -> isa(t, DiffusionTerm), spec.formula.terms)
+    fit_options = copy(spec.options)
+    merge!(fit_options, Dict{Symbol, Any}(kwargs))
+
+    if !isempty(diff_terms)
+        term = diff_terms[1]
+
+        model_type = _diffusion_model_type(term.model_type)
+        if !isnothing(model_type) && !haskey(fit_options, :model_type)
+            fit_options[:model_type] = model_type
+        end
+
+        w = _diffusion_fixed_params(term)
+        if !isnothing(w) && !haskey(fit_options, :w)
+            fit_options[:w] = w
+        end
+
+        if !isnothing(term.loss) && !haskey(fit_options, :loss)
+            fit_options[:loss] = term.loss
+        end
+
+        if !isnothing(term.cumulative) && !haskey(fit_options, :cumulative)
+            fit_options[:cumulative] = term.cumulative
+        end
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Diff_mod = getfield(parent_mod, :Diffusion)
+
+    diff_fit = Diff_mod.diffusion(target_vector; pairs(fit_options)...)
+
+    return FittedDiffusion(spec, diff_fit, target_col, tbl)
+end
+
+"""
+    forecast(fitted::FittedDiffusion; h, level=[80, 95], kwargs...)
+
+Generate forecasts from a fitted diffusion model.
+
+# Keyword Arguments
+- `h::Int` - Forecast horizon (number of periods ahead)
+- `level::Vector{<:Real}` - Confidence levels for prediction intervals (default [80, 95])
+- Additional kwargs passed to underlying `forecast` function
+
+# Returns
+`Forecast` object with mean, lower, and upper prediction intervals
+
+# Examples
+```julia
+spec = DiffusionSpec(@formula(adoption = diffusion()))
+fitted = fit(spec, data)
+fc = forecast(fitted, h=12)
+```
+"""
+function forecast(fitted::FittedDiffusion; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for diffusion forecasts; diffusion models do not support exogenous regressors."
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Diff_mod = getfield(parent_mod, :Diffusion)
+
+    return Diff_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
+end
+
+function fit(spec::DiffusionSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end

@@ -987,6 +987,7 @@ function fit_grouped(spec::MeanfSpec, data;
 
     # Allow kwargs to override spec values
     use_lambda = isnothing(lambda) ? spec.lambda : lambda
+    use_biasadj = isnothing(biasadj) ? spec.biasadj : biasadj
 
     parent_mod = parentmodule(@__MODULE__)
     Naive_mod = getfield(parent_mod, :Naive)
@@ -994,9 +995,76 @@ function fit_grouped(spec::MeanfSpec, data;
     builder = function(group_data)
         group_tbl = Tables.columntable(group_data)
         target_vector = group_tbl[target_col]
-        meanf_fit = Naive_mod.meanf(target_vector, seasonal_period, use_lambda)
+        meanf_fit = Naive_mod.meanf(target_vector, seasonal_period;
+                                     lambda=use_lambda,
+                                     biasadj=use_biasadj)
         return FittedMeanf(spec, meanf_fit, target_col, group_data, seasonal_period)
     end
 
     return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
+end
+
+"""
+    fit_grouped(spec::DiffusionSpec, data; groupby, parallel=true, fail_fast=false, kwargs...)
+
+Fit diffusion models to grouped (panel) data.
+"""
+function fit_grouped(spec::DiffusionSpec, data;
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+
+    tbl = Tables.columntable(data)
+
+    groupby_cols = groupby isa Symbol ? [groupby] : collect(groupby)
+    target_col = spec.formula.target
+
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    # Extract options from DiffusionTerm and spec
+    diff_terms = filter(t -> isa(t, DiffusionTerm), spec.formula.terms)
+    fit_options = copy(spec.options)
+    merge!(fit_options, Dict{Symbol, Any}(kwargs))
+
+    if !isempty(diff_terms)
+        term = diff_terms[1]
+
+        model_type = _diffusion_model_type(term.model_type)
+        if !isnothing(model_type) && !haskey(fit_options, :model_type)
+            fit_options[:model_type] = model_type
+        end
+
+        w = _diffusion_fixed_params(term)
+        if !isnothing(w) && !haskey(fit_options, :w)
+            fit_options[:w] = w
+        end
+
+        if !isnothing(term.loss) && !haskey(fit_options, :loss)
+            fit_options[:loss] = term.loss
+        end
+
+        if !isnothing(term.cumulative) && !haskey(fit_options, :cumulative)
+            fit_options[:cumulative] = term.cumulative
+        end
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    Diff_mod = getfield(parent_mod, :Diffusion)
+
+    builder = function(group_data)
+        group_tbl = Tables.columntable(group_data)
+        target_vector = group_tbl[target_col]
+        diff_fit = Diff_mod.diffusion(target_vector; pairs(fit_options)...)
+        return FittedDiffusion(spec, diff_fit, target_col, group_data)
+    end
+
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, 1, parallel, fail_fast, builder)
 end

@@ -650,7 +650,7 @@ end
 
 Compute prediction intervals using simulation.
 """
-function compute_prediction_intervals(fit::ThetaFit, h::Int, level::Vector{Int};
+function compute_prediction_intervals(fit::ThetaFit, h::Int, level::Vector{<:Real};
                                       n_samples::Int=200, seed::Int=0)
     T = Float64
     n = length(fit.y)
@@ -695,9 +695,10 @@ function compute_prediction_intervals(fit::ThetaFit, h::Int, level::Vector{Int};
     for lv in level
         q_lo = (100 - lv) / 200
         q_hi = q_lo + lv / 100
+        lv_key = round(Int, lv)
 
-        intervals["lo_$lv"] = [quantile(samples[i, :], q_lo) for i in 1:h]
-        intervals["hi_$lv"] = [quantile(samples[i, :], q_hi) for i in 1:h]
+        intervals["lo_$lv_key"] = [quantile(samples[i, :], q_lo) for i in 1:h]
+        intervals["hi_$lv_key"] = [quantile(samples[i, :], q_hi) for i in 1:h]
     end
 
     return intervals
@@ -725,7 +726,7 @@ fc.lower[1]    # 80% lower bounds
 fc.upper[2]    # 95% upper bounds
 ```
 """
-function forecast(fit::ThetaFit; h::Int, level::Vector{Int}=[80, 95])
+function forecast(fit::ThetaFit; h::Int, level::Vector{<:Real}=[80, 95])
     T = Float64
     n = length(fit.y)
 
@@ -755,8 +756,8 @@ function forecast(fit::ThetaFit; h::Int, level::Vector{Int}=[80, 95])
         end
     end
 
-    lower = [intervals["lo_$lv"] for lv in level]
-    upper = [intervals["hi_$lv"] for lv in level]
+    lower = [intervals["lo_$(round(Int, lv))"] for lv in level]
+    upper = [intervals["hi_$(round(Int, lv))"] for lv in level]
 
     method = "Theta($(fit.model_type))"
 

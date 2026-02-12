@@ -130,3 +130,31 @@ struct FittedDiffusion <: AbstractFittedModel
         new(spec, fit, target_col, schema)
     end
 end
+
+function extract_metrics(model::FittedDiffusion)
+    metrics = Dict{Symbol, Float64}()
+    if hasproperty(model.fit, :mse) && !isnothing(model.fit.mse)
+        metrics[:mse] = Float64(model.fit.mse)
+    end
+    return metrics
+end
+
+function Base.show(io::IO, spec::DiffusionSpec)
+    print(io, "DiffusionSpec: ", spec.formula.target)
+end
+
+function Base.show(io::IO, fitted::FittedDiffusion)
+    print(io, "FittedDiffusion: ", fitted.fit.model_type)
+    print(io, ", MSE = ", round(fitted.fit.mse, digits=4))
+end
+
+function Base.show(io::IO, ::MIME"text/plain", fitted::FittedDiffusion)
+    println(io, "FittedDiffusion")
+    println(io, "  Target: ", fitted.target_col)
+    println(io, "  Model: ", fitted.fit.model_type)
+    println(io, "  MSE: ", round(fitted.fit.mse, digits=6))
+    println(io, "  Parameters:")
+    for (k, v) in pairs(fitted.fit.params)
+        println(io, "    ", k, ": ", round(v, digits=6))
+    end
+end

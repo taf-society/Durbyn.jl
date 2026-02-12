@@ -38,7 +38,7 @@ fc.lower[1]    # 80% lower bounds
 fc.upper[2]    # 95% upper bounds
 ```
 """
-function forecast(fit::DiffusionFit; h::Int, level::Vector{Int}=[80, 95])
+function forecast(fit::DiffusionFit; h::Int, level::Vector{<:Real}=[80, 95])
     if h < 1
         throw(ArgumentError("Forecast horizon h must be a positive integer, got $h"))
     end
@@ -58,8 +58,8 @@ function forecast(fit::DiffusionFit; h::Int, level::Vector{Int}=[80, 95])
 
     intervals = compute_prediction_intervals(fit, h, level)
 
-    lower = [intervals["lo_$lv"] for lv in level]
-    upper = [intervals["hi_$lv"] for lv in level]
+    lower = [intervals["lo_$(round(Int, lv))"] for lv in level]
+    upper = [intervals["hi_$(round(Int, lv))"] for lv in level]
 
     method = "Diffusion($(fit.model_type))"
 
@@ -93,7 +93,7 @@ curve shape, so we scale by the predicted mean.
 # Returns
 Dictionary with keys "lo_XX" and "hi_XX" for each confidence level.
 """
-function compute_prediction_intervals(fit::DiffusionFit, h::Int, level::Vector{Int})
+function compute_prediction_intervals(fit::DiffusionFit, h::Int, level::Vector{<:Real})
     T = Float64
     n = length(fit.y)
 
@@ -117,9 +117,10 @@ function compute_prediction_intervals(fit::DiffusionFit, h::Int, level::Vector{I
         z = _quantile_normal(1 - alpha / 2)
 
         se = max.(sigma, cv .* abs.(forecasts))
+        lv_key = round(Int, lv)
 
-        intervals["lo_$lv"] = max.(forecasts .- z .* se, T(0.0))
-        intervals["hi_$lv"] = forecasts .+ z .* se
+        intervals["lo_$lv_key"] = max.(forecasts .- z .* se, T(0.0))
+        intervals["hi_$lv_key"] = forecasts .+ z .* se
     end
 
     return intervals

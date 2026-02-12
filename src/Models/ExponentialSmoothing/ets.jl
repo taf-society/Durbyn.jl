@@ -145,7 +145,7 @@ function ets(
     allow_multiplicative_trend::Bool = false,
     use_initial_values::Bool = false,
     na_action_type::String = "na_contiguous",
-    options::NelderMeadOptions = NelderMeadOptions()
+    options::NelderMeadOptions = NelderMeadOptions(maxit=2000)
 )
 
     if model == "ZZZ" && is_constant(y)

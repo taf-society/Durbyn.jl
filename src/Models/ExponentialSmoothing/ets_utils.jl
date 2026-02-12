@@ -1496,7 +1496,12 @@ function objective_fun(
         nmse,
     )
 
-    lik = ifelse((isnan(lik) || lik < -1e10 || abs(lik + 99999) < 1e-7), Inf, lik)
+    if isnan(lik) || abs(lik + 99999) < 1e-7
+        lik = Inf
+    elseif lik < -1e10
+        # Match forecast::ets behavior: keep very good (near-perfect) fits finite.
+        lik = -1e10
+    end
 
     if opt_crit == "lik"
         return lik
@@ -1539,10 +1544,8 @@ function optim_ets_base(
     opt_gamma = !isnan(init_gamma)
     opt_phi = !isnan(init_phi)
 
-    parscale = max.(abs.(opt_params), 0.1)
-
     result = nmmin(par -> objective_fun(
-            descaler(par, parscale),
+            par,
             y,
             nstate,
             errortype,
@@ -1563,10 +1566,10 @@ function optim_ets_base(
             opt_beta,
             opt_gamma,
             opt_phi,
-        ), scaler(opt_params, parscale),
+        ), opt_params,
         options)
 
-    optimized_params = descaler(result.x_opt, parscale)
+    optimized_params = result.x_opt
     optimized_value = result.f_opt
     number_of_iterations = result.fncount
 
@@ -2279,8 +2282,8 @@ function fit_ets_models(
                 beta,
                 gamma,
                 phi,
-                lower,
-                upper,
+                copy(lower),
+                copy(upper),
                 opt_crit,
                 nmse,
                 bounds,

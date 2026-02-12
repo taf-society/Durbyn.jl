@@ -871,7 +871,30 @@ function _prepare_grouped_newdata(fitted::GroupedFittedModels,
                                   h::Int,
                                   xreg_cols::Vector{Symbol})
     if newdata isa AbstractDict{<:NamedTuple}
-        return Dict{NamedTuple, Any}(k => v for (k, v) in newdata)
+        result = Dict{NamedTuple, Any}(k => v for (k, v) in newdata)
+
+        # Validate xreg columns and horizon for each group
+        if !isempty(xreg_cols)
+            for (key, val) in result
+                isnothing(val) && continue
+                for col in xreg_cols
+                    if !hasproperty(val, col)
+                        throw(ArgumentError(
+                            "Exogenous variable ':$(col)' not found in newdata for group $(key)."
+                        ))
+                    end
+                    n_rows = length(getproperty(val, col))
+                    if n_rows != h
+                        throw(ArgumentError(
+                            "Group $(key) in newdata has $(n_rows) rows for ':$(col)', " *
+                            "but forecast horizon is $(h). Each group must provide exactly h rows."
+                        ))
+                    end
+                end
+            end
+        end
+
+        return result
     elseif Tables.istable(newdata)
         tbl = Tables.columntable(newdata)
 

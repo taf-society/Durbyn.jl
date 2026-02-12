@@ -107,6 +107,23 @@ end
         data = (y = ADOPTION_DATA_MS,)
         @test_throws ArgumentError fit(spec, data)
     end
+
+    @testset "Incompatible terms rejected" begin
+        # Non-diffusion terms should throw, not silently fit Bass
+        spec = DiffusionSpec(@formula(y = p(1) + q(1)))
+        data = (y = ADOPTION_DATA_MS,)
+        @test_throws ArgumentError fit(spec, data)
+    end
+
+    @testset "Grouped incompatible terms rejected" begin
+        n = 10
+        y = vcat(ADOPTION_DATA_MS, ADOPTION_DATA_MS .* 1.2)
+        group = vcat(fill("A", n), fill("B", n))
+        data = (y = y, group = group)
+
+        spec = DiffusionSpec(@formula(y = p(1) + q(1)))
+        @test_throws ArgumentError fit(spec, data, groupby=:group)
+    end
 end
 
 # =================================================================
@@ -141,6 +158,20 @@ end
     fc = forecast(fitted, h=h, newdata=typed_newdata)
     @test fc isa GroupedForecasts
     @test fc.successful >= 1
+
+    # Dict newdata with wrong horizon should throw upfront
+    bad_newdata = Dict(
+        (group="A",) => (x = randn(3),),   # 3 != h=5
+        (group="B",) => (x = randn(h),)
+    )
+    @test_throws ArgumentError forecast(fitted, h=h, newdata=bad_newdata)
+
+    # Dict newdata with missing xreg column should throw upfront
+    missing_col_newdata = Dict(
+        (group="A",) => (z = randn(h),),    # :z not :x
+        (group="B",) => (z = randn(h),)
+    )
+    @test_throws ArgumentError forecast(fitted, h=h, newdata=missing_col_newdata)
 end
 
 # =================================================================

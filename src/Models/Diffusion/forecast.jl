@@ -5,7 +5,7 @@ Functions to generate forecasts from fitted diffusion models.
 """
 
 """
-    forecast(fit::DiffusionFit; h::Int, level::Vector{Int}=[80, 95]) -> Forecast
+    forecast(fit::DiffusionFit; h::Int, level::Vector{<:Real}=[80, 95]) -> Forecast
 
 Generate forecasts from a fitted diffusion model.
 
@@ -14,7 +14,7 @@ Generate forecasts from a fitted diffusion model.
 
 # Keyword Arguments
 - `h::Int`: Forecast horizon (number of periods to forecast)
-- `level::Vector{Int}=[80, 95]`: Confidence levels for prediction intervals
+- `level::Vector{<:Real}=[80, 95]`: Confidence levels for prediction intervals
 
 # Returns
 A `Forecast` object containing point forecasts and prediction intervals.
@@ -88,7 +88,7 @@ curve shape, so we scale by the predicted mean.
 # Arguments
 - `fit::DiffusionFit`: Fitted model
 - `h::Int`: Forecast horizon
-- `level::Vector{Int}`: Confidence levels
+- `level::Vector{<:Real}`: Confidence levels
 
 # Returns
 Dictionary with keys "lo_XX" and "hi_XX" for each confidence level.

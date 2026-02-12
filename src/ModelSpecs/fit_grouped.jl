@@ -1031,29 +1031,34 @@ function fit_grouped(spec::DiffusionSpec, data;
 
     # Extract options from DiffusionTerm and spec
     diff_terms = filter(t -> isa(t, DiffusionTerm), spec.formula.terms)
+    if isempty(diff_terms)
+        throw(ArgumentError(
+            "DiffusionSpec formula must contain a diffusion() term, " *
+            "but none was found in: $(spec.formula)"
+        ))
+    end
+
     fit_options = copy(spec.options)
     merge!(fit_options, Dict{Symbol, Any}(kwargs))
 
-    if !isempty(diff_terms)
-        term = diff_terms[1]
+    term = diff_terms[1]
 
-        model_type = _diffusion_model_type(term.model_type)
-        if !isnothing(model_type) && !haskey(fit_options, :model_type)
-            fit_options[:model_type] = model_type
-        end
+    model_type = _diffusion_model_type(term.model_type)
+    if !isnothing(model_type) && !haskey(fit_options, :model_type)
+        fit_options[:model_type] = model_type
+    end
 
-        w = _diffusion_fixed_params(term)
-        if !isnothing(w) && !haskey(fit_options, :w)
-            fit_options[:w] = w
-        end
+    w = _diffusion_fixed_params(term)
+    if !isnothing(w) && !haskey(fit_options, :w)
+        fit_options[:w] = w
+    end
 
-        if !isnothing(term.loss) && !haskey(fit_options, :loss)
-            fit_options[:loss] = term.loss
-        end
+    if !isnothing(term.loss) && !haskey(fit_options, :loss)
+        fit_options[:loss] = term.loss
+    end
 
-        if !isnothing(term.cumulative) && !haskey(fit_options, :cumulative)
-            fit_options[:cumulative] = term.cumulative
-        end
+    if !isnothing(term.cumulative) && !haskey(fit_options, :cumulative)
+        fit_options[:cumulative] = term.cumulative
     end
 
     parent_mod = parentmodule(@__MODULE__)

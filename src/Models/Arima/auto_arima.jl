@@ -1240,7 +1240,7 @@ function auto_arima(
                 P,
                 D,
                 Q,
-                constant,
+                !constant,
                 result.data,
                 k
             )
@@ -1257,7 +1257,7 @@ function auto_arima(
                     m,
                     order = PDQ(p, d, q),
                     seasonal = PDQ(P, D, Q),
-                    constant = constant,
+                    constant = !constant,
                     ic = ic,
                     trace = trace,
                     approximation = approximation,
@@ -1267,7 +1267,7 @@ function auto_arima(
                     kwargs...,
                 )
 
-                result = setrow!(result, k, (p, d, q, P, D, Q, constant, fit.ic))
+                result = setrow!(result, k, (p, d, q, P, D, Q, !constant, fit.ic))
                 if fit.ic < bestfit.ic
                     bestfit = fit
                     constant = !constant

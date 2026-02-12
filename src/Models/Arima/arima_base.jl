@@ -2107,8 +2107,9 @@ function arima(
             res = (converged = true, minimizer = zeros(0), minimum = armaCSS(zeros(0)))
         else
             ctrl = copy(optim_control)
-            ctrl["parscale"] = parscale
+            ctrl["parscale"] = parscale[mask]
             # CSS needs larger finite-difference step and more iterations
+            # than R's defaults to compensate for subtle BFGS implementation differences
             if !haskey(ctrl, "ndeps")
                 ctrl["ndeps"] = fill(1e-2, sum(mask))
             end
@@ -2179,8 +2180,9 @@ function arima(
                 )
             else
                 ctrl = copy(optim_control)
-                ctrl["parscale"] = parscale
+                ctrl["parscale"] = parscale[mask]
                 # CSS pre-init needs larger finite-difference step and more iterations
+                # than R's defaults to compensate for subtle BFGS implementation differences
                 if !haskey(ctrl, "ndeps")
                     ctrl["ndeps"] = fill(1e-2, sum(mask))
                 end
@@ -2253,7 +2255,7 @@ function arima(
             )
         else
             ctrl = copy(optim_control)
-            ctrl["parscale"] = parscale
+            ctrl["parscale"] = parscale[mask]
 
             opt = optim(
                 init[mask],

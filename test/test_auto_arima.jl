@@ -353,3 +353,85 @@ get_D(fit) = fit.arma[7]
     end
 
 end
+
+@testset "Auto ARIMA Parity Regression Tests" begin
+
+    # Nile river flow data (1871-1970) — standard R dataset
+    nile = [
+        1120.0, 1160.0, 963.0, 1210.0, 1160.0, 1160.0, 813.0, 1230.0, 1370.0, 1140.0,
+        995.0, 935.0, 1110.0, 994.0, 1020.0, 960.0, 1180.0, 799.0, 958.0, 1140.0,
+        1100.0, 1210.0, 1150.0, 1250.0, 1260.0, 1220.0, 1030.0, 1100.0, 774.0, 840.0,
+        874.0, 694.0, 940.0, 833.0, 701.0, 916.0, 692.0, 1020.0, 1050.0, 969.0,
+        831.0, 726.0, 456.0, 824.0, 702.0, 1120.0, 1100.0, 832.0, 764.0, 821.0,
+        768.0, 845.0, 864.0, 862.0, 698.0, 845.0, 744.0, 796.0, 1040.0, 759.0,
+        781.0, 865.0, 845.0, 944.0, 984.0, 897.0, 822.0, 1010.0, 771.0, 676.0,
+        649.0, 846.0, 812.0, 742.0, 801.0, 1040.0, 860.0, 874.0, 848.0, 890.0,
+        744.0, 749.0, 838.0, 1050.0, 918.0, 986.0, 797.0, 923.0, 975.0, 815.0,
+        1020.0, 906.0, 901.0, 1170.0, 912.0, 746.0, 919.0, 718.0, 714.0, 740.0,
+    ]
+
+    @testset "Constant toggle: d=1 prefers no-drift (Nile)" begin
+        # Regression test for !constant toggle fix in stepwise search.
+        # R's auto_arima on Nile with d=1 selects ARIMA(1,1,1) WITHOUT drift
+        # because the no-drift model has lower BIC. Before the fix, Julia
+        # always tried the same constant setting, never toggling to !constant.
+        fit = auto_arima(nile, 1; d=1, seasonal=false, ic="bic")
+
+        # Model should NOT include drift — the toggled (no-drift) model wins on BIC
+        @test !("drift" in fit.coef.colnames)
+
+        # R reference: BIC ≈ 1275.04
+        @test isapprox(fit.bic, 1275.04, rtol=0.005)
+    end
+
+    @testset "Constant toggle: nonseasonal auto selects no-drift (Nile)" begin
+        # Same bug, different entry point: seasonal=false without forced d
+        fit = auto_arima(nile, 1; seasonal=false)
+
+        # Should select ARIMA(1,1,1) without drift
+        @test get_p(fit) == 1
+        @test get_d(fit) == 1
+        @test get_q(fit) == 1
+        @test !("drift" in fit.coef.colnames)
+    end
+
+    @testset "Approximation refit uses IC-sorted order" begin
+        # Regression test for refit ordering fix.
+        # When approximation=true, the refit loop should try models in
+        # best-IC-first order (using icorder[i]), not sequential order.
+        # The approximate search may follow a different path (different ICs during
+        # exploration), but the final refit should produce a competitive model.
+
+        # AirPassengers (monthly airline data, n=144, m=12)
+        airpassengers = [
+            112.0, 118.0, 132.0, 129.0, 121.0, 135.0, 148.0, 148.0, 136.0, 119.0, 104.0, 118.0,
+            115.0, 126.0, 141.0, 135.0, 125.0, 149.0, 170.0, 170.0, 158.0, 133.0, 114.0, 140.0,
+            145.0, 150.0, 178.0, 163.0, 172.0, 178.0, 199.0, 199.0, 184.0, 162.0, 146.0, 166.0,
+            171.0, 180.0, 193.0, 181.0, 183.0, 218.0, 230.0, 242.0, 209.0, 191.0, 172.0, 194.0,
+            196.0, 196.0, 236.0, 235.0, 229.0, 243.0, 264.0, 272.0, 237.0, 211.0, 180.0, 201.0,
+            204.0, 188.0, 235.0, 227.0, 234.0, 264.0, 302.0, 293.0, 259.0, 229.0, 203.0, 229.0,
+            242.0, 233.0, 267.0, 269.0, 270.0, 315.0, 364.0, 347.0, 312.0, 274.0, 237.0, 278.0,
+            284.0, 277.0, 317.0, 313.0, 318.0, 374.0, 413.0, 405.0, 355.0, 306.0, 271.0, 306.0,
+            315.0, 301.0, 356.0, 348.0, 355.0, 422.0, 465.0, 467.0, 404.0, 347.0, 305.0, 336.0,
+            340.0, 318.0, 362.0, 348.0, 363.0, 435.0, 491.0, 505.0, 404.0, 359.0, 310.0, 337.0,
+            360.0, 342.0, 406.0, 396.0, 420.0, 472.0, 548.0, 559.0, 463.0, 407.0, 362.0, 405.0,
+            417.0, 391.0, 419.0, 461.0, 472.0, 535.0, 622.0, 606.0, 508.0, 461.0, 390.0, 432.0,
+        ]
+
+        fit_exact = auto_arima(airpassengers, 12; approximation=false, stepwise=true)
+        fit_approx = auto_arima(airpassengers, 12; approximation=true, stepwise=true)
+
+        # Both should produce valid, competitive models
+        @test isfinite(fit_approx.aicc)
+        @test isfinite(fit_exact.aicc)
+
+        # Approximation refit should produce AICc within 5% of exact search
+        # (the refit ordering ensures the best explored model is selected)
+        @test fit_approx.aicc < fit_exact.aicc * 1.05
+
+        # Both should have d=1, D=1 (same differencing on AirPassengers)
+        @test get_d(fit_approx) == get_d(fit_exact)
+        @test get_D(fit_approx) == get_D(fit_exact)
+    end
+
+end

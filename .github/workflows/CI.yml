@@ -74,5 +74,5 @@ jobs:
         run: |
           using Documenter: DocMeta, doctest
           using Durbyn
-          DocMeta.setdocmeta!(Durbyn, :DocTestSetup, :(using Durbyn); recursive=true)
+          DocMeta.setdocmeta!(Durbyn, :DocTestSetup, :(using Durbyn; using Durbyn.Utils: is_constant, is_constant_all, head, tail); recursive=true)
           doctest(Durbyn)

@@ -2295,7 +2295,7 @@ function arima(
                 _old_convergence = res.converged  # Preserved for potential future use
 
                 ctrl = copy(optim_control)
-                ctrl["parscale"] = parscale
+                ctrl["parscale"] = parscale[mask]
                 ctrl["maxit"] = 0
 
                 opt = optim(

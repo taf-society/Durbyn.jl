@@ -1292,7 +1292,8 @@ function auto_arima(
         icorder = sortperm(icorder)
 
         for i = 1:nmodels
-            mod = get_elements(result, row = i)
+            k = icorder[i]
+            mod = get_elements(result, row = k)
 
             fit = fit_custom_arima(
                 x,

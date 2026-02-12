@@ -153,10 +153,10 @@ julia> X = [1.0  NaN   2.0;
             1.0  NaN   3.0];
 
 julia> is_constant(X)
-3-element BitVector:
-  1  # first column all 1.0
-  1  # second column all NaN (treated equal)
-  0  # third column has 2.0 and 3.0
+3-element Vector{Bool}:
+ 1
+ 1
+ 0
 
 julia> all(is_constant, eachcol(X))
 false

@@ -257,7 +257,7 @@ end
 function _optim_bfgs(par, fn, gr, con, parscale)
     # Convert to internal function signature: f(n, x, ex)
     fn_internal(n, x, ex) = fn(x)
-    gr_internal = isnothing(gr) ? nothing : (n, x, ex) -> gr(x)
+    gr_internal = isnothing(gr) ? nothing : (n, x, grad, ex) -> (grad .= gr(x); nothing)
 
     opts = BFGSOptions(
         abstol = con["abstol"],

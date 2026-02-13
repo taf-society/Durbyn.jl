@@ -129,6 +129,13 @@ function optim(par::Vector{Float64}, fn::Function;
         error("method = \"Brent\" is only available for one-dimensional optimization")
     end
 
+    # Brent requires finite bounds (matching R's error)
+    if method == "Brent"
+        if !isfinite(lower isa Vector ? lower[1] : lower) || !isfinite(upper isa Vector ? upper[1] : upper)
+            error("method = \"Brent\" requires finite 'lower' and 'upper' bounds")
+        end
+    end
+
     if method == "Nelder-Mead" && npar == 1
         @warn "one-dimensional optimization by Nelder-Mead is unreliable: use \"Brent\" instead"
     end
@@ -157,14 +164,15 @@ function optim(par::Vector{Float64}, fn::Function;
         "type" => 1
     )
 
-    # Override with user control
-    merge!(con, control)
-
-    # Validate control parameters
-    unknown = setdiff(keys(control), keys(con))
+    # Validate control parameters before merging
+    known_keys = keys(con)
+    unknown = setdiff(keys(control), known_keys)
     if !isempty(unknown)
         @warn "unknown names in control: $(join(unknown, ", "))"
     end
+
+    # Override with user control
+    merge!(con, control)
 
     if con["trace"] < 0
         @warn "read the documentation for 'trace' more carefully"
@@ -294,12 +302,13 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     gr_internal = if !isnothing(gr)
         (n, x, ex) -> gr(x)
     else
-        # Create numerical gradient function
+        # Create bounded numerical gradient function (respects box constraints)
         npar = length(par)
         ndeps = con["ndeps"]
         cache = NumericalGradientCache(npar)
         (n, x, ex) -> begin
-            numgrad!(cache.df, cache.xtrial, fn_internal, n, x, ex, ndeps)
+            numgrad_bounded!(cache.df, cache.xtrial, fn_internal, n, x, ex, ndeps,
+                             lower_scaled, upper_scaled)
             return cache.df
         end
     end
@@ -315,13 +324,25 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     result = lbfgsbmin(fn_internal, gr_internal, par;
                        l=lower_scaled, u=upper_scaled, options=opts)
 
+    # Translate fail codes to R-compatible convergence codes:
+    # 0 = converged, 1 = maxit reached, 51 = warning, 52 = error
+    convergence = if result.fail == 0
+        0
+    elseif result.fail == 52
+        52
+    elseif result.fail == 1 && result.n_iter >= opts.maxit
+        1
+    else
+        51
+    end
+
     return (
         par = result.x_opt .* parscale,
         value = result.f_opt * con["fnscale"],
         fn_evals = result.fn_evals,
         gr_evals = result.gr_evals,
-        fail = result.fail,
-        message = nothing
+        fail = convergence,
+        message = result.message
     )
 end
 

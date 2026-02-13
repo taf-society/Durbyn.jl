@@ -8,13 +8,16 @@ function compute_gradient(p, fn, gr, fnscale, parscale, ndeps; kwargs...)
         return df
     end
 
-    x = p
+    # p is in scaled coordinates (par / parscale).
+    # fn expects unscaled (original) coordinates, so unscale all coordinates
+    # and perturb one at a time by eps * parscale[i].
+    x = p .* parscale
     for i in 1:n
         eps = ndeps[i]
-        xp = copy(x); xp[i] = (p[i] + eps) * parscale[i]
+        xp = copy(x); xp[i] += eps * parscale[i]
         val1 = fn(xp; kwargs...) / fnscale
 
-        xm = copy(x); xm[i] = (p[i] - eps) * parscale[i]
+        xm = copy(x); xm[i] -= eps * parscale[i]
         val2 = fn(xm; kwargs...) / fnscale
 
         df[i] = (val1 - val2) / (2 * eps)

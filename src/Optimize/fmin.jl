@@ -165,7 +165,16 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
     funcount = 1
 
     if !isfinite(fx)
-        error("Function cannot be evaluated at initial point")
+        # Match R's behavior: substitute large value and continue
+        if fx == -Inf
+            @warn "-Inf replaced by maximally negative value"
+            fx = -floatmax(Float64)
+        else
+            @warn "$(isnan(fx) ? "NaN" : "Inf") replaced by maximum positive value"
+            fx = floatmax(Float64)
+        end
+        fv = fx
+        fw = fx
     end
 
     if trace
@@ -251,7 +260,14 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
         end
 
         if !isfinite(fu)
-            error("Function evaluation resulted in non-finite value at x = $u")
+            # Match R's behavior: substitute large value and continue (R's optimize.c)
+            if fu == -Inf
+                @warn "-Inf replaced by maximally negative value"
+                fu = -floatmax(Float64)
+            else
+                @warn "$(isnan(fu) ? "NaN" : "Inf") replaced by maximum positive value"
+                fu = floatmax(Float64)
+            end
         end
 
         # Update a, b, v, w, and x

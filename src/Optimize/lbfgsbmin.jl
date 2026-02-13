@@ -131,12 +131,13 @@ function _line_search_wolfe!(x::Vector{Float64}, fx::Float64, gx::Vector{Float64
     end
 
     alpha_max = _feasible_step_cap(x, d, l, u)
-    if !(alpha_max > 0.0) || !isfinite(alpha_max)
+    if !(alpha_max > 0.0)
         return false, 0.0, fx, gx, x, 0, 0
     end
 
     Dnorm = sqrt(dot(d, d))
-    alpha = min(iter == 1 ? (1.0 / max(Dnorm, eps())) : 1.0, alpha_max)
+    alpha_init = iter == 1 ? (1.0 / max(Dnorm, eps())) : 1.0
+    alpha = isfinite(alpha_max) ? min(alpha_init, alpha_max) : alpha_init
 
     xtrial = similar(x)
     gtrial = similar(gx)
@@ -315,6 +316,16 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
             u2[i] = x0[i]
         end
     end
+
+    # Check for infeasible bounds (matches R's L-BFGS-B error)
+    @inbounds for i in 1:n
+        if l2[i] > u2[i]
+            return (x_opt=copy(x0), f_opt=Inf, n_iter=0,
+                fail=52, fn_evals=0, gr_evals=0,
+                message="ERROR: NO FEASIBLE SOLUTION")
+        end
+    end
+
     nbd = _nbd_from_bounds(l2, u2)
 
     # Initialize
@@ -331,6 +342,7 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
     f_tol = options.factr * eps(Float64)
     f_prev = fx
     fail = 1
+    message = "ITERATION LIMIT REACHED"
     iter = 0
 
     S = Vector{Vector{Float64}}()
@@ -346,6 +358,7 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
 
         if pg_norm_inf <= options.pgtol
             fail = 0
+            message = "CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL"
             break
         end
 
@@ -382,6 +395,7 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
 
         if maximum(abs, d) < 1e-16
             fail = 0
+            message = "CONVERGENCE: ZERO_SEARCH_DIRECTION"
             break
         end
 
@@ -394,7 +408,8 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
         end
 
         if !ok
-            fail = 1
+            fail = 52
+            message = "ERROR: ABNORMAL_TERMINATION_IN_LNSRCH"
             break
         end
 
@@ -422,12 +437,19 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
         rel_decr = abs(f_prev - fx) / max(1.0, abs(f_prev), abs(fx))
         f_prev = fx
 
-        if (pg_norm_inf <= options.pgtol) || (rel_decr <= f_tol)
+        if pg_norm_inf <= options.pgtol
             fail = 0
+            message = "CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL"
+            break
+        end
+        if rel_decr <= f_tol
+            fail = 0
+            message = "CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH"
             break
         end
     end
 
     return (x_opt=x, f_opt=fx, n_iter=iter,
-        fail=fail, fn_evals=fn_evals, gr_evals=gr_evals)
+        fail=fail, fn_evals=fn_evals, gr_evals=gr_evals,
+        message=message)
 end

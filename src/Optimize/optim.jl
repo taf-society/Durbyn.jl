@@ -105,6 +105,7 @@ Parameter and function scaling follow R's convention:
 function _rep_len(x::Vector{Float64}, n::Int)
     lx = length(x)
     lx == n && return x
+    lx == 0 && error("cannot recycle zero-length vector to length $n")
     return Float64[x[mod1(i, lx)] for i in 1:n]
 end
 
@@ -165,7 +166,7 @@ function optim(par::Vector{Float64}, fn::Function;
         "factr" => 1e7,
         "pgtol" => 0.0,
         "type" => 1,
-        "warn.1d.NM" => true
+        "warn.1d.NelderMead" => true
     )
 
     # Validate control parameters before merging
@@ -182,12 +183,16 @@ function optim(par::Vector{Float64}, fn::Function;
         @warn "read the documentation for 'trace' more carefully"
     end
 
-    # Validate/recycle parscale and ndeps to match npar (R uses rep_len internally)
+    # Validate parscale and ndeps length (R's optim.c errors on mismatch)
+    ps = con["parscale"]
+    con["parscale"] = ps isa Number ? fill(Float64(ps), npar) : Float64.(ps)
     if length(con["parscale"]) != npar
-        con["parscale"] = _rep_len(Float64.(con["parscale"]), npar)
+        error("'parscale' is of the wrong length")
     end
+    nd = con["ndeps"]
+    con["ndeps"] = nd isa Number ? fill(Float64(nd), npar) : Float64.(nd)
     if length(con["ndeps"]) != npar
-        con["ndeps"] = _rep_len(Float64.(con["ndeps"]), npar)
+        error("'ndeps' is of the wrong length")
     end
 
     # Warnings for method-specific parameters
@@ -195,7 +200,7 @@ function optim(par::Vector{Float64}, fn::Function;
         @warn "method L-BFGS-B uses 'factr' (and 'pgtol') instead of 'reltol' and 'abstol'"
     end
 
-    if method == "Nelder-Mead" && npar == 1 && con["warn.1d.NM"]
+    if method == "Nelder-Mead" && npar == 1 && con["warn.1d.NelderMead"]
         @warn "one-dimensional optimization by Nelder-Mead is unreliable: use \"Brent\" instead"
     end
 

@@ -241,6 +241,83 @@ sphere_grad(x) = 2.0 .* x
         @test result.convergence == 1
     end
 
+    @testset "L-BFGS-B errors on non-finite fn (bug fix)" begin
+        # R: "L-BFGS-B needs finite values of 'fn'"
+        # Initial evaluation returns NaN → fail=52
+        f_nan(x) = NaN
+        result = optim([1.0, 1.0], f_nan; method="L-BFGS-B")
+        @test result.convergence == 52
+        @test occursin("FINITE VALUES", result.message)
+    end
+
+    @testset "L-BFGS-B errors on mid-iteration non-finite fn (bug fix)" begin
+        # Function that starts finite but returns NaN after 2 evaluations.
+        # Use analytic gradient to avoid numgrad_bounded! erroring first.
+        calls = Ref(0)
+        f_delayed_nan(x) = begin
+            calls[] += 1
+            calls[] > 2 ? NaN : sum(x .^ 2)
+        end
+        gr_delayed_nan(x) = 2.0 .* x
+        result = optim([5.0, 3.0], f_delayed_nan; gr=gr_delayed_nan, method="L-BFGS-B")
+        # Should fail with code 52, not falsely converge with NaN
+        @test result.convergence == 52
+        @test occursin("FINITE VALUES", result.message)
+    end
+
+    @testset "Brent returns convergence=0 and nothing counts (R compat)" begin
+        # R's optim() Brent path always returns convergence=0 and counts=NA
+        f1d(x) = (x[1] - 2.0)^2
+        result = optim([3.0], f1d; method="Brent", lower=-10.0, upper=10.0)
+        @test result.convergence == 0
+        @test result.counts.function_ === nothing
+        @test result.counts.gradient === nothing
+    end
+
+    @testset "Brent convergence=0 even with small maxit (R compat)" begin
+        # R always returns 0 for Brent; Julia used to return fail=1
+        f1d(x) = (x[1] - 2.0)^2
+        result = optim([3.0], f1d; method="Brent", lower=-10.0, upper=10.0,
+                       control=Dict("maxit" => 2))
+        @test result.convergence == 0
+    end
+
+    @testset "Bounds length recycling (R rep_len compat)" begin
+        # Scalar lower with vector upper should work (scalar already handled)
+        # Mismatched vector lengths: short vector recycled to npar
+        result = optim([5.0, 5.0, 5.0], sphere; method="L-BFGS-B",
+                       lower=[0.0], upper=[10.0, 10.0, 10.0])
+        @test length(result.par) == 3
+        @test all(result.par .>= 0.0)
+
+        # Long vector truncated to npar
+        result2 = optim([5.0, 5.0], sphere; method="L-BFGS-B",
+                        lower=[-10.0, -10.0, -10.0], upper=[10.0, 10.0, 10.0])
+        @test length(result2.par) == 2
+    end
+
+    @testset "parscale/ndeps length recycling (R compat)" begin
+        # Short parscale recycled to match npar
+        result = optim([5.0, 5.0, 5.0], sphere; method="BFGS",
+                       control=Dict("parscale" => [1.0]))
+        @test length(result.par) == 3
+        @test result.convergence == 0
+
+        # Short ndeps recycled
+        result2 = optim([5.0, 5.0], sphere; method="BFGS",
+                        control=Dict("ndeps" => [1e-4]))
+        @test length(result2.par) == 2
+        @test result2.convergence == 0
+    end
+
+    @testset "warn.1d.NM control suppresses warning (R compat)" begin
+        # Default: warning fires for 1D Nelder-Mead
+        @test_warn "Nelder-Mead is unreliable" optim([5.0], sphere)
+
+        # With warn.1d.NM=false: no warning
+        @test_nowarn optim([5.0], sphere; control=Dict("warn.1d.NM" => false))
+    end
+
     # ── Existing tests (preserved) ──────────────────────────────────────────
     @testset "Nelder-Mead (nmmin)" begin
 

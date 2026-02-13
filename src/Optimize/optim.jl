@@ -220,9 +220,18 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
     parscale = con["parscale"]
 
     fn_scaled = if fnscale != 1.0 || any(parscale .!= 1.0)
-        x -> fn(x .* parscale; kwargs...) / fnscale
+        x -> begin
+            val = fn(x .* parscale; kwargs...)
+            # R's optim.c:82-84 validates objective returns scalar
+            val isa Number || error("objective function in optim evaluates to length $(length(val)) not 1")
+            val / fnscale
+        end
     else
-        x -> fn(x; kwargs...)
+        x -> begin
+            val = fn(x; kwargs...)
+            val isa Number || error("objective function in optim evaluates to length $(length(val)) not 1")
+            val
+        end
     end
 
     gr_scaled = if !isnothing(gr)
@@ -351,10 +360,15 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     lower_scaled = lower ./ parscale
     upper_scaled = upper ./ parscale
 
+    # Track evaluation counts externally so they survive exceptions
+    fn_count = Ref(0)
+    gr_count = Ref(0)
+
     # Convert to internal function signature.
     # R's optim.c:684 checks !R_FINITE(f) after every fn evaluation inside
     # the L-BFGS-B loop and hard-errors. We match this by checking in the wrapper.
     fn_internal(n, x, ex) = begin
+        fn_count[] += 1
         val = fn(x)
         if !isfinite(val)
             error("L-BFGS-B needs finite values of 'fn'")
@@ -364,13 +378,17 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
 
     # L-BFGS-B requires a gradient function - use numerical gradients if not provided
     gr_internal = if !isnothing(gr)
-        (n, x, ex) -> gr(x)
+        (n, x, ex) -> begin
+            gr_count[] += 1
+            gr(x)
+        end
     else
         # Create bounded numerical gradient function (respects box constraints)
-        npar = length(par)
+        npar_local = length(par)
         ndeps = con["ndeps"]
-        cache = NumericalGradientCache(npar)
+        cache = NumericalGradientCache(npar_local)
         (n, x, ex) -> begin
+            gr_count[] += 1
             numgrad_bounded!(cache.df, cache.xtrial, fn_internal, n, x, ex, ndeps,
                              lower_scaled, upper_scaled)
             return cache.df
@@ -391,8 +409,9 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     catch e
         if e isa ErrorException && e.msg == "L-BFGS-B needs finite values of 'fn'"
             # R-compatible error: convergence=52 with message
+            # Use external counters to preserve actual evaluation counts
             (x_opt=copy(par), f_opt=NaN, n_iter=0,
-             fail=52, fn_evals=0, gr_evals=0,
+             fail=52, fn_evals=fn_count[], gr_evals=gr_count[],
              message="ERROR: L-BFGS-B NEEDS FINITE VALUES OF FN")
         else
             rethrow(e)

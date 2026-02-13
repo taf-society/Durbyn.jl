@@ -134,6 +134,11 @@ Englewood Cliffs, N.J.: Prentice-Hall.
 - [`bfgsmin`](@ref): BFGS quasi-Newton algorithm for multidimensional optimization with gradients.
 """
 function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=FminOptions())
+    # R's optimize.c:267 checks xmin < xmax
+    if lower >= upper
+        error("'xmin' not less than 'xmax'")
+    end
+
     tol = options.tol
     trace = options.trace
     maxit = options.maxit

@@ -339,6 +339,37 @@ sphere_grad(x) = 2.0 .* x
         @test all(result2.par .>= 0.0)
     end
 
+    @testset "Brent errors when lower >= upper (R compat)" begin
+        # R's optimize.c:267 checks: xmin >= xmax → error
+        @test_throws ErrorException optim([0.0], x -> x[1]^2;
+                       method="Brent", lower=5.0, upper=1.0)
+        # Equal bounds also invalid
+        @test_throws ErrorException optim([0.0], x -> x[1]^2;
+                       method="Brent", lower=3.0, upper=3.0)
+    end
+
+    @testset "Gradient length validated (R compat)" begin
+        # R's optim.c:109-111: "gradient in optim evaluated to length X not Y"
+        bad_gr(x) = [1.0]  # returns length 1 for a 2-param problem
+        @test_throws ErrorException optim([1.0, 1.0], sphere;
+                       gr=bad_gr, method="BFGS")
+        @test_throws ErrorException optim([1.0, 1.0], sphere;
+                       gr=bad_gr, method="L-BFGS-B",
+                       lower=[-5.0, -5.0], upper=[5.0, 5.0])
+    end
+
+    @testset "L-BFGS-B zero-parameter returns NOTHING TO DO (R compat)" begin
+        # R's optim.c:653-659 special-cases n=0
+        f_empty(x) = 42.0
+        result = optim(Float64[], f_empty; method="L-BFGS-B")
+        @test result.convergence == 0
+        @test result.value == 42.0
+        @test result.counts.function_ == 1
+        @test result.counts.gradient == 0
+        @test result.message == "NOTHING TO DO"
+        @test isempty(result.par)
+    end
+
     @testset "warn.1d.NelderMead control suppresses warning (R compat)" begin
         # Default: warning fires for 1D Nelder-Mead
         @test_warn "Nelder-Mead is unreliable" optim([5.0], sphere)

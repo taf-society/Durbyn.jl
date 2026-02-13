@@ -104,6 +104,8 @@ Parameter and function scaling follow R's convention:
 # R's optim.c:80-84: coerces result to numeric scalar, validates length==1.
 # Accepts Number (passthrough) or length-1 array (extracts element).
 _to_scalar(val::Number) = Float64(val)
+_to_scalar(::Nothing) = error("objective function in optim evaluates to length 0 not 1")
+_to_scalar(::Missing) = error("objective function in optim evaluates to length 0 not 1")
 function _to_scalar(val)
     length(val) == 1 || error("objective function in optim evaluates to length $(length(val)) not 1")
     Float64(first(val))
@@ -188,15 +190,18 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
         "warn.1d.NelderMead" => true
     )
 
+    # Coerce Symbol keys to String (R's list names are always strings)
+    control_str = Dict{String,Any}(string(k) => v for (k, v) in control)
+
     # Validate control parameters before merging
     known_keys = keys(con)
-    unknown = setdiff(keys(control), known_keys)
+    unknown = setdiff(keys(control_str), known_keys)
     if !isempty(unknown)
         @warn "unknown names in control: $(join(unknown, ", "))"
     end
 
     # Override with user control
-    merge!(con, control)
+    merge!(con, control_str)
 
     if con["trace"] < 0
         @warn "read the documentation for 'trace' more carefully"
@@ -243,19 +248,16 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
     end
 
     gr_scaled = if !isnothing(gr)
+        _check_grad = g -> begin
+            # R's optim.c:109-111 validates gradient length every call
+            (g isa AbstractVector && length(g) == npar) ||
+                error("gradient in optim evaluated to length $(g isa AbstractVector ? length(g) : 0) not $npar")
+            g
+        end
         if fnscale != 1.0 || any(parscale .!= 1.0)
-            x -> begin
-                g = gr(x .* parscale; kwargs...)
-                # R's optim.c:109-111 validates gradient length every call
-                length(g) == npar || error("gradient in optim evaluated to length $(length(g)) not $npar")
-                (g .* parscale) / fnscale
-            end
+            x -> (_check_grad(gr(x .* parscale; kwargs...)) .* parscale) / fnscale
         else
-            x -> begin
-                g = gr(x; kwargs...)
-                length(g) == npar || error("gradient in optim evaluated to length $(length(g)) not $npar")
-                g
-            end
+            x -> _check_grad(gr(x; kwargs...))
         end
     else
         nothing

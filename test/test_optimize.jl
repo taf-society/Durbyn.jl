@@ -370,6 +370,39 @@ sphere_grad(x) = 2.0 .* x
         @test isempty(result.par)
     end
 
+    @testset "Objective returning non-scalar errors clearly (R compat)" begin
+        # R's optim.c:82-84: "objective function in optim evaluates to length N not 1"
+        fn_vec(x) = [x[1]^2, x[1]]
+        @test_throws ErrorException optim([1.0, 1.0], fn_vec)
+        @test_throws ErrorException optim([1.0, 1.0], fn_vec; method="BFGS")
+        @test_throws ErrorException optim([1.0, 1.0], fn_vec; method="L-BFGS-B",
+                       lower=[-5.0, -5.0], upper=[5.0, 5.0])
+    end
+
+    @testset "Direct fmin errors when lower >= upper (R compat)" begin
+        # R's optimize.c:267: xmin >= xmax → error
+        f(x) = (x - 2.0)^2
+        @test_throws ErrorException fmin(f, 5.0, -5.0)
+        @test_throws ErrorException fmin(f, 3.0, 3.0)
+        # Valid interval still works
+        result = fmin(f, 0.0, 5.0)
+        @test abs(result.x_opt - 2.0) < 0.01
+    end
+
+    @testset "L-BFGS-B error path preserves evaluation counts (bug fix)" begin
+        # fn that becomes NaN after a few calls — counts should be > 0
+        calls = Ref(0)
+        f_delayed_nan2(x) = begin
+            calls[] += 1
+            calls[] > 2 ? NaN : sum(x .^ 2)
+        end
+        gr_for_count(x) = 2.0 .* x
+        result = optim([5.0, 3.0], f_delayed_nan2; gr=gr_for_count, method="L-BFGS-B")
+        @test result.convergence == 52
+        @test result.counts.function_ > 0
+        @test result.counts.gradient > 0
+    end
+
     @testset "warn.1d.NelderMead control suppresses warning (R compat)" begin
         # Default: warning fires for 1D Nelder-Mead
         @test_warn "Nelder-Mead is unreliable" optim([5.0], sphere)

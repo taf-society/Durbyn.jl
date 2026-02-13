@@ -160,6 +160,87 @@ sphere_grad(x) = 2.0 .* x
         @test isapprox(H[2,2], 200.0, rtol=0.05)
     end
 
+    # ── Bug fix regression tests ──────────────────────────────────────────
+    @testset "L-BFGS-B unbounded convergence (bug fix)" begin
+        # Previously: line search rejected alpha_max=Inf, returning unchanged params
+        result = optim([5.0, 3.0], sphere; method="L-BFGS-B")
+        @test result.convergence == 0
+        @test all(abs.(result.par) .< 0.1)
+        @test result.value < 0.01
+    end
+
+    @testset "L-BFGS-B one-sided bounds convergence (bug fix)" begin
+        # lower finite, upper=Inf
+        result = optim([5.0, 5.0], sphere; method="L-BFGS-B",
+                       lower=[0.0, 0.0], upper=[Inf, Inf])
+        @test result.convergence == 0
+        @test all(abs.(result.par) .< 0.1)
+    end
+
+    @testset "L-BFGS-B bounded numgrad stays in bounds (bug fix)" begin
+        # Previously: unbounded numgrad! could evaluate outside feasible region
+        f_sqrt(x) = sum(sqrt.(x))
+        result = optim([4.0, 4.0], f_sqrt; method="L-BFGS-B",
+                       lower=[0.001, 0.001], upper=[10.0, 10.0])
+        @test all(result.par .>= 0.0)
+        @test result.convergence == 0
+    end
+
+    @testset "optim_hessian with parscale (bug fix)" begin
+        # Previously: mixed scaled/unscaled coordinates corrupted mixed partials
+        f_cross(x) = x[1] * x[2]
+        H = optim_hessian(f_cross, [2.0, 3.0]; parscale=[2.0, 5.0])
+        @test isapprox(H[1,2], 1.0, atol=0.01)
+        @test isapprox(H[2,1], 1.0, atol=0.01)
+        @test isapprox(H[1,1], 0.0, atol=0.01)
+        @test isapprox(H[2,2], 0.0, atol=0.01)
+    end
+
+    @testset "Unknown control key warning (bug fix)" begin
+        # Previously: warning never triggered due to merge! before setdiff
+        @test_warn "unknown names in control" optim([1.0, 1.0], sphere;
+                                                     control=Dict("bogus" => 42))
+    end
+
+    @testset "Brent requires finite bounds (bug fix)" begin
+        @test_throws ErrorException optim([1.0], x -> x[1]^2;
+                                          method="Brent", lower=-Inf, upper=Inf)
+        @test_throws ErrorException optim([1.0], x -> x[1]^2;
+                                          method="Brent", lower=-Inf, upper=10.0)
+    end
+
+    @testset "Brent handles non-finite evaluations (bug fix)" begin
+        # Function that returns NaN at the initial evaluation point.
+        # Previously fmin would hard-error; now it substitutes like R's optimize().
+        f_nan(x) = x < 2.0 ? NaN : (x - 3.0)^2
+        # Initial point for [0,5] is at ~1.91 which returns NaN
+        result = @test_warn r"NaN|Inf" fmin(f_nan, 0.0, 5.0)
+        @test isfinite(result.f_opt)
+    end
+
+    @testset "L-BFGS-B convergence message (bug fix)" begin
+        # Previously: always returned message=nothing
+        result = optim([5.0, 3.0], sphere; method="L-BFGS-B")
+        @test result.message !== nothing
+        @test occursin("CONVERGENCE", result.message)
+    end
+
+    @testset "L-BFGS-B infeasible bounds returns code 52 (bug fix)" begin
+        # R returns convergence=52, message="ERROR: NO FEASIBLE SOLUTION"
+        result = optim([1.0, 1.0], sphere; method="L-BFGS-B",
+                       lower=[5.0, 5.0], upper=[0.0, 0.0])  # lower > upper
+        @test result.convergence == 52
+        @test occursin("NO FEASIBLE SOLUTION", result.message)
+    end
+
+    @testset "L-BFGS-B maxit convergence code (bug fix)" begin
+        # Force maxit with very few iterations
+        result = optim([-1.2, 1.0], rosenbrock; method="L-BFGS-B",
+                       lower=[-5.0, -5.0], upper=[5.0, 5.0],
+                       control=Dict("maxit" => 1))
+        @test result.convergence == 1
+    end
+
     # ── Existing tests (preserved) ──────────────────────────────────────────
     @testset "Nelder-Mead (nmmin)" begin
 

@@ -101,6 +101,13 @@ Parameter and function scaling follow R's convention:
 - Function values are scaled by `1/fnscale`
 - This improves conditioning when parameters have different scales
 """
+# R's rep_len: recycle or truncate a vector to length n
+function _rep_len(x::Vector{Float64}, n::Int)
+    lx = length(x)
+    lx == n && return x
+    return Float64[x[mod1(i, lx)] for i in 1:n]
+end
+
 function optim(par::Vector{Float64}, fn::Function;
                gr::Union{Function,Nothing}=nothing,
                method::String="Nelder-Mead",
@@ -136,13 +143,9 @@ function optim(par::Vector{Float64}, fn::Function;
         end
     end
 
-    if method == "Nelder-Mead" && npar == 1
-        @warn "one-dimensional optimization by Nelder-Mead is unreliable: use \"Brent\" instead"
-    end
-
-    # Expand bounds to vectors
-    lower_vec = lower isa Float64 ? fill(lower, npar) : lower
-    upper_vec = upper isa Float64 ? fill(upper, npar) : upper
+    # Expand bounds to vectors (R uses rep_len to recycle/truncate)
+    lower_vec = lower isa Float64 ? fill(lower, npar) : _rep_len(lower, npar)
+    upper_vec = upper isa Float64 ? fill(upper, npar) : _rep_len(upper, npar)
 
     # Default control parameters (matching R, with Julia enhancements)
     con = Dict{String,Any}(
@@ -161,7 +164,8 @@ function optim(par::Vector{Float64}, fn::Function;
         "lmm" => 5,
         "factr" => 1e7,
         "pgtol" => 0.0,
-        "type" => 1
+        "type" => 1,
+        "warn.1d.NM" => true
     )
 
     # Validate control parameters before merging
@@ -178,9 +182,21 @@ function optim(par::Vector{Float64}, fn::Function;
         @warn "read the documentation for 'trace' more carefully"
     end
 
+    # Validate/recycle parscale and ndeps to match npar (R uses rep_len internally)
+    if length(con["parscale"]) != npar
+        con["parscale"] = _rep_len(Float64.(con["parscale"]), npar)
+    end
+    if length(con["ndeps"]) != npar
+        con["ndeps"] = _rep_len(Float64.(con["ndeps"]), npar)
+    end
+
     # Warnings for method-specific parameters
     if method == "L-BFGS-B" && any(haskey.(Ref(control), ["reltol", "abstol"]))
         @warn "method L-BFGS-B uses 'factr' (and 'pgtol') instead of 'reltol' and 'abstol'"
+    end
+
+    if method == "Nelder-Mead" && npar == 1 && con["warn.1d.NM"]
+        @warn "one-dimensional optimization by Nelder-Mead is unreliable: use \"Brent\" instead"
     end
 
     # Create scaled function wrappers
@@ -295,8 +311,16 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     lower_scaled = lower ./ parscale
     upper_scaled = upper ./ parscale
 
-    # Convert to internal function signature
-    fn_internal(n, x, ex) = fn(x)
+    # Convert to internal function signature.
+    # R's optim.c:684 checks !R_FINITE(f) after every fn evaluation inside
+    # the L-BFGS-B loop and hard-errors. We match this by checking in the wrapper.
+    fn_internal(n, x, ex) = begin
+        val = fn(x)
+        if !isfinite(val)
+            error("L-BFGS-B needs finite values of 'fn'")
+        end
+        val
+    end
 
     # L-BFGS-B requires a gradient function - use numerical gradients if not provided
     gr_internal = if !isnothing(gr)
@@ -321,8 +345,19 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
         iprint = con["trace"] > 0 ? con["REPORT"] : 0
     )
 
-    result = lbfgsbmin(fn_internal, gr_internal, par;
-                       l=lower_scaled, u=upper_scaled, options=opts)
+    result = try
+        lbfgsbmin(fn_internal, gr_internal, par;
+                  l=lower_scaled, u=upper_scaled, options=opts)
+    catch e
+        if e isa ErrorException && occursin("finite values", e.msg)
+            # R-compatible error: convergence=52 with message
+            (x_opt=copy(par), f_opt=NaN, n_iter=0,
+             fail=52, fn_evals=0, gr_evals=0,
+             message="ERROR: L-BFGS-B NEEDS FINITE VALUES OF FN")
+        else
+            rethrow(e)
+        end
+    end
 
     # Translate fail codes to R-compatible convergence codes:
     # 0 = converged, 1 = maxit reached, 51 = warning, 52 = error
@@ -357,12 +392,14 @@ function _optim_brent(par, fn, con, lower, upper, parscale)
 
     result = fmin(x -> fn([x]), lower/parscale, upper/parscale; options=opts)
 
+    # R's optim() Brent path always returns convergence=0 and counts=NA
+    # (R delegates to optimize() which has no convergence/counts concept)
     return (
         par = [result.x_opt * parscale],
         value = result.f_opt * con["fnscale"],
-        fn_evals = result.fn_evals,
-        gr_evals = 0,
-        fail = result.fail,
+        fn_evals = nothing,
+        gr_evals = nothing,
+        fail = 0,
         message = nothing
     )
 end

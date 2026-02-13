@@ -332,8 +332,16 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
     x = copy(x0)
     _project!(x, l2, u2)
     fx = f(n, x, nothing)
-    gx = g(n, x, nothing)
     fn_evals = 1
+
+    # R's optim.c:684 — "L-BFGS-B needs finite values of 'fn'"
+    if !isfinite(fx)
+        return (x_opt=x, f_opt=fx, n_iter=0,
+            fail=52, fn_evals=fn_evals, gr_evals=0,
+            message="ERROR: L-BFGS-B NEEDS FINITE VALUES OF FN")
+    end
+
+    gx = g(n, x, nothing)
     gr_evals = 1
 
     pg = similar(gx)
@@ -410,6 +418,13 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
         if !ok
             fail = 52
             message = "ERROR: ABNORMAL_TERMINATION_IN_LNSRCH"
+            break
+        end
+
+        # R's optim.c:684 — "L-BFGS-B needs finite values of 'fn'"
+        if !isfinite(fnew)
+            fail = 52
+            message = "ERROR: L-BFGS-B NEEDS FINITE VALUES OF FN"
             break
         end
 

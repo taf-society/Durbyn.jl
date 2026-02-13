@@ -403,6 +403,78 @@ sphere_grad(x) = 2.0 .* x
         @test result.counts.gradient > 0
     end
 
+    @testset "Length-1 vector objective accepted (R compat)" begin
+        # R's optim.c:80-81 coerces to REALSXP then checks LENGTH==1.
+        # A length-1 vector passes in R; only length>1 errors.
+        fn_vec1(x) = [sum(x .^ 2)]  # returns length-1 vector
+        result = optim([5.0, 3.0], fn_vec1)
+        @test result.value < 0.1
+
+        result2 = optim([5.0, 3.0], fn_vec1; method="BFGS")
+        @test result2.value < 0.01
+
+        result3 = optim([5.0, 3.0], fn_vec1; method="L-BFGS-B",
+                        lower=[-10.0, -10.0], upper=[10.0, 10.0])
+        @test result3.value < 0.1
+
+        # Length-2 vector still errors
+        fn_vec2(x) = [x[1]^2, x[1]]
+        @test_throws ErrorException optim([1.0, 1.0], fn_vec2)
+    end
+
+    @testset "Brent ignores maxit from control (R compat)" begin
+        # R's optimize() has no maxit parameter — Brent runs until tol convergence.
+        f1d(x) = (x[1] - 2.0)^2
+        result_small = optim([0.0], f1d; method="Brent", lower=-10.0, upper=10.0,
+                             control=Dict("maxit" => 1))
+        result_big = optim([0.0], f1d; method="Brent", lower=-10.0, upper=10.0,
+                           control=Dict("maxit" => 10000))
+        # Both should find the same minimum regardless of maxit
+        @test abs(result_small.par[1] - 2.0) < 0.01
+        @test abs(result_big.par[1] - 2.0) < 0.01
+    end
+
+    @testset "Direct nmmin with negative objective (abstol fix)" begin
+        # nmmin default abstol was 0.0, causing early stop for negative objectives.
+        # R's default abstol=-Inf (from optim.R:37).
+        f_neg(x) = (x[1] - 1.0)^2 + (x[2] - 1.0)^2 - 10.0
+        opts = NelderMeadOptions()  # should now default to abstol=-Inf
+        result = nmmin(f_neg, [0.0, 0.0], opts)
+        @test result.f_opt < -9.99  # should reach near -10.0
+    end
+
+    @testset "ndeps wrong length only errors for gradient methods (R compat)" begin
+        # R only validates ndeps for BFGS/L-BFGS-B when gr=NULL.
+        # NM and Brent should ignore wrong-length ndeps.
+        result_nm = optim([5.0, 5.0], sphere;
+                          control=Dict("ndeps" => [1e-3]))
+        @test result_nm.convergence == 0 || result_nm.value < 0.1
+
+        f1d(x) = (x[1] - 2.0)^2
+        result_brent = optim([0.0], f1d; method="Brent", lower=-10.0, upper=10.0,
+                             control=Dict("ndeps" => [1e-3, 1e-3, 1e-3]))
+        @test abs(result_brent.par[1] - 2.0) < 0.01
+
+        # But BFGS without gr still errors on wrong ndeps
+        @test_throws ErrorException optim([5.0, 5.0], sphere; method="BFGS",
+                       control=Dict("ndeps" => [1e-4]))
+    end
+
+    @testset "Brent ignores parscale (R compat)" begin
+        # R's Brent path bypasses C_optim, so parscale is never used/validated.
+        f1d(x) = (x[1] - 2.0)^2
+        # Wrong-length parscale should NOT error for Brent
+        result = optim([0.0], f1d; method="Brent", lower=-10.0, upper=10.0,
+                       control=Dict("parscale" => [1.0, 2.0, 3.0]))
+        @test abs(result.par[1] - 2.0) < 0.01
+    end
+
+    @testset "NM gradient count is nothing (R NA compat)" begin
+        # R's optim.c:276 sets grcount=NA_INTEGER for NM
+        result = optim([5.0, 5.0], sphere)
+        @test result.counts.gradient === nothing
+    end
+
     @testset "warn.1d.NelderMead control suppresses warning (R compat)" begin
         # Default: warning fires for 1D Nelder-Mead
         @test_warn "Nelder-Mead is unreliable" optim([5.0], sphere)

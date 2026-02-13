@@ -101,22 +101,28 @@ Parameter and function scaling follow R's convention:
 - Function values are scaled by `1/fnscale`
 - This improves conditioning when parameters have different scales
 """
-# R's rep_len: recycle or truncate a vector to length n
+# R's rep_len: recycle or truncate a vector to length n.
+# Empty input → NaN fill (matches R's rep_len(numeric(0), n) → NA vector).
 function _rep_len(x::Vector{Float64}, n::Int)
     lx = length(x)
     lx == n && return x
-    lx == 0 && error("cannot recycle zero-length vector to length $n")
+    lx == 0 && return fill(NaN, n)
     return Float64[x[mod1(i, lx)] for i in 1:n]
 end
 
-function optim(par::Vector{Float64}, fn::Function;
+function optim(par::AbstractVector{<:Real}, fn::Function;
                gr::Union{Function,Nothing}=nothing,
                method::String="Nelder-Mead",
-               lower::Union{Float64,Vector{Float64}}=-Inf,
-               upper::Union{Float64,Vector{Float64}}=Inf,
+               lower::Union{Real,AbstractVector{<:Real}}=-Inf,
+               upper::Union{Real,AbstractVector{<:Real}}=Inf,
                control::Dict=Dict(),
                hessian::Bool=false,
                kwargs...)
+
+    # Coerce to Float64 (R's as.double)
+    par = Float64.(par)
+    lower = lower isa AbstractVector ? Float64.(lower) : Float64(lower)
+    upper = upper isa AbstractVector ? Float64.(upper) : Float64(upper)
 
     npar = length(par)
 
@@ -137,16 +143,17 @@ function optim(par::Vector{Float64}, fn::Function;
         error("method = \"Brent\" is only available for one-dimensional optimization")
     end
 
-    # Brent requires finite bounds (matching R's error)
+    # Expand bounds to vectors first (R uses rep_len; empty → NaN like R's NA)
+    lower_vec = lower isa Float64 ? fill(lower, npar) : _rep_len(lower, npar)
+    upper_vec = upper isa Float64 ? fill(upper, npar) : _rep_len(upper, npar)
+
+    # Brent requires finite bounds (matching R's error).
+    # Checked after expansion so empty vectors become NaN → caught here.
     if method == "Brent"
-        if !isfinite(lower isa Vector ? lower[1] : lower) || !isfinite(upper isa Vector ? upper[1] : upper)
+        if !all(isfinite, lower_vec) || !all(isfinite, upper_vec)
             error("method = \"Brent\" requires finite 'lower' and 'upper' bounds")
         end
     end
-
-    # Expand bounds to vectors (R uses rep_len to recycle/truncate)
-    lower_vec = lower isa Float64 ? fill(lower, npar) : _rep_len(lower, npar)
-    upper_vec = upper isa Float64 ? fill(upper, npar) : _rep_len(upper, npar)
 
     # Default control parameters (matching R, with Julia enhancements)
     con = Dict{String,Any}(
@@ -354,7 +361,7 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
         lbfgsbmin(fn_internal, gr_internal, par;
                   l=lower_scaled, u=upper_scaled, options=opts)
     catch e
-        if e isa ErrorException && occursin("finite values", e.msg)
+        if e isa ErrorException && e.msg == "L-BFGS-B needs finite values of 'fn'"
             # R-compatible error: convergence=52 with message
             (x_opt=copy(par), f_opt=NaN, n_iter=0,
              fail=52, fn_evals=0, gr_evals=0,

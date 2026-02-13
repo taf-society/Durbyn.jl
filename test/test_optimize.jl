@@ -294,28 +294,34 @@ sphere_grad(x) = 2.0 .* x
         result2 = optim([5.0, 5.0], sphere; method="L-BFGS-B",
                         lower=[-10.0, -10.0, -10.0], upper=[10.0, 10.0, 10.0])
         @test length(result2.par) == 2
+
+        # Empty vector errors (not DivideError)
+        @test_throws ErrorException optim([5.0, 5.0], sphere; method="L-BFGS-B",
+                       lower=Float64[], upper=[10.0, 10.0])
     end
 
-    @testset "parscale/ndeps length recycling (R compat)" begin
-        # Short parscale recycled to match npar
-        result = optim([5.0, 5.0, 5.0], sphere; method="BFGS",
+    @testset "parscale/ndeps wrong length errors (R compat)" begin
+        # R's optim.c errors: "'parscale' is of the wrong length"
+        @test_throws ErrorException optim([5.0, 5.0], sphere; method="BFGS",
                        control=Dict("parscale" => [1.0]))
-        @test length(result.par) == 3
-        @test result.convergence == 0
+        @test_throws ErrorException optim([5.0, 5.0], sphere; method="BFGS",
+                       control=Dict("ndeps" => [1e-4]))
 
-        # Short ndeps recycled
+        # Scalar parscale/ndeps should be broadcast (not error)
+        result = optim([5.0, 5.0], sphere; method="BFGS",
+                       control=Dict("parscale" => 2.0))
+        @test result.convergence == 0
         result2 = optim([5.0, 5.0], sphere; method="BFGS",
-                        control=Dict("ndeps" => [1e-4]))
-        @test length(result2.par) == 2
+                        control=Dict("ndeps" => 1e-4))
         @test result2.convergence == 0
     end
 
-    @testset "warn.1d.NM control suppresses warning (R compat)" begin
+    @testset "warn.1d.NelderMead control suppresses warning (R compat)" begin
         # Default: warning fires for 1D Nelder-Mead
         @test_warn "Nelder-Mead is unreliable" optim([5.0], sphere)
 
-        # With warn.1d.NM=false: no warning
-        @test_nowarn optim([5.0], sphere; control=Dict("warn.1d.NM" => false))
+        # R's key is "warn.1d.NelderMead"
+        @test_nowarn optim([5.0], sphere; control=Dict("warn.1d.NelderMead" => false))
     end
 
     # ── Existing tests (preserved) ──────────────────────────────────────────

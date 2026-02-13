@@ -1104,6 +1104,181 @@ end
 end
 
 # ═════════════════════════════════════════════════════════════════════
+# NEW TESTS: ThetaSpec (full pattern)
+# ═════════════════════════════════════════════════════════════════════
+
+@testset "ThetaSpec" begin
+    @testset "Basic fit" begin
+        spec = ThetaSpec(@formula(y = theta()))
+        data = (y = AP_SHORT_MS,)
+        fitted_model = fit(spec, data, m=12)
+
+        @test fitted_model isa FittedTheta
+        @test fitted_model.target_col == :y
+    end
+
+    @testset "Forecast" begin
+        spec = ThetaSpec(@formula(y = theta()))
+        data = (y = AP_SHORT_MS,)
+        fitted_model = fit(spec, data, m=12)
+        fc = forecast(fitted_model, h=6)
+
+        @test length(fc.mean) == 6
+        @test all(isfinite, fc.mean)
+    end
+
+    @testset "Forecast with custom levels" begin
+        spec = ThetaSpec(@formula(y = theta()))
+        data = (y = AP_SHORT_MS,)
+        fitted_model = fit(spec, data, m=12)
+        fc = forecast(fitted_model, h=6, level=[80, 95])
+
+        @test length(fc.mean) == 6
+        @test length(fc.lower) == 2
+        @test length(fc.upper) == 2
+    end
+
+    @testset "Extract metrics" begin
+        spec = ThetaSpec(@formula(y = theta()))
+        data = (y = AP_SHORT_MS,)
+        fitted_model = fit(spec, data, m=12)
+        metrics = extract_metrics(fitted_model)
+
+        @test haskey(metrics, :mse)
+        @test isfinite(metrics[:mse])
+    end
+
+    @testset "Grouped fit" begin
+        gdata = make_grouped_data_ms()
+        spec = ThetaSpec(@formula(y = theta()))
+        fitted_model = fit(spec, gdata, m=12, groupby=:group)
+
+        @test fitted_model isa GroupedFittedModels
+        @test fitted_model.successful >= 1
+    end
+
+    @testset "Target validation" begin
+        spec = ThetaSpec(@formula(nonexistent = theta()))
+        data = (y = AP_SHORT_MS,)
+        @test_throws ArgumentError fit(spec, data, m=12)
+    end
+end
+
+# ═════════════════════════════════════════════════════════════════════
+# NEW TESTS: MeanfSpec (full pattern)
+# ═════════════════════════════════════════════════════════════════════
+
+@testset "MeanfSpec" begin
+    @testset "Basic fit" begin
+        spec = MeanfSpec(@formula(y = meanf_term()))
+        data = (y = AP_SHORT_MS,)
+        fitted_model = fit(spec, data, m=12)
+
+        @test fitted_model isa FittedMeanf
+        @test fitted_model.target_col == :y
+    end
+
+    @testset "Forecast" begin
+        spec = MeanfSpec(@formula(y = meanf_term()))
+        data = (y = AP_SHORT_MS,)
+        fitted_model = fit(spec, data, m=12)
+        fc = forecast(fitted_model, h=6)
+
+        @test length(fc.mean) == 6
+        @test all(isfinite, fc.mean)
+        @test length(fc.lower) == 2
+        @test length(fc.upper) == 2
+    end
+
+    @testset "Extract metrics (empty)" begin
+        spec = MeanfSpec(@formula(y = meanf_term()))
+        data = (y = AP_SHORT_MS,)
+        fitted_model = fit(spec, data, m=12)
+        metrics = extract_metrics(fitted_model)
+
+        @test metrics isa Dict
+    end
+
+    @testset "Grouped fit" begin
+        gdata = make_grouped_data_ms()
+        spec = MeanfSpec(@formula(y = meanf_term()))
+        fitted_model = fit(spec, gdata, m=12, groupby=:group)
+
+        @test fitted_model isa GroupedFittedModels
+        @test fitted_model.successful >= 1
+    end
+
+    @testset "Target validation" begin
+        spec = MeanfSpec(@formula(nonexistent = meanf_term()))
+        data = (y = AP_SHORT_MS,)
+        @test_throws ArgumentError fit(spec, data, m=12)
+    end
+end
+
+# ═════════════════════════════════════════════════════════════════════
+# NEW TESTS: PanelData utilities
+# ═════════════════════════════════════════════════════════════════════
+
+@testset "PanelData utilities" begin
+    using Durbyn.ModelSpecs: frequency_to_m, resolve_m, supports_multi_seasonality,
+        VALID_FREQUENCIES
+
+    @testset "VALID_FREQUENCIES" begin
+        @test :daily in VALID_FREQUENCIES
+        @test :monthly in VALID_FREQUENCIES
+        @test :hourly in VALID_FREQUENCIES
+        @test :quarterly in VALID_FREQUENCIES
+        @test :yearly in VALID_FREQUENCIES
+        @test :weekly in VALID_FREQUENCIES
+        @test !(:invalid in VALID_FREQUENCIES)
+    end
+
+    @testset "frequency_to_m" begin
+        @test frequency_to_m(:daily) == 7
+        @test frequency_to_m(:day) == 7
+        @test frequency_to_m(:monthly) == 12
+        @test frequency_to_m(:month) == 12
+        @test frequency_to_m(:hourly) == 24
+        @test frequency_to_m(:hour) == 24
+        @test frequency_to_m(:quarterly) == 4
+        @test frequency_to_m(:quarter) == 4
+        @test frequency_to_m(:yearly) == 1
+        @test frequency_to_m(:year) == 1
+        @test frequency_to_m(:weekly) == 52
+        @test frequency_to_m(:week) == 52
+        @test frequency_to_m(:biweekly) == 26
+        @test frequency_to_m(:businessday) == 5
+        @test frequency_to_m(:second) == 60
+        @test frequency_to_m(:minute) == 60
+        @test frequency_to_m(:halfhour) == 48
+        @test_throws ArgumentError frequency_to_m(:invalid)
+    end
+
+    @testset "resolve_m" begin
+        # nothing passthrough
+        @test resolve_m(nothing, NaiveSpec(@formula(y = naive_term()))) === nothing
+
+        # Int passthrough
+        @test resolve_m(12, NaiveSpec(@formula(y = naive_term()))) == 12
+
+        # Vector for non-multi-seasonality spec → returns first element
+        spec_naive = NaiveSpec(@formula(y = naive_term()))
+        result = @test_logs (:info, r"single seasonality") resolve_m([12, 24], spec_naive)
+        @test result == 12
+
+        # Vector for TBATS → returns full vector
+        spec_tbats = TbatsSpec(@formula(y = tbats(seasonal_periods=12)))
+        @test resolve_m([12, 24], spec_tbats) == [12, 24]
+    end
+
+    @testset "supports_multi_seasonality" begin
+        @test supports_multi_seasonality(TbatsSpec(@formula(y = tbats(seasonal_periods=12)))) == true
+        @test supports_multi_seasonality(NaiveSpec(@formula(y = naive_term()))) == false
+        @test supports_multi_seasonality(EtsSpec(@formula(y = e("A") + t("N") + s("N")))) == false
+    end
+end
+
+# ═════════════════════════════════════════════════════════════════════
 # PRESERVED EXISTING TESTS (verbatim)
 # ═════════════════════════════════════════════════════════════════════
 

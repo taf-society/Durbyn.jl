@@ -153,6 +153,10 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
         if !all(isfinite, lower_vec) || !all(isfinite, upper_vec)
             error("method = \"Brent\" requires finite 'lower' and 'upper' bounds")
         end
+        # R's optimize.c:267 checks xmin < xmax
+        if lower_vec[1] >= upper_vec[1]
+            error("'xmin' not less than 'xmax'")
+        end
     end
 
     # Default control parameters (matching R, with Julia enhancements)
@@ -223,9 +227,18 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
 
     gr_scaled = if !isnothing(gr)
         if fnscale != 1.0 || any(parscale .!= 1.0)
-            x -> (gr(x .* parscale; kwargs...) .* parscale) / fnscale
+            x -> begin
+                g = gr(x .* parscale; kwargs...)
+                # R's optim.c:109-111 validates gradient length every call
+                length(g) == npar || error("gradient in optim evaluated to length $(length(g)) not $npar")
+                (g .* parscale) / fnscale
+            end
         else
-            x -> gr(x; kwargs...)
+            x -> begin
+                g = gr(x; kwargs...)
+                length(g) == npar || error("gradient in optim evaluated to length $(length(g)) not $npar")
+                g
+            end
         end
     else
         nothing
@@ -319,6 +332,21 @@ end
 
 
 function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
+    npar = length(par)
+
+    # R's optim.c:653-659 special-cases n==0
+    if npar == 0
+        f_val = fn(Float64[])
+        return (
+            par = Float64[],
+            value = f_val * con["fnscale"],
+            fn_evals = 1,
+            gr_evals = 0,
+            fail = 0,
+            message = "NOTHING TO DO"
+        )
+    end
+
     # Scale bounds
     lower_scaled = lower ./ parscale
     upper_scaled = upper ./ parscale

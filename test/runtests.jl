@@ -81,6 +81,14 @@ using Test
         include("test_accuracy.jl")
     end
 
+    @testset "PanelData Refactoring" begin
+        include("test_panel_refactor.jl")
+    end
+
+    @testset "Generics Module" begin
+        include("test_generics.jl")
+    end
+
     @testset "ModelSpecs Bug Fixes" begin
         include("test_model_specs.jl")
     end

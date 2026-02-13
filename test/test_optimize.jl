@@ -483,6 +483,26 @@ sphere_grad(x) = 2.0 .* x
         @test_nowarn optim([5.0], sphere; control=Dict("warn.1d.NelderMead" => false))
     end
 
+    @testset "fn returning nothing/missing gives clear error" begin
+        @test_throws ErrorException optim([1.0, 1.0], x -> nothing)
+        @test_throws ErrorException optim([1.0, 1.0], x -> missing)
+    end
+
+    @testset "gr returning nothing gives clear error" begin
+        @test_throws ErrorException optim([1.0, 1.0], sphere;
+                       gr=x -> nothing, method="BFGS")
+    end
+
+    @testset "Symbol keys in control accepted (convenience)" begin
+        # R's list names are strings, but Julia users may pass Symbol keys
+        result = optim([5.0, 5.0], sphere; control=Dict(:maxit => 1000))
+        @test result.convergence == 0
+
+        # Unknown Symbol keys still warn
+        @test_warn "unknown names in control" optim([5.0, 5.0], sphere;
+                                                     control=Dict(:bogus => 42))
+    end
+
     # ── Existing tests (preserved) ──────────────────────────────────────────
     @testset "Nelder-Mead (nmmin)" begin
 

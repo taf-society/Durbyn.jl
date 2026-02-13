@@ -121,7 +121,8 @@ end
 function _line_search_wolfe!(x::Vector{Float64}, fx::Float64, gx::Vector{Float64},
     d::Vector{Float64}, l::Vector{Float64}, u::Vector{Float64},
     f::Function, g::Function, n::Int;
-    c1::Float64=1e-4, c2::Float64=0.9, iter::Int=1,
+    c1::Float64=1e-3, c2::Float64=0.9, iter::Int=1,
+    xtol::Float64=0.1, boxed::Bool=false,
     max_evals::Int=40)
 
     phi0prime = dot(gx, d)
@@ -136,7 +137,8 @@ function _line_search_wolfe!(x::Vector{Float64}, fx::Float64, gx::Vector{Float64
     end
 
     Dnorm = sqrt(dot(d, d))
-    alpha_init = iter == 1 ? (1.0 / max(Dnorm, eps())) : 1.0
+    # R's lnsrlb (lbfgsb.c:2518-2523): boxed or iter>0 → stp=1.0
+    alpha_init = (iter == 1 && !boxed) ? (1.0 / max(Dnorm, eps())) : 1.0
     alpha = isfinite(alpha_max) ? min(alpha_init, alpha_max) : alpha_init
 
     xtrial = similar(x)
@@ -173,7 +175,7 @@ function _line_search_wolfe!(x::Vector{Float64}, fx::Float64, gx::Vector{Float64
 
             ok, alphaz, fz, gz, ez_fe, ez_ge = _zoom!(x, fx, gx, d, l, u, f, g, n,
                 alpha_prev, alpha, f_prev, ft,
-                phi0prime; c1=c1, c2=c2, max_evals=max_evals - (fevals + gevals))
+                phi0prime; c1=c1, c2=c2, xtol=xtol, max_evals=max_evals - (fevals + gevals))
             fevals += ez_fe
             gevals += ez_ge
             if ok
@@ -195,7 +197,7 @@ function _line_search_wolfe!(x::Vector{Float64}, fx::Float64, gx::Vector{Float64
 
             ok, alphaz, fz, gz, ez_fe, ez_ge = _zoom!(x, fx, gx, d, l, u, f, g, n,
                 alpha, alpha_prev, ft, f_prev,
-                phi0prime; c1=c1, c2=c2, max_evals=max_evals - (fevals + gevals))
+                phi0prime; c1=c1, c2=c2, xtol=xtol, max_evals=max_evals - (fevals + gevals))
             fevals += ez_fe
             gevals += ez_ge
             if ok
@@ -239,8 +241,19 @@ function _line_search_wolfe!(x::Vector{Float64}, fx::Float64, gx::Vector{Float64
     return false, 0.0, fx, gx, x, fevals, gevals
 end
 
+# Cubic interpolation for line search (More-Thuente style).
+# Given two points with function values and directional derivatives,
+# returns the minimizer of the cubic interpolant, or NaN on failure.
+function _cubic_min(a1, f1, dphi1, a2, f2, dphi2)
+    d1 = dphi1 + dphi2 - 3.0 * (f2 - f1) / (a2 - a1)
+    disc = d1 * d1 - dphi1 * dphi2
+    disc < 0.0 && return NaN
+    d2 = copysign(sqrt(disc), a2 - a1)
+    return a2 - (a2 - a1) * (dphi2 + d2 - d1) / (dphi2 - dphi1 + 2.0 * d2)
+end
+
 function _zoom!(x, fx, gx, d, l, u, f, g, n,
-    alpha_lo, alpha_hi, f_lo, f_hi, phi0prime; c1=1e-4, c2=0.9, max_evals=30)
+    alpha_lo, alpha_hi, f_lo, f_hi, phi0prime; c1=1e-3, c2=0.9, xtol=0.1, max_evals=30)
     fevals = 0
     gevals = 0
     xtrial = similar(x)
@@ -251,6 +264,10 @@ function _zoom!(x, fx, gx, d, l, u, f, g, n,
     g_lo = g(n, xtrial, nothing)
     gevals += 1
     phi_lo = dot(g_lo, d)
+    g_lo_saved = copy(g_lo)  # track gradient at alpha_lo for xtol convergence
+
+    # Track directional derivative at hi for cubic interpolation
+    phi_hi = NaN  # will be computed when we have gradient at hi
 
     eval_at = function (alphat)
         @inbounds @. xtrial = x + alphat * d
@@ -262,10 +279,24 @@ function _zoom!(x, fx, gx, d, l, u, f, g, n,
     end
 
     for _ in 1:max_evals
-        alpha_j = 0.5 * (alpha_lo + alpha_hi)
+        # R's dcsrch xtol test: bracket width convergence (lbfgsb.c:2465)
+        bracket_max = max(alpha_lo, alpha_hi)
+        if bracket_max > 0 && abs(alpha_hi - alpha_lo) <= xtol * bracket_max
+            return true, alpha_lo, f_lo_eval, g_lo_saved, fevals, gevals
+        end
+        # Cubic interpolation with bisection fallback
+        alpha_j = _cubic_min(alpha_lo, f_lo_eval, phi_lo, alpha_hi, f_hi, phi_hi)
+        # Safeguard: if cubic fails or lands outside bracket, use bisection
+        a_min = min(alpha_lo, alpha_hi)
+        a_max = max(alpha_lo, alpha_hi)
+        if !isfinite(alpha_j) || alpha_j <= a_min || alpha_j >= a_max
+            alpha_j = 0.5 * (alpha_lo + alpha_hi)
+        end
+
         fj, gj = eval_at(alpha_j)
         if (fj > fx + c1 * alpha_j * phi0prime) || (fj >= f_lo_eval)
             alpha_hi, f_hi = alpha_j, fj
+            phi_hi = dot(gj, d)
         else
             phij = dot(gj, d)
             if abs(phij) <= c2 * abs(phi0prime)
@@ -273,11 +304,14 @@ function _zoom!(x, fx, gx, d, l, u, f, g, n,
             end
             if phij * (alpha_hi - alpha_lo) >= 0
                 alpha_hi, f_hi = alpha_lo, f_lo_eval
+                phi_hi = phi_lo
             end
             alpha_lo, f_lo_eval = alpha_j, fj
+            phi_lo = phij
+            g_lo_saved .= gj
         end
         if abs(alpha_hi - alpha_lo) <= 1e-16
-            return false, alpha_j, fj, gj, fevals, gevals
+            return true, alpha_lo, f_lo_eval, g_lo_saved, fevals, gevals
         end
     end
     return false, 0.0, fx, gx, fevals, gevals
@@ -327,6 +361,7 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
     end
 
     nbd = _nbd_from_bounds(l2, u2)
+    boxed = all(nbd .== 2)  # R's mainlb: all vars both-bounded
 
     # Initialize
     x = copy(x0)
@@ -341,7 +376,10 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
             message="ERROR: L-BFGS-B NEEDS FINITE VALUES OF FN")
     end
 
-    gx = g(n, x, nothing)
+    # copy() is critical: g() may return a shared buffer (e.g. NumericalGradientCache.df).
+    # Without copy, gx aliases that buffer and gets silently overwritten by subsequent
+    # g() calls in the line search, corrupting the L-BFGS curvature update y = gnew - gx.
+    gx = copy(g(n, x, nothing))
     gr_evals = 1
 
     pg = similar(gx)
@@ -407,7 +445,7 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
             break
         end
 
-        ok, alpha, fnew, gnew, xnew, fe, ge = _line_search_wolfe!(x, fx, gx, d, l2, u2, f, g, n; iter=iter)
+        ok, alpha, fnew, gnew, xnew, fe, ge = _line_search_wolfe!(x, fx, gx, d, l2, u2, f, g, n; iter=iter, boxed=boxed)
         fn_evals += fe
         gr_evals += ge
 

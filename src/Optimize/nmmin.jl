@@ -1,5 +1,5 @@
 """
-	NelderMeadOptions(; abstol=0.0, intol=sqrt(eps(Float64)), alpha=1.0, beta=0.5, 
+	NelderMeadOptions(; abstol=-Inf, intol=sqrt(eps(Float64)), alpha=1.0, beta=0.5,
                         gamma=2.0, trace=false, maxit=500, invalid_penalty=1e35, 
                         project_to_bounds=false, lower=nothing, upper=nothing, 
                         init_step_cap=nothing)
@@ -8,7 +8,7 @@ A configuration container for the Nelder-Mead optimization algorithm.
 
 # Keyword Arguments
 
-- `abstol::Float64`: Absolute tolerance on the function value for stopping. Default is `0.0`.
+- `abstol::Float64`: Absolute tolerance on the function value for stopping. Default is `-Inf` (matching R's `optim()`).
 - `intol::Float64`: Relative tolerance between the best and worst function values. Default is `sqrt(eps(Float64))`.
 - `alpha::Float64`: Reflection coefficient. Controls how far to reflect. Default is `1.0`.
 - `beta::Float64`: Contraction coefficient. Controls step size during contraction. Default is `0.5`.
@@ -46,7 +46,7 @@ struct NelderMeadOptions
 end
 
 NelderMeadOptions(;
-    abstol = 0.0,
+    abstol = -Inf,
     intol = sqrt(eps(Float64)),
     alpha = 1.0,
     beta = 0.5,
@@ -145,7 +145,7 @@ A named tuple `(x_opt, f_opt, fncount, fail)` where:
 
 # Notes
 
-- To exactly reproduce R's defaults, use `abstol=0.0`, `intol=sqrt(eps(Float64))`, `alpha=1.0`, `beta=0.5`,
+- To exactly reproduce R's defaults, use `abstol=-Inf`, `intol=sqrt(eps(Float64))`, `alpha=1.0`, `beta=0.5`,
   `gamma=2.0`, `trace=false`, `maxit=500`.
 - `project_to_bounds`, `lower/upper`, and `init_step_cap` are practical extensions for bounded problems
   and do not alter Algorithm-19 unless enabled.
@@ -165,7 +165,7 @@ using Durbyn.Optimize
 
 # Unconstrained Rosenbrock from x0 = [-1.2, 1.0]
 rosen(x) = (1.0 - x[1])^2 + 100.0*(x[2] - x[1]^2)^2
-opts = NelderMeadOptions(trace=true, maxit=2000, intol=sqrt(eps(Float64)), abstol=0.0)
+opts = NelderMeadOptions(trace=true, maxit=2000, intol=sqrt(eps(Float64)), abstol=-Inf)
 res = nmmin(rosen, [-1.2, 1.0], opts)
 @show res.x_opt res.f_opt res.fncount res.fail
 

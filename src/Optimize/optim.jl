@@ -101,6 +101,14 @@ Parameter and function scaling follow R's convention:
 - Function values are scaled by `1/fnscale`
 - This improves conditioning when parameters have different scales
 """
+# R's optim.c:80-84: coerces result to numeric scalar, validates length==1.
+# Accepts Number (passthrough) or length-1 array (extracts element).
+_to_scalar(val::Number) = Float64(val)
+function _to_scalar(val)
+    length(val) == 1 || error("objective function in optim evaluates to length $(length(val)) not 1")
+    Float64(first(val))
+end
+
 # R's rep_len: recycle or truncate a vector to length n.
 # Empty input → NaN fill (matches R's rep_len(numeric(0), n) → NA vector).
 function _rep_len(x::Vector{Float64}, n::Int)
@@ -194,15 +202,24 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
         @warn "read the documentation for 'trace' more carefully"
     end
 
-    # Validate parscale and ndeps length (R's optim.c errors on mismatch)
-    ps = con["parscale"]
-    con["parscale"] = ps isa Number ? fill(Float64(ps), npar) : Float64.(ps)
-    if length(con["parscale"]) != npar
-        error("'parscale' is of the wrong length")
+    # Validate parscale: R's C_optim checks for NM/BFGS/L-BFGS-B, but Brent
+    # bypasses C_optim entirely (goes to R-level optimize()), so no check.
+    if method == "Brent"
+        # R's Brent ignores parscale — force to ones so it has no effect
+        con["parscale"] = ones(npar)
+    else
+        ps = con["parscale"]
+        con["parscale"] = ps isa Number ? fill(Float64(ps), npar) : Float64.(ps)
+        if length(con["parscale"]) != npar
+            error("'parscale' is of the wrong length")
+        end
     end
+
+    # Validate ndeps: R only checks length for BFGS/L-BFGS-B when gr=NULL
+    # (optim.c:308, 363). NM and Brent never use ndeps.
     nd = con["ndeps"]
     con["ndeps"] = nd isa Number ? fill(Float64(nd), npar) : Float64.(nd)
-    if length(con["ndeps"]) != npar
+    if method in ["BFGS", "L-BFGS-B"] && isnothing(gr) && length(con["ndeps"]) != npar
         error("'ndeps' is of the wrong length")
     end
 
@@ -220,18 +237,9 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
     parscale = con["parscale"]
 
     fn_scaled = if fnscale != 1.0 || any(parscale .!= 1.0)
-        x -> begin
-            val = fn(x .* parscale; kwargs...)
-            # R's optim.c:82-84 validates objective returns scalar
-            val isa Number || error("objective function in optim evaluates to length $(length(val)) not 1")
-            val / fnscale
-        end
+        x -> _to_scalar(fn(x .* parscale; kwargs...)) / fnscale
     else
-        x -> begin
-            val = fn(x; kwargs...)
-            val isa Number || error("objective function in optim evaluates to length $(length(val)) not 1")
-            val
-        end
+        x -> _to_scalar(fn(x; kwargs...))
     end
 
     gr_scaled = if !isnothing(gr)
@@ -305,7 +313,7 @@ function _optim_neldermead(par, fn, con, lower, upper, parscale)
         par = result.x_opt .* parscale,
         value = result.f_opt * con["fnscale"],
         fn_evals = result.fncount,
-        gr_evals = 0,
+        gr_evals = nothing,  # R returns NA_INTEGER for NM (optim.c:276)
         fail = result.fail,
         message = nothing
     )
@@ -442,19 +450,20 @@ end
 
 
 function _optim_brent(par, fn, con, lower, upper, parscale)
-    # fn is already scalar function
+    # R's Brent path calls optimize(fn, lower, upper, tol=reltol).
+    # R's optimize() has no maxit — Brent runs until convergence based on tol.
+    # R also doesn't apply parscale for Brent (parscale forced to ones upstream).
     opts = FminOptions(
         tol = con["reltol"],
-        trace = con["trace"] > 0,
-        maxit = con["maxit"]
+        trace = con["trace"] > 0
     )
 
-    result = fmin(x -> fn([x]), lower/parscale, upper/parscale; options=opts)
+    result = fmin(x -> fn([x]), lower, upper; options=opts)
 
     # R's optim() Brent path always returns convergence=0 and counts=NA
     # (R delegates to optimize() which has no convergence/counts concept)
     return (
-        par = [result.x_opt * parscale],
+        par = [result.x_opt],
         value = result.f_opt * con["fnscale"],
         fn_evals = nothing,
         gr_evals = nothing,

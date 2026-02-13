@@ -241,8 +241,14 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
     fnscale = con["fnscale"]
     parscale = con["parscale"]
 
-    fn_scaled = if fnscale != 1.0 || any(parscale .!= 1.0)
-        x -> _to_scalar(fn(x .* parscale; kwargs...)) / fnscale
+    fn_scaled = if any(parscale .!= 1.0)
+        if fnscale != 1.0
+            x -> _to_scalar(fn(x .* parscale; kwargs...)) / fnscale
+        else
+            x -> _to_scalar(fn(x .* parscale; kwargs...))
+        end
+    elseif fnscale != 1.0
+        x -> _to_scalar(fn(x; kwargs...)) / fnscale
     else
         x -> _to_scalar(fn(x; kwargs...))
     end
@@ -460,7 +466,7 @@ function _optim_brent(par, fn, con, lower, upper, parscale)
         trace = con["trace"] > 0
     )
 
-    result = fmin(x -> fn([x]), lower, upper; options=opts)
+    result = fmin(fn, lower, upper; options=opts)
 
     # R's optim() Brent path always returns convergence=0 and counts=NA
     # (R delegates to optimize() which has no convergence/counts concept)

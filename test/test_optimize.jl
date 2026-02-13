@@ -503,6 +503,113 @@ sphere_grad(x) = 2.0 .* x
                                                      control=Dict(:bogus => 42))
     end
 
+    @testset "L-BFGS-B converges with numerical gradient (aliasing fix)" begin
+        # Bug: numgrad_bounded! returns pre-allocated cache.df buffer. lbfgsbmin stored
+        # gx = g(...) as a reference to this buffer. Subsequent g() calls in the line
+        # search overwrote it, making y = gnew - gx ≈ 0 and destroying L-BFGS curvature.
+        # Fix: lbfgsbmin now copies the initial gradient. R: convergence=0, (46,46).
+        result = optim([-1.2, 1.0], rosenbrock; method="L-BFGS-B",
+                       lower=[-5.0, -5.0], upper=[5.0, 5.0])
+        @test result.convergence == 0
+        @test result.value < 1e-4
+        @test abs(result.par[1] - 1.0) < 0.01
+        @test abs(result.par[2] - 1.0) < 0.01
+
+        # Unbounded case should also converge
+        result2 = optim([-1.2, 1.0], rosenbrock; method="L-BFGS-B")
+        @test result2.convergence == 0
+        @test result2.value < 1e-4
+    end
+
+    # ── Strict NM regression tests (R parity) ────────────────────────────────
+    @testset "NM strict: Rosenbrock from [-1.2,1.0] (R parity)" begin
+        result = optim([-1.2, 1.0], rosenbrock)
+        @test result.convergence == 0
+        @test result.counts.function_ == 195  # exact R match
+        @test result.value < 1e-6
+        @test abs(result.par[1] - 1.0) < 0.01
+        @test abs(result.par[2] - 1.0) < 0.01
+    end
+
+    @testset "NM strict: Beale from [0,0] (R parity)" begin
+        beale(x) = (1.5 - x[1] + x[1]*x[2])^2 + (2.25 - x[1] + x[1]*x[2]^2)^2 + (2.625 - x[1] + x[1]*x[2]^3)^2
+        result = optim([0.0, 0.0], beale)
+        @test result.convergence == 0
+        @test result.counts.function_ < 100
+        @test result.value < 1e-6
+        @test abs(result.par[1] - 3.0) < 0.01
+        @test abs(result.par[2] - 0.5) < 0.01
+    end
+
+    @testset "NM strict: Booth from [0,0] (R parity)" begin
+        booth(x) = (x[1] + 2*x[2] - 7)^2 + (2*x[1] + x[2] - 5)^2
+        result = optim([0.0, 0.0], booth)
+        @test result.convergence == 0
+        @test result.counts.function_ == 75  # exact R match
+        @test result.value < 1e-5
+        @test abs(result.par[1] - 1.0) < 0.01
+        @test abs(result.par[2] - 3.0) < 0.01
+    end
+
+    @testset "NM strict: maxit behavior (R parity)" begin
+        # maxit=10: convergence=1, fncount=maxit+1 (R behavior)
+        r10 = optim([-1.2, 1.0], rosenbrock; control=Dict("maxit" => 10))
+        @test r10.convergence == 1
+        @test r10.counts.function_ == 11
+
+        # maxit=50: convergence=1
+        r50 = optim([-1.2, 1.0], rosenbrock; control=Dict("maxit" => 50))
+        @test r50.convergence == 1
+        @test r50.counts.function_ == 51
+
+        # maxit=200: converges with same fncount as default (maxit=500)
+        r200 = optim([-1.2, 1.0], rosenbrock; control=Dict("maxit" => 200))
+        @test r200.convergence == 0
+        @test r200.counts.function_ == 195
+    end
+
+    # ── Brent scalar-style callback (R compat) ──────────────────────────────
+    @testset "Brent scalar-style callback - basic" begin
+        # R's Brent passes scalar to fn, not a 1-element vector.
+        # This must work: f(x) = (x - 2)^2 where x is a scalar.
+        f_scalar(x) = (x - 2)^2
+        result = optim([3.0], f_scalar; method="Brent", lower=-10.0, upper=10.0)
+        @test abs(result.par[1] - 2.0) <= EPS_OPT
+        @test result.value < 1e-8
+    end
+
+    @testset "Brent scalar-style callback - negative minimum" begin
+        f_scalar(x) = (x + 3.0)^2
+        result = optim([0.0], f_scalar; method="Brent", lower=-10.0, upper=10.0)
+        @test abs(result.par[1] - (-3.0)) <= EPS_OPT
+        @test result.value < 1e-8
+    end
+
+    @testset "Brent scalar-style callback - sin" begin
+        # Minimum of sin(x) on [0, 2π] is at x = 3π/2
+        result = optim([1.0], sin; method="Brent", lower=0.0, upper=2π)
+        @test abs(result.par[1] - 3π/2) <= EPS_OPT
+        @test abs(result.value - (-1.0)) < 1e-8
+    end
+
+    @testset "Brent scalar-style callback - with fnscale=-1 (maximize)" begin
+        # Maximize x*(1-x) on [0,1] → max at x=0.5, value=0.25
+        f_scalar(x) = x * (1 - x)
+        result = optim([0.1], f_scalar; method="Brent", lower=0.0, upper=1.0,
+                        control=Dict("fnscale" => -1.0))
+        @test abs(result.par[1] - 0.5) <= EPS_OPT
+        # value is returned in original scale (fnscale applied back)
+        @test abs(result.value - 0.25) < 1e-8
+    end
+
+    @testset "Brent vector-style callback still works" begin
+        # Verify existing x[1] style still works after the fix
+        f_vec(x) = (x[1] - 2.0)^2
+        result = optim([3.0], f_vec; method="Brent", lower=-10.0, upper=10.0)
+        @test abs(result.par[1] - 2.0) <= EPS_OPT
+        @test result.value < 1e-8
+    end
+
     # ── Existing tests (preserved) ──────────────────────────────────────────
     @testset "Nelder-Mead (nmmin)" begin
 

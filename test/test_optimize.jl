@@ -295,9 +295,15 @@ sphere_grad(x) = 2.0 .* x
                         lower=[-10.0, -10.0, -10.0], upper=[10.0, 10.0, 10.0])
         @test length(result2.par) == 2
 
-        # Empty vector errors (not DivideError)
-        @test_throws ErrorException optim([5.0, 5.0], sphere; method="L-BFGS-B",
-                       lower=Float64[], upper=[10.0, 10.0])
+        # Empty vector bounds → treated as unbounded (R: rep_len(numeric(0),n) → NA → unbounded)
+        result3 = optim([5.0, 5.0], sphere; method="L-BFGS-B",
+                        lower=Float64[], upper=[10.0, 10.0])
+        @test result3.convergence == 0
+        @test all(abs.(result3.par) .< 0.1)
+
+        # Empty bounds for Brent → error (NaN bounds are not finite)
+        @test_throws ErrorException optim([0.0], x -> x[1]^2;
+                       method="Brent", lower=Float64[], upper=[5.0])
     end
 
     @testset "parscale/ndeps wrong length errors (R compat)" begin
@@ -314,6 +320,23 @@ sphere_grad(x) = 2.0 .* x
         result2 = optim([5.0, 5.0], sphere; method="BFGS",
                         control=Dict("ndeps" => 1e-4))
         @test result2.convergence == 0
+    end
+
+    @testset "L-BFGS-B catch does not swallow user errors (bug fix)" begin
+        # A user fn that errors with a message containing "finite values" should
+        # NOT be silently caught — only the exact optimizer message is caught.
+        f_user_error(x) = error("finite values in custom code")
+        @test_throws ErrorException optim([1.0, 1.0], f_user_error; method="L-BFGS-B")
+    end
+
+    @testset "Integer par and bounds accepted (R as.double compat)" begin
+        # R silently coerces: optim(c(1L,2L), ...) works
+        result = optim([5, 3], sphere; method="BFGS")
+        @test all(abs.(result.par) .< 0.1)
+
+        result2 = optim([5, 5], sphere; method="L-BFGS-B",
+                        lower=[0, 0], upper=[10, 10])
+        @test all(result2.par .>= 0.0)
     end
 
     @testset "warn.1d.NelderMead control suppresses warning (R compat)" begin

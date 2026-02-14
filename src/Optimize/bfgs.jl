@@ -280,6 +280,14 @@ function bfgsmin(
 
     gfunc(n0, b, workspace.gvec, ex)
 
+    # Check for non-finite initial gradient
+    @inbounds for i in 1:n
+        if !isfinite(workspace.gvec[l[i]])
+            return (x_opt=copy(b), f_opt=Fmin, n_iter=0,
+                fail=1, fn_evals=funcount, gr_evals=gradcount)
+        end
+    end
+
     iter = 0
     iter += 1
     ilast = gradcount
@@ -346,6 +354,19 @@ function bfgsmin(
                 gfunc(n0, b, workspace.gvec, ex)
                 gradcount += 1
                 iter += 1
+
+                # Check for non-finite gradient
+                has_nonfinite_grad = false
+                @inbounds for i in 1:n
+                    if !isfinite(workspace.gvec[l[i]])
+                        has_nonfinite_grad = true
+                        break
+                    end
+                end
+                if has_nonfinite_grad
+                    return (x_opt=copy(b), f_opt=Fmin, n_iter=iter,
+                        fail=1, fn_evals=funcount, gr_evals=gradcount)
+                end
 
                 D1 = 0.0
                 @inbounds for i in 1:n

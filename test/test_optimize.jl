@@ -578,6 +578,23 @@ sphere_grad(x) = 2.0 .* x
         @test occursin("NON-FINITE", r.message)
     end
 
+    # ── Direct bfgsmin API: non-finite gradient handling ─────────────────────
+    @testset "bfgsmin NaN gradient does not falsely converge (bug fix)" begin
+        using Durbyn.Optimize: bfgsmin
+        f_bfgs(n, x, ex) = sum(x .^ 2)
+        g_nan_bfgs(n, x, gvec, ex) = (gvec .= NaN; nothing)
+        r = bfgsmin(f_bfgs, g_nan_bfgs, [1.0, 1.0])
+        @test r.fail != 0
+    end
+
+    @testset "bfgsmin Inf gradient does not falsely converge (bug fix)" begin
+        using Durbyn.Optimize: bfgsmin
+        f_bfgs2(n, x, ex) = sum(x .^ 2)
+        g_inf_bfgs(n, x, gvec, ex) = (gvec .= Inf; nothing)
+        r = bfgsmin(f_bfgs2, g_inf_bfgs, [1.0, 1.0])
+        @test r.fail != 0
+    end
+
     # ── Strict NM regression tests (R parity) ────────────────────────────────
     @testset "NM strict: Rosenbrock from [-1.2,1.0] (R parity)" begin
         result = optim([-1.2, 1.0], rosenbrock)

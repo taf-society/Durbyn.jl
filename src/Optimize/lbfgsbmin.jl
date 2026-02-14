@@ -1288,7 +1288,7 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
     ileave = n + 1
     nenter = 0
 
-    while iter < options.maxit
+    while true
         iter += 1
 
         wrk = false
@@ -1458,7 +1458,14 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
             println("At iterate ", iter, "  f= ", fx, "  |proj g|= ", sbgnrm)
         end
 
-        # Convergence tests
+        # R checks iter > maxit in the driver BEFORE mainlb's convergence tests.
+        # This ensures at least one full iteration runs (maxit=0), and that
+        # maxit takes priority over convergence on the boundary iteration.
+        if iter > options.maxit
+            break  # fail=1, message="NEW_X" (defaults)
+        end
+
+        # Convergence tests (only reached if iter <= maxit)
         if sbgnrm <= options.pgtol
             fail = 0
             message = "CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL"

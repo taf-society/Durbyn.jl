@@ -88,9 +88,52 @@ struct HoltWintersConventional <: ETS
     method::String
 end
 
-function ets_model_type_code(x::String)
-    ets_model_type = Dict("N" => 0, "A" => 1, "M" => 2)
-    return ets_model_type[x]
+@inline function ets_model_type_code(x::AbstractString)
+    if x == "N"
+        return 0
+    elseif x == "A"
+        return 1
+    elseif x == "M"
+        return 2
+    end
+    throw(ArgumentError("Unknown ETS model type: $x"))
+end
+
+@inline function ets_model_type_code(x::Char)
+    if x == 'N'
+        return 0
+    elseif x == 'A'
+        return 1
+    elseif x == 'M'
+        return 2
+    end
+    throw(ArgumentError("Unknown ETS model type: $x"))
+end
+
+struct ETSWorkspace
+    x::Vector{Float64}
+    e::Vector{Float64}
+    amse::Vector{Float64}
+    olds::Vector{Float64}
+    s::Vector{Float64}
+    f::Vector{Float64}
+    denom::Vector{Float64}
+    init_state::Vector{Float64}
+end
+
+function ETSWorkspace(n::Int, m::Int, nmse::Int, max_state_len::Int)
+    seasonal_len = max(24, m)
+    amse_len = max(nmse, 30)
+    return ETSWorkspace(
+        zeros(Float64, max_state_len * (n + 1)),
+        zeros(Float64, n),
+        zeros(Float64, amse_len),
+        zeros(Float64, seasonal_len),
+        zeros(Float64, seasonal_len),
+        zeros(Float64, 30),
+        zeros(Float64, 30),
+        zeros(Float64, max_state_len),
+    )
 end
 
 
@@ -141,19 +184,58 @@ function construct_states(
 end
 
 function ets_base(y, n, x, m, error, trend, season, alpha, beta, gamma, phi, e, amse, nmse)
+    olds = zeros(Float64, max(24, m))
+    s = zeros(Float64, max(24, m))
+    f = zeros(Float64, 30)
+    denom = zeros(Float64, 30)
+    return ets_base(
+        y,
+        n,
+        x,
+        m,
+        error,
+        trend,
+        season,
+        alpha,
+        beta,
+        gamma,
+        phi,
+        e,
+        amse,
+        nmse,
+        olds,
+        s,
+        f,
+        denom,
+    )
+end
 
+function ets_base(
+    y,
+    n,
+    x,
+    m,
+    error,
+    trend,
+    season,
+    alpha,
+    beta,
+    gamma,
+    phi,
+    e,
+    amse,
+    nmse,
+    olds::AbstractVector{Float64},
+    s::AbstractVector{Float64},
+    f::AbstractVector{Float64},
+    denom::AbstractVector{Float64},
+)
     oldb = 0.0
-    olds = zeros(max(24, m))
-    s = zeros(max(24, m))
-    f = zeros(30)
-    denom = zeros(30)
 
     if m < 1
         m = 1
     end
-    if nmse > 30
-        nmse = 30
-    end
+    nmse_cap = min(nmse, 30)
 
     nstates = m * (season > 0) + 1 + (trend > 0)
 
@@ -173,7 +255,7 @@ function ets_base(y, n, x, m, error, trend, season, alpha, beta, gamma, phi, e, 
 
     lik = 0.0
     lik2 = 0.0
-    @inbounds for j = 1:nmse
+    @inbounds for j = 1:nmse_cap
         amse[j] = 0.0
         denom[j] = 0.0
     end
@@ -191,7 +273,7 @@ function ets_base(y, n, x, m, error, trend, season, alpha, beta, gamma, phi, e, 
         end
 
         # One step forecast
-        forecast_ets_base(oldl, oldb, olds, m, trend, season, phi, f, nmse)
+        forecast_ets_base(oldl, oldb, olds, m, trend, season, phi, f, nmse_cap)
 
         if abs(f[1] - -99999.0) < 1.0e-10
             lik = -99999.0
@@ -209,7 +291,7 @@ function ets_base(y, n, x, m, error, trend, season, alpha, beta, gamma, phi, e, 
             e[i] = (y[i] - f[1]) / f_0
         end
 
-        for j = 1:nmse
+        for j = 1:nmse_cap
             if (i + j - 1) <= n
                 denom[j] += 1.0
                 tmp = y[i+j-1] - f[j]
@@ -817,32 +899,80 @@ function calculate_residuals(
     beta::Union{Float64,Nothing,Bool},
     gamma::Union{Float64,Nothing,Bool},
     phi::Union{Float64,Nothing,Bool},
-    nmse::Int, )
+    nmse::Int,
+)
+    err = ets_model_type_code(errortype)
+    trend = ets_model_type_code(trendtype)
+    season = ets_model_type_code(seasontype)
+    workspace = ETSWorkspace(length(y), m, nmse, length(init_state))
+    likelihood, amse, e, x = calculate_residuals(
+        y,
+        m,
+        init_state,
+        err,
+        trend,
+        season,
+        damped,
+        alpha,
+        beta,
+        gamma,
+        phi,
+        nmse,
+        workspace,
+    )
+    return likelihood, copy(amse), copy(e), copy(x)
+end
 
+function calculate_residuals!(
+    workspace::ETSWorkspace,
+    y::AbstractArray,
+    m::Int,
+    init_state::AbstractArray,
+    errortype::Int,
+    trendtype::Int,
+    seasontype::Int,
+    damped::Bool,
+    alpha::Union{Float64,Nothing,Bool},
+    beta::Union{Float64,Nothing,Bool},
+    gamma::Union{Float64,Nothing,Bool},
+    phi::Union{Float64,Nothing,Bool},
+    nmse::Int,
+)
     n = length(y)
     p = length(init_state)
-    x = zeros(p * (n + 1))
-    x[1:p] .= init_state
-    e = zeros(n)
-    amse = zeros(nmse)
+    x_len = p * (n + 1)
+    if length(workspace.x) < x_len
+        throw(ArgumentError("ETSWorkspace.x is too small for state dimension $p and series length $n"))
+    end
+    if length(workspace.e) < n
+        throw(ArgumentError("ETSWorkspace.e is too small for series length $n"))
+    end
+    if length(workspace.amse) < nmse
+        throw(ArgumentError("ETSWorkspace.amse is too small for nmse=$nmse"))
+    end
 
-    switch_dict = Dict("N" => 0, "A" => 1, "M" => 2)
-    errortype, trendtype, seasontype =
-        switch_dict[errortype], switch_dict[trendtype], switch_dict[seasontype]
+    x = workspace.x
+    e = workspace.e
+    amse = workspace.amse
+    @inbounds x[1:p] .= init_state
+    if nmse > 0
+        fill!(view(amse, 1:nmse), 0.0)
+    end
 
     if !damped
         phi = 1.0
     end
-
-     if trendtype == 0
+    if trendtype == 0
         beta = 0.0
     end
-
     if seasontype == 0
         gamma = 0.0
     end
 
-    alpha, beta, gamma, phi = Float64(alpha), Float64(beta), Float64(gamma), Float64(phi)
+    alpha_f = Float64(alpha)
+    beta_f = Float64(beta)
+    gamma_f = Float64(gamma)
+    phi_f = Float64(phi)
 
     likelihood = ets_base(
         y,
@@ -852,21 +982,61 @@ function calculate_residuals(
         errortype,
         trendtype,
         seasontype,
-        alpha,
-        beta,
-        gamma,
-        phi,
+        alpha_f,
+        beta_f,
+        gamma_f,
+        phi_f,
         e,
         amse,
         nmse,
+        workspace.olds,
+        workspace.s,
+        workspace.f,
+        workspace.denom,
     )
-
-    x = reshape(x, p, n + 1)'
 
     if abs(likelihood + 99999.0) < 1e-7
         likelihood = NaN
     end
 
+    return likelihood, p
+end
+
+function calculate_residuals(
+    y::AbstractArray,
+    m::Int,
+    init_state::AbstractArray,
+    errortype::Int,
+    trendtype::Int,
+    seasontype::Int,
+    damped::Bool,
+    alpha::Union{Float64,Nothing,Bool},
+    beta::Union{Float64,Nothing,Bool},
+    gamma::Union{Float64,Nothing,Bool},
+    phi::Union{Float64,Nothing,Bool},
+    nmse::Int,
+    workspace::ETSWorkspace,
+)
+    likelihood, p = calculate_residuals!(
+        workspace,
+        y,
+        m,
+        init_state,
+        errortype,
+        trendtype,
+        seasontype,
+        damped,
+        alpha,
+        beta,
+        gamma,
+        phi,
+        nmse,
+    )
+    n = length(y)
+    x_len = p * (n + 1)
+    x = reshape(view(workspace.x, 1:x_len), p, n + 1)'
+    amse = view(workspace.amse, 1:nmse)
+    e = view(workspace.e, 1:n)
     return likelihood, amse, e, x
 end
 
@@ -1407,9 +1577,9 @@ function objective_fun(
     par,
     y,
     nstate,
-    errortype,
-    trendtype,
-    seasontype,
+    errortype::Int,
+    trendtype::Int,
+    seasontype::Int,
     damped,
     lower,
     upper,
@@ -1425,6 +1595,7 @@ function objective_fun(
     opt_beta,
     opt_gamma,
     opt_phi,
+    workspace::ETSWorkspace,
 )
 
     j = 1
@@ -1433,13 +1604,13 @@ function objective_fun(
     j += opt_alpha
 
     beta = nothing
-    if trendtype != "N"
+    if trendtype != 0
         beta = opt_beta ? par[j] : init_beta
         j += opt_beta
     end
 
     gamma = nothing
-    if seasontype != "N"
+    if seasontype != 0
         gamma = opt_gamma ? par[j] : init_gamma
         j += opt_gamma
     end
@@ -1464,27 +1635,31 @@ function objective_fun(
         return Inf
     end
 
-    init_state = par[end-nstate+1:end]
+    init_state = view(par, (length(par)-nstate+1):length(par))
+    init_state_eval = init_state
 
-    if seasontype != "N"
-        trend_slots = (trendtype != "N") ? 1 : 0
-        nstate = length(init_state)
-        seasonal_sum = sum(view(init_state, (2+trend_slots):nstate))
-        extra = (seasontype == "M" ? m : 0.0) - seasonal_sum
-        init_state = vcat(init_state, extra)
+    if seasontype != 0
+        trend_slots = trendtype == 0 ? 0 : 1
+        workspace_init = workspace.init_state
+        @inbounds copyto!(workspace_init, 1, init_state, 1, nstate)
+        seasonal_start = 2 + trend_slots
+        seasonal_sum = sum(view(workspace_init, seasonal_start:nstate))
+        workspace_init[nstate+1] = (seasontype == 2 ? m : 0.0) - seasonal_sum
+        init_state_eval = view(workspace_init, 1:(nstate+1))
     end
 
-    if seasontype == "M"
-        trend_slots = (trendtype != "N") ? 1 : 0
-        if minimum(init_state[(2+trend_slots):end]) < 0.0
+    if seasontype == 2
+        trend_slots = trendtype == 0 ? 0 : 1
+        if minimum(view(init_state_eval, (2+trend_slots):length(init_state_eval))) < 0.0
             return Inf
         end
     end
 
-    lik, amse, e, _ = calculate_residuals(
+    lik, _ = calculate_residuals!(
+        workspace,
         y,
         m,
-        init_state,
+        init_state_eval,
         errortype,
         trendtype,
         seasontype,
@@ -1506,13 +1681,13 @@ function objective_fun(
     if opt_crit == "lik"
         return lik
     elseif opt_crit == "mse"
-        return amse[1]
+        return workspace.amse[1]
     elseif opt_crit == "amse"
-        return mean(amse[1:nmse])
+        return sum(view(workspace.amse, 1:nmse)) / nmse
     elseif opt_crit == "sigma"
-        return mean(e .^ 2)
+        return sum(abs2, view(workspace.e, 1:length(y))) / length(y)
     elseif opt_crit == "mae"
-        return mean(abs.(e))
+        return sum(abs, view(workspace.e, 1:length(y))) / length(y)
     else
         error("Unknown optimization criterion")
     end
@@ -1543,14 +1718,19 @@ function optim_ets_base(
     opt_beta = !isnan(init_beta)
     opt_gamma = !isnan(init_gamma)
     opt_phi = !isnan(init_phi)
+    errortype_code = ets_model_type_code(errortype)
+    trendtype_code = ets_model_type_code(trendtype)
+    seasontype_code = ets_model_type_code(seasontype)
+    max_state_len = nstate + (seasontype_code != 0 ? 1 : 0)
+    workspace = ETSWorkspace(length(y), m, nmse, max_state_len)
 
     result = nmmin(par -> objective_fun(
             par,
             y,
             nstate,
-            errortype,
-            trendtype,
-            seasontype,
+            errortype_code,
+            trendtype_code,
+            seasontype_code,
             damped,
             lower,
             upper,
@@ -1566,6 +1746,7 @@ function optim_ets_base(
             opt_beta,
             opt_gamma,
             opt_phi,
+            workspace,
         ), opt_params,
         options)
 

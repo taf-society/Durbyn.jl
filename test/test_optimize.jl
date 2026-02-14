@@ -241,28 +241,30 @@ sphere_grad(x) = 2.0 .* x
         @test result.convergence == 1
     end
 
-    @testset "L-BFGS-B errors on non-finite fn (bug fix)" begin
-        # R: "L-BFGS-B needs finite values of 'fn'"
-        # Initial evaluation returns NaN → fail=52
+    @testset "L-BFGS-B errors on non-finite fn (R compat)" begin
+        # R throws: "L-BFGS-B needs finite values of 'fn'"
         f_nan(x) = NaN
-        result = optim([1.0, 1.0], f_nan; method="L-BFGS-B")
-        @test result.convergence == 52
-        @test occursin("FINITE VALUES", result.message)
+        @test_throws ErrorException optim([1.0, 1.0], f_nan; method="L-BFGS-B")
     end
 
-    @testset "L-BFGS-B errors on mid-iteration non-finite fn (bug fix)" begin
-        # Function that starts finite but returns NaN after 2 evaluations.
-        # Use analytic gradient to avoid numgrad_bounded! erroring first.
+    @testset "L-BFGS-B errors on mid-iteration non-finite fn (R compat)" begin
+        # R throws when fn returns NaN mid-optimization
         calls = Ref(0)
         f_delayed_nan(x) = begin
             calls[] += 1
             calls[] > 2 ? NaN : sum(x .^ 2)
         end
         gr_delayed_nan(x) = 2.0 .* x
-        result = optim([5.0, 3.0], f_delayed_nan; gr=gr_delayed_nan, method="L-BFGS-B")
-        # Should fail with code 52, not falsely converge with NaN
-        @test result.convergence == 52
-        @test occursin("FINITE VALUES", result.message)
+        @test_throws ErrorException optim([5.0, 3.0], f_delayed_nan; gr=gr_delayed_nan,
+                                          method="L-BFGS-B")
+    end
+
+    @testset "L-BFGS-B errors on non-finite gradient (R compat)" begin
+        # R throws: "non-finite value supplied by optim"
+        f_sphere(x) = sum(x .^ 2)
+        gr_inf(x) = [Inf, Inf]
+        @test_throws ErrorException optim([1.0, 1.0], f_sphere; gr=gr_inf,
+                                          method="L-BFGS-B")
     end
 
     @testset "Brent returns convergence=0 and nothing counts (R compat)" begin
@@ -389,18 +391,16 @@ sphere_grad(x) = 2.0 .* x
         @test abs(result.x_opt - 2.0) < 0.01
     end
 
-    @testset "L-BFGS-B error path preserves evaluation counts (bug fix)" begin
-        # fn that becomes NaN after a few calls — counts should be > 0
+    @testset "L-BFGS-B error on delayed NaN fn throws (R compat)" begin
+        # fn that becomes NaN after a few calls — R throws an error
         calls = Ref(0)
         f_delayed_nan2(x) = begin
             calls[] += 1
             calls[] > 2 ? NaN : sum(x .^ 2)
         end
         gr_for_count(x) = 2.0 .* x
-        result = optim([5.0, 3.0], f_delayed_nan2; gr=gr_for_count, method="L-BFGS-B")
-        @test result.convergence == 52
-        @test result.counts.function_ > 0
-        @test result.counts.gradient > 0
+        @test_throws ErrorException optim([5.0, 3.0], f_delayed_nan2; gr=gr_for_count,
+                                          method="L-BFGS-B")
     end
 
     @testset "Length-1 vector objective accepted (R compat)" begin
@@ -519,6 +519,63 @@ sphere_grad(x) = 2.0 .* x
         result2 = optim([-1.2, 1.0], rosenbrock; method="L-BFGS-B")
         @test result2.convergence == 0
         @test result2.value < 1e-4
+    end
+
+    # ── L-BFGS-B full algorithm (GCP + subspace minimization) ────────────────
+    @testset "L-BFGS-B Beale from [4,4] bounded (GCP fix)" begin
+        # Bug: old projected-gradient L-BFGS-B converged to boundary local min
+        # [0.023, -4.5] value≈9.39. Full GCP+subspace algorithm finds global opt.
+        # R: par≈[3.0, 0.5], value≈1.5e-10, convergence=0.
+        beale(x) = (1.5 - x[1] + x[1]*x[2])^2 + (2.25 - x[1] + x[1]*x[2]^2)^2 +
+                   (2.625 - x[1] + x[1]*x[2]^3)^2
+        r = optim([4.0, 4.0], beale; method="L-BFGS-B",
+                  lower=[-4.5, -4.5], upper=[4.5, 4.5])
+        @test r.convergence == 0
+        @test r.value < 1e-6
+        @test abs(r.par[1] - 3.0) < 0.01
+        @test abs(r.par[2] - 0.5) < 0.01
+    end
+
+    @testset "L-BFGS-B Rosenbrock from [0,0] bounded (GCP fix)" begin
+        # R returns convergence=52 (false alarm), Julia converges properly.
+        # Both reach near-optimum. Julia's result is at least as good.
+        r = optim([0.0, 0.0], rosenbrock; method="L-BFGS-B",
+                  lower=[-5.0, -5.0], upper=[5.0, 5.0])
+        @test r.value < 1e-4
+        @test abs(r.par[1] - 1.0) < 0.01
+        @test abs(r.par[2] - 1.0) < 0.01
+    end
+
+    @testset "L-BFGS-B unbounded Rosenbrock (GCP fix)" begin
+        # Unbounded case should converge well with full algorithm
+        r = optim([-1.2, 1.0], rosenbrock; method="L-BFGS-B")
+        @test r.convergence == 0
+        @test r.value < 1e-4
+        @test abs(r.par[1] - 1.0) < 0.01
+        @test abs(r.par[2] - 1.0) < 0.01
+    end
+
+    # ── Direct lbfgsbmin API: non-finite gradient handling ───────────────────
+    @testset "lbfgsbmin NaN gradient does not falsely converge (bug fix)" begin
+        # Bug: NaN in gradient → _proj_grad! returned 0.0 (NaN > m is false),
+        # causing immediate false convergence with fail=0.
+        using Durbyn.Optimize: lbfgsbmin
+        f_ok(n, x, _) = sum(x .^ 2)
+        g_nan(n, x, _) = [NaN, NaN]
+        r = lbfgsbmin(f_ok, g_nan, [1.0, 1.0])
+        @test r.fail != 0
+        @test occursin("NON-FINITE", r.message)
+    end
+
+    @testset "lbfgsbmin Inf gradient returns non-finite error (bug fix)" begin
+        # Bug: Inf gradient → line search failed with ABNORMAL_TERMINATION
+        # instead of a clear non-finite gradient message.
+        using Durbyn.Optimize: lbfgsbmin
+        f_ok(n, x, _) = sum(x .^ 2)
+        g_inf(n, x, _) = [Inf, Inf]
+        r = lbfgsbmin(f_ok, g_inf, [1.0, 1.0])
+        @test r.fail != 0
+        @test occursin("NON-FINITE", r.message)
     end
 
     # ── Strict NM regression tests (R parity) ────────────────────────────────

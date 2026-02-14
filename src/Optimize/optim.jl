@@ -381,8 +381,7 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     gr_count = Ref(0)
 
     # Convert to internal function signature.
-    # R's optim.c:684 checks !R_FINITE(f) after every fn evaluation inside
-    # the L-BFGS-B loop and hard-errors. We match this by checking in the wrapper.
+    # R's optim.c checks for non-finite fn/gr values and throws errors.
     fn_internal(n, x, ex) = begin
         fn_count[] += 1
         val = fn(x)
@@ -396,7 +395,13 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     gr_internal = if !isnothing(gr)
         (n, x, ex) -> begin
             gr_count[] += 1
-            gr(x)
+            gval = gr(x)
+            for i in eachindex(gval)
+                if !isfinite(gval[i])
+                    error("non-finite value supplied by optim")
+                end
+            end
+            gval
         end
     else
         # Create bounded numerical gradient function (respects box constraints)
@@ -419,20 +424,8 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
         iprint = con["trace"] > 0 ? con["REPORT"] : 0
     )
 
-    result = try
-        lbfgsbmin(fn_internal, gr_internal, par;
-                  l=lower_scaled, u=upper_scaled, options=opts)
-    catch e
-        if e isa ErrorException && e.msg == "L-BFGS-B needs finite values of 'fn'"
-            # R-compatible error: convergence=52 with message
-            # Use external counters to preserve actual evaluation counts
-            (x_opt=copy(par), f_opt=NaN, n_iter=0,
-             fail=52, fn_evals=fn_count[], gr_evals=gr_count[],
-             message="ERROR: L-BFGS-B NEEDS FINITE VALUES OF FN")
-        else
-            rethrow(e)
-        end
-    end
+    result = lbfgsbmin(fn_internal, gr_internal, par;
+                       l=lower_scaled, u=upper_scaled, options=opts)
 
     # Translate fail codes to R-compatible convergence codes:
     # 0 = converged, 1 = maxit reached, 51 = warning, 52 = error

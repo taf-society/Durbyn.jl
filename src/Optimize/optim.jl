@@ -101,8 +101,6 @@ Parameter and function scaling follow R's convention:
 - Function values are scaled by `1/fnscale`
 - This improves conditioning when parameters have different scales
 """
-# R's optim.c:80-84: coerces result to numeric scalar, validates length==1.
-# Accepts Number (passthrough) or length-1 array (extracts element).
 _to_scalar(val::Number) = Float64(val)
 _to_scalar(::Nothing) = error("objective function in optim evaluates to length 0 not 1")
 _to_scalar(::Missing) = error("objective function in optim evaluates to length 0 not 1")
@@ -111,8 +109,6 @@ function _to_scalar(val)
     Float64(first(val))
 end
 
-# R's rep_len: recycle or truncate a vector to length n.
-# Empty input → NaN fill (matches R's rep_len(numeric(0), n) → NA vector).
 function _rep_len(x::Vector{Float64}, n::Int)
     lx = length(x)
     lx == n && return x
@@ -129,47 +125,38 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
                hessian::Bool=false,
                kwargs...)
 
-    # Coerce to Float64 (R's as.double)
     par = Float64.(par)
     lower = lower isa AbstractVector ? Float64.(lower) : Float64(lower)
     upper = upper isa AbstractVector ? Float64.(upper) : Float64(upper)
 
     npar = length(par)
 
-    # Validate method
     valid_methods = ["Nelder-Mead", "BFGS", "L-BFGS-B", "Brent"]
     if !(method in valid_methods)
         error("method must be one of: $(join(valid_methods, ", "))")
     end
 
-    # Handle bounds
     if (any(lower .> -Inf) || any(upper .< Inf)) && !(method in ["L-BFGS-B", "Brent"])
         @warn "bounds can only be used with method L-BFGS-B or Brent, switching to L-BFGS-B"
         method = "L-BFGS-B"
     end
 
-    # Check 1D for Brent
     if method == "Brent" && npar != 1
         error("method = \"Brent\" is only available for one-dimensional optimization")
     end
 
-    # Expand bounds to vectors first (R uses rep_len; empty → NaN like R's NA)
     lower_vec = lower isa Float64 ? fill(lower, npar) : _rep_len(lower, npar)
     upper_vec = upper isa Float64 ? fill(upper, npar) : _rep_len(upper, npar)
 
-    # Brent requires finite bounds (matching R's error).
-    # Checked after expansion so empty vectors become NaN → caught here.
     if method == "Brent"
         if !all(isfinite, lower_vec) || !all(isfinite, upper_vec)
             error("method = \"Brent\" requires finite 'lower' and 'upper' bounds")
         end
-        # R's optimize.c:267 checks xmin < xmax
         if lower_vec[1] >= upper_vec[1]
             error("'xmin' not less than 'xmax'")
         end
     end
 
-    # Default control parameters (matching R, with Julia enhancements)
     con = Dict{String,Any}(
         "trace" => 0,
         "fnscale" => 1.0,
@@ -190,27 +177,21 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
         "warn.1d.NelderMead" => true
     )
 
-    # Coerce Symbol keys to String (R's list names are always strings)
     control_str = Dict{String,Any}(string(k) => v for (k, v) in control)
 
-    # Validate control parameters before merging
     known_keys = keys(con)
     unknown = setdiff(keys(control_str), known_keys)
     if !isempty(unknown)
         @warn "unknown names in control: $(join(unknown, ", "))"
     end
 
-    # Override with user control
     merge!(con, control_str)
 
     if con["trace"] < 0
         @warn "read the documentation for 'trace' more carefully"
     end
 
-    # Validate parscale: R's C_optim checks for NM/BFGS/L-BFGS-B, but Brent
-    # bypasses C_optim entirely (goes to R-level optimize()), so no check.
     if method == "Brent"
-        # R's Brent ignores parscale — force to ones so it has no effect
         con["parscale"] = ones(npar)
     else
         ps = con["parscale"]
@@ -220,15 +201,12 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
         end
     end
 
-    # Validate ndeps: R only checks length for BFGS/L-BFGS-B when gr=NULL
-    # (optim.c:308, 363). NM and Brent never use ndeps.
     nd = con["ndeps"]
     con["ndeps"] = nd isa Number ? fill(Float64(nd), npar) : Float64.(nd)
     if method in ["BFGS", "L-BFGS-B"] && isnothing(gr) && length(con["ndeps"]) != npar
         error("'ndeps' is of the wrong length")
     end
 
-    # Warnings for method-specific parameters
     if method == "L-BFGS-B" && any(haskey.(Ref(control), ["reltol", "abstol"]))
         @warn "method L-BFGS-B uses 'factr' (and 'pgtol') instead of 'reltol' and 'abstol'"
     end
@@ -237,7 +215,6 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
         @warn "one-dimensional optimization by Nelder-Mead is unreliable: use \"Brent\" instead"
     end
 
-    # Create scaled function wrappers
     fnscale = con["fnscale"]
     parscale = con["parscale"]
 
@@ -255,7 +232,6 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
 
     gr_scaled = if !isnothing(gr)
         _check_grad = g -> begin
-            # R's optim.c:109-111 validates gradient length every call
             (g isa AbstractVector && length(g) == npar) ||
                 error("gradient in optim evaluated to length $(g isa AbstractVector ? length(g) : 0) not $npar")
             g
@@ -269,10 +245,8 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
         nothing
     end
 
-    # Scale initial parameters
     par_scaled = par ./ parscale
 
-    # Call appropriate method
     result = if method == "Nelder-Mead"
         _optim_neldermead(par_scaled, fn_scaled, con, lower_vec, upper_vec, parscale)
     elseif method == "BFGS"
@@ -283,14 +257,12 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
         _optim_brent(par_scaled[1], fn_scaled, con, lower_vec[1], upper_vec[1], parscale[1])
     end
 
-    # Compute Hessian if requested
     hess = if hessian
         _compute_hessian(result.par, fn, gr, con, parscale; kwargs...)
     else
         nothing
     end
 
-    # Return result in R's format
     return (
         par = result.par,
         value = result.value,
@@ -301,8 +273,6 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
     )
 end
 
-
-# Method-specific implementations
 
 function _optim_neldermead(par, fn, con, lower, upper, parscale)
     opts = NelderMeadOptions(
@@ -321,7 +291,7 @@ function _optim_neldermead(par, fn, con, lower, upper, parscale)
         par = result.x_opt .* parscale,
         value = result.f_opt * con["fnscale"],
         fn_evals = result.fncount,
-        gr_evals = nothing,  # R returns NA_INTEGER for NM (optim.c:276)
+        gr_evals = nothing,
         fail = result.fail,
         message = nothing
     )
@@ -329,7 +299,6 @@ end
 
 
 function _optim_bfgs(par, fn, gr, con, parscale)
-    # Convert to internal function signature: f(n, x, ex)
     fn_internal(n, x, ex) = fn(x)
     gr_internal = isnothing(gr) ? nothing : (n, x, grad, ex) -> (grad .= gr(x); nothing)
 
@@ -359,7 +328,6 @@ end
 function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     npar = length(par)
 
-    # R's optim.c:653-659 special-cases n==0
     if npar == 0
         f_val = fn(Float64[])
         return (
@@ -372,16 +340,12 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
         )
     end
 
-    # Scale bounds
     lower_scaled = lower ./ parscale
     upper_scaled = upper ./ parscale
 
-    # Track evaluation counts externally so they survive exceptions
     fn_count = Ref(0)
     gr_count = Ref(0)
 
-    # Convert to internal function signature.
-    # R's optim.c checks for non-finite fn/gr values and throws errors.
     fn_internal(n, x, ex) = begin
         fn_count[] += 1
         val = fn(x)
@@ -391,7 +355,6 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
         val
     end
 
-    # L-BFGS-B requires a gradient function - use numerical gradients if not provided
     gr_internal = if !isnothing(gr)
         (n, x, ex) -> begin
             gr_count[] += 1
@@ -404,7 +367,6 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
             gval
         end
     else
-        # Create bounded numerical gradient function (respects box constraints)
         npar_local = length(par)
         ndeps = con["ndeps"]
         cache = NumericalGradientCache(npar_local)
@@ -427,8 +389,6 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     result = lbfgsbmin(fn_internal, gr_internal, par;
                        l=lower_scaled, u=upper_scaled, options=opts)
 
-    # Translate fail codes to R-compatible convergence codes:
-    # 0 = converged, 1 = maxit reached, 51 = warning, 52 = error
     convergence = if result.fail == 0
         0
     elseif result.fail == 52
@@ -451,9 +411,6 @@ end
 
 
 function _optim_brent(par, fn, con, lower, upper, parscale)
-    # R's Brent path calls optimize(fn, lower, upper, tol=reltol).
-    # R's optimize() has no maxit — Brent runs until convergence based on tol.
-    # R also doesn't apply parscale for Brent (parscale forced to ones upstream).
     opts = FminOptions(
         tol = con["reltol"],
         trace = con["trace"] > 0
@@ -461,8 +418,6 @@ function _optim_brent(par, fn, con, lower, upper, parscale)
 
     result = fmin(fn, lower, upper; options=opts)
 
-    # R's optim() Brent path always returns convergence=0 and counts=NA
-    # (R delegates to optimize() which has no convergence/counts concept)
     return (
         par = [result.x_opt],
         value = result.f_opt * con["fnscale"],
@@ -485,3 +440,4 @@ function _compute_hessian(par, fn, gr, con, parscale; kwargs...)
     return optim_hessian(fn_wrapper, par, gr_wrapper;
                         fnscale=fnscale, parscale=parscale, ndeps=ndeps)
 end
+

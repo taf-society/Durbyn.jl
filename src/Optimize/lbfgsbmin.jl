@@ -76,11 +76,6 @@ function _proj_grad!(pg::Vector{Float64}, x::Vector{Float64}, g::Vector{Float64}
 end
 
 
-# ── Compact L-BFGS helper functions (R's lbfgsb.c) ──────────────────────
-
-# Cholesky factorization of upper triangle: A = R'R, R stored in upper triangle.
-# Only the upper triangle A[i,j] for i<=j is accessed/modified.
-# Returns info=0 on success, info=j>0 if not positive definite at column j.
 function _dpofa!(A::AbstractMatrix{Float64}, n::Int)
     @inbounds for j in 1:n
         s = 0.0
@@ -102,8 +97,6 @@ function _dpofa!(A::AbstractMatrix{Float64}, n::Int)
     return 0
 end
 
-# Solve T*x = b where T is n×n upper triangular (stored in rows/cols r:r+n-1 of A).
-# b is overwritten with the solution. Returns info=0 on success.
 function _dtrsl_upper!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVector{Float64}, boff::Int)
     @inbounds for j in n:-1:1
         if A[r+j-1, r+j-1] == 0.0
@@ -117,8 +110,6 @@ function _dtrsl_upper!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVe
     return 0
 end
 
-# Solve T'*x = b where T is n×n upper triangular (stored in rows/cols r:r+n-1 of A).
-# T' is lower triangular. b is overwritten with the solution.
 function _dtrsl_upper_t!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVector{Float64}, boff::Int)
     @inbounds for j in 1:n
         s = b[boff+j]
@@ -133,17 +124,11 @@ function _dtrsl_upper_t!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::Abstract
     return 0
 end
 
-# R's bmv: compute p = M^{-1} v where M is the middle matrix of the compact L-BFGS.
-# sy is m×m (S'Y), wt is m×m (Cholesky factor J' in upper triangle).
-# v and p are length 2*col vectors.
 function _bmv!(p::AbstractVector{Float64}, sy::Matrix{Float64}, wt::Matrix{Float64},
     col::Int, m::Int, v::AbstractVector{Float64})
     if col == 0
         return 0
     end
-    # PART I: solve [ D^{1/2}      0 ] [p1] = [v1]
-    #              [-L*D^{-1/2}   J ] [p2]   [v2]
-    # First solve Jp2 = v2 + L*D^{-1}*v1
     p[col+1] = v[col+1]
     @inbounds for i in 2:col
         s = 0.0
@@ -152,25 +137,18 @@ function _bmv!(p::AbstractVector{Float64}, sy::Matrix{Float64}, wt::Matrix{Float
         end
         p[col+i] = v[col+i] + s
     end
-    # Solve J*p2 = rhs (J' is upper triangular in wt, so J is lower → solve J'*x = rhs first? No.)
-    # R calls dtrsl(&wt, &m, col, &p[col+1], &c__11, info) → job=11 → solve T'*x=b, T upper
     info = _dtrsl_upper_t!(wt, 1, col, p, col)
     if info != 0
         return info
     end
-    # Solve D^{1/2} p1 = v1
     @inbounds for i in 1:col
         p[i] = v[i] / sqrt(sy[i, i])
     end
 
-    # PART II: solve [-D^{1/2}    D^{-1/2}*L'] [p1] = [p1]
-    #               [ 0          J'           ] [p2]   [p2]
-    # Solve J'*p2 = p2
     info = _dtrsl_upper!(wt, 1, col, p, col)
     if info != 0
         return info
     end
-    # Compute p1 = -D^{-1/2}*p1 + D^{-1}*L'*p2
     @inbounds for i in 1:col
         p[i] = -p[i] / sqrt(sy[i, i])
     end
@@ -184,11 +162,8 @@ function _bmv!(p::AbstractVector{Float64}, sy::Matrix{Float64}, wt::Matrix{Float
     return 0
 end
 
-# R's hpsolb: heap sort for breakpoints.
-# Extracts the minimum element of t[1:n], puts it in t[n], and maintains a min-heap in t[1:n-1].
 function _hpsolb!(t::Vector{Float64}, iorder::Vector{Int}, n::Int, iheap::Int)
     if iheap == 0
-        # Build a min-heap from t[1:n]
         @inbounds for k in 2:n
             ddum = t[k]
             indxin = iorder[k]
@@ -207,7 +182,6 @@ function _hpsolb!(t::Vector{Float64}, iorder::Vector{Int}, n::Int, iheap::Int)
             iorder[i] = indxin
         end
     end
-    # Extract minimum: move t[1] to t[n], restore heap in t[1:n-1]
     if n > 1
         out = t[1]
         indxou = iorder[1]
@@ -238,10 +212,6 @@ function _hpsolb!(t::Vector{Float64}, iorder::Vector{Int}, n::Int, iheap::Int)
 end
 
 
-# ── GCP and active set functions ─────────────────────────────────────────
-
-# R's active: initialize iwhere and project x to feasible set.
-# Returns (prjctd, cnstnd, boxed).
 function _active!(x::Vector{Float64}, l::Vector{Float64}, u::Vector{Float64},
     nbd::Vector{Int32}, iwhere::Vector{Int}, n::Int)
     prjctd = false
@@ -267,11 +237,11 @@ function _active!(x::Vector{Float64}, l::Vector{Float64}, u::Vector{Float64},
             boxed = false
         end
         if nbd[i] == 0
-            iwhere[i] = -1  # always free
+            iwhere[i] = -1
         else
             cnstnd = true
             if nbd[i] == 2 && u[i] - l[i] <= 0.0
-                iwhere[i] = 3  # always fixed
+                iwhere[i] = 3
             else
                 iwhere[i] = 0
             end
@@ -280,8 +250,6 @@ function _active!(x::Vector{Float64}, l::Vector{Float64}, u::Vector{Float64},
     return prjctd, cnstnd, boxed
 end
 
-# R's cauchy: compute the Generalized Cauchy Point (GCP).
-# xcp is filled with the GCP. Returns (nint, info).
 function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Float64},
     nbd::Vector{Int32}, g::Vector{Float64}, iorder::Vector{Int}, iwhere::Vector{Int},
     t::Vector{Float64}, d::Vector{Float64}, xcp::Vector{Float64}, m::Int,
@@ -303,12 +271,10 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
     f1 = 0.0
     nint = 1
 
-    # Zero p
     @inbounds for i in 1:col2
         p[i] = 0.0
     end
 
-    # For each variable: determine bound status, breakpoint, and update p
     tl = 0.0
     tu = 0.0
     @inbounds for i in 1:n
@@ -343,14 +309,12 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
         else
             d[i] = neggi
             f1 -= neggi * neggi
-            # p += W'e_i * neggi
             for j in 1:col
                 p[j] += wy[i, pointr] * neggi
                 p[col+j] += ws[i, pointr] * neggi
                 pointr = pointr % m + 1
             end
             if nbd[i] <= 2 && nbd[i] != 0 && neggi < 0.0
-                # x[i] + d[i] will hit lower bound
                 nbreak += 1
                 iorder[nbreak] = i
                 t[nbreak] = tl / (-neggi)
@@ -359,7 +323,6 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
                     ibkmin = nbreak
                 end
             elseif nbd[i] >= 2 && neggi > 0.0
-                # x[i] + d[i] will hit upper bound
                 nbreak += 1
                 iorder[nbreak] = i
                 t[nbreak] = tu / neggi
@@ -368,7 +331,6 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
                     ibkmin = nbreak
                 end
             else
-                # unbounded along this direction
                 nfree -= 1
                 iorder[nfree] = i
                 if abs(neggi) > 0.0
@@ -383,17 +345,14 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
             p[j] *= theta
         end
     end
-    # Initialize GCP = x
     copyto!(xcp, x)
     if nbreak == 0 && nfree == n + 1
         return 0, 0
     end
-    # Initialize c = W'(xcp - x) = 0
     @inbounds for j in 1:col2
         c[j] = 0.0
     end
 
-    # Initialize f2
     f2 = -theta * f1
     f2_org = f2
     if col > 0
@@ -411,14 +370,12 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
     tsum = 0.0
 
     if nbreak == 0
-        # No breakpoints: locate GCP and return
         @goto gcp_found
     end
     nleft = nbreak
     cauchyiter = 1
     tj = 0.0
 
-    # Main loop: walk through breakpoints
     while true
         tj0 = tj
         if cauchyiter == 1
@@ -439,7 +396,6 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
         if dtm < dt
             @goto gcp_found
         end
-        # Fix variable ibp at its bound
         tsum += dt
         nleft -= 1
         cauchyiter += 1
@@ -458,24 +414,20 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
             dtm = dt
             @goto gcp_update_c
         end
-        # Update f1, f2
         nint += 1
         dibp2 = dibp * dibp
         f1 += dt * f2 + dibp2 - theta * dibp * zibp
         f2 -= theta * dibp2
         if col > 0
-            # c += dt * p
             @inbounds for j in 1:col2
                 c[j] += dt * p[j]
             end
-            # wbp = row of W for variable ibp
             pointr = head
             @inbounds for j in 1:col
                 wbp[j] = wy[ibp, pointr]
                 wbp[col+j] = theta * ws[ibp, pointr]
                 pointr = pointr % m + 1
             end
-            # Compute M^{-1}*wbp
             info = _bmv!(v, sy, wt, col, m, wbp)
             if info != 0
                 return nint, info
@@ -486,7 +438,6 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
                 wmp += p[j] * v[j]
                 wmw += wbp[j] * v[j]
             end
-            # p -= dibp * wbp
             @inbounds for j in 1:col2
                 p[j] -= dibp * wbp[j]
             end
@@ -508,7 +459,6 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
     @label gcp_found
     dtm = max(dtm, 0.0)
     tsum += dtm
-    # Move free variables
     @inbounds for i in 1:n
         xcp[i] += tsum * d[i]
     end
@@ -522,8 +472,6 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
     return nint, 0
 end
 
-# R's freev: identify free and active variables at GCP.
-# Returns (nfree, nenter, ileave, wrk).
 function _freev!(n::Int, nfree_prev::Int, indx::Vector{Int}, iwhere::Vector{Int},
     indx2::Vector{Int}, cnstnd::Bool, updatd::Bool, iter::Int)
     nenter = 0
@@ -560,10 +508,6 @@ function _freev!(n::Int, nfree_prev::Int, indx::Vector{Int}, iwhere::Vector{Int}
 end
 
 
-# ── Subspace minimization functions ──────────────────────────────────────
-
-# R's formk: form LEL^T factorization of the indefinite K matrix.
-# Returns info (0 = success).
 function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
     indx2::Vector{Int}, iupdat::Int, updatd::Bool,
     wn::Matrix{Float64}, wn1::Matrix{Float64}, m::Int,
@@ -572,19 +516,17 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
 
     if updatd
         if iupdat > m
-            # Shift old part of wn1
             for jy in 1:m-1
                 js = m + jy
                 for i in 1:m-jy
-                    wn1[jy+i-1, jy] = wn1[jy+i, jy+1]      # block (1,1)
-                    wn1[js+i-1, js] = wn1[js+i, js+1]       # block (2,2)
+                    wn1[jy+i-1, jy] = wn1[jy+i, jy+1]
+                    wn1[js+i-1, js] = wn1[js+i, js+1]
                 end
                 for i in 1:m-1
-                    wn1[m+i, jy] = wn1[m+i+1, jy+1]         # block (2,1)
+                    wn1[m+i, jy] = wn1[m+i+1, jy+1]
                 end
             end
         end
-        # Put new rows in blocks (1,1), (2,1) and (2,2)
         iy = col
         is_ = m + col
         ipntr = (head + col - 2) % m + 1
@@ -592,12 +534,10 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
         for jy in 1:col
             js = m + jy
             temp1 = 0.0; temp2 = 0.0; temp3 = 0.0
-            # Free variables: pbegin=1, pend=nsub
             for k in 1:nsub
                 k1 = indx[k]
                 temp1 += wy[k1, ipntr] * wy[k1, jpntr]
             end
-            # Active variables: dbegin=nsub+1, dend=n
             for k in nsub+1:n
                 k1 = indx[k]
                 temp2 += ws[k1, ipntr] * ws[k1, jpntr]
@@ -608,7 +548,6 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
             wn1[is_, jy] = temp3
             jpntr = jpntr % m + 1
         end
-        # Put new column in block (2,1)
         jpntr = (head + col - 2) % m + 1
         ipntr = head
         for i in 1:col
@@ -626,7 +565,6 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
         upcl = col
     end
 
-    # Modify old parts due to changes in free variable set
     ipntr = head
     for iy in 1:upcl
         is_ = m + iy
@@ -650,7 +588,6 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
         end
         ipntr = ipntr % m + 1
     end
-    # Modify old parts in block (2,1)
     ipntr = head
     for is_ in m+1:m+upcl
         jpntr = head
@@ -674,7 +611,6 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
         ipntr = ipntr % m + 1
     end
 
-    # Form upper triangle of wn (K matrix with compressed indexing)
     m2 = 2 * m
     for iy in 1:col
         is_ = col + iy
@@ -694,22 +630,17 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
         wn[iy, iy] += sy[iy, iy]
     end
 
-    # First Cholesky: factor (1,1) block
-    # Create a view of wn as if it has leading dimension m2 (already correct since wn is 2m×2m)
     info = _dpofa!(wn, col)
     if info != 0
         return -1
     end
-    # Solve L^{-1} * (1,2) block
     col2 = 2 * col
     for js in col+1:col2
-        # Solve R' * x = wn[1:col, js] where R is upper triangular in wn[1:col, 1:col]
         info = _dtrsl_upper_t!(wn, 1, col, view(wn, :, js), 0)
         if info != 0
             return -1
         end
     end
-    # Update (2,2) block: add (L^{-1}*B12)' * (L^{-1}*B12)
     for is_ in col+1:col2
         for js in is_:col2
             s = 0.0
@@ -719,7 +650,6 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
             wn[is_, js] += s
         end
     end
-    # Second Cholesky: factor (2,2) block
     info = _dpofa!(view(wn, col+1:col2, col+1:col2), col)
     if info != 0
         return -2
@@ -727,8 +657,6 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
     return 0
 end
 
-# R's formt: form T = theta*SS + L*D^{-1}*L' and Cholesky factor.
-# Returns info (0 = success).
 function _formt!(m::Int, wt::Matrix{Float64}, sy::Matrix{Float64},
     ss::Matrix{Float64}, col::Int, theta::Float64)
     for j in 1:col
@@ -748,8 +676,6 @@ function _formt!(m::Int, wt::Matrix{Float64}, sy::Matrix{Float64},
     return info != 0 ? -3 : 0
 end
 
-# R's cmprlb: compute r = -Z'B(xcp-x) - Z'g.
-# Returns info.
 function _cmprlb!(n::Int, m::Int, x::Vector{Float64}, g::Vector{Float64},
     ws::Matrix{Float64}, wy::Matrix{Float64}, sy::Matrix{Float64}, wt::Matrix{Float64},
     z::Vector{Float64}, r::Vector{Float64}, wa::Vector{Float64},
@@ -782,9 +708,6 @@ function _cmprlb!(n::Int, m::Int, x::Vector{Float64}, g::Vector{Float64},
     return 0
 end
 
-# R's subsm: subspace minimization in the free variable subspace.
-# z is modified in place with the minimizer. d is used as workspace.
-# Returns (iword, info).
 function _subsm!(n::Int, m::Int, nsub::Int, indx::Vector{Int},
     l::Vector{Float64}, u::Vector{Float64}, nbd::Vector{Int32},
     z::Vector{Float64}, d::Vector{Float64},
@@ -794,7 +717,6 @@ function _subsm!(n::Int, m::Int, nsub::Int, indx::Vector{Int},
     if nsub <= 0
         return 0, 0
     end
-    # Compute wv = W'Z*d
     pointr = head
     @inbounds for i in 1:col
         temp1 = 0.0; temp2 = 0.0
@@ -807,14 +729,8 @@ function _subsm!(n::Int, m::Int, nsub::Int, indx::Vector{Int},
         wv[col+i] = theta * temp2
         pointr = pointr % m + 1
     end
-    # Solve K^{-1} * wv using LEL^T factorization stored in wn
     m2 = 2 * m
     col2 = 2 * col
-    # Solve L^T * x = wv (upper triangular transpose)
-    # The wn matrix has the factorization in compressed form [1:col, 1:col] and [col+1:2col, col+1:2col]
-    # But we need to solve the full 2col×2col system using the block structure
-    # R: dtrsl(&wn, &m2, &col2, &wv[1], &c__11, info) → T'*x = b, upper T
-    # Here wn is 2m×2m and we use the first 2col rows/cols
     info = _dtrsl_upper_t!(wn, 1, col2, wv, 0)
     if info != 0
         return 0, info
@@ -822,12 +738,10 @@ function _subsm!(n::Int, m::Int, nsub::Int, indx::Vector{Int},
     @inbounds for i in 1:col
         wv[i] = -wv[i]
     end
-    # R: dtrsl(&wn, &m2, &col2, &wv[1], &c__1, info) → T*x = b, upper T
     info = _dtrsl_upper!(wn, 1, col2, wv, 0)
     if info != 0
         return 0, info
     end
-    # Compute d = (1/theta)*d + (1/theta^2)*Z'W*wv
     pointr = head
     @inbounds for jy in 1:col
         js = col + jy
@@ -841,7 +755,6 @@ function _subsm!(n::Int, m::Int, nsub::Int, indx::Vector{Int},
         d[i] /= theta
     end
 
-    # Backtrack to feasible region
     alpha = 1.0
     temp1 = alpha
     ibd = 0
@@ -888,9 +801,6 @@ function _subsm!(n::Int, m::Int, nsub::Int, indx::Vector{Int},
     return iword, 0
 end
 
-# R's matupd: update WS, WY, SY, SS matrices.
-# d = stp * search_direction, r = gnew - gold.
-# Returns (itail, col, head, theta).
 function _matupd!(n::Int, m::Int, ws::Matrix{Float64}, wy::Matrix{Float64},
     sy::Matrix{Float64}, ss::Matrix{Float64},
     d::Vector{Float64}, r::Vector{Float64},
@@ -904,16 +814,12 @@ function _matupd!(n::Int, m::Int, ws::Matrix{Float64}, wy::Matrix{Float64},
         itail = itail % m + 1
         head = head % m + 1
     end
-    # Update WS and WY at column itail
     @inbounds for i in 1:n
         ws[i, itail] = d[i]
         wy[i, itail] = r[i]
     end
-    # theta = y'y / y's
     theta = rr / dr
-    # Update SY and SS
     if iupdat > m
-        # Shift old information
         for j in 1:col-1
             for i in 1:j
                 ss[i, j] = ss[i+1, j+1]
@@ -923,7 +829,6 @@ function _matupd!(n::Int, m::Int, ws::Matrix{Float64}, wy::Matrix{Float64},
             end
         end
     end
-    # Add new row/column
     pointr = head
     for j in 1:col-1
         sy[col, j] = dot(view(ws, :, itail), view(wy, :, pointr))
@@ -939,8 +844,6 @@ function _matupd!(n::Int, m::Int, ws::Matrix{Float64}, wy::Matrix{Float64},
     return itail, col, head, theta
 end
 
-
-# ── Line search (kept from previous implementation) ──────────────────────
 
 @inline function _feasible_step_cap(x::Vector{Float64}, d::Vector{Float64},
     l::Vector{Float64}, u::Vector{Float64})
@@ -985,7 +888,6 @@ function _line_search_wolfe!(x::Vector{Float64}, fx::Float64, gx::Vector{Float64
     end
 
     Dnorm = sqrt(dot(d, d))
-    # R's lnsrlb (lbfgsb.c:2518-2523): boxed or iter>0 → stp=1.0
     alpha_init = (iter == 1 && !boxed) ? (1.0 / max(Dnorm, eps())) : 1.0
     alpha = isfinite(alpha_max) ? min(alpha_init, alpha_max) : alpha_init
 
@@ -1089,7 +991,6 @@ function _line_search_wolfe!(x::Vector{Float64}, fx::Float64, gx::Vector{Float64
     return false, 0.0, fx, gx, x, fevals, gevals
 end
 
-# Cubic interpolation for line search (More-Thuente style).
 function _cubic_min(a1, f1, dphi1, a2, f2, dphi2)
     d1 = dphi1 + dphi2 - 3.0 * (f2 - f1) / (a2 - a1)
     disc = d1 * d1 - dphi1 * dphi2
@@ -1160,8 +1061,6 @@ function _zoom!(x, fx, gx, d, l, u, f, g, n,
 end
 
 
-# ── Main L-BFGS-B function ──────────────────────────────────────────────
-
 """
     lbfgsbmin(f, g, x0; mask=trues(length(x0)), l=nothing, u=nothing, options=LBFGSBOptions())
 
@@ -1200,7 +1099,6 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
         end
     end
 
-    # Check for infeasible bounds
     @inbounds for i in 1:n
         if l2[i] > u2[i]
             return (x_opt=copy(x0), f_opt=Inf, n_iter=0,
@@ -1211,14 +1109,13 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
 
     nbd = _nbd_from_bounds(l2, u2)
 
-    # Compact L-BFGS storage
-    ws = zeros(Float64, n, m)    # S vectors
-    wy = zeros(Float64, n, m)    # Y vectors
-    sy = zeros(Float64, m, m)    # S'Y
-    ss = zeros(Float64, m, m)    # S'S
-    wt = zeros(Float64, m, m)    # Cholesky of T
-    wn = zeros(Float64, 2m, 2m)  # K matrix
-    wn1 = zeros(Float64, 2m, 2m) # N matrix
+    ws = zeros(Float64, n, m)
+    wy = zeros(Float64, n, m)
+    sy = zeros(Float64, m, m)
+    ss = zeros(Float64, m, m)
+    wt = zeros(Float64, m, m)
+    wn = zeros(Float64, 2m, 2m)
+    wn1 = zeros(Float64, 2m, 2m)
 
     theta = 1.0
     col = 0
@@ -1227,22 +1124,20 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
     iupdat = 0
     updatd = false
 
-    # Working arrays
     z = Vector{Float64}(undef, n)
     r = Vector{Float64}(undef, n)
     d = Vector{Float64}(undef, n)
-    t_bp = Vector{Float64}(undef, n)      # breakpoints
-    wa = Vector{Float64}(undef, 8m)        # cauchy/subsm workspace
-    p_work = Vector{Float64}(undef, 2m)    # W'd for cauchy
-    c_work = Vector{Float64}(undef, 2m)    # W'(xcp-x) for cauchy
-    wbp = Vector{Float64}(undef, 2m)       # row of W at breakpoint
-    v_work = Vector{Float64}(undef, 2m)    # bmv workspace
-    wv = Vector{Float64}(undef, 2m)        # subsm workspace
+    t_bp = Vector{Float64}(undef, n)
+    wa = Vector{Float64}(undef, 8m)
+    p_work = Vector{Float64}(undef, 2m)
+    c_work = Vector{Float64}(undef, 2m)
+    wbp = Vector{Float64}(undef, 2m)
+    v_work = Vector{Float64}(undef, 2m)
+    wv = Vector{Float64}(undef, 2m)
     indx = Vector{Int}(undef, n)
     iwhere = Vector{Int}(undef, n)
     indx2 = Vector{Int}(undef, n)
 
-    # Initialize
     x = copy(x0)
     prjctd, cnstnd, boxed = _active!(x, l2, u2, nbd, iwhere, n)
 
@@ -1254,11 +1149,9 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
             message="ERROR: L-BFGS-B NEEDS FINITE VALUES OF FN")
     end
 
-    # copy() is critical: g() may return a shared buffer
     gx = copy(g(n, x, nothing))
     gr_evals = 1
 
-    # Check for non-finite gradient
     for i in eachindex(gx)
         if !isfinite(gx[i])
             return (x_opt=x, f_opt=fx, n_iter=0,
@@ -1293,29 +1186,24 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
 
         wrk = false
         if !cnstnd && col > 0
-            # Unconstrained with history: skip GCP, set z = x
             copyto!(z, x)
             wrk = updatd
         else
-            # Compute Generalized Cauchy Point
             nint, info = _cauchy!(n, x, l2, u2, nbd, gx, indx2, iwhere,
                 t_bp, d, z, m, wy, ws, sy, wt, theta, col, head,
                 p_work, c_work, wbp, v_work, sbgnrm)
             if info != 0
-                # Singular system: refresh L-BFGS memory
                 if options.iprint > 0
                     println("Singular triangular system in cauchy; refreshing memory.")
                 end
                 col = 0; head = 1; theta = 1.0; iupdat = 0; updatd = false
                 continue
             end
-            # Identify free/active variables at GCP
             nfree, nenter, ileave, wrk = _freev!(n, nfree, indx, iwhere, indx2,
                 cnstnd, updatd, iter - 1)
             nact = n - nfree
         end
 
-        # Subspace minimization
         if nfree != 0 && col != 0
             if wrk
                 info = _formk!(n, nfree, indx, nenter, ileave, indx2, iupdat, updatd,
@@ -1328,14 +1216,12 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
                     continue
                 end
             end
-            # For cmprlb, wa[2m+1:4m] stores W'(xcp-x) = c from cauchy
             @inbounds for i in 1:2*col
                 wa[2m+i] = c_work[i]
             end
             info = _cmprlb!(n, m, x, gx, ws, wy, sy, wt, z, r, wa,
                 indx, theta, col, head, nfree, cnstnd)
             if info == 0
-                # d[1:nfree] = reduced gradient r[1:nfree]
                 @inbounds for i in 1:nfree
                     d[i] = r[i]
                 end
@@ -1351,12 +1237,10 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
             end
         end
 
-        # Search direction: d = z - x
         @inbounds for i in 1:n
             d[i] = z[i] - x[i]
         end
 
-        # Check for zero direction
         dnorm_sq = dot(d, d)
         if dnorm_sq < 1e-32
             fail = 0
@@ -1365,13 +1249,10 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
         end
         dnorm = sqrt(dnorm_sq)
 
-        # Line search
-        # R's lnsrlb: save old x in t (we use r as temp), old g saved in old_g
         old_x = copy(x)
         old_g = copy(gx)
         fold = fx
 
-        # Compute max step (R's lnsrlb stpmx logic)
         stpmx = 1e10
         if cnstnd
             if iter == 1
@@ -1406,17 +1287,14 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
         gr_evals += ge
 
         if !ok
-            # Restore previous iterate
             x .= old_x
             gx .= old_g
             fx = fold
             if col == 0
-                # Abnormal termination
                 fail = 52
                 message = "ERROR: ABNORMAL_TERMINATION_IN_LNSRCH"
                 break
             else
-                # Refresh L-BFGS memory and restart
                 if options.iprint > 0
                     println("Bad direction in line search; refreshing memory.")
                 end
@@ -1438,7 +1316,6 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
         fx = fnew
         gx .= copy(gnew)
 
-        # Check for non-finite gradient
         has_nonfinite_grad = false
         for i in eachindex(gx)
             if !isfinite(gx[i])
@@ -1458,14 +1335,10 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
             println("At iterate ", iter, "  f= ", fx, "  |proj g|= ", sbgnrm)
         end
 
-        # R checks iter > maxit in the driver BEFORE mainlb's convergence tests.
-        # This ensures at least one full iteration runs (maxit=0), and that
-        # maxit takes priority over convergence on the boundary iteration.
         if iter > options.maxit
-            break  # fail=1, message="NEW_X" (defaults)
+            break
         end
 
-        # Convergence tests (only reached if iter <= maxit)
         if sbgnrm <= options.pgtol
             fail = 0
             message = "CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL"
@@ -1478,24 +1351,20 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
             break
         end
 
-        # Compute s = xnew - old_x (step), y = gnew - gold (gradient diff)
         @inbounds for i in 1:n
-            d[i] = x[i] - old_x[i]  # s vector (already scaled by stp)
-            r[i] = gx[i] - old_g[i]  # y vector
+            d[i] = x[i] - old_x[i]
+            r[i] = gx[i] - old_g[i]
         end
-        rr = dot(r, r)   # y'y
-        dr = dot(r, d)   # y's
-        dtd = dot(d, d)  # s's
-        ddum_skip = -dot(old_g, d)  # -g_old's
+        rr = dot(r, r)
+        dr = dot(r, d)
+        dtd = dot(d, d)
+        ddum_skip = -dot(old_g, d)
 
         if dr <= eps(Float64) * ddum_skip
-            # Skip L-BFGS update
             updatd = false
         else
             updatd = true
             iupdat += 1
-            # d is already the full step s = stp*direction, so dtd = s's.
-            # Pass stp=1.0 so matupd doesn't double-scale ss[col,col].
             itail, col, head, theta = _matupd!(n, m, ws, wy, sy, ss, d, r,
                 itail, iupdat, col, head, rr, dr, 1.0, dtd)
             info = _formt!(m, wt, sy, ss, col, theta)
@@ -1512,3 +1381,4 @@ function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
         fail=fail, fn_evals=fn_evals, gr_evals=gr_evals,
         message=message)
 end
+

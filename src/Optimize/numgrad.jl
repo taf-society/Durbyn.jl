@@ -51,8 +51,6 @@ Compute the numerical gradient of a scalar-valued function `f` using
     ex,
     ndeps::AbstractVector{Float64},
 )
-    # Use pre-allocated buffers (NO allocations)
-    # Copy x to xtrial initially
     @inbounds for i in 1:n
         xtrial[i] = x[i]
     end
@@ -60,22 +58,18 @@ Compute the numerical gradient of a scalar-valued function `f` using
     @inbounds for i in 1:n
         eps = ndeps[i]
 
-        # Forward perturbation
         xtrial[i] = x[i] + eps
         val1 = f(n, xtrial, ex)
 
-        # Backward perturbation
         xtrial[i] = x[i] - eps
         val2 = f(n, xtrial, ex)
 
-        # Central difference (SIMD-friendly)
         df[i] = (val1 - val2) * inv(2.0 * eps)
 
         if !isfinite(df[i])
             error("non-finite finite-difference value [$i]")
         end
 
-        # Reset (efficient)
         xtrial[i] = x[i]
     end
 
@@ -116,7 +110,6 @@ Adjusts step sizes near boundaries to remain within feasible limits.
     lower::Union{Nothing,AbstractVector{Float64}},
     upper::Union{Nothing,AbstractVector{Float64}},
 )
-    # Copy x to xtrial initially
     @inbounds for i in 1:n
         xtrial[i] = x[i]
     end
@@ -124,7 +117,6 @@ Adjusts step sizes near boundaries to remain within feasible limits.
     @inbounds for i in 1:n
         epsused = eps = ndeps[i]
 
-        # Forward perturbation with bounds
         tmp = x[i] + eps
         if !isnothing(upper) && tmp > upper[i]
             tmp = upper[i]
@@ -133,7 +125,6 @@ Adjusts step sizes near boundaries to remain within feasible limits.
         xtrial[i] = tmp
         val1 = f(n, xtrial, ex)
 
-        # Backward perturbation with bounds
         tmp = x[i] - eps
         if !isnothing(lower) && tmp < lower[i]
             tmp = lower[i]
@@ -142,14 +133,12 @@ Adjusts step sizes near boundaries to remain within feasible limits.
         xtrial[i] = tmp
         val2 = f(n, xtrial, ex)
 
-        # Central difference (SIMD-friendly)
         df[i] = (val1 - val2) * inv(epsused + eps)
 
         if !isfinite(df[i])
             error("non-finite finite-difference value [$i]")
         end
 
-        # Reset
         xtrial[i] = x[i]
     end
 
@@ -265,3 +254,4 @@ function numgrad(
     return numgrad(f, n, x, ex, ndeps;
         usebounds = usebounds, lower = lower, upper = upper)
 end
+

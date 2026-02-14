@@ -280,7 +280,6 @@ function bfgsmin(
 
     gfunc(n0, b, workspace.gvec, ex)
 
-    # Check for non-finite initial gradient
     @inbounds for i in 1:n
         if !isfinite(workspace.gvec[l[i]])
             return (x_opt=copy(b), f_opt=Fmin, n_iter=0,
@@ -355,7 +354,6 @@ function bfgsmin(
                 gradcount += 1
                 iter += 1
 
-                # Check for non-finite gradient
                 has_nonfinite_grad = false
                 @inbounds for i in 1:n
                     if !isfinite(workspace.gvec[l[i]])
@@ -405,15 +403,12 @@ function bfgsmin(
             println("iter", lpad(iter, 4), " value ", fval)
         end
 
-        # Julia enhancement: gradient norm convergence check
-        # Based on first-order optimality condition: ∇f(x*) = 0
         if gtol > 0.0
             grad_norm_sq = 0.0
             @inbounds for i in 1:n
                 grad_norm_sq += workspace.gvec[l[i]]^2
             end
             grad_norm = sqrt(grad_norm_sq)
-            # Relative tolerance: ||∇f|| < gtol * max(1, |f|)
             if grad_norm < gtol * max(1.0, abs(Fmin))
                 converged_gradient = true
                 if trace

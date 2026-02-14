@@ -8,9 +8,6 @@ function compute_gradient(p, fn, gr, fnscale, parscale, ndeps; kwargs...)
         return df
     end
 
-    # p is in scaled coordinates (par / parscale).
-    # fn expects unscaled (original) coordinates, so unscale all coordinates
-    # and perturb one at a time by eps * parscale[i].
     x = p .* parscale
     for i in 1:n
         eps = ndeps[i]
@@ -196,4 +193,5 @@ function optim_hessian(fn, par, gr = nothing; fnscale = 1.0, parscale = nothing,
     end
     return hessian
 end
+
 

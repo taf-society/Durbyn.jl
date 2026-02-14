@@ -134,7 +134,6 @@ Englewood Cliffs, N.J.: Prentice-Hall.
 - [`bfgsmin`](@ref): BFGS quasi-Newton algorithm for multidimensional optimization with gradients.
 """
 function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=FminOptions())
-    # R's optimize.c:267 checks xmin < xmax
     if lower >= upper
         error("'xmin' not less than 'xmax'")
     end
@@ -143,10 +142,8 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
     trace = options.trace
     maxit = options.maxit
 
-    # c is the squared inverse of the golden ratio
     c = 0.5 * (3.0 - sqrt(5.0))
 
-    # eps is approximately the square root of the relative machine precision
     eps = 1.0
     tol1 = 1.0 + eps
     while tol1 > 1.0
@@ -155,7 +152,6 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
     end
     eps = sqrt(eps)
 
-    # Initialization
     a = lower
     b = upper
     v = a + c * (b - a)
@@ -170,7 +166,6 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
     funcount = 1
 
     if !isfinite(fx)
-        # Match R's behavior: substitute large value and continue
         if fx == -Inf
             @warn "-Inf replaced by maximally negative value"
             fx = -floatmax(Float64)
@@ -189,7 +184,6 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
     iter = 0
     fail = 1
 
-    # Main loop
     while iter < maxit
         iter += 1
 
@@ -197,15 +191,12 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
         tol1 = eps * abs(x) + tol / 3.0
         tol2 = 2.0 * tol1
 
-        # Check stopping criterion
         if abs(x - xm) <= (tol2 - 0.5 * (b - a))
             fail = 0
             break
         end
 
-        # Determine if golden-section is necessary
         if abs(e) <= tol1
-            # Golden-section step
             if x >= xm
                 e = a - x
             else
@@ -213,7 +204,6 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
             end
             d = c * e
         else
-            # Fit parabola
             r = (x - w) * (fx - fv)
             q = (x - v) * (fx - fw)
             p = (x - v) * q - (x - w) * r
@@ -225,22 +215,18 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
             r = e
             e = d
 
-            # Is parabola acceptable?
             parabola_ok = (abs(p) < abs(0.5 * q * r)) &&
                           (p > q * (a - x)) &&
                           (p < q * (b - x))
 
             if parabola_ok
-                # A parabolic interpolation step
                 d = p / q
                 u = x + d
 
-                # f must not be evaluated too close to a or b
                 if (u - a) < tol2 || (b - u) < tol2
                     d = copysign(tol1, xm - x)
                 end
             else
-                # A golden-section step
                 if x >= xm
                     e = a - x
                 else
@@ -250,7 +236,6 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
             end
         end
 
-        # f must not be evaluated too close to x
         if abs(d) >= tol1
             u = x + d
         else
@@ -265,7 +250,6 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
         end
 
         if !isfinite(fu)
-            # Match R's behavior: substitute large value and continue (R's optimize.c)
             if fu == -Inf
                 @warn "-Inf replaced by maximally negative value"
                 fu = -floatmax(Float64)
@@ -275,7 +259,6 @@ function fmin(f::Function, lower::Float64, upper::Float64; options::FminOptions=
             end
         end
 
-        # Update a, b, v, w, and x
         if fu <= fx
             if u >= x
                 a = x

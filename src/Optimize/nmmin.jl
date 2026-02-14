@@ -392,7 +392,6 @@ function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptio
                 action = "LO-REDUCTION   "
             end
 
-            # Contraction step
             @inbounds for i = 1:n
                 B[i] = (1 - beta) * P[i, H] + beta * P[i, C]
             end

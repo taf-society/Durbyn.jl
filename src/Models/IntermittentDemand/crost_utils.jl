@@ -88,12 +88,12 @@ function croston_opt(x, method, cost, w, nop, init, init_opt)
             cost_fn = p -> croston_cost(p, x, cost, method, w,
                 nop, true, init, init_opt, lbound, ubound)
             options = NelderMeadOptions(maxit=2000)
-            result = nmmin(cost_fn, p0, options)
+            result = nelder_mead(cost_fn, p0, options)
             wopt = result.x_opt
         else
             cost_fn = p -> croston_cost([p], x, cost, method, w,
                 nop, true, init, init_opt, lbound, ubound)
-            result = fmin(cost_fn, lbound[1], ubound[1])
+            result = brent(cost_fn, lbound[1], ubound[1])
             wopt = [result.x_opt]
         end
 
@@ -107,7 +107,7 @@ function croston_opt(x, method, cost, w, nop, init, init_opt)
         cost_fn = p -> croston_cost(p, x, cost, method, w,
             nop, true, init, true, lbound, ubound)
         options = NelderMeadOptions(maxit=2000)
-        result = nmmin(cost_fn, p0, options)
+        result = nelder_mead(cost_fn, p0, options)
         wopt = result.x_opt
 
     elseif !isnothing(w) && init_opt
@@ -119,7 +119,7 @@ function croston_opt(x, method, cost, w, nop, init, init_opt)
         cost_fn = p -> croston_cost(p, x, cost, method, w,
             nop, false, init, true, lbound, ubound)
         options = NelderMeadOptions(maxit=2000)
-        result = nmmin(cost_fn, p0, options)
+        result = nelder_mead(cost_fn, p0, options)
         wopt = result.x_opt
 
         wopt = [w..., wopt...]

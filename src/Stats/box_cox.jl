@@ -28,7 +28,7 @@ function guerrero(x::AbstractVector{<:Number}, m::Int, lower::Real=-1.0, upper::
         println("Warning: Guerrero's method for selecting a Box-Cox parameter (lambda) is given for strictly positive data.")
     end
 
-    result = Optimize.fmin(lam -> guer_cv(lam, xf, m, nonseasonal_length=nonseasonal_length), Float64(lower), Float64(upper))
+    result = Optimize.brent(lam -> guer_cv(lam, xf, m, nonseasonal_length=nonseasonal_length), Float64(lower), Float64(upper))
     return result.x_opt
 end
 

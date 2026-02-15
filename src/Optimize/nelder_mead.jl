@@ -8,7 +8,7 @@ A configuration container for the Nelder-Mead optimization algorithm.
 
 # Keyword Arguments
 
-- `abstol::Float64`: Absolute tolerance on the function value for stopping. Default is `-Inf` (matching R's `optim()`).
+- `abstol::Float64`: Absolute tolerance on the function value for stopping. Default is `-Inf`.
 - `intol::Float64`: Relative tolerance between the best and worst function values. Default is `sqrt(eps(Float64))`.
 - `alpha::Float64`: Reflection coefficient. Controls how far to reflect. Default is `1.0`.
 - `beta::Float64`: Contraction coefficient. Controls step size during contraction. Default is `0.5`.
@@ -74,112 +74,64 @@ NelderMeadOptions(;
 )
 
 """
-	nmmin(f, x0, options::NelderMeadOptions)
+	nelder_mead(f, x0, options::NelderMeadOptions)
 
-Nelder-Mead simplex minimization - a line-for-line port of the C `nmmin` from R's `stats::optim`.
+Minimize a function of several variables using the Nelder-Mead simplex algorithm.
 
-This implementation exactly reproduces the C code behavior from Nash (1990) / R source, including:
-- Initial simplex construction with ×10 step escalation
-- Reflection/expansion/contraction/shrink steps with identical formulas
-- Convergence checks matching C tolerances
-- Shrink-failure handling
-- Contraction/shrink logic: shrink **only** when reflection fails to improve worst AND contraction fails
-- Polytope size accumulation matching C's loop structure
+The Nelder-Mead method is a derivative-free optimization algorithm that maintains a simplex
+of n+1 vertices in n-dimensional space. At each step it transforms the simplex through
+reflection, expansion, contraction, or shrink operations to move toward the minimum.
 
-It also offers optional, *off-by-default* bounds-aware extensions (project_to_bounds, init_step_cap).
+Optional bounds-aware extensions (`project_to_bounds`, `init_step_cap`) are available but
+disabled by default.
 
 # Arguments
 
 - `f::Function`: Objective function mapping `Vector{Float64}` → `Real`. Should return a finite
-  value for valid parameters. If `f` returns non-finite during iterations, it is replaced by
-  `invalid_penalty` (see below). If the **initial** evaluation at `x0` is non-finite, the
-  routine returns immediately with `fail === true` (no simplex constructed).
+  value for valid parameters. Non-finite values during iterations are replaced by
+  `invalid_penalty`. If the initial evaluation at `x0` is non-finite, the routine returns
+  immediately with `fail === true`.
 - `x0::AbstractVector{<:Real}`: Starting point. Internally converted to `Vector{Float64}`.
-- `options::NelderMeadOptions`: Control parameters for the algorithm (see `NelderMeadOptions` documentation).
-
-# Options (via `NelderMeadOptions`)
-
-- `abstol::Float64 = 0.0`: Absolute tolerance on `VL` (best value). `VL ≤ abstol` triggers early exit.
-  (Set `0.0` for strict Algorithm 19 behavior.)
-- `intol::Float64 = sqrt(eps(Float64))`: **Scaled/relative tolerance** used by Algorithm 19:
-  `convtol = intol * (abs(VL) + intol)`. Converged if `VH ≤ VL + convtol`.
-- `alpha::Float64 = 1.0`: Reflection coefficient.
-- `beta::Float64  = 0.5`: Contraction and **shrink** coefficient (Alg. 19 uses the same `β` for both).
-- `gamma::Float64 = 2.0`: Expansion coefficient.
-- `trace::Bool = false`: If `true`, prints Algorithm-19 style iteration logs, e.g.:
-  `REFLECTION         123 1234.56 1200.78` and exit summary.
-- `maxit::Int = 500`: Maximum number of **function evaluations**.
-- `invalid_penalty::Float64 = 1e35`: Finite surrogate for non-finite objective values during iterations.
-  (Matches the book's "BIG".)
-- `project_to_bounds::Bool = false`: If `true`, clamp each trial point into `[lower, upper]` before
-  calling `f`. Useful for tight box constraints in practice; **disabled** by default to preserve
-  strict Algorithm-19 behavior.
-- `lower, upper = nothing`: Vectors of the same length as `x0` giving box bounds (used only when
-  `project_to_bounds=true`).
-- `init_step_cap::Union{Nothing,Float64} = nothing`: Optional cap on the ×10 step escalation used
-  to build the initial simplex. If hitting the cap still fails to change a coordinate in FP, the
-  algorithm nudges with `nextfloat(x0[i])` as a last resort.
+- `options::NelderMeadOptions`: Control parameters (see `NelderMeadOptions` documentation).
 
 # Returns
 
 A named tuple `(x_opt, f_opt, fncount, fail)` where:
-- `x_opt::Vector{Float64}`: Best parameters found (column `L` of the final simplex).
+- `x_opt::Vector{Float64}`: Best parameters found.
 - `f_opt::Float64`: Objective value at `x_opt`.
-- `fncount::Int`: Total number of objective evaluations used.
+- `fncount::Int`: Total number of objective evaluations.
 - `fail`: Status code:
     * `0` — Converged (scaled tolerance and/or `abstol` satisfied).
     * `1` — Exceeded `maxit` function evaluations.
     * `10` — Shrink step failed to reduce the simplex size (degenerate case).
-    * `true` — Initial evaluation at `x0` was non-finite; no simplex could be formed.
+    * `true` — Initial evaluation at `x0` was non-finite.
 
-# Algorithmic details (matches Nash, Alg. 19)
+# References
 
-- **Initial simplex**: Start from `x0`, create `n` additional vertices by adding a per-coordinate step
-  of size `max(0.1*abs(x0[i]), 0.1)`, escalating the step by ×10 until the floating-point value of the
-  coordinate actually changes (robust at large |x0|).
-- **Centroid**: Average all vertices except the current worst `H`.
-- **Moves**: Reflection → if improved over best, try **expansion**; otherwise accept reflection or perform
-  **lo-/hi-reduction** (contraction); if still no improvement, **shrink** about the best by factor `β`.
-- **Convergence**: Stop if `VH ≤ VL + convtol` with `convtol = intol*(abs(VL)+intol)` (or `VL ≤ abstol`).
-- **Shrink failure**: If the shrink does not decrease a simple polytope size measure, stop with `fail = 10`.
-
-# Notes
-
-- To exactly reproduce R's defaults, use `abstol=-Inf`, `intol=sqrt(eps(Float64))`, `alpha=1.0`, `beta=0.5`,
-  `gamma=2.0`, `trace=false`, `maxit=500`.
-- `project_to_bounds`, `lower/upper`, and `init_step_cap` are practical extensions for bounded problems
-  and do not alter Algorithm-19 unless enabled.
-- For likelihood problems, ensure the objective's **scale** (SSE vs MSE vs -loglik) matches downstream IC
-  formulas; otherwise AIC/BIC may appear inflated.
-
-# References:
-- Nash, J.C. (1990). *Compact Numerical Methods for Computers*, Algorithm 19.
-
-# See also:
-- R `stats::optim` with `method="Nelder-Mead"` (derived from Nash's Pascal code).
+- Nelder, J. A. & Mead, R. (1965). A simplex method for function minimization.
+  *The Computer Journal*, 7(4), 308–313.
+- Nash, J. C. (1990). *Compact Numerical Methods for Computers*, 2nd ed., Algorithm 19.
+  Adam Hilger.
 
 # Examples
 
 ```julia
 using Durbyn.Optimize
 
-# Unconstrained Rosenbrock from x0 = [-1.2, 1.0]
 rosen(x) = (1.0 - x[1])^2 + 100.0*(x[2] - x[1]^2)^2
-opts = NelderMeadOptions(trace=true, maxit=2000, intol=sqrt(eps(Float64)), abstol=-Inf)
-res = nmmin(rosen, [-1.2, 1.0], opts)
+opts = NelderMeadOptions(trace=true, maxit=2000)
+res = nelder_mead(rosen, [-1.2, 1.0], opts)
 @show res.x_opt res.f_opt res.fncount res.fail
 
-# Bounded quadratic with box constraints
+# With box constraints
 f(x) = (x[1]-0.8)^2 + (x[2]-0.2)^2
-lo = [0.0, 0.0]; hi = [1.0, 1.0]
 opts_bounded = NelderMeadOptions(
-    project_to_bounds=true, lower=lo, upper=hi,
-    init_step_cap=0.25, trace=true)
-
-resb = nmmin(f, [0.3, 0.3], opts_bounded)
+    project_to_bounds=true, lower=[0.0, 0.0], upper=[1.0, 1.0],
+    init_step_cap=0.25)
+resb = nelder_mead(f, [0.3, 0.3], opts_bounded)
 ```
 """
-function nmmin(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptions)
+function nelder_mead(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptions)
     abstol = options.abstol
     intol = options.intol
     alpha = options.alpha

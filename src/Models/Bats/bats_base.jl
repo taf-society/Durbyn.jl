@@ -1486,7 +1486,7 @@ function fitSpecificBATS(
         objective_scaled = θs -> original_objective(θs .* par_scale)
 
         maxit = 100 * length(param_vector)^2
-        opt_result = optim(
+        opt_result = optimize(
             scaled_param0,
             objective_scaled;
             method = "Nelder-Mead",
@@ -1554,7 +1554,7 @@ function fitSpecificBATS(
 
         if length(param_vector) > 1
             maxit = 100 * length(param_vector)^2
-            opt_result = optim(
+            opt_result = optimize(
                 scaled_param0,
                 objective_scaled;
                 method = "Nelder-Mead",
@@ -1562,7 +1562,7 @@ function fitSpecificBATS(
             )
         else
 
-            opt_result = optim(
+            opt_result = optimize(
                 scaled_param0,
                 objective_scaled;
                 method = "BFGS",
@@ -2003,7 +2003,7 @@ function bats(
 
     if hasproperty(best_model, :optim_return_code) &&
        getfield(best_model, :optim_return_code) != 0
-        @warn "optim() did not converge."
+        @warn "optimize() did not converge."
     end
 
     method_label = bats_descriptor(

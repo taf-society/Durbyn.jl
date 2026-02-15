@@ -5,7 +5,7 @@ import ..Stats: box_cox, box_cox!, inv_box_cox, box_cox_lambda, na_contiguous
 import ..Arima: auto_arima
 import ..Generics: Forecast, forecast, fitted
 import ..Bats: bats, BATSModel
-import ..Optimize: optim
+import ..Optimize: optimize
 import ..Grammar: tbats
 
 using LinearAlgebra: I, eigvals, dot, mul!

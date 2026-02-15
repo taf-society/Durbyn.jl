@@ -1,111 +1,64 @@
 """
-    optim(par, fn; gr=nothing, method="Nelder-Mead", lower=-Inf, upper=Inf,
-          control=Dict(), hessian=false, kwargs...)
+    optimize(par, fn; gr=nothing, method="Nelder-Mead", lower=-Inf, upper=Inf,
+             control=Dict(), hessian=false, kwargs...)
 
-General-purpose optimization interface matching R's `optim()` function.
+Unified interface for general-purpose optimization.
+
+Dispatches to the appropriate solver based on the `method` argument, handling
+parameter/function scaling and returning results in a consistent format.
 
 # Arguments
 
-- `par::Vector{Float64}`: Initial parameter vector
-- `fn::Function`: Objective function to minimize. Called as `fn(par; kwargs...)`
+- `par::Vector{Float64}`: Initial parameter vector.
+- `fn::Function`: Objective function to minimize, called as `fn(par; kwargs...)`.
 
 # Keyword Arguments
 
-- `gr::Union{Function,Nothing}=nothing`: Gradient function. Called as `gr(par; kwargs...)`.
-  If `nothing`, numerical gradients will be computed for methods that need them.
-
-- `method::String="Nelder-Mead"`: Optimization method. Options:
-  - `"Nelder-Mead"`: Nelder-Mead simplex (derivative-free)
-  - `"BFGS"`: Quasi-Newton method (requires gradient or uses numerical)
-  - `"L-BFGS-B"`: Limited-memory BFGS with box constraints
-  - `"Brent"`: Brent's method for 1D optimization (requires scalar par)
-
-- `lower::Union{Float64,Vector{Float64}}=-Inf`: Lower bounds (for L-BFGS-B and Brent)
-
-- `upper::Union{Float64,Vector{Float64}}=Inf`: Upper bounds (for L-BFGS-B and Brent)
-
-- `control::Dict`: Control parameters. Supported keys:
-  - `trace::Int=0`: Verbosity level (0=silent, >0=verbose)
-  - `fnscale::Float64=1.0`: Scaling for objective (fn will be divided by this)
-  - `parscale::Vector{Float64}`: Parameter scaling (default: ones)
-  - `ndeps::Vector{Float64}`: Step sizes for numerical derivatives (default: 1e-3)
-  - `maxit::Int`: Maximum iterations (default: method-dependent)
-  - `abstol::Float64`: Absolute convergence tolerance
-  - `reltol::Float64`: Relative convergence tolerance (default: √eps)
-  - `gtol::Float64=0.0`: **Julia enhancement** - Gradient norm tolerance for BFGS.
-    When gtol > 0, convergence is declared if ||∇f(x)|| < gtol * max(1, |f(x)|).
-    Based on first-order optimality condition. Recommended: 1e-5 to 1e-8.
-  - `alpha::Float64=1.0`: Nelder-Mead reflection coefficient
-  - `beta::Float64=0.5`: Nelder-Mead contraction coefficient
-  - `gamma::Float64=2.0`: Nelder-Mead expansion coefficient
-  - `REPORT::Int=10`: Reporting frequency for BFGS
-  - `lmm::Int=5`: L-BFGS-B memory parameter
-  - `factr::Float64=1e7`: L-BFGS-B tolerance factor
-  - `pgtol::Float64=0.0`: L-BFGS-B projected gradient tolerance
-  - `type::Int=1`: CG type (reserved for future CG implementation)
-
-- `hessian::Bool=false`: If `true`, compute Hessian at solution
-
-- `kwargs...`: Additional arguments passed to `fn` and `gr`
+- `gr::Union{Function,Nothing}=nothing`: Gradient function, called as `gr(par; kwargs...)`.
+  If `nothing`, numerical gradients are computed for methods that need them.
+- `method::String="Nelder-Mead"`: Optimization method:
+  - `"Nelder-Mead"` — derivative-free simplex
+  - `"BFGS"` — quasi-Newton with line search
+  - `"L-BFGS-B"` — limited-memory BFGS with box constraints
+  - `"Brent"` — 1D optimization (scalar `par` only)
+- `lower`, `upper`: Bounds for L-BFGS-B and Brent methods.
+- `control::Dict`: Control parameters (trace, fnscale, parscale, ndeps, maxit,
+  abstol, reltol, gtol, alpha, beta, gamma, REPORT, lmm, factr, pgtol).
+- `hessian::Bool`: If `true`, compute Hessian at solution.
+- `kwargs...`: Additional arguments passed to `fn` and `gr`.
 
 # Returns
 
 Named tuple with fields:
 - `par::Vector{Float64}`: Optimal parameters found
 - `value::Float64`: Function value at optimum
-- `counts::NamedTuple`: Function and gradient evaluation counts
-- `convergence::Int`: Convergence code (0=success, 1=maxit reached)
+- `counts::NamedTuple`: `(function_=n, gradient=m)` evaluation counts
+- `convergence::Int`: Status code (0=success, 1=maxit reached)
 - `message::Union{String,Nothing}`: Convergence message (method-dependent)
 - `hessian::Union{Matrix{Float64},Nothing}`: Hessian at solution (if requested)
 
 # Examples
 
 ```julia
-# Rosenbrock function
+using Durbyn.Optimize
+
 rosenbrock(x) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
 rosenbrock_grad(x) = [-400*x[1]*(x[2]-x[1]^2) - 2*(1-x[1]), 200*(x[2]-x[1]^2)]
 
-# Nelder-Mead (no gradient needed)
-result = optim([-1.2, 1.0], rosenbrock)
+result = optimize([-1.2, 1.0], rosenbrock)
+result = optimize([-1.2, 1.0], rosenbrock; gr=rosenbrock_grad, method="BFGS")
+result = optimize([0.5, 0.5], rosenbrock; method="L-BFGS-B",
+                  lower=[0.0, 0.0], upper=[2.0, 2.0])
 
-# BFGS with analytical gradient
-result = optim([-1.2, 1.0], rosenbrock; gr=rosenbrock_grad, method="BFGS")
-
-# BFGS with numerical gradient
-result = optim([-1.2, 1.0], rosenbrock; method="BFGS")
-
-# L-BFGS-B with bounds
-result = optim([0.0, 0.0], rosenbrock; method="L-BFGS-B",
-               lower=[0.0, 0.0], upper=[2.0, 2.0])
-
-# With control parameters
-result = optim([-1.2, 1.0], rosenbrock; method="BFGS",
-               control=Dict("trace" => 1, "maxit" => 500))
-
-# With Hessian
-result = optim([-1.2, 1.0], rosenbrock; gr=rosenbrock_grad,
-               method="BFGS", hessian=true)
-
-# 1D optimization with Brent
-f1d(x) = (x - 2)^2
-result = optim([0.0], f1d; method="Brent", lower=-5.0, upper=5.0)
+f1d(x) = (x[1] - 2)^2
+result = optimize([0.0], f1d; method="Brent", lower=-5.0, upper=5.0)
 ```
-
-# Notes
-
-This function provides a unified interface matching R's `optim()`. Method-specific
-implementations are in separate files (nmmin.jl, bfgs.jl, lbfgsbmin.jl, fmin.jl).
-
-Parameter and function scaling follow R's convention:
-- Internal optimization uses `par/parscale`
-- Function values are scaled by `1/fnscale`
-- This improves conditioning when parameters have different scales
 """
 _to_scalar(val::Number) = Float64(val)
-_to_scalar(::Nothing) = error("objective function in optim evaluates to length 0 not 1")
-_to_scalar(::Missing) = error("objective function in optim evaluates to length 0 not 1")
+_to_scalar(::Nothing) = error("objective function in optimize evaluates to length 0 not 1")
+_to_scalar(::Missing) = error("objective function in optimize evaluates to length 0 not 1")
 function _to_scalar(val)
-    length(val) == 1 || error("objective function in optim evaluates to length $(length(val)) not 1")
+    length(val) == 1 || error("objective function in optimize evaluates to length $(length(val)) not 1")
     Float64(first(val))
 end
 
@@ -116,7 +69,7 @@ function _rep_len(x::Vector{Float64}, n::Int)
     return Float64[x[mod1(i, lx)] for i in 1:n]
 end
 
-function optim(par::AbstractVector{<:Real}, fn::Function;
+function optimize(par::AbstractVector{<:Real}, fn::Function;
                gr::Union{Function,Nothing}=nothing,
                method::String="Nelder-Mead",
                lower::Union{Real,AbstractVector{<:Real}}=-Inf,
@@ -233,7 +186,7 @@ function optim(par::AbstractVector{<:Real}, fn::Function;
     gr_scaled = if !isnothing(gr)
         _check_grad = g -> begin
             (g isa AbstractVector && length(g) == npar) ||
-                error("gradient in optim evaluated to length $(g isa AbstractVector ? length(g) : 0) not $npar")
+                error("gradient in optimize evaluated to length $(g isa AbstractVector ? length(g) : 0) not $npar")
             g
         end
         if fnscale != 1.0 || any(parscale .!= 1.0)
@@ -285,7 +238,7 @@ function _optim_neldermead(par, fn, con, lower, upper, parscale)
         maxit = con["maxit"]
     )
 
-    result = nmmin(fn, par, opts)
+    result = nelder_mead(fn, par, opts)
 
     return (
         par = result.x_opt .* parscale,
@@ -311,8 +264,8 @@ function _optim_bfgs(par, fn, gr, con, parscale)
         nREPORT = con["REPORT"]
     )
 
-    result = bfgsmin(fn_internal, gr_internal, par;
-                     options=opts, ndeps=con["ndeps"])
+    result = bfgs(fn_internal, gr_internal, par;
+                  options=opts, ndeps=con["ndeps"])
 
     return (
         par = result.x_opt .* parscale,
@@ -361,7 +314,7 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
             gval = gr(x)
             for i in eachindex(gval)
                 if !isfinite(gval[i])
-                    error("non-finite value supplied by optim")
+                    error("non-finite value supplied by optimize")
                 end
             end
             gval
@@ -386,8 +339,8 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
         iprint = con["trace"] > 0 ? con["REPORT"] : 0
     )
 
-    result = lbfgsbmin(fn_internal, gr_internal, par;
-                       l=lower_scaled, u=upper_scaled, options=opts)
+    result = lbfgsb(fn_internal, gr_internal, par;
+                    l=lower_scaled, u=upper_scaled, options=opts)
 
     convergence = if result.fail == 0
         0
@@ -411,12 +364,12 @@ end
 
 
 function _optim_brent(par, fn, con, lower, upper, parscale)
-    opts = FminOptions(
+    opts = BrentOptions(
         tol = con["reltol"],
         trace = con["trace"] > 0
     )
 
-    result = fmin(fn, lower, upper; options=opts)
+    result = brent(fn, lower, upper; options=opts)
 
     return (
         par = [result.x_opt],
@@ -437,7 +390,6 @@ function _compute_hessian(par, fn, gr, con, parscale; kwargs...)
     fn_wrapper(x) = fn(x; kwargs...)
     gr_wrapper = isnothing(gr) ? nothing : (x -> gr(x; kwargs...))
 
-    return optim_hessian(fn_wrapper, par, gr_wrapper;
+    return numerical_hessian(fn_wrapper, par, gr_wrapper;
                         fnscale=fnscale, parscale=parscale, ndeps=ndeps)
 end
-

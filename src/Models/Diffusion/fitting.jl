@@ -355,16 +355,16 @@ function fit_diffusion(y::AbstractVector{<:Real};
     end
 
     function _run_optim(x0_start)
-        res = optim(x0_start, objective;
-                    method=method,
-                    lower=lower,
-                    upper=upper,
-                    control=Dict("maxit" => maxiter))
+        res = optimize(x0_start, objective;
+                       method=method,
+                       lower=lower,
+                       upper=upper,
+                       control=Dict("maxit" => maxiter))
 
         if method != "Nelder-Mead"
-            res_nm = optim(x0_start, objective;
-                           method="Nelder-Mead",
-                           control=Dict("maxit" => maxiter))
+            res_nm = optimize(x0_start, objective;
+                              method="Nelder-Mead",
+                              control=Dict("maxit" => maxiter))
             if res_nm.value < res.value
                 res = res_nm
             end

@@ -1483,7 +1483,7 @@ function holt_winters_conventional(
                 s_start,
             )
 
-        sol = nmmin(cal_opt_sse_closure, scaler(starting_points, parscale), options)
+        sol = nelder_mead(cal_opt_sse_closure, scaler(starting_points, parscale), options)
 
         is_convergence = sol.fail == 0
         minimizers = descaler(sol.x_opt, parscale)
@@ -1801,7 +1801,7 @@ function optim_ets_base(
     max_state_len = nstate + (seasontype_code != 0 ? 1 : 0)
     workspace = ETSWorkspace(length(y), m, nmse, max_state_len)
 
-    result = nmmin(par -> objective_fun(
+    result = nelder_mead(par -> objective_fun(
             par,
             y,
             nstate,

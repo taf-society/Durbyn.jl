@@ -1,44 +1,44 @@
 # Optimization Module
 
-The Optimize module provides a comprehensive suite of numerical optimization algorithms for minimizing objective functions. These optimizers are used internally throughout Durbyn.jl for model fitting (e.g., maximum likelihood estimation in ETS, ARIMA, and BATS models) and are also available for general-purpose optimization tasks.
+The Optimize module provides numerical optimization algorithms for minimizing objective functions. These solvers are used internally throughout Durbyn.jl for model fitting (e.g., maximum likelihood estimation in ETS, ARIMA, and BATS models) and are also available for general-purpose optimization tasks.
 
 ---
 
 ## Overview
 
-The module implements four main optimization algorithms and provides a unified R-like interface:
+The module implements four optimization algorithms accessible through a unified interface:
 
 | Algorithm | Function | Type | Use Case |
 |-----------|----------|------|----------|
-| **Nelder-Mead** | `nmmin` | Derivative-free | General purpose, no gradient needed |
-| **BFGS** | `bfgsmin` | Quasi-Newton | Fast convergence with gradients |
-| **L-BFGS-B** | `lbfgsbmin` | Bounded quasi-Newton | Box-constrained optimization |
-| **Brent** | `fmin` | 1D derivative-free | Scalar optimization |
+| **Nelder-Mead** | `nelder_mead` | Derivative-free | General purpose, no gradient needed |
+| **BFGS** | `bfgs` | Quasi-Newton | Fast convergence with gradients |
+| **L-BFGS-B** | `lbfgsb` | Bounded quasi-Newton | Box-constrained optimization |
+| **Brent** | `brent` | 1D derivative-free | Scalar optimization |
 
 ### Exported Functions and Types
 
 ```julia
 # Main optimization functions
-export optim, nmmin, bfgsmin, lbfgsbmin, fmin
+export optimize, nelder_mead, bfgs, lbfgsb, brent
 
 # Options types
-export NelderMeadOptions, BFGSOptions, LBFGSBOptions, FminOptions
+export NelderMeadOptions, BFGSOptions, LBFGSBOptions, BrentOptions
 
 # Supporting functions
 export numgrad, numgrad!, numgrad_with_cache!, NumericalGradientCache
-export optim_hessian, bfgs_hessian_update!, BFGSWorkspace
+export numerical_hessian, bfgs_hessian_update!, BFGSWorkspace
 export scaler, descaler
 ```
 
 ---
 
-## Unified Interface (`optim`)
+## Unified Interface (`optimize`)
 
-The `optim` function provides a unified interface matching R's `optim()` function, making it easy to switch between optimization methods.
+The `optimize` function provides a unified interface for all solvers, allowing easy switching between methods.
 
 ```julia
-optim(par, fn; gr=nothing, method="Nelder-Mead", lower=-Inf, upper=Inf,
-      control=Dict(), hessian=false, kwargs...)
+optimize(par, fn; gr=nothing, method="Nelder-Mead", lower=-Inf, upper=Inf,
+         control=Dict(), hessian=false, kwargs...)
 ```
 
 ### Arguments
@@ -103,38 +103,40 @@ rosenbrock_grad(x) = [
 ]
 
 # Nelder-Mead (no gradient needed)
-result = optim([-1.2, 1.0], rosenbrock)
+result = optimize([-1.2, 1.0], rosenbrock)
 println("Optimal: $(result.par), Value: $(result.value)")
 
 # BFGS with analytical gradient
-result = optim([-1.2, 1.0], rosenbrock; gr=rosenbrock_grad, method="BFGS")
+result = optimize([-1.2, 1.0], rosenbrock; gr=rosenbrock_grad, method="BFGS")
 
 # BFGS with numerical gradient (automatic)
-result = optim([-1.2, 1.0], rosenbrock; method="BFGS")
+result = optimize([-1.2, 1.0], rosenbrock; method="BFGS")
 
 # L-BFGS-B with box constraints
-result = optim([0.5, 0.5], rosenbrock; method="L-BFGS-B",
-               lower=[0.0, 0.0], upper=[2.0, 2.0])
+result = optimize([0.5, 0.5], rosenbrock; method="L-BFGS-B",
+                  lower=[0.0, 0.0], upper=[2.0, 2.0])
 
 # With control parameters
-result = optim([-1.2, 1.0], rosenbrock; method="BFGS",
-               control=Dict("trace" => 1, "maxit" => 500, "gtol" => 1e-6))
+result = optimize([-1.2, 1.0], rosenbrock; method="BFGS",
+                  control=Dict("trace" => 1, "maxit" => 500, "gtol" => 1e-6))
 
 # Request Hessian at solution
-result = optim([-1.2, 1.0], rosenbrock; gr=rosenbrock_grad,
-               method="BFGS", hessian=true)
+result = optimize([-1.2, 1.0], rosenbrock; gr=rosenbrock_grad,
+                  method="BFGS", hessian=true)
 println("Hessian:\n$(result.hessian)")
 
 # 1D optimization with Brent's method
 f1d(x) = (x[1] - 2)^2
-result = optim([0.0], f1d; method="Brent", lower=-5.0, upper=5.0)
+result = optimize([0.0], f1d; method="Brent", lower=-5.0, upper=5.0)
 ```
 
 ---
 
-## Nelder-Mead Simplex (`nmmin`)
+## Nelder-Mead Simplex (`nelder_mead`)
 
-The Nelder-Mead algorithm is a derivative-free optimization method that uses a simplex (a polytope with n+1 vertices in n dimensions) to search for the minimum.
+A derivative-free optimization method that searches for a minimum using a simplex -- a polytope with ``n+1`` vertices in ``n`` dimensions. The algorithm adaptively reshapes the simplex through reflection, expansion, contraction, and shrink operations.
+
+**Reference:** Nelder, J. A. and Mead, R. (1965). *A simplex method for function minimization*. Computer Journal, 7, 308--313. Implementation follows the compact formulation in Nash (1990).
 
 ### Algorithm
 
@@ -158,7 +160,7 @@ Default coefficients: ``\alpha = 1.0``, ``\beta = 0.5``, ``\gamma = 2.0``
 ### Usage
 
 ```julia
-nmmin(f, x0, options::NelderMeadOptions)
+nelder_mead(f, x0, options::NelderMeadOptions)
 ```
 
 **Options:**
@@ -192,15 +194,17 @@ using Durbyn.Optimize
 f(x) = (x[1] - 1)^2 + (x[2] - 2)^2
 
 opts = NelderMeadOptions(trace=true, maxit=1000)
-result = nmmin(f, [0.0, 0.0], opts)
+result = nelder_mead(f, [0.0, 0.0], opts)
 println("Optimum: $(result.x_opt)")
 ```
 
 ---
 
-## BFGS Quasi-Newton (`bfgsmin`)
+## BFGS Quasi-Newton (`bfgs`)
 
-The Broyden-Fletcher-Goldfarb-Shanno (BFGS) algorithm is a quasi-Newton method that builds an approximation to the inverse Hessian matrix using gradient information.
+The Broyden--Fletcher--Goldfarb--Shanno (BFGS) algorithm is a quasi-Newton method that iteratively builds an approximation to the inverse Hessian matrix using gradient information. It achieves superlinear convergence on smooth problems without requiring explicit second-derivative computation.
+
+**Reference:** Nocedal, J. and Wright, S. J. (1999). *Numerical Optimization*. Springer. See also the original papers by Broyden (1970), Fletcher (1970), Goldfarb (1970), and Shanno (1970).
 
 ### Algorithm
 
@@ -221,13 +225,13 @@ where:
 - **Periodic Hessian restarts** every 2n gradient evaluations
 - **Parameter masking** to freeze variables
 - **Automatic numerical gradients** if analytical gradient not provided
-- **Gradient norm convergence** (Julia enhancement)
+- **Gradient norm convergence** criterion
 
 ### Usage
 
 ```julia
-bfgsmin(f, g, x0; mask=nothing, options=BFGSOptions(), ndeps=1e-3*ones(n),
-        numgrad_cache=nothing, ex=nothing)
+bfgs(f, g, x0; mask=nothing, options=BFGSOptions(), ndeps=1e-3*ones(n),
+     numgrad_cache=nothing, ex=nothing)
 ```
 
 **Function Signatures:**
@@ -239,7 +243,7 @@ bfgsmin(f, g, x0; mask=nothing, options=BFGSOptions(), ndeps=1e-3*ones(n),
 BFGSOptions(;
     abstol = -Inf,           # Absolute tolerance
     reltol = sqrt(eps()),    # Relative tolerance
-    gtol = 0.0,              # Gradient norm tolerance (Julia enhancement)
+    gtol = 0.0,              # Gradient norm tolerance
     trace = false,           # Print progress
     maxit = 100,             # Maximum iterations
     nREPORT = 10             # Reporting frequency
@@ -273,17 +277,19 @@ function rosenbrock_grad_internal(n, x, grad, ex)
 end
 
 opts = BFGSOptions(trace=true, gtol=1e-6)
-result = bfgsmin(rosenbrock_internal, rosenbrock_grad_internal, [-1.2, 1.0]; options=opts)
+result = bfgs(rosenbrock_internal, rosenbrock_grad_internal, [-1.2, 1.0]; options=opts)
 
 # With numerical gradients (g=nothing)
-result = bfgsmin(rosenbrock_internal, nothing, [-1.2, 1.0]; options=opts)
+result = bfgs(rosenbrock_internal, nothing, [-1.2, 1.0]; options=opts)
 ```
 
 ---
 
-## L-BFGS-B Bounded Optimization (`lbfgsbmin`)
+## L-BFGS-B Bounded Optimization (`lbfgsb`)
 
-L-BFGS-B is a limited-memory variant of BFGS that supports box constraints. It stores only the last `m` iterations of gradient information, making it memory-efficient for large-scale problems.
+A limited-memory variant of BFGS that supports box constraints on variables. Instead of storing the full inverse Hessian approximation, it retains only the last ``m`` iterations of gradient information, making it memory-efficient for large-scale problems.
+
+**Reference:** Byrd, R. H., Lu, P., Nocedal, J., and Zhu, C. (1995). *A limited memory algorithm for bound constrained optimization*. SIAM Journal on Scientific Computing, 16, 1190--1208. See also Zhu, C., Byrd, R. H., Lu, P., and Nocedal, J. (1997). *Algorithm 778: L-BFGS-B*.
 
 ### Features
 
@@ -296,7 +302,7 @@ L-BFGS-B is a limited-memory variant of BFGS that supports box constraints. It s
 ### Usage
 
 ```julia
-lbfgsbmin(f, g, x0; mask=nothing, l=-Inf, u=Inf, options=LBFGSBOptions())
+lbfgsb(f, g, x0; mask=nothing, l=-Inf, u=Inf, options=LBFGSBOptions())
 ```
 
 **Options:**
@@ -329,23 +335,19 @@ using Durbyn.Optimize
 rosenbrock(n, x, ex) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
 
 opts = LBFGSBOptions(m=5, pgtol=1e-6, iprint=1)
-result = lbfgsbmin(rosenbrock, nothing, [0.5, 0.5];
-                    l=[0.0, 0.0], u=[2.0, 2.0], options=opts)
+result = lbfgsb(rosenbrock, nothing, [0.5, 0.5];
+                l=[0.0, 0.0], u=[2.0, 2.0], options=opts)
 
 println("Bounded optimum: $(result.x_opt)")
 ```
 
 ---
 
-## Brent's 1D Method (`fmin`)
+## Brent's 1D Method (`brent`)
 
-Brent's method is a robust derivative-free algorithm for one-dimensional optimization that combines golden section search with parabolic interpolation.
+A derivative-free algorithm for one-dimensional optimization that combines golden section search with parabolic interpolation. Golden section steps provide guaranteed progress, while parabolic interpolation accelerates convergence near the minimum.
 
-### Algorithm
-
-The algorithm alternates between:
-1. **Golden section search**: Guaranteed progress, robust
-2. **Parabolic interpolation**: Fast convergence near the minimum
+**Reference:** Brent, R. P. (1973). *Algorithms for Minimization Without Derivatives*. Prentice-Hall. Implementation follows the compact formulation in Nash (1990).
 
 ### Convergence
 
@@ -356,15 +358,15 @@ For unimodal functions with positive second derivative at the minimum:
 ### Usage
 
 ```julia
-fmin(f, lower, upper; options=FminOptions())
+brent(f, lower, upper; options=BrentOptions())
 ```
 
 **Options:**
 ```julia
-FminOptions(;
+BrentOptions(;
     tol = 1.5e-8,    # Interval tolerance
-    trace = false,   # Print diagnostics
-    maxit = 1000     # Maximum iterations
+    trace = false,    # Print diagnostics
+    maxit = 1000      # Maximum iterations
 )
 ```
 
@@ -377,8 +379,8 @@ using Durbyn.Optimize
 
 f(x) = (x - 3.5)^2 + 2*sin(x)
 
-opts = FminOptions(tol=1e-10, trace=true)
-result = fmin(f, 0.0, 10.0; options=opts)
+opts = BrentOptions(tol=1e-10, trace=true)
+result = brent(f, 0.0, 10.0; options=opts)
 
 println("Minimum at x = $(result.x_opt), f(x) = $(result.f_opt)")
 ```
@@ -435,14 +437,16 @@ end
 
 ## Hessian Computation
 
-The `optim_hessian` function computes the Hessian matrix at a given point.
+The `numerical_hessian` function computes the Hessian matrix at a given point using finite differences.
+
+**Reference:** Nocedal, J. and Wright, S. J. (1999). *Numerical Optimization*. Springer. Chapter 8, finite difference formulas.
 
 ```julia
-optim_hessian(fn, par, gr=nothing; fnscale=1.0, parscale=ones(n), ndeps=1e-3*ones(n))
+numerical_hessian(fn, par, gr=nothing; fnscale=1.0, parscale=ones(n), ndeps=1e-3*ones(n))
 ```
 
 **Method:**
-- If `gr=nothing`: Uses second-order finite differences
+- If `gr=nothing`: Uses second-order finite differences of the objective function
 - If `gr` provided: Computes Hessian from gradient via finite differences
 
 **Returns:** Symmetric Hessian matrix (n x n)
@@ -456,7 +460,7 @@ rosenbrock(x) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
 
 # At the optimum
 x_opt = [1.0, 1.0]
-H = optim_hessian(rosenbrock, x_opt)
+H = numerical_hessian(rosenbrock, x_opt)
 println("Hessian at optimum:\n$H")
 
 # Eigenvalues (should be positive for minimum)
@@ -565,10 +569,10 @@ function neg_loglik_grad(params)
 end
 
 # Optimize with BFGS
-result = optim([0.0, 0.0], neg_loglik;
-               gr=neg_loglik_grad,
-               method="BFGS",
-               hessian=true)
+result = optimize([0.0, 0.0], neg_loglik;
+                  gr=neg_loglik_grad,
+                  method="BFGS",
+                  hessian=true)
 
 # Extract estimates
 mu_hat = result.par[1]
@@ -588,11 +592,13 @@ println("SE(log_sigma): $(se[2])")
 
 ## References
 
-- Nelder, J. A. and Mead, R. (1965). *A simplex method for function minimization*. Computer Journal, 7, 308-313.
-- Broyden, C. G. (1970). *The convergence of a class of double-rank minimization algorithms*. Journal of the Institute of Mathematics and Its Applications, 6, 76-90.
-- Fletcher, R. (1970). *A new approach to variable metric algorithms*. Computer Journal, 13, 317-322.
-- Goldfarb, D. (1970). *A family of variable metric methods derived by variational means*. Mathematics of Computation, 24, 23-26.
-- Shanno, D. F. (1970). *Conditioning of quasi-Newton methods for function minimization*. Mathematics of Computation, 24, 647-656.
-- Byrd, R. H., Lu, P., Nocedal, J., and Zhu, C. (1995). *A limited memory algorithm for bound constrained optimization*. SIAM Journal on Scientific Computing, 16, 1190-1208.
+- Nelder, J. A. and Mead, R. (1965). *A simplex method for function minimization*. Computer Journal, 7, 308--313.
+- Broyden, C. G. (1970). *The convergence of a class of double-rank minimization algorithms*. Journal of the Institute of Mathematics and Its Applications, 6, 76--90.
+- Fletcher, R. (1970). *A new approach to variable metric algorithms*. Computer Journal, 13, 317--322.
+- Goldfarb, D. (1970). *A family of variable metric methods derived by variational means*. Mathematics of Computation, 24, 23--26.
+- Shanno, D. F. (1970). *Conditioning of quasi-Newton methods for function minimization*. Mathematics of Computation, 24, 647--656.
+- Byrd, R. H., Lu, P., Nocedal, J., and Zhu, C. (1995). *A limited memory algorithm for bound constrained optimization*. SIAM Journal on Scientific Computing, 16, 1190--1208.
+- Zhu, C., Byrd, R. H., Lu, P., and Nocedal, J. (1997). *Algorithm 778: L-BFGS-B, Fortran subroutines for large-scale bound-constrained optimization*. ACM Transactions on Mathematical Software, 23, 550--560.
 - Brent, R. P. (1973). *Algorithms for Minimization Without Derivatives*. Prentice-Hall.
 - Nash, J. C. (1990). *Compact Numerical Methods for Computers: Linear Algebra and Function Minimisation*. 2nd ed. Adam Hilger.
+- Nocedal, J. and Wright, S. J. (1999). *Numerical Optimization*. Springer.

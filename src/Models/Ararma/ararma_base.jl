@@ -204,7 +204,7 @@ function fit_arma(p::Int, q::Int, y::Vector{Float64}, options::NelderMeadOptions
     parscale = max.(abs.(init), 0.1)
 
     est_params = descaler(
-        nmmin(θ -> arma_loss(descaler(θ, parscale)), scaler(init, parscale), options).x_opt,
+        nelder_mead(θ -> arma_loss(descaler(θ, parscale)), scaler(init, parscale), options).x_opt,
         parscale
     )
 

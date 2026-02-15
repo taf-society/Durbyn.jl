@@ -1,22 +1,22 @@
 module Optimize
 
 include("numgrad.jl")
-include("nmmin.jl")
+include("nelder_mead.jl")
 include("bfgs.jl")
-include("lbfgsbmin.jl")
-include("fmin.jl")
-include("optim_hessian.jl")
+include("lbfgsb.jl")
+include("brent.jl")
+include("numerical_hessian.jl")
 include("scalers.jl")
-include("optim.jl")
+include("optimize.jl")
 
 
-export nmmin, lbfgsbmin, fmin, optim_hessian
-export NelderMeadOptions, BFGSOptions, LBFGSBOptions, FminOptions
+export nelder_mead, bfgs, lbfgsb, brent, numerical_hessian
+export NelderMeadOptions, BFGSOptions, LBFGSBOptions, BrentOptions
 export scaler, descaler
-export optim
+export optimize
 export numgrad, numgrad!, numgrad_with_cache!
 export NumericalGradientCache
-export bfgsmin, bfgs_hessian_update!
+export bfgs_hessian_update!
 export BFGSWorkspace
 
 end

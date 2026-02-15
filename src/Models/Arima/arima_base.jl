@@ -2117,7 +2117,7 @@ function arima(
                 ctrl["maxit"] = 500
             end
 
-            opt = optim(
+            opt = optimize(
                 init[mask],
                 p -> armaCSS(p);
                 method = optim_method,
@@ -2158,7 +2158,7 @@ function arima(
         if no_optim
             var = zeros(0)
         else
-            hessian = optim_hessian(p -> armaCSS(p), res.minimizer)
+            hessian = numerical_hessian(p -> armaCSS(p), res.minimizer)
             var = inv(hessian * n_used)
         end
 
@@ -2190,7 +2190,7 @@ function arima(
                     ctrl["maxit"] = 500
                 end
 
-                opt = optim(
+                opt = optimize(
                     init[mask],
                     p -> armaCSS(p);
                     method = optim_method,
@@ -2257,7 +2257,7 @@ function arima(
             ctrl = copy(optim_control)
             ctrl["parscale"] = parscale[mask]
 
-            opt = optim(
+            opt = optimize(
                 init[mask],
                 p -> armafn(p, transform_pars);
                 method = optim_method,
@@ -2298,7 +2298,7 @@ function arima(
                 ctrl["parscale"] = parscale[mask]
                 ctrl["maxit"] = 0
 
-                opt = optim(
+                opt = optimize(
                     coef[mask],
                     p -> armafn(p, true);
                     method = optim_method,
@@ -2310,11 +2310,11 @@ function arima(
                     minimum = opt.value,
                 )
 
-                hessian = optim_hessian(p -> armafn(p, true), res.minimizer)
+                hessian = numerical_hessian(p -> armafn(p, true), res.minimizer)
 
                 coef[mask] .= res.minimizer
             else
-                hessian = optim_hessian(p -> armafn(p, true), res.minimizer)
+                hessian = numerical_hessian(p -> armafn(p, true), res.minimizer)
             end
 
             A = compute_arima_transform_gradient(coef, arma)
@@ -2325,7 +2325,7 @@ function arima(
             if no_optim
                 var = zeros(0)
             else
-                hessian = optim_hessian(p -> armafn(p, true), res.minimizer)
+                hessian = numerical_hessian(p -> armafn(p, true), res.minimizer)
                 var = inv(hessian * n_used)
             end
         end

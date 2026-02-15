@@ -1062,23 +1062,36 @@ end
 
 
 """
-    lbfgsbmin(f, g, x0; mask=trues(length(x0)), l=nothing, u=nothing, options=LBFGSBOptions())
+    lbfgsb(f, g, x0; mask=trues(length(x0)), l=nothing, u=nothing, options=LBFGSBOptions())
 
-Limited-memory BFGS with box constraints (L-BFGS-B).
+Minimize a function with box constraints using the L-BFGS-B algorithm.
 
-Implements the Byrd-Lu-Nocedal-Zhu (1995) algorithm with Generalized Cauchy Point
-and subspace minimization, matching R's `optim(..., method="L-BFGS-B")`.
+L-BFGS-B is a limited-memory variant of BFGS that supports bound constraints on
+variables. It stores only the last `m` iterations of curvature information, making
+it memory-efficient for large-scale problems. The algorithm uses a Generalized Cauchy
+Point computation and subspace minimization within the free variable space.
 
-- `f(n, x, ex)` → scalar objective
-- `g(n, x, ex)` → gradient vector (size n)
-- `mask` freezes variables by setting [l=u=x0] internally
-- `l`, `u` optional bounds (`nothing` = unbounded)
-- `options`: `m` (history), `factr` (f_tol = factr * eps()), `pgtol` (projected grad ∞-norm),
-             `maxit` (iteration cap), `iprint` (0 silent, >0 prints)
+# Arguments
 
-Returns named tuple: `x_opt, f_opt, n_iter, fail, fn_evals, gr_evals, message`.
+- `f::Function`: Objective function, signature `f(n, x, ex)` → scalar.
+- `g::Function`: Gradient function, signature `g(n, x, ex)` → gradient vector.
+- `x0::Vector{Float64}`: Initial parameter vector.
+- `mask`: Logical mask; frozen variables have bounds set to `l[i]=u[i]=x0[i]`.
+- `l`, `u`: Optional bound vectors (`nothing` = unbounded).
+- `options::LBFGSBOptions`: Algorithm parameters (`m`, `factr`, `pgtol`, `maxit`, `iprint`).
+
+# Returns
+
+Named tuple `(x_opt, f_opt, n_iter, fail, fn_evals, gr_evals, message)`.
+
+# References
+
+- Byrd, R. H., Lu, P., Nocedal, J. & Zhu, C. (1995). A limited memory algorithm for
+  bound constrained optimization. *SIAM J. Scientific Computing*, 16(5), 1190–1208.
+- Zhu, C., Byrd, R. H., Lu, P. & Nocedal, J. (1997). Algorithm 778: L-BFGS-B.
+  *ACM Trans. Math. Software*, 23(4), 550–560.
 """
-function lbfgsbmin(f::Function, g::Function, x0::Vector{Float64};
+function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
     mask=trues(length(x0)),
     l::Union{Nothing,Vector{Float64}}=nothing,
     u::Union{Nothing,Vector{Float64}}=nothing,

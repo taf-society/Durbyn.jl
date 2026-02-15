@@ -1,27 +1,24 @@
 """
     BFGS Quasi-Newton Optimizer
 
-Based on the C `vmmin` from R's `stats::optim`, with Julia enhancements.
+Implements the Broyden-Fletcher-Goldfarb-Shanno (BFGS) quasi-Newton optimization
+algorithm. BFGS iteratively builds an approximation to the inverse Hessian using
+gradient information, achieving superlinear convergence on smooth problems.
 
-Implements the BFGS quasi-Newton optimization algorithm following R's C code,
-including all edge cases, constants, and iteration logic.
+Features an optional gradient norm convergence check (`gtol` parameter) based on
+the first-order necessary condition for optimality: `||∇f(x)|| < gtol * max(1, |f(x)|)`.
+This is disabled by default (`gtol = 0`).
 
-## Julia Enhancement: Gradient Norm Convergence
+Supports both analytical and numerical gradients (via `numgrad_with_cache!`).
 
-This implementation adds an optional gradient norm convergence check (`gtol` parameter)
-based on the first-order necessary condition for optimality: ∇f(x*) = 0.
+# References
 
-When `gtol > 0`, convergence is declared if:
-    ||∇f(x)|| < gtol * max(1, |f(x)|)
-
-This enhancement:
-- Is mathematically sound (standard in scipy, MATLAB, Julia Optim.jl)
-- Helps convergence on flat surfaces where R's vmmin may iterate until maxit
-- Is disabled by default (gtol = 0) for R compatibility
-
-This implementation supports both analytical and numerical gradients (via
-`numgrad_with_cache!`) and is compatible with standard gradient-based
-optimizers and model fitting workflows.
+- Nocedal, J. & Wright, S. J. (1999). *Numerical Optimization*, Chapter 6.
+  Springer.
+- Broyden, C. G. (1970). The convergence of a class of double-rank minimization
+  algorithms. *J. Inst. Math. Appl.*, 6, 76–90.
+- Fletcher, R. (1970). A new approach to variable metric algorithms.
+  *The Computer Journal*, 13(3), 317–322.
 """
 
 const RELTEST = 10.0
@@ -38,8 +35,8 @@ Fields:
 - `reltol::Float64` — Relative convergence tolerance (default: √eps)
 - `gtol::Float64` — Gradient norm tolerance for first-order optimality (default: 0, disabled).
   When `gtol > 0`, convergence is declared if `||∇f(x)|| < gtol * max(1, |f(x)|)`.
-  This is a Julia enhancement over R's vmmin, based on the first-order necessary
-  condition for optimality (∇f(x*) = 0). Helps convergence on flat surfaces.
+  Based on the first-order necessary condition for optimality (∇f(x*) = 0).
+  Helps convergence on flat surfaces.
 - `trace::Bool` — Print iteration progress (default: false)
 - `maxit::Int` — Maximum iterations (default: 100)
 - `nREPORT::Int` — Reporting frequency when trace=true (default: 10)
@@ -154,40 +151,36 @@ full form.
     end
 end
 
-""""
-    bfgsmin(f, g, x0; mask=trues(length(x0)), options=BFGSOptions(), ndeps=nothing,
-    numgrad_cache=nothing, ex=nothing) -> NamedTuple
+"""
+    bfgs(f, g, x0; mask=trues(length(x0)), options=BFGSOptions(), ndeps=nothing,
+         numgrad_cache=nothing, ex=nothing) -> NamedTuple
 
-Line-for-line port of the C `vmmin` BFGS quasi-Newton optimizer from R's `stats::optim`.
+Minimize a function using the BFGS quasi-Newton algorithm with Armijo backtracking
+line search and periodic inverse Hessian restarts.
 
-This implementation exactly reproduces the C code behavior including:
-- Step-change test using RELTEST = 10.0 (from R source optim.c line 106)
-- Armijo line search with ACCTOL = 1e-4, STEPREDN = 0.2
-- BFGS update gated on D1 > 0
-- Periodic Hessian restarts (every 2n gradients)
-- Exact iteration counting and convergence checks
-- maxit <= 0 and nREPORT <= 0 handling
+# Arguments
 
-Arguments:
-- `f::Function` — Objective function, signature: `f(n::Int, x::Vector, ex)` returns `Float64`
-- `g::Union{Function, Nothing}` — Gradient function, signature: `g(n::Int, x::Vector, grad::Vector, ex)`
-  modifies `grad` in-place and returns `nothing`. Use `nothing` for numerical gradients.
-- `x0::Vector{Float64}` — Initial parameter vector
-- `mask::BitVector` — Logical mask for active parameters (default: all active)
-- `options::BFGSOptions` — Optimization options (tolerances, iteration limits, etc.)
-- `ndeps::Union{Nothing, Vector{Float64}}` — Step sizes for numerical differentiation (used if `g` is `nothing`)
-- `numgrad_cache::Union{Nothing, NumericalGradientCache}` — Optional pre-allocated cache for numerical gradients
-- `ex` — External data passed to `f` and `g` (default: `nothing`). Use closures if you need to capture data.
+- `f::Function`: Objective function, signature `f(n::Int, x::Vector, ex)` → `Float64`.
+- `g::Union{Function, Nothing}`: Gradient function, signature `g(n::Int, x::Vector, grad::Vector, ex)`
+  modifies `grad` in-place and returns `nothing`. Pass `nothing` for numerical gradients.
+- `x0::Vector{Float64}`: Initial parameter vector.
+- `mask::BitVector`: Logical mask for active parameters (default: all active).
+- `options::BFGSOptions`: Optimization options (tolerances, iteration limits, etc.).
+- `ndeps::Union{Nothing, Vector{Float64}}`: Step sizes for numerical differentiation.
+- `numgrad_cache::Union{Nothing, NumericalGradientCache}`: Pre-allocated cache for numerical gradients.
+- `ex`: External data passed to `f` and `g` (default: `nothing`).
 
-Returns a named tuple containing:
-- `x_opt` — Optimal parameter vector
-- `f_opt` — Objective function value at the optimum
-- `n_iter` — Number of iterations performed
-- `fail` — Status flag (`0` if converged, `1` otherwise)
-- `fn_evals` — Number of function evaluations
-- `gr_evals` — Number of gradient evaluations
+# Returns
 
-Example:
+A named tuple `(x_opt, f_opt, n_iter, fail, fn_evals, gr_evals)`.
+
+# References
+
+- Nocedal, J. & Wright, S. J. (1999). *Numerical Optimization*, Chapter 6. Springer.
+- Nash, J. C. (1990). *Compact Numerical Methods for Computers*, 2nd ed. Adam Hilger.
+
+# Examples
+
 ```julia
 rosenbrock(n, x, ex) = 100.0 * (x[2] - x[1]^2)^2 + (1.0 - x[1])^2
 
@@ -197,12 +190,10 @@ function rosenbrock_grad!(n, x, g, ex)
     nothing
 end
 
-x0 = [-1.2, 1.0]
-result = bfgsmin(rosenbrock, rosenbrock_grad!, x0)
-println("Optimal x: ", result.x_opt)
+result = bfgs(rosenbrock, rosenbrock_grad!, [-1.2, 1.0])
 ```
 """
-function bfgsmin(
+function bfgs(
     f::Function,
     g::Union{Function,Nothing},
     x0::Vector{Float64};

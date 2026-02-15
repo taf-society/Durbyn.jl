@@ -21,7 +21,7 @@ import ..Utils: cbind, add_drift_term, na_omit_pair, setrow!, get_elements, sele
 import ..Utils: mean2
 import ..Stats: box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, fourier
 import ..Generics: Forecast, forecast, plot, fitted, residuals
-import ..Optimize: optim, optim_hessian
+import ..Optimize: optimize, numerical_hessian
 import ..Grammar: ModelFormula, ArimaOrderTerm, VarTerm, compile_arima_formula
 
 import Base: show

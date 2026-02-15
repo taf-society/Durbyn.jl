@@ -11,7 +11,7 @@ using Distributions
 import ..Utils: is_constant, match_arg, na_omit, check_component
 import ..Stats: box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, fourier, na_action
 import ..Generics: Forecast, forecast, plot, fitted
-import ..Optimize: nmmin, NelderMeadOptions, scaler, descaler
+import ..Optimize: nelder_mead, NelderMeadOptions, scaler, descaler
 
 include("ets_utils.jl")
 include("ets.jl")

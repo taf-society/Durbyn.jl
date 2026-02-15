@@ -2525,10 +2525,14 @@ function fit_ets_models(
     best_ic = Inf
     best_model = nothing
     best_params = ()
+    lower_scratch = similar(lower)
+    upper_scratch = similar(upper)
 
     for combo in grid
         et, t, s, d = combo
         try
+            copyto!(lower_scratch, lower)
+            copyto!(upper_scratch, upper)
             the_fit_model = etsmodel(
                 y,
                 m,
@@ -2540,8 +2544,8 @@ function fit_ets_models(
                 beta,
                 gamma,
                 phi,
-                copy(lower),
-                copy(upper),
+                lower_scratch,
+                upper_scratch,
                 opt_crit,
                 nmse,
                 bounds,

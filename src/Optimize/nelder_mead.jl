@@ -1,5 +1,5 @@
 """
-	NelderMeadOptions(; abstol=-Inf, intol=sqrt(eps(Float64)), alpha=1.0, beta=0.5,
+	NelderMeadOptions(; abstol=-Inf, reltol=sqrt(eps(Float64)), alpha=1.0, beta=0.5,
                         gamma=2.0, trace=false, maxit=500, invalid_penalty=1e35, 
                         project_to_bounds=false, lower=nothing, upper=nothing, 
                         init_step_cap=nothing)
@@ -9,7 +9,7 @@ A configuration container for the Nelder-Mead optimization algorithm.
 # Keyword Arguments
 
 - `abstol::Float64`: Absolute tolerance on the function value for stopping. Default is `-Inf`.
-- `intol::Float64`: Relative tolerance between the best and worst function values. Default is `sqrt(eps(Float64))`.
+- `reltol::Float64`: Relative tolerance between the best and worst function values. Default is `sqrt(eps(Float64))`.
 - `alpha::Float64`: Reflection coefficient. Controls how far to reflect. Default is `1.0`.
 - `beta::Float64`: Contraction coefficient. Controls step size during contraction. Default is `0.5`.
 - `gamma::Float64`: Expansion coefficient. Determines step size during expansion. Default is `2.0`.
@@ -32,7 +32,7 @@ opts = NelderMeadOptions(project_to_bounds=true, lower=[0.0, 0.0], upper=[10.0, 
 """
 struct NelderMeadOptions
     abstol::Float64
-    intol::Float64
+    reltol::Float64
     alpha::Float64
     beta::Float64
     gamma::Float64
@@ -47,7 +47,7 @@ end
 
 NelderMeadOptions(;
     abstol = -Inf,
-    intol = sqrt(eps(Float64)),
+    reltol = sqrt(eps(Float64)),
     alpha = 1.0,
     beta = 0.5,
     gamma = 2.0,
@@ -60,7 +60,7 @@ NelderMeadOptions(;
     init_step_cap = nothing,
 ) = NelderMeadOptions(
     abstol,
-    intol,
+    reltol,
     alpha,
     beta,
     gamma,
@@ -133,7 +133,7 @@ resb = nelder_mead(f, [0.3, 0.3], opts_bounded)
 """
 function nelder_mead(f::Function, x0::AbstractVector{<:Real}, options::NelderMeadOptions)
     abstol = options.abstol
-    intol = options.intol
+    reltol = options.reltol
     alpha = options.alpha
     beta = options.beta
     gamma = options.gamma
@@ -191,7 +191,7 @@ function nelder_mead(f::Function, x0::AbstractVector{<:Real}, options::NelderMea
     end
 
     fncount = 1
-    convtol = intol * (abs(fB) + intol)
+    convtol = reltol * (abs(fB) + reltol)
     if trace
         println("  Scaled convergence tolerance is ", convtol)
     end

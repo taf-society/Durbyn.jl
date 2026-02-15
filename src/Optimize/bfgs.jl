@@ -39,7 +39,7 @@ Fields:
   Helps convergence on flat surfaces.
 - `trace::Bool` — Print iteration progress (default: false)
 - `maxit::Int` — Maximum iterations (default: 100)
-- `nREPORT::Int` — Reporting frequency when trace=true (default: 10)
+- `report_interval::Int` — Reporting frequency when trace=true (default: 10)
 """
 Base.@kwdef struct BFGSOptions
     abstol::Float64 = -Inf
@@ -47,7 +47,7 @@ Base.@kwdef struct BFGSOptions
     gtol::Float64 = 0.0
     trace::Bool = false
     maxit::Int = 100
-    nREPORT::Int = 10
+    report_interval::Int = 10
 end
 
 
@@ -58,25 +58,25 @@ Pre-allocated workspace used internally by the BFGS optimizer to avoid
 memory allocations during iterative updates.
 
 Fields:
-- `gvec::Vector{Float64}` — Current gradient vector (length `n0`)
-- `t::Vector{Float64}` — Search direction (length `n`)
-- `X::Vector{Float64}` — Current parameter vector (length `n`)
-- `c::Vector{Float64}` — Gradient difference vector (length `n`)
-- `B::Matrix{Float64}` — Approximate inverse Hessian matrix (`n × n`)
-- `X_cache::Vector{Float64}` — Temporary buffer used in Hessian updates (length `n`)
-- `gnew::Vector{Float64}` — Buffer for storing the new gradient (length `n0`)
+- `gradient::Vector{Float64}` — Current gradient vector (length `n0`)
+- `step::Vector{Float64}` — Search direction (length `n`)
+- `x::Vector{Float64}` — Current parameter vector (length `n`)
+- `grad_diff::Vector{Float64}` — Gradient difference vector (length `n`)
+- `inv_hessian::Matrix{Float64}` — Approximate inverse Hessian matrix (`n × n`)
+- `Bc::Vector{Float64}` — Temporary buffer for B*c product in Hessian updates (length `n`)
+- `gradient_new::Vector{Float64}` — Buffer for storing the new gradient (length `n0`)
 
 The workspace is automatically managed by the optimizer, but it can also be
 created and reused manually if desired.
 """
 mutable struct BFGSWorkspace
-    gvec::Vector{Float64}
-    t::Vector{Float64}
-    X::Vector{Float64}
-    c::Vector{Float64}
-    B::Matrix{Float64}
-    X_cache::Vector{Float64}
-    gnew::Vector{Float64}
+    gradient::Vector{Float64}
+    step::Vector{Float64}
+    x::Vector{Float64}
+    grad_diff::Vector{Float64}
+    inv_hessian::Matrix{Float64}
+    Bc::Vector{Float64}
+    gradient_new::Vector{Float64}
 
     function BFGSWorkspace(n0::Int, n::Int)
         new(
@@ -92,7 +92,7 @@ mutable struct BFGSWorkspace
 end
 
 """
-    bfgs_hessian_update!(B, t, c, X_cache, D1)
+    bfgs_hessian_update!(inv_hessian, step, grad_diff, Bc, curvature)
 
 Perform the standard **BFGS inverse Hessian update**:
 
@@ -100,75 +100,75 @@ Perform the standard **BFGS inverse Hessian update**:
 B_{k+1} = B_k + \frac{(1 + c' B_k c / D_1)}{D_1} t t' - \frac{1}{D_1} (t (B_k c)' + (B_k c) t')
 ```
 
-where `t` is the parameter step, `c` is the gradient difference, and
-`D1 = t' * c`.
+where `step` is the parameter step, `grad_diff` is the gradient difference, and
+`curvature = step' * grad_diff`.
 
 Arguments:
-- `B::AbstractMatrix` — Inverse Hessian approximation (`n × n`, symmetric)
-- `t::AbstractVector` — Step direction vector (length `n`)
-- `c::AbstractVector` — Gradient difference vector (length `n`)
-- `X_cache::AbstractVector` — Temporary buffer (`n`), used for storing `B * c`
-- `D1::Float64` — Dot product `t' * c`
+- `inv_hessian::AbstractMatrix` — Inverse Hessian approximation (`n × n`, symmetric)
+- `step::AbstractVector` — Step direction vector (length `n`)
+- `grad_diff::AbstractVector` — Gradient difference vector (length `n`)
+- `Bc::AbstractVector` — Temporary buffer (`n`), used for storing `inv_hessian * grad_diff`
+- `curvature::Float64` — Dot product `step' * grad_diff`
 
 This operation updates the inverse Hessian approximation in-place using the
-standard BFGS formula. The matrix `B` is assumed to be symmetric and stored in
+standard BFGS formula. The matrix `inv_hessian` is assumed to be symmetric and stored in
 full form.
 """
 @inline function bfgs_hessian_update!(
-    B::AbstractMatrix,
-    t::AbstractVector,
-    c::AbstractVector,
-    X_cache::AbstractVector,
-    D1::Float64
+    inv_hessian::AbstractMatrix,
+    step::AbstractVector,
+    grad_diff::AbstractVector,
+    Bc::AbstractVector,
+    curvature::Float64
 )
-    n = length(t)
+    n = length(step)
 
     @inbounds for i in 1:n
         s = 0.0
         @simd for j in 1:i
-            s += B[i, j] * c[j]
+            s += inv_hessian[i, j] * grad_diff[j]
         end
         @simd for j in (i+1):n
-            s += B[j, i] * c[j]
+            s += inv_hessian[j, i] * grad_diff[j]
         end
-        X_cache[i] = s
+        Bc[i] = s
     end
 
     D2 = 0.0
     @inbounds @simd for i in 1:n
-        D2 += X_cache[i] * c[i]
+        D2 += Bc[i] * grad_diff[i]
     end
-    D2 = 1.0 + D2 / D1
+    D2 = 1.0 + D2 / curvature
 
-    inv_D1 = 1.0 / D1
+    inv_D1 = 1.0 / curvature
     @inbounds for i in 1:n
-        ti_scaled = t[i] * inv_D1
-        xi_scaled = X_cache[i] * inv_D1
+        ti_scaled = step[i] * inv_D1
+        xi_scaled = Bc[i] * inv_D1
 
         @simd for j in 1:i
-            B[i, j] += D2 * ti_scaled * t[j] - xi_scaled * t[j] - ti_scaled * X_cache[j]
+            inv_hessian[i, j] += D2 * ti_scaled * step[j] - xi_scaled * step[j] - ti_scaled * Bc[j]
         end
     end
 end
 
 """
-    bfgs(f, g, x0; mask=trues(length(x0)), options=BFGSOptions(), ndeps=nothing,
-         numgrad_cache=nothing, ex=nothing) -> NamedTuple
+    bfgs(f, g, x0; mask=trues(length(x0)), options=BFGSOptions(), step_sizes=nothing,
+         numgrad_cache=nothing, extra=nothing) -> NamedTuple
 
 Minimize a function using the BFGS quasi-Newton algorithm with Armijo backtracking
 line search and periodic inverse Hessian restarts.
 
 # Arguments
 
-- `f::Function`: Objective function, signature `f(n::Int, x::Vector, ex)` → `Float64`.
-- `g::Union{Function, Nothing}`: Gradient function, signature `g(n::Int, x::Vector, grad::Vector, ex)`
+- `f::Function`: Objective function, signature `f(n::Int, x::Vector, extra)` → `Float64`.
+- `g::Union{Function, Nothing}`: Gradient function, signature `g(n::Int, x::Vector, grad::Vector, extra)`
   modifies `grad` in-place and returns `nothing`. Pass `nothing` for numerical gradients.
 - `x0::Vector{Float64}`: Initial parameter vector.
 - `mask::BitVector`: Logical mask for active parameters (default: all active).
 - `options::BFGSOptions`: Optimization options (tolerances, iteration limits, etc.).
-- `ndeps::Union{Nothing, Vector{Float64}}`: Step sizes for numerical differentiation.
+- `step_sizes::Union{Nothing, Vector{Float64}}`: Step sizes for numerical differentiation.
 - `numgrad_cache::Union{Nothing, NumericalGradientCache}`: Pre-allocated cache for numerical gradients.
-- `ex`: External data passed to `f` and `g` (default: `nothing`).
+- `extra`: External data passed to `f` and `g` (default: `nothing`).
 
 # Returns
 
@@ -199,16 +199,16 @@ function bfgs(
     x0::Vector{Float64};
     mask = trues(length(x0)),
     options::BFGSOptions = BFGSOptions(),
-    ndeps::Union{Nothing,Vector{Float64}} = nothing,
+    step_sizes::Union{Nothing,Vector{Float64}} = nothing,
     numgrad_cache::Union{Nothing,NumericalGradientCache} = nothing,
-    ex = nothing
+    extra = nothing
 )
     abstol = options.abstol
     reltol = options.reltol
     gtol = options.gtol
     trace = options.trace
     maxit = options.maxit
-    nREPORT = options.nREPORT
+    report_interval = options.report_interval
 
     converged_gradient = false
 
@@ -219,7 +219,7 @@ function bfgs(
 
     if maxit <= 0
         fail = 0
-        Fmin = f(n0, b, ex)
+        Fmin = f(n0, b, extra)
         fncount = 0
         grcount = 0
         return (
@@ -232,14 +232,14 @@ function bfgs(
         )
     end
 
-    if nREPORT <= 0
+    if report_interval <= 0
         error("REPORT must be > 0 (method = \"BFGS\")")
     end
 
     workspace = BFGSWorkspace(n0, n)
 
     if isnothing(g)
-        ndeps_actual = isnothing(ndeps) ? fill(1e-3, n0) : ndeps
+        ndeps_actual = isnothing(step_sizes) ? fill(1e-3, n0) : step_sizes
         if length(ndeps_actual) != n0
             error("ndeps must have length $n0")
         end
@@ -257,7 +257,7 @@ function bfgs(
         gfunc = g
     end
 
-    fval = f(n0, b, ex)
+    fval = f(n0, b, extra)
     if !isfinite(fval)
         error("initial value in 'vmmin' is not finite")
     end
@@ -269,10 +269,10 @@ function bfgs(
     funcount = 1
     gradcount = 1
 
-    gfunc(n0, b, workspace.gvec, ex)
+    gfunc(n0, b, workspace.gradient, extra)
 
     @inbounds for i in 1:n
-        if !isfinite(workspace.gvec[l[i]])
+        if !isfinite(workspace.gradient[l[i]])
             return (x_opt=copy(b), f_opt=Fmin, n_iter=0,
                 fail=1, fn_evals=funcount, gr_evals=gradcount)
         end
@@ -284,28 +284,28 @@ function bfgs(
 
     while true
         if ilast == gradcount
-            fill!(workspace.B, 0.0)
+            fill!(workspace.inv_hessian, 0.0)
             @inbounds for i in 1:n
-                workspace.B[i, i] = 1.0
+                workspace.inv_hessian[i, i] = 1.0
             end
         end
 
         @inbounds for i in 1:n
-            workspace.X[i] = b[l[i]]
-            workspace.c[i] = workspace.gvec[l[i]]
+            workspace.x[i] = b[l[i]]
+            workspace.grad_diff[i] = workspace.gradient[l[i]]
         end
 
         gradproj = 0.0
         @inbounds for i in 1:n
             s = 0.0
             @simd for j in 1:i
-                s -= workspace.B[i, j] * workspace.gvec[l[j]]
+                s -= workspace.inv_hessian[i, j] * workspace.gradient[l[j]]
             end
             @simd for j in (i+1):n
-                s -= workspace.B[j, i] * workspace.gvec[l[j]]
+                s -= workspace.inv_hessian[j, i] * workspace.gradient[l[j]]
             end
-            workspace.t[i] = s
-            gradproj += s * workspace.gvec[l[i]]
+            workspace.step[i] = s
+            gradproj += s * workspace.gradient[l[i]]
         end
 
         if gradproj < 0.0
@@ -315,13 +315,13 @@ function bfgs(
             while true
                 count = 0
                 @inbounds for i in 1:n
-                    b[l[i]] = workspace.X[i] + steplength * workspace.t[i]
-                    if RELTEST + workspace.X[i] == RELTEST + b[l[i]]
+                    b[l[i]] = workspace.x[i] + steplength * workspace.step[i]
+                    if RELTEST + workspace.x[i] == RELTEST + b[l[i]]
                         count += 1
                     end
                 end
                 if count < n
-                    fval = f(n0, b, ex)
+                    fval = f(n0, b, extra)
                     funcount += 1
                     accpoint = isfinite(fval) && (fval <= Fmin + gradproj * steplength * ACCTOL)
                     if !accpoint
@@ -341,13 +341,13 @@ function bfgs(
 
             if count < n
                 Fmin = fval
-                gfunc(n0, b, workspace.gvec, ex)
+                gfunc(n0, b, workspace.gradient, extra)
                 gradcount += 1
                 iter += 1
 
                 has_nonfinite_grad = false
                 @inbounds for i in 1:n
-                    if !isfinite(workspace.gvec[l[i]])
+                    if !isfinite(workspace.gradient[l[i]])
                         has_nonfinite_grad = true
                         break
                     end
@@ -359,17 +359,17 @@ function bfgs(
 
                 D1 = 0.0
                 @inbounds for i in 1:n
-                    workspace.t[i] = steplength * workspace.t[i]
-                    workspace.c[i] = workspace.gvec[l[i]] - workspace.c[i]
-                    D1 += workspace.t[i] * workspace.c[i]
+                    workspace.step[i] = steplength * workspace.step[i]
+                    workspace.grad_diff[i] = workspace.gradient[l[i]] - workspace.grad_diff[i]
+                    D1 += workspace.step[i] * workspace.grad_diff[i]
                 end
 
                 if D1 > 0.0
                     bfgs_hessian_update!(
-                        workspace.B,
-                        workspace.t,
-                        workspace.c,
-                        workspace.X_cache,
+                        workspace.inv_hessian,
+                        workspace.step,
+                        workspace.grad_diff,
+                        workspace.Bc,
                         D1
                     )
                 else
@@ -390,14 +390,14 @@ function bfgs(
             end
         end
 
-        if trace && (iter % nREPORT == 0)
+        if trace && (iter % report_interval == 0)
             println("iter", lpad(iter, 4), " value ", fval)
         end
 
         if gtol > 0.0
             grad_norm_sq = 0.0
             @inbounds for i in 1:n
-                grad_norm_sq += workspace.gvec[l[i]]^2
+                grad_norm_sq += workspace.gradient[l[i]]^2
             end
             grad_norm = sqrt(grad_norm_sq)
             if grad_norm < gtol * max(1.0, abs(Fmin))

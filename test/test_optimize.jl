@@ -22,7 +22,7 @@ sphere_grad(x) = 2.0 .* x
 
     @testset "BFGS via optimize - Rosenbrock with analytic gradient" begin
         x0 = [-1.2, 1.0]
-        result = optimize(x0, rosenbrock; gr=rosenbrock_grad, method="BFGS")
+        result = optimize(x0, rosenbrock; grad=rosenbrock_grad, method="BFGS")
         @test abs(result.par[1] - 1.0) <= 0.01
         @test abs(result.par[2] - 1.0) <= 0.01
         @test result.value < 1e-8
@@ -31,7 +31,7 @@ sphere_grad(x) = 2.0 .* x
 
     @testset "BFGS via optimize - Sphere with gradient" begin
         x0 = [5.0, -3.0, 2.0]
-        result = optimize(x0, sphere; gr=sphere_grad, method="BFGS")
+        result = optimize(x0, sphere; grad=sphere_grad, method="BFGS")
         @test all(abs.(result.par) .<= 0.01)
         @test result.value < 1e-6
     end
@@ -87,7 +87,7 @@ sphere_grad(x) = 2.0 .* x
 
     @testset "L-BFGS-B via optimize - with gradient" begin
         x0 = [5.0, -3.0]
-        result = optimize(x0, sphere; gr=sphere_grad, method="L-BFGS-B",
+        result = optimize(x0, sphere; grad=sphere_grad, method="L-BFGS-B",
                        lower=[-10.0, -10.0], upper=[10.0, 10.0])
         @test all(abs.(result.par) .<= 0.01)
     end
@@ -231,14 +231,14 @@ sphere_grad(x) = 2.0 .* x
             calls[] > 2 ? NaN : sum(x .^ 2)
         end
         gr_delayed_nan(x) = 2.0 .* x
-        @test_throws ErrorException optimize([5.0, 3.0], f_delayed_nan; gr=gr_delayed_nan,
+        @test_throws ErrorException optimize([5.0, 3.0], f_delayed_nan; grad=gr_delayed_nan,
                                           method="L-BFGS-B")
     end
 
     @testset "L-BFGS-B errors on non-finite gradient" begin
         f_sphere(x) = sum(x .^ 2)
         gr_inf(x) = [Inf, Inf]
-        @test_throws ErrorException optimize([1.0, 1.0], f_sphere; gr=gr_inf,
+        @test_throws ErrorException optimize([1.0, 1.0], f_sphere; grad=gr_inf,
                                           method="L-BFGS-B")
     end
 
@@ -314,9 +314,9 @@ sphere_grad(x) = 2.0 .* x
     @testset "Gradient length validated" begin
         bad_gr(x) = [1.0]
         @test_throws ErrorException optimize([1.0, 1.0], sphere;
-                       gr=bad_gr, method="BFGS")
+                       grad=bad_gr, method="BFGS")
         @test_throws ErrorException optimize([1.0, 1.0], sphere;
-                       gr=bad_gr, method="L-BFGS-B",
+                       grad=bad_gr, method="L-BFGS-B",
                        lower=[-5.0, -5.0], upper=[5.0, 5.0])
     end
 
@@ -354,7 +354,7 @@ sphere_grad(x) = 2.0 .* x
             calls[] > 2 ? NaN : sum(x .^ 2)
         end
         gr_for_count(x) = 2.0 .* x
-        @test_throws ErrorException optimize([5.0, 3.0], f_delayed_nan2; gr=gr_for_count,
+        @test_throws ErrorException optimize([5.0, 3.0], f_delayed_nan2; grad=gr_for_count,
                                           method="L-BFGS-B")
     end
 
@@ -428,9 +428,9 @@ sphere_grad(x) = 2.0 .* x
         @test_throws ErrorException optimize([1.0, 1.0], x -> missing)
     end
 
-    @testset "gr returning nothing gives clear error" begin
+    @testset "grad returning nothing gives clear error" begin
         @test_throws ErrorException optimize([1.0, 1.0], sphere;
-                       gr=x -> nothing, method="BFGS")
+                       grad=x -> nothing, method="BFGS")
     end
 
     @testset "Symbol keys in control accepted (convenience)" begin

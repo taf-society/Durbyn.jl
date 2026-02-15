@@ -37,23 +37,23 @@ export scaler, descaler
 The `optimize` function provides a unified interface for all solvers, allowing easy switching between methods.
 
 ```julia
-optimize(par, fn; gr=nothing, method="Nelder-Mead", lower=-Inf, upper=Inf,
+optimize(x0, fn; grad=nothing, method="Nelder-Mead", lower=-Inf, upper=Inf,
          control=Dict(), hessian=false, kwargs...)
 ```
 
 ### Arguments
 
-- `par::Vector{Float64}`: Initial parameter vector
-- `fn::Function`: Objective function to minimize, called as `fn(par; kwargs...)`
+- `x0::Vector{Float64}`: Initial parameter vector
+- `fn::Function`: Objective function to minimize, called as `fn(x; kwargs...)`
 
 ### Keyword Arguments
 
-- `gr::Union{Function,Nothing}`: Gradient function, called as `gr(par; kwargs...)`. If `nothing`, numerical gradients are computed automatically.
+- `grad::Union{Function,Nothing}`: Gradient function, called as `grad(x; kwargs...)`. If `nothing`, numerical gradients are computed automatically.
 - `method::String`: Optimization method:
   - `"Nelder-Mead"` (default) - Derivative-free simplex
   - `"BFGS"` - Quasi-Newton with line search
   - `"L-BFGS-B"` - Limited-memory BFGS with box constraints
-  - `"Brent"` - 1D optimization (scalar `par` only)
+  - `"Brent"` - 1D optimization (scalar `x0` only)
 - `lower`, `upper`: Bounds for L-BFGS-B and Brent methods
 - `control::Dict`: Control parameters (see below)
 - `hessian::Bool`: If `true`, compute Hessian at solution
@@ -107,7 +107,7 @@ result = optimize([-1.2, 1.0], rosenbrock)
 println("Optimal: $(result.par), Value: $(result.value)")
 
 # BFGS with analytical gradient
-result = optimize([-1.2, 1.0], rosenbrock; gr=rosenbrock_grad, method="BFGS")
+result = optimize([-1.2, 1.0], rosenbrock; grad=rosenbrock_grad, method="BFGS")
 
 # BFGS with numerical gradient (automatic)
 result = optimize([-1.2, 1.0], rosenbrock; method="BFGS")
@@ -121,7 +121,7 @@ result = optimize([-1.2, 1.0], rosenbrock; method="BFGS",
                   control=Dict("trace" => 1, "maxit" => 500, "gtol" => 1e-6))
 
 # Request Hessian at solution
-result = optimize([-1.2, 1.0], rosenbrock; gr=rosenbrock_grad,
+result = optimize([-1.2, 1.0], rosenbrock; grad=rosenbrock_grad,
                   method="BFGS", hessian=true)
 println("Hessian:\n$(result.hessian)")
 
@@ -167,7 +167,7 @@ nelder_mead(f, x0, options::NelderMeadOptions)
 ```julia
 NelderMeadOptions(;
     abstol = -Inf,           # Absolute tolerance on function value
-    intol = sqrt(eps()),     # Relative tolerance
+    reltol = sqrt(eps()),    # Relative tolerance
     alpha = 1.0,             # Reflection coefficient
     beta = 0.5,              # Contraction coefficient
     gamma = 2.0,             # Expansion coefficient
@@ -230,13 +230,13 @@ where:
 ### Usage
 
 ```julia
-bfgs(f, g, x0; mask=nothing, options=BFGSOptions(), ndeps=1e-3*ones(n),
-     numgrad_cache=nothing, ex=nothing)
+bfgs(f, g, x0; mask=nothing, options=BFGSOptions(), step_sizes=1e-3*ones(n),
+     numgrad_cache=nothing, extra=nothing)
 ```
 
 **Function Signatures:**
-- `f(n, x, ex)` - Objective function
-- `g(n, x, grad, ex)` - Gradient function (modifies `grad` in-place), or `nothing`
+- `f(n, x, extra)` - Objective function
+- `g(n, x, grad, extra)` - Gradient function (modifies `grad` in-place), or `nothing`
 
 **Options:**
 ```julia
@@ -246,7 +246,7 @@ BFGSOptions(;
     gtol = 0.0,              # Gradient norm tolerance
     trace = false,           # Print progress
     maxit = 100,             # Maximum iterations
-    nREPORT = 10             # Reporting frequency
+    report_interval = 10     # Reporting frequency
 )
 ```
 
@@ -266,11 +266,11 @@ This provides a first-order optimality condition. Recommended values: `1e-5` to 
 ```julia
 using Durbyn.Optimize
 
-# Internal function signature: f(n, x, ex)
-rosenbrock_internal(n, x, ex) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
+# Internal function signature: f(n, x, extra)
+rosenbrock_internal(n, x, extra) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
 
 # Gradient modifies grad in-place
-function rosenbrock_grad_internal(n, x, grad, ex)
+function rosenbrock_grad_internal(n, x, grad, extra)
     grad[1] = -400*x[1]*(x[2]-x[1]^2) - 2*(1-x[1])
     grad[2] = 200*(x[2]-x[1]^2)
     return nothing
@@ -287,32 +287,32 @@ result = bfgs(rosenbrock_internal, nothing, [-1.2, 1.0]; options=opts)
 
 ## L-BFGS-B Bounded Optimization (`lbfgsb`)
 
-A limited-memory variant of BFGS that supports box constraints on variables. Instead of storing the full inverse Hessian approximation, it retains only the last ``m`` iterations of gradient information, making it memory-efficient for large-scale problems.
+A limited-memory variant of BFGS that supports box constraints on variables. Instead of storing the full inverse Hessian approximation, it retains only the last ``memory_size`` iterations of gradient information, making it memory-efficient for large-scale problems.
 
 **Reference:** Byrd, R. H., Lu, P., Nocedal, J., and Zhu, C. (1995). *A limited memory algorithm for bound constrained optimization*. SIAM Journal on Scientific Computing, 16, 1190--1208. See also Zhu, C., Byrd, R. H., Lu, P., and Nocedal, J. (1997). *Algorithm 778: L-BFGS-B*.
 
 ### Features
 
 - **Box constraints**: Lower and upper bounds on variables
-- **Limited memory**: Stores only `m` gradient steps (default: 10)
+- **Limited memory**: Stores only `memory_size` gradient steps (default: 10)
 - **Wolfe line search** with zoom refinement
 - **Projected gradient** for convergence checking
-- **Parameter masking** by setting `l[i] = u[i] = x0[i]`
+- **Parameter masking** by setting `lower[i] = upper[i] = x0[i]`
 
 ### Usage
 
 ```julia
-lbfgsb(f, g, x0; mask=nothing, l=-Inf, u=Inf, options=LBFGSBOptions())
+lbfgsb(f, g, x0; mask=nothing, lower=-Inf, upper=Inf, options=LBFGSBOptions())
 ```
 
 **Options:**
 ```julia
 LBFGSBOptions(;
-    m = 10,          # Memory size (number of stored iterations)
-    factr = 1e7,     # Tolerance factor: f_tol = factr * eps()
-    pgtol = 1e-5,    # Projected gradient infinity-norm tolerance
-    maxit = 1000,    # Maximum iterations
-    iprint = 0       # Print level (0=silent, >0=verbose)
+    memory_size = 10,    # Memory size (number of stored iterations)
+    ftol_factor = 1e7,   # Tolerance factor: f_tol = ftol_factor * eps()
+    pg_tol = 1e-5,       # Projected gradient infinity-norm tolerance
+    maxit = 1000,        # Maximum iterations
+    print_level = 0      # Print level (0=silent, >0=verbose)
 )
 ```
 
@@ -320,7 +320,7 @@ LBFGSBOptions(;
 
 The algorithm converges when:
 ```math
-\|\text{proj}(\nabla f(x))\|_\infty < \text{pgtol}
+\|\text{proj}(\nabla f(x))\|_\infty < \text{pg\_tol}
 ```
 
 where the projected gradient accounts for variables at their bounds.
@@ -332,11 +332,11 @@ where the projected gradient accounts for variables at their bounds.
 ```julia
 using Durbyn.Optimize
 
-rosenbrock(n, x, ex) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
+rosenbrock(n, x, extra) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
 
-opts = LBFGSBOptions(m=5, pgtol=1e-6, iprint=1)
+opts = LBFGSBOptions(memory_size=5, pg_tol=1e-6, print_level=1)
 result = lbfgsb(rosenbrock, nothing, [0.5, 0.5];
-                l=[0.0, 0.0], u=[2.0, 2.0], options=opts)
+                lower=[0.0, 0.0], upper=[2.0, 2.0], options=opts)
 
 println("Bounded optimum: $(result.x_opt)")
 ```
@@ -394,7 +394,7 @@ The module provides efficient numerical gradient computation using central finit
 ### `numgrad`
 
 ```julia
-numgrad(f, n, x, ex, ndeps; usebounds=false, lower=nothing, upper=nothing)
+numgrad(f, n, x, extra, step_sizes; usebounds=false, lower=nothing, upper=nothing)
 ```
 
 Computes the gradient using central differences:
@@ -408,7 +408,7 @@ For repeated gradient evaluations, use a pre-allocated cache:
 
 ```julia
 cache = NumericalGradientCache(n)
-numgrad_with_cache!(cache, f, n, x, ex, ndeps)
+numgrad_with_cache!(cache, f, n, x, extra, step_sizes)
 ```
 
 This eliminates memory allocations during iterative optimization.
@@ -418,18 +418,18 @@ This eliminates memory allocations during iterative optimization.
 ```julia
 using Durbyn.Optimize
 
-f(n, x, ex) = x[1]^2 + x[2]^2
+f(n, x, extra) = x[1]^2 + x[2]^2
 x = [1.0, 2.0]
-ndeps = [1e-6, 1e-6]
+step_sizes = [1e-6, 1e-6]
 
 # Single evaluation
-grad = numgrad(f, 2, x, nothing, ndeps)
+g = numgrad(f, 2, x, nothing, step_sizes)
 
 # With cache for repeated evaluations
 cache = NumericalGradientCache(2)
 for i in 1:1000
-    numgrad_with_cache!(cache, f, 2, x, nothing, ndeps)
-    # cache.df contains the gradient
+    numgrad_with_cache!(cache, f, 2, x, nothing, step_sizes)
+    # cache.gradient contains the gradient
 end
 ```
 
@@ -442,12 +442,12 @@ The `numerical_hessian` function computes the Hessian matrix at a given point us
 **Reference:** Nocedal, J. and Wright, S. J. (1999). *Numerical Optimization*. Springer. Chapter 8, finite difference formulas.
 
 ```julia
-numerical_hessian(fn, par, gr=nothing; fnscale=1.0, parscale=ones(n), ndeps=1e-3*ones(n))
+numerical_hessian(fn, x, grad=nothing; fnscale=1.0, parscale=ones(n), step_sizes=1e-3*ones(n))
 ```
 
 **Method:**
-- If `gr=nothing`: Uses second-order finite differences of the objective function
-- If `gr` provided: Computes Hessian from gradient via finite differences
+- If `grad=nothing`: Uses second-order finite differences of the objective function
+- If `grad` provided: Computes Hessian from gradient via finite differences
 
 **Returns:** Symmetric Hessian matrix (n x n)
 
@@ -570,7 +570,7 @@ end
 
 # Optimize with BFGS
 result = optimize([0.0, 0.0], neg_loglik;
-                  gr=neg_loglik_grad,
+                  grad=neg_loglik_grad,
                   method="BFGS",
                   hessian=true)
 

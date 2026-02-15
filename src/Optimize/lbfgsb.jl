@@ -2,15 +2,15 @@ import LinearAlgebra
 using LinearAlgebra: dot, norm
 
 struct LBFGSBOptions
-    m::Int
-    factr::Float64
-    pgtol::Float64
+    memory_size::Int
+    ftol_factor::Float64
+    pg_tol::Float64
     maxit::Int
-    iprint::Int
+    print_level::Int
 end
 
-LBFGSBOptions(; m::Int=10, factr::Float64=1e7, pgtol::Float64=1e-5, maxit::Int=1000, iprint::Int=0) =
-    LBFGSBOptions(m, factr, pgtol, maxit, iprint)
+LBFGSBOptions(; memory_size::Int=10, ftol_factor::Float64=1e7, pg_tol::Float64=1e-5, maxit::Int=1000, print_level::Int=0) =
+    LBFGSBOptions(memory_size, ftol_factor, pg_tol, maxit, print_level)
 
 
 function _nbd_from_bounds(l::Vector{Float64}, u::Vector{Float64})
@@ -76,7 +76,7 @@ function _proj_grad!(pg::Vector{Float64}, x::Vector{Float64}, g::Vector{Float64}
 end
 
 
-function _dpofa!(A::AbstractMatrix{Float64}, n::Int)
+function _cholesky!(A::AbstractMatrix{Float64}, n::Int)
     @inbounds for j in 1:n
         s = 0.0
         for k in 1:j-1
@@ -97,7 +97,7 @@ function _dpofa!(A::AbstractMatrix{Float64}, n::Int)
     return 0
 end
 
-function _dtrsl_upper!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVector{Float64}, boff::Int)
+function _triangular_solve!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVector{Float64}, boff::Int)
     @inbounds for j in n:-1:1
         if A[r+j-1, r+j-1] == 0.0
             return j
@@ -110,7 +110,7 @@ function _dtrsl_upper!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVe
     return 0
 end
 
-function _dtrsl_upper_t!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVector{Float64}, boff::Int)
+function _triangular_solve_t!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVector{Float64}, boff::Int)
     @inbounds for j in 1:n
         s = b[boff+j]
         for i in 1:j-1
@@ -124,7 +124,7 @@ function _dtrsl_upper_t!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::Abstract
     return 0
 end
 
-function _bmv!(p::AbstractVector{Float64}, sy::Matrix{Float64}, wt::Matrix{Float64},
+function _bmat_vec!(p::AbstractVector{Float64}, sy::Matrix{Float64}, wt::Matrix{Float64},
     col::Int, m::Int, v::AbstractVector{Float64})
     if col == 0
         return 0
@@ -137,7 +137,7 @@ function _bmv!(p::AbstractVector{Float64}, sy::Matrix{Float64}, wt::Matrix{Float
         end
         p[col+i] = v[col+i] + s
     end
-    info = _dtrsl_upper_t!(wt, 1, col, p, col)
+    info = _triangular_solve_t!(wt, 1, col, p, col)
     if info != 0
         return info
     end
@@ -145,7 +145,7 @@ function _bmv!(p::AbstractVector{Float64}, sy::Matrix{Float64}, wt::Matrix{Float
         p[i] = v[i] / sqrt(sy[i, i])
     end
 
-    info = _dtrsl_upper!(wt, 1, col, p, col)
+    info = _triangular_solve!(wt, 1, col, p, col)
     if info != 0
         return info
     end
@@ -162,7 +162,7 @@ function _bmv!(p::AbstractVector{Float64}, sy::Matrix{Float64}, wt::Matrix{Float
     return 0
 end
 
-function _hpsolb!(t::Vector{Float64}, iorder::Vector{Int}, n::Int, iheap::Int)
+function _heap_sort!(t::Vector{Float64}, iorder::Vector{Int}, n::Int, iheap::Int)
     if iheap == 0
         @inbounds for k in 2:n
             ddum = t[k]
@@ -356,7 +356,7 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
     f2 = -theta * f1
     f2_org = f2
     if col > 0
-        info = _bmv!(v, sy, wt, col, m, p)
+        info = _bmat_vec!(v, sy, wt, col, m, p)
         if info != 0
             return nint, info
         end
@@ -388,7 +388,7 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
                     iorder[ibkmin] = iorder[nbreak]
                 end
             end
-            _hpsolb!(t, iorder, nleft, cauchyiter - 2)
+            _heap_sort!(t, iorder, nleft, cauchyiter - 2)
             tj = t[nleft]
             ibp = iorder[nleft]
         end
@@ -428,7 +428,7 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
                 wbp[col+j] = theta * ws[ibp, pointr]
                 pointr = pointr % m + 1
             end
-            info = _bmv!(v, sy, wt, col, m, wbp)
+            info = _bmat_vec!(v, sy, wt, col, m, wbp)
             if info != 0
                 return nint, info
             end
@@ -472,7 +472,7 @@ function _cauchy!(n::Int, x::Vector{Float64}, l::Vector{Float64}, u::Vector{Floa
     return nint, 0
 end
 
-function _freev!(n::Int, nfree_prev::Int, indx::Vector{Int}, iwhere::Vector{Int},
+function _update_free_vars!(n::Int, nfree_prev::Int, indx::Vector{Int}, iwhere::Vector{Int},
     indx2::Vector{Int}, cnstnd::Bool, updatd::Bool, iter::Int)
     nenter = 0
     ileave = n + 1
@@ -508,7 +508,7 @@ function _freev!(n::Int, nfree_prev::Int, indx::Vector{Int}, iwhere::Vector{Int}
 end
 
 
-function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
+function _form_hessian!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
     indx2::Vector{Int}, iupdat::Int, updatd::Bool,
     wn::Matrix{Float64}, wn1::Matrix{Float64}, m::Int,
     ws::Matrix{Float64}, wy::Matrix{Float64}, sy::Matrix{Float64},
@@ -630,13 +630,13 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
         wn[iy, iy] += sy[iy, iy]
     end
 
-    info = _dpofa!(wn, col)
+    info = _cholesky!(wn, col)
     if info != 0
         return -1
     end
     col2 = 2 * col
     for js in col+1:col2
-        info = _dtrsl_upper_t!(wn, 1, col, view(wn, :, js), 0)
+        info = _triangular_solve_t!(wn, 1, col, view(wn, :, js), 0)
         if info != 0
             return -1
         end
@@ -650,14 +650,14 @@ function _formk!(n::Int, nsub::Int, indx::Vector{Int}, nenter::Int, ileave::Int,
             wn[is_, js] += s
         end
     end
-    info = _dpofa!(view(wn, col+1:col2, col+1:col2), col)
+    info = _cholesky!(view(wn, col+1:col2, col+1:col2), col)
     if info != 0
         return -2
     end
     return 0
 end
 
-function _formt!(m::Int, wt::Matrix{Float64}, sy::Matrix{Float64},
+function _form_triangular!(m::Int, wt::Matrix{Float64}, sy::Matrix{Float64},
     ss::Matrix{Float64}, col::Int, theta::Float64)
     for j in 1:col
         wt[1, j] = theta * ss[1, j]
@@ -672,11 +672,11 @@ function _formt!(m::Int, wt::Matrix{Float64}, sy::Matrix{Float64},
             wt[i, j] = ddum + theta * ss[i, j]
         end
     end
-    info = _dpofa!(wt, col)
+    info = _cholesky!(wt, col)
     return info != 0 ? -3 : 0
 end
 
-function _cmprlb!(n::Int, m::Int, x::Vector{Float64}, g::Vector{Float64},
+function _compute_reduced_grad!(n::Int, m::Int, x::Vector{Float64}, g::Vector{Float64},
     ws::Matrix{Float64}, wy::Matrix{Float64}, sy::Matrix{Float64}, wt::Matrix{Float64},
     z::Vector{Float64}, r::Vector{Float64}, wa::Vector{Float64},
     indx::Vector{Int}, theta::Float64, col::Int, head::Int, nfree::Int, cnstnd::Bool)
@@ -690,7 +690,7 @@ function _cmprlb!(n::Int, m::Int, x::Vector{Float64}, g::Vector{Float64},
             k = indx[i]
             r[i] = -theta * (z[k] - x[k]) - g[k]
         end
-        info = _bmv!(wa, sy, wt, col, m, view(wa, 2m+1:4m))
+        info = _bmat_vec!(wa, sy, wt, col, m, view(wa, 2m+1:4m))
         if info != 0
             return -8
         end
@@ -708,7 +708,7 @@ function _cmprlb!(n::Int, m::Int, x::Vector{Float64}, g::Vector{Float64},
     return 0
 end
 
-function _subsm!(n::Int, m::Int, nsub::Int, indx::Vector{Int},
+function _subspace_min!(n::Int, m::Int, nsub::Int, indx::Vector{Int},
     l::Vector{Float64}, u::Vector{Float64}, nbd::Vector{Int32},
     z::Vector{Float64}, d::Vector{Float64},
     ws::Matrix{Float64}, wy::Matrix{Float64}, theta::Float64,
@@ -731,14 +731,14 @@ function _subsm!(n::Int, m::Int, nsub::Int, indx::Vector{Int},
     end
     m2 = 2 * m
     col2 = 2 * col
-    info = _dtrsl_upper_t!(wn, 1, col2, wv, 0)
+    info = _triangular_solve_t!(wn, 1, col2, wv, 0)
     if info != 0
         return 0, info
     end
     @inbounds for i in 1:col
         wv[i] = -wv[i]
     end
-    info = _dtrsl_upper!(wn, 1, col2, wv, 0)
+    info = _triangular_solve!(wn, 1, col2, wv, 0)
     if info != 0
         return 0, info
     end
@@ -801,7 +801,7 @@ function _subsm!(n::Int, m::Int, nsub::Int, indx::Vector{Int},
     return iword, 0
 end
 
-function _matupd!(n::Int, m::Int, ws::Matrix{Float64}, wy::Matrix{Float64},
+function _update_matrices!(n::Int, m::Int, ws::Matrix{Float64}, wy::Matrix{Float64},
     sy::Matrix{Float64}, ss::Matrix{Float64},
     d::Vector{Float64}, r::Vector{Float64},
     itail::Int, iupdat::Int, col::Int, head::Int,
@@ -1062,12 +1062,12 @@ end
 
 
 """
-    lbfgsb(f, g, x0; mask=trues(length(x0)), l=nothing, u=nothing, options=LBFGSBOptions())
+    lbfgsb(f, g, x0; mask=trues(length(x0)), lower=nothing, upper=nothing, options=LBFGSBOptions())
 
 Minimize a function with box constraints using the L-BFGS-B algorithm.
 
 L-BFGS-B is a limited-memory variant of BFGS that supports bound constraints on
-variables. It stores only the last `m` iterations of curvature information, making
+variables. It stores only the last `memory_size` iterations of curvature information, making
 it memory-efficient for large-scale problems. The algorithm uses a Generalized Cauchy
 Point computation and subspace minimization within the free variable space.
 
@@ -1076,9 +1076,9 @@ Point computation and subspace minimization within the free variable space.
 - `f::Function`: Objective function, signature `f(n, x, ex)` → scalar.
 - `g::Function`: Gradient function, signature `g(n, x, ex)` → gradient vector.
 - `x0::Vector{Float64}`: Initial parameter vector.
-- `mask`: Logical mask; frozen variables have bounds set to `l[i]=u[i]=x0[i]`.
-- `l`, `u`: Optional bound vectors (`nothing` = unbounded).
-- `options::LBFGSBOptions`: Algorithm parameters (`m`, `factr`, `pgtol`, `maxit`, `iprint`).
+- `mask`: Logical mask; frozen variables have bounds set to `lower[i]=upper[i]=x0[i]`.
+- `lower`, `upper`: Optional bound vectors (`nothing` = unbounded).
+- `options::LBFGSBOptions`: Algorithm parameters (`memory_size`, `ftol_factor`, `pg_tol`, `maxit`, `print_level`).
 
 # Returns
 
@@ -1093,18 +1093,18 @@ Named tuple `(x_opt, f_opt, n_iter, fail, fn_evals, gr_evals, message)`.
 """
 function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
     mask=trues(length(x0)),
-    l::Union{Nothing,Vector{Float64}}=nothing,
-    u::Union{Nothing,Vector{Float64}}=nothing,
+    lower::Union{Nothing,Vector{Float64}}=nothing,
+    upper::Union{Nothing,Vector{Float64}}=nothing,
     options::LBFGSBOptions=LBFGSBOptions())
 
     n = length(x0)
-    m = options.m
+    m = options.memory_size
     if length(mask) != n
         error("mask length must equal x0 length")
     end
 
-    l2 = l === nothing ? fill(-Inf, n) : copy(l)
-    u2 = u === nothing ? fill(+Inf, n) : copy(u)
+    l2 = lower === nothing ? fill(-Inf, n) : copy(lower)
+    u2 = upper === nothing ? fill(+Inf, n) : copy(upper)
     @inbounds for i in 1:n
         if !mask[i]
             l2[i] = x0[i]
@@ -1176,16 +1176,16 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
     pg = similar(gx)
     sbgnrm = _proj_grad!(pg, x, gx, l2, u2, nbd)
 
-    if options.iprint > 0
+    if options.print_level > 0
         println("At iterate     0  f= ", fx, "  |proj g|= ", sbgnrm)
     end
-    if sbgnrm <= options.pgtol
+    if sbgnrm <= options.pg_tol
         return (x_opt=x, f_opt=fx, n_iter=0,
             fail=0, fn_evals=fn_evals, gr_evals=gr_evals,
             message="CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL")
     end
 
-    f_tol = options.factr * eps(Float64)
+    f_tol = options.ftol_factor * eps(Float64)
     fail = 1
     message = "NEW_X"
     iter = 0
@@ -1206,23 +1206,23 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
                 t_bp, d, z, m, wy, ws, sy, wt, theta, col, head,
                 p_work, c_work, wbp, v_work, sbgnrm)
             if info != 0
-                if options.iprint > 0
+                if options.print_level > 0
                     println("Singular triangular system in cauchy; refreshing memory.")
                 end
                 col = 0; head = 1; theta = 1.0; iupdat = 0; updatd = false
                 continue
             end
-            nfree, nenter, ileave, wrk = _freev!(n, nfree, indx, iwhere, indx2,
+            nfree, nenter, ileave, wrk = _update_free_vars!(n, nfree, indx, iwhere, indx2,
                 cnstnd, updatd, iter - 1)
             nact = n - nfree
         end
 
         if nfree != 0 && col != 0
             if wrk
-                info = _formk!(n, nfree, indx, nenter, ileave, indx2, iupdat, updatd,
+                info = _form_hessian!(n, nfree, indx, nenter, ileave, indx2, iupdat, updatd,
                     wn, wn1, m, ws, wy, sy, theta, col, head)
                 if info != 0
-                    if options.iprint > 0
+                    if options.print_level > 0
                         println("Nonpositive definiteness in formk; refreshing memory.")
                     end
                     col = 0; head = 1; theta = 1.0; iupdat = 0; updatd = false
@@ -1232,17 +1232,17 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
             @inbounds for i in 1:2*col
                 wa[2m+i] = c_work[i]
             end
-            info = _cmprlb!(n, m, x, gx, ws, wy, sy, wt, z, r, wa,
+            info = _compute_reduced_grad!(n, m, x, gx, ws, wy, sy, wt, z, r, wa,
                 indx, theta, col, head, nfree, cnstnd)
             if info == 0
                 @inbounds for i in 1:nfree
                     d[i] = r[i]
                 end
-                iword, info = _subsm!(n, m, nfree, indx, l2, u2, nbd, z, d,
+                iword, info = _subspace_min!(n, m, nfree, indx, l2, u2, nbd, z, d,
                     ws, wy, theta, col, head, wv, wn)
             end
             if info != 0
-                if options.iprint > 0
+                if options.print_level > 0
                     println("Singular triangular system in subsm; refreshing memory.")
                 end
                 col = 0; head = 1; theta = 1.0; iupdat = 0; updatd = false
@@ -1308,7 +1308,7 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
                 message = "ERROR: ABNORMAL_TERMINATION_IN_LNSRCH"
                 break
             else
-                if options.iprint > 0
+                if options.print_level > 0
                     println("Bad direction in line search; refreshing memory.")
                 end
                 col = 0; head = 1; theta = 1.0; iupdat = 0; updatd = false
@@ -1344,7 +1344,7 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
 
         sbgnrm = _proj_grad!(pg, x, gx, l2, u2, nbd)
 
-        if options.iprint > 0
+        if options.print_level > 0
             println("At iterate ", iter, "  f= ", fx, "  |proj g|= ", sbgnrm)
         end
 
@@ -1352,7 +1352,7 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
             break
         end
 
-        if sbgnrm <= options.pgtol
+        if sbgnrm <= options.pg_tol
             fail = 0
             message = "CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL"
             break
@@ -1378,11 +1378,11 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
         else
             updatd = true
             iupdat += 1
-            itail, col, head, theta = _matupd!(n, m, ws, wy, sy, ss, d, r,
+            itail, col, head, theta = _update_matrices!(n, m, ws, wy, sy, ss, d, r,
                 itail, iupdat, col, head, rr, dr, 1.0, dtd)
-            info = _formt!(m, wt, sy, ss, col, theta)
+            info = _form_triangular!(m, wt, sy, ss, col, theta)
             if info != 0
-                if options.iprint > 0
+                if options.print_level > 0
                     println("Nonpositive definiteness in formt; refreshing memory.")
                 end
                 col = 0; head = 1; theta = 1.0; iupdat = 0; updatd = false

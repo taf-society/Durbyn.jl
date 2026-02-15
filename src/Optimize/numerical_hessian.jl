@@ -1,16 +1,16 @@
-function compute_gradient(p, fn, gr, fnscale, parscale, ndeps; kwargs...)
+function compute_gradient(p, fn, grad, fnscale, parscale, step_sizes; kwargs...)
     n = length(p)
     df = zeros(n)
 
-    if !isnothing(gr)
+    if !isnothing(grad)
         x = p .* parscale
-        df = gr(x; kwargs...) .* parscale ./ fnscale
+        df = grad(x; kwargs...) .* parscale ./ fnscale
         return df
     end
 
     x = p .* parscale
     for i in 1:n
-        eps = ndeps[i]
+        eps = step_sizes[i]
         xp = copy(x); xp[i] += eps * parscale[i]
         val1 = fn(xp; kwargs...) / fnscale
 
@@ -29,11 +29,11 @@ end
 
 
 """
-    numerical_hessian(fn, par, gr=nothing; fnscale=1.0, parscale=nothing, ndeps=nothing, kwargs...)
+    numerical_hessian(fn, x, grad=nothing; fnscale=1.0, parscale=nothing, step_sizes=nothing, kwargs...)
 
-Compute the Hessian matrix of `fn` at `par` using finite differences.
+Compute the Hessian matrix of `fn` at `x` using finite differences.
 
-If a gradient function `gr` is provided, the Hessian is computed by differencing
+If a gradient function `grad` is provided, the Hessian is computed by differencing
 the gradient. Otherwise, the gradient is first estimated numerically via central
 differences, then differenced again to obtain second derivatives. The result is
 symmetrized by averaging off-diagonal elements.
@@ -41,11 +41,11 @@ symmetrized by averaging off-diagonal elements.
 # Arguments
 
 - `fn::Function`: Scalar-valued objective function.
-- `par::Vector`: Parameter vector at which to evaluate the Hessian.
-- `gr::Union{Function,Nothing}`: Gradient function (optional).
+- `x::Vector`: Parameter vector at which to evaluate the Hessian.
+- `grad::Union{Function,Nothing}`: Gradient function (optional).
 - `fnscale::Number`: Function scaling factor (default: 1.0).
 - `parscale::Vector`: Parameter scaling factors (default: ones).
-- `ndeps::Vector`: Finite difference step sizes (default: 0.001).
+- `step_sizes::Vector`: Finite difference step sizes (default: 0.001).
 
 # Returns
 
@@ -63,25 +63,25 @@ rosenbrock(x) = 100*(x[2]-x[1]^2)^2 + (1-x[1])^2
 H = numerical_hessian(rosenbrock, [1.0, 1.0])
 ```
 """
-function numerical_hessian(fn, par, gr = nothing; fnscale = 1.0, parscale = nothing, ndeps = nothing, kwargs...)
-    
-    npar = length(par)
-    fn1(par) = fn(par; kwargs...)
+function numerical_hessian(fn, x, grad = nothing; fnscale = 1.0, parscale = nothing, step_sizes = nothing, kwargs...)
+
+    npar = length(x)
+    fn1(x) = fn(x; kwargs...)
 
     parscale = isnothing(parscale) ? ones(npar) : parscale
-    ndeps    = isnothing(ndeps)    ? fill(0.001, npar) : ndeps
+    step_sizes = isnothing(step_sizes) ? fill(0.001, npar) : step_sizes
 
     hessian = zeros(npar, npar)
-    dpar = par ./ parscale
+    dpar = x ./ parscale
 
     for i in 1:npar
-        eps = ndeps[i] / parscale[i]
+        eps = step_sizes[i] / parscale[i]
 
         dpar[i] += eps
-        df1 = compute_gradient(dpar, fn1, gr, fnscale, parscale, ndeps; kwargs...)
+        df1 = compute_gradient(dpar, fn1, grad, fnscale, parscale, step_sizes; kwargs...)
 
         dpar[i] -= 2 * eps
-        df2 = compute_gradient(dpar, fn1, gr, fnscale, parscale, ndeps; kwargs...)
+        df2 = compute_gradient(dpar, fn1, grad, fnscale, parscale, step_sizes; kwargs...)
 
         for j in 1:npar
             hessian[i, j] = fnscale * (df1[j] - df2[j]) /

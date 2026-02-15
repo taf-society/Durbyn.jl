@@ -1,5 +1,5 @@
 """
-    optimize(par, fn; gr=nothing, method="Nelder-Mead", lower=-Inf, upper=Inf,
+    optimize(x0, fn; grad=nothing, method="Nelder-Mead", lower=-Inf, upper=Inf,
              control=Dict(), hessian=false, kwargs...)
 
 Unified interface for general-purpose optimization.
@@ -9,23 +9,23 @@ parameter/function scaling and returning results in a consistent format.
 
 # Arguments
 
-- `par::Vector{Float64}`: Initial parameter vector.
-- `fn::Function`: Objective function to minimize, called as `fn(par; kwargs...)`.
+- `x0::Vector{Float64}`: Initial parameter vector.
+- `fn::Function`: Objective function to minimize, called as `fn(x; kwargs...)`.
 
 # Keyword Arguments
 
-- `gr::Union{Function,Nothing}=nothing`: Gradient function, called as `gr(par; kwargs...)`.
+- `grad::Union{Function,Nothing}=nothing`: Gradient function, called as `grad(x; kwargs...)`.
   If `nothing`, numerical gradients are computed for methods that need them.
 - `method::String="Nelder-Mead"`: Optimization method:
   - `"Nelder-Mead"` — derivative-free simplex
   - `"BFGS"` — quasi-Newton with line search
   - `"L-BFGS-B"` — limited-memory BFGS with box constraints
-  - `"Brent"` — 1D optimization (scalar `par` only)
+  - `"Brent"` — 1D optimization (scalar `x0` only)
 - `lower`, `upper`: Bounds for L-BFGS-B and Brent methods.
 - `control::Dict`: Control parameters (trace, fnscale, parscale, ndeps, maxit,
   abstol, reltol, gtol, alpha, beta, gamma, REPORT, lmm, factr, pgtol).
 - `hessian::Bool`: If `true`, compute Hessian at solution.
-- `kwargs...`: Additional arguments passed to `fn` and `gr`.
+- `kwargs...`: Additional arguments passed to `fn` and `grad`.
 
 # Returns
 
@@ -46,7 +46,7 @@ rosenbrock(x) = 100 * (x[2] - x[1]^2)^2 + (1 - x[1])^2
 rosenbrock_grad(x) = [-400*x[1]*(x[2]-x[1]^2) - 2*(1-x[1]), 200*(x[2]-x[1]^2)]
 
 result = optimize([-1.2, 1.0], rosenbrock)
-result = optimize([-1.2, 1.0], rosenbrock; gr=rosenbrock_grad, method="BFGS")
+result = optimize([-1.2, 1.0], rosenbrock; grad=rosenbrock_grad, method="BFGS")
 result = optimize([0.5, 0.5], rosenbrock; method="L-BFGS-B",
                   lower=[0.0, 0.0], upper=[2.0, 2.0])
 
@@ -62,15 +62,15 @@ function _to_scalar(val)
     Float64(first(val))
 end
 
-function _rep_len(x::Vector{Float64}, n::Int)
+function _repeat_to_length(x::Vector{Float64}, n::Int)
     lx = length(x)
     lx == n && return x
     lx == 0 && return fill(NaN, n)
     return Float64[x[mod1(i, lx)] for i in 1:n]
 end
 
-function optimize(par::AbstractVector{<:Real}, fn::Function;
-               gr::Union{Function,Nothing}=nothing,
+function optimize(x0::AbstractVector{<:Real}, fn::Function;
+               grad::Union{Function,Nothing}=nothing,
                method::String="Nelder-Mead",
                lower::Union{Real,AbstractVector{<:Real}}=-Inf,
                upper::Union{Real,AbstractVector{<:Real}}=Inf,
@@ -78,11 +78,11 @@ function optimize(par::AbstractVector{<:Real}, fn::Function;
                hessian::Bool=false,
                kwargs...)
 
-    par = Float64.(par)
+    x0 = Float64.(x0)
     lower = lower isa AbstractVector ? Float64.(lower) : Float64(lower)
     upper = upper isa AbstractVector ? Float64.(upper) : Float64(upper)
 
-    npar = length(par)
+    npar = length(x0)
 
     valid_methods = ["Nelder-Mead", "BFGS", "L-BFGS-B", "Brent"]
     if !(method in valid_methods)
@@ -98,8 +98,8 @@ function optimize(par::AbstractVector{<:Real}, fn::Function;
         error("method = \"Brent\" is only available for one-dimensional optimization")
     end
 
-    lower_vec = lower isa Float64 ? fill(lower, npar) : _rep_len(lower, npar)
-    upper_vec = upper isa Float64 ? fill(upper, npar) : _rep_len(upper, npar)
+    lower_vec = lower isa Float64 ? fill(lower, npar) : _repeat_to_length(lower, npar)
+    upper_vec = upper isa Float64 ? fill(upper, npar) : _repeat_to_length(upper, npar)
 
     if method == "Brent"
         if !all(isfinite, lower_vec) || !all(isfinite, upper_vec)
@@ -156,7 +156,7 @@ function optimize(par::AbstractVector{<:Real}, fn::Function;
 
     nd = con["ndeps"]
     con["ndeps"] = nd isa Number ? fill(Float64(nd), npar) : Float64.(nd)
-    if method in ["BFGS", "L-BFGS-B"] && isnothing(gr) && length(con["ndeps"]) != npar
+    if method in ["BFGS", "L-BFGS-B"] && isnothing(grad) && length(con["ndeps"]) != npar
         error("'ndeps' is of the wrong length")
     end
 
@@ -183,35 +183,35 @@ function optimize(par::AbstractVector{<:Real}, fn::Function;
         x -> _to_scalar(fn(x; kwargs...))
     end
 
-    gr_scaled = if !isnothing(gr)
+    grad_scaled = if !isnothing(grad)
         _check_grad = g -> begin
             (g isa AbstractVector && length(g) == npar) ||
                 error("gradient in optimize evaluated to length $(g isa AbstractVector ? length(g) : 0) not $npar")
             g
         end
         if fnscale != 1.0 || any(parscale .!= 1.0)
-            x -> (_check_grad(gr(x .* parscale; kwargs...)) .* parscale) / fnscale
+            x -> (_check_grad(grad(x .* parscale; kwargs...)) .* parscale) / fnscale
         else
-            x -> _check_grad(gr(x; kwargs...))
+            x -> _check_grad(grad(x; kwargs...))
         end
     else
         nothing
     end
 
-    par_scaled = par ./ parscale
+    x0_scaled = x0 ./ parscale
 
     result = if method == "Nelder-Mead"
-        _optim_neldermead(par_scaled, fn_scaled, con, lower_vec, upper_vec, parscale)
+        _optim_neldermead(x0_scaled, fn_scaled, con, lower_vec, upper_vec, parscale)
     elseif method == "BFGS"
-        _optim_bfgs(par_scaled, fn_scaled, gr_scaled, con, parscale)
+        _optim_bfgs(x0_scaled, fn_scaled, grad_scaled, con, parscale)
     elseif method == "L-BFGS-B"
-        _optim_lbfgsb(par_scaled, fn_scaled, gr_scaled, con, lower_vec, upper_vec, parscale)
+        _optim_lbfgsb(x0_scaled, fn_scaled, grad_scaled, con, lower_vec, upper_vec, parscale)
     elseif method == "Brent"
-        _optim_brent(par_scaled[1], fn_scaled, con, lower_vec[1], upper_vec[1], parscale[1])
+        _optim_brent(x0_scaled[1], fn_scaled, con, lower_vec[1], upper_vec[1], parscale[1])
     end
 
     hess = if hessian
-        _compute_hessian(result.par, fn, gr, con, parscale; kwargs...)
+        _compute_hessian(result.par, fn, grad, con, parscale; kwargs...)
     else
         nothing
     end
@@ -230,7 +230,7 @@ end
 function _optim_neldermead(par, fn, con, lower, upper, parscale)
     opts = NelderMeadOptions(
         abstol = con["abstol"],
-        intol = con["reltol"],
+        reltol = con["reltol"],
         alpha = con["alpha"],
         beta = con["beta"],
         gamma = con["gamma"],
@@ -261,11 +261,11 @@ function _optim_bfgs(par, fn, gr, con, parscale)
         gtol = con["gtol"],
         trace = con["trace"] > 0,
         maxit = con["maxit"],
-        nREPORT = con["REPORT"]
+        report_interval = con["REPORT"]
     )
 
     result = bfgs(fn_internal, gr_internal, par;
-                  options=opts, ndeps=con["ndeps"])
+                  options=opts, step_sizes=con["ndeps"])
 
     return (
         par = result.x_opt .* parscale,
@@ -325,22 +325,22 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
         cache = NumericalGradientCache(npar_local)
         (n, x, ex) -> begin
             gr_count[] += 1
-            numgrad_bounded!(cache.df, cache.xtrial, fn_internal, n, x, ex, ndeps,
+            numgrad_bounded!(cache.gradient, cache.x_trial, fn_internal, n, x, ex, ndeps,
                              lower_scaled, upper_scaled)
-            return cache.df
+            return cache.gradient
         end
     end
 
     opts = LBFGSBOptions(
-        m = con["lmm"],
-        factr = con["factr"],
-        pgtol = con["pgtol"],
+        memory_size = con["lmm"],
+        ftol_factor = con["factr"],
+        pg_tol = con["pgtol"],
         maxit = con["maxit"],
-        iprint = con["trace"] > 0 ? con["REPORT"] : 0
+        print_level = con["trace"] > 0 ? con["REPORT"] : 0
     )
 
     result = lbfgsb(fn_internal, gr_internal, par;
-                    l=lower_scaled, u=upper_scaled, options=opts)
+                    lower=lower_scaled, upper=upper_scaled, options=opts)
 
     convergence = if result.fail == 0
         0
@@ -382,14 +382,14 @@ function _optim_brent(par, fn, con, lower, upper, parscale)
 end
 
 
-function _compute_hessian(par, fn, gr, con, parscale; kwargs...)
+function _compute_hessian(par, fn, grad, con, parscale; kwargs...)
     npar = length(par)
     fnscale = con["fnscale"]
     ndeps = con["ndeps"]
 
     fn_wrapper(x) = fn(x; kwargs...)
-    gr_wrapper = isnothing(gr) ? nothing : (x -> gr(x; kwargs...))
+    grad_wrapper = isnothing(grad) ? nothing : (x -> grad(x; kwargs...))
 
-    return numerical_hessian(fn_wrapper, par, gr_wrapper;
-                        fnscale=fnscale, parscale=parscale, ndeps=ndeps)
+    return numerical_hessian(fn_wrapper, par, grad_wrapper;
+                        fnscale=fnscale, parscale=parscale, step_sizes=ndeps)
 end

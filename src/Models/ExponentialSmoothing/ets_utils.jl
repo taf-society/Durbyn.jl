@@ -136,6 +136,33 @@ function ETSWorkspace(n::Int, m::Int, nmse::Int, max_state_len::Int)
     )
 end
 
+# Integer codes for opt_crit (eliminates string comparison in hot path)
+const OPT_CRIT_LIK = 0
+const OPT_CRIT_MSE = 1
+const OPT_CRIT_AMSE = 2
+const OPT_CRIT_SIGMA = 3
+const OPT_CRIT_MAE = 4
+
+@inline function opt_crit_code(s::AbstractString)
+    s == "lik" && return OPT_CRIT_LIK
+    s == "mse" && return OPT_CRIT_MSE
+    s == "amse" && return OPT_CRIT_AMSE
+    s == "sigma" && return OPT_CRIT_SIGMA
+    s == "mae" && return OPT_CRIT_MAE
+    throw(ArgumentError("Unknown optimization criterion: $s"))
+end
+
+# Integer codes for bounds
+const BOUNDS_BOTH = 0
+const BOUNDS_USUAL = 1
+const BOUNDS_ADMISSIBLE = 2
+
+@inline function bounds_code(s::AbstractString)
+    s == "both" && return BOUNDS_BOTH
+    s == "usual" && return BOUNDS_USUAL
+    s == "admissible" && return BOUNDS_ADMISSIBLE
+    throw(ArgumentError("Unknown bounds type: $s"))
+end
 
 function normalize_parameter(param)
     if isnothing(param)
@@ -238,6 +265,7 @@ function ets_base(
     nmse_cap = min(nmse, 30)
 
     nstates = m * (season > 0) + 1 + (trend > 0)
+    trend_offset = trend > 0 ? 1 : 0
 
     # Copy initial state components
     l = x[1]
@@ -249,7 +277,7 @@ function ets_base(
 
     if season > 0
         @inbounds for j = 1:m
-            s[j] = x[(trend>0)+j+1]
+            s[j] = x[trend_offset+j+1]
         end
     end
 
@@ -275,20 +303,21 @@ function ets_base(
         # One step forecast
         forecast_ets_base(oldl, oldb, olds, m, trend, season, phi, f, nmse_cap)
 
-        if abs(f[1] - -99999.0) < 1.0e-10
+        f1 = f[1]
+        if abs(f1 - -99999.0) < 1.0e-10
             lik = -99999.0
             return lik
         end
 
         if error == 1
-            e[i] = y[i] - f[1]
+            e[i] = y[i] - f1
         else
-            if abs(f[1]) < 1.0e-10
-                f_0 = f[1] + 1.0e-10
+            if abs(f1) < 1.0e-10
+                f_0 = f1 + 1.0e-10
             else
-                f_0 = f[1]
+                f_0 = f1
             end
-            e[i] = (y[i] - f[1]) / f_0
+            e[i] = (y[i] - f1) / f_0
         end
 
         for j = 1:nmse_cap
@@ -324,12 +353,12 @@ function ets_base(
         end
         if season > 0
             for j = 1:m
-                x[nstates*i+(trend>0)+j+1] = s[j]
+                x[nstates*i+trend_offset+j+1] = s[j]
             end
         end
 
         lik += e[i] * e[i]
-        val = abs(f[1])
+        val = abs(f1)
         if val > 0.0
             lik2 += log(val)
         else
@@ -756,6 +785,53 @@ function check_param(
     end
 
     if bounds != "usual"
+        if !admissible(alpha, beta, gamma, phi, m)
+            return false
+        end
+    end
+    return true
+end
+
+# Hot-path overload using int bounds code (avoids string comparison per NM iteration)
+function check_param(
+    alpha::Union{Float64,Nothing,Bool},
+    beta::Union{Float64,Nothing,Bool},
+    gamma::Union{Float64,Nothing,Bool},
+    phi::Union{Float64,Nothing,Bool},
+    lower::Vector{Float64},
+    upper::Vector{Float64},
+    bounds::Int,
+    m::Int,
+)
+    alpha = normalize_parameter(alpha)
+    beta = normalize_parameter(beta)
+    gamma = normalize_parameter(gamma)
+    phi = normalize_parameter(phi)
+
+    if bounds != BOUNDS_ADMISSIBLE
+        if !isnothing(alpha) && !isnan(alpha)
+            if alpha < lower[1] || alpha > upper[1]
+                return false
+            end
+        end
+        if !isnothing(beta) && !isnan(beta)
+            if beta < lower[2] || beta > alpha || beta > upper[2]
+                return false
+            end
+        end
+        if !isnothing(phi) && !isnan(phi)
+            if phi < lower[4] || phi > upper[4]
+                return false
+            end
+        end
+        if !isnothing(gamma) && !isnan(gamma)
+            if gamma < lower[3] || gamma > 1 - alpha || gamma > upper[3]
+                return false
+            end
+        end
+    end
+
+    if bounds != BOUNDS_USUAL
         if !admissible(alpha, beta, gamma, phi, m)
             return false
         end
@@ -1583,9 +1659,9 @@ function objective_fun(
     damped,
     lower,
     upper,
-    opt_crit,
+    opt_crit::Int,
     nmse,
-    bounds,
+    bounds::Int,
     m,
     init_alpha,
     init_beta,
@@ -1637,9 +1713,9 @@ function objective_fun(
 
     init_state = view(par, (length(par)-nstate+1):length(par))
     init_state_eval = init_state
+    trend_slots = trendtype == 0 ? 0 : 1
 
     if seasontype != 0
-        trend_slots = trendtype == 0 ? 0 : 1
         workspace_init = workspace.init_state
         @inbounds copyto!(workspace_init, 1, init_state, 1, nstate)
         seasonal_start = 2 + trend_slots
@@ -1649,7 +1725,6 @@ function objective_fun(
     end
 
     if seasontype == 2
-        trend_slots = trendtype == 0 ? 0 : 1
         if minimum(view(init_state_eval, (2+trend_slots):length(init_state_eval))) < 0.0
             return Inf
         end
@@ -1678,15 +1753,15 @@ function objective_fun(
         lik = -1e10
     end
 
-    if opt_crit == "lik"
+    if opt_crit == OPT_CRIT_LIK
         return lik
-    elseif opt_crit == "mse"
+    elseif opt_crit == OPT_CRIT_MSE
         return workspace.amse[1]
-    elseif opt_crit == "amse"
+    elseif opt_crit == OPT_CRIT_AMSE
         return sum(view(workspace.amse, 1:nmse)) / nmse
-    elseif opt_crit == "sigma"
+    elseif opt_crit == OPT_CRIT_SIGMA
         return sum(abs2, view(workspace.e, 1:length(y))) / length(y)
-    elseif opt_crit == "mae"
+    elseif opt_crit == OPT_CRIT_MAE
         return sum(abs, view(workspace.e, 1:length(y))) / length(y)
     else
         error("Unknown optimization criterion")
@@ -1721,6 +1796,8 @@ function optim_ets_base(
     errortype_code = ets_model_type_code(errortype)
     trendtype_code = ets_model_type_code(trendtype)
     seasontype_code = ets_model_type_code(seasontype)
+    opt_crit_int = opt_crit_code(opt_crit)
+    bounds_int = bounds_code(bounds)
     max_state_len = nstate + (seasontype_code != 0 ? 1 : 0)
     workspace = ETSWorkspace(length(y), m, nmse, max_state_len)
 
@@ -1734,9 +1811,9 @@ function optim_ets_base(
             damped,
             lower,
             upper,
-            opt_crit,
+            opt_crit_int,
             nmse,
-            bounds,
+            bounds_int,
             m,
             init_alpha,
             init_beta,

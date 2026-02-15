@@ -736,7 +736,7 @@ function admissible(
         poly = Polynomial(P)
         poly_roots = roots(poly)
 
-        if maximum(abs.(poly_roots)) > 1 + 1e-10
+        if maximum(abs, poly_roots) > 1 + 1e-10
             return false
         end
     end

@@ -358,7 +358,7 @@ fc_tbats = forecast(tbats_model, h = 12)
 
 ## License
 
-MIT License.
+Apache License 2.0.
 
 ---
 

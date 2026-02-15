@@ -29,7 +29,7 @@ As a registered non-profit association under Austrian law, TAFS ensures that all
 
 ## License
 
-The Durbyn package is licensed under the **MIT License**, allowing for open-source distribution and collaboration.
+The Durbyn package is licensed under the **Apache License 2.0**, allowing for open-source distribution and collaboration.
 
 ## Installation
 

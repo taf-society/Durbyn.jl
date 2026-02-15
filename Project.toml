@@ -1,7 +1,8 @@
 name = "Durbyn"
 uuid = "40b042de-e8ce-4d84-a20a-09ad0ba5d568"
 version = "0.0.1"
-authors = ["Resul Akay <resul.akay@taf-society.org> and contributors"]
+license = "Apache-2.0"
+authors = ["Time Series Analysis and Forecasting Society <info@taf-society.org> and contributors"]
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"

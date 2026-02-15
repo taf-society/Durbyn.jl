@@ -7,7 +7,7 @@ include("lbfgsb.jl")
 include("brent.jl")
 include("numerical_hessian.jl")
 include("scalers.jl")
-include("optimize.jl")
+include("optimize_base.jl")
 
 
 export nelder_mead, bfgs, lbfgsb, brent, numerical_hessian

@@ -176,15 +176,15 @@ function forecast(object::NaiveFit;
         end
     end
 
-    lower_trans = Vector{Vector{Float64}}(undef, nconf)
-    upper_trans = Vector{Vector{Float64}}(undef, nconf)
+    lower_trans_mat = Matrix{Float64}(undef, h, nconf)
+    upper_trans_mat = Matrix{Float64}(undef, h, nconf)
 
     for j in 1:nconf
         alpha = (100 - level[j]) / 200
         z = quantile(Normal(), 1 - alpha)
 
-        lower_trans[j] = f_trans .- z .* se
-        upper_trans[j] = f_trans .+ z .* se
+        lower_trans_mat[:, j] = f_trans .- z .* se
+        upper_trans_mat[:, j] = f_trans .+ z .* se
     end
 
     if !isnothing(lambda)
@@ -196,16 +196,16 @@ function forecast(object::NaiveFit;
             f = inv_box_cox(f_trans; lambda=lambda)
         end
 
-        lower = Vector{Vector{Float64}}(undef, nconf)
-        upper = Vector{Vector{Float64}}(undef, nconf)
+        lower = Matrix{Float64}(undef, h, nconf)
+        upper = Matrix{Float64}(undef, h, nconf)
         for j in 1:nconf
-            lower[j] = inv_box_cox(lower_trans[j]; lambda=lambda)
-            upper[j] = inv_box_cox(upper_trans[j]; lambda=lambda)
+            lower[:, j] = inv_box_cox(lower_trans_mat[:, j]; lambda=lambda)
+            upper[:, j] = inv_box_cox(upper_trans_mat[:, j]; lambda=lambda)
         end
     else
         f = f_trans
-        lower = lower_trans
-        upper = upper_trans
+        lower = lower_trans_mat
+        upper = upper_trans_mat
     end
 
     mean_vec = Float64.(f)

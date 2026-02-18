@@ -200,9 +200,9 @@ components, enabling non-integer seasonal periods and efficient handling of long
 # Examples
 ```julia
 # Created via tbats() function in formulas
-@formula(sales = tbats(seasonal_periods=52.18))
-@formula(sales = tbats(seasonal_periods=[7, 365.25]))
-@formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10]))
+@formula(sales = tbats(m=52.18))
+@formula(sales = tbats(m=[7, 365.25]))
+@formula(sales = tbats(m=[7, 365.25], k=[3, 10]))
 ```
 """
 struct TbatsTerm <: AbstractTerm
@@ -1684,9 +1684,9 @@ function Base.show(io::IO, term::BatsTerm)
     args = String[]
     if !isnothing(term.seasonal_periods)
         if term.seasonal_periods isa Vector
-            push!(args, "seasonal_periods=[$(join(term.seasonal_periods, ", "))]")
+            push!(args, "m=[$(join(term.seasonal_periods, ", "))]")
         else
-            push!(args, "seasonal_periods=$(term.seasonal_periods)")
+            push!(args, "m=$(term.seasonal_periods)")
         end
     end
     if !isnothing(term.use_box_cox)
@@ -1712,9 +1712,9 @@ function Base.show(io::IO, term::TbatsTerm)
     args = String[]
     if !isnothing(term.seasonal_periods)
         if term.seasonal_periods isa Vector
-            push!(args, "seasonal_periods=[$(join(term.seasonal_periods, ", "))]")
+            push!(args, "m=[$(join(term.seasonal_periods, ", "))]")
         else
-            push!(args, "seasonal_periods=$(term.seasonal_periods)")
+            push!(args, "m=$(term.seasonal_periods)")
         end
     end
     if !isnothing(term.k)

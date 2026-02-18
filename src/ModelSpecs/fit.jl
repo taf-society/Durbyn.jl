@@ -975,7 +975,7 @@ function fit(spec::CrostonSpec, panel::PanelData; kwargs...)
 end
 
 """
-    fit(spec::ArarSpec, data; groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+    fit(spec::ArarSpec, data; m=nothing, groupby=nothing, parallel=true, fail_fast=false, kwargs...)
 
 Fit an ARAR model specification to data (single series or grouped).
 
@@ -984,6 +984,7 @@ Fit an ARAR model specification to data (single series or grouped).
 - `data` - Tables.jl-compatible data (NamedTuple, DataFrame, CSV.File, etc.)
 
 # Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (accepted for ModelCollection compatibility, not used by ARAR)
 - `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
 - `parallel::Bool` - Use parallel processing for grouped data (default true)
 - `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
@@ -1111,7 +1112,7 @@ function fit(spec::ArarSpec, panel::PanelData; kwargs...)
 end
 
 """
-    fit(spec::ArarmaSpec, data; groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+    fit(spec::ArarmaSpec, data; m=nothing, groupby=nothing, parallel=true, fail_fast=false, kwargs...)
 
 Fit an ARARMA model specification to data (single series or grouped).
 
@@ -1120,6 +1121,7 @@ Fit an ARARMA model specification to data (single series or grouped).
 - `data` - Tables.jl-compatible data (NamedTuple, DataFrame, CSV.File, etc.)
 
 # Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (accepted for ModelCollection compatibility, not used by ARARMA)
 - `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
 - `parallel::Bool` - Use parallel processing for grouped data (default true)
 - `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
@@ -1255,7 +1257,7 @@ function fit(spec::ArarmaSpec, panel::PanelData; kwargs...)
 end
 
 """
-    fit(spec::BatsSpec, data; groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+    fit(spec::BatsSpec, data; m=nothing, groupby=nothing, parallel=true, fail_fast=false, kwargs...)
 
 Fit a BATS model specification to data (single series or grouped).
 
@@ -1264,6 +1266,7 @@ Fit a BATS model specification to data (single series or grouped).
 - `data` - Tables.jl-compatible data (NamedTuple, DataFrame, CSV.File, etc.)
 
 # Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (consumed but not used; BATS gets `m` from the formula's `seasonal_periods`/`m` term)
 - `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
 - `parallel::Bool` - Use parallel processing for grouped data (default true)
 - `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
@@ -1280,19 +1283,19 @@ spec = BatsSpec(@formula(sales = bats()))
 fitted = fit(spec, data)
 
 # With seasonal period
-spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+spec = BatsSpec(@formula(sales = bats(m=12)))
 fitted = fit(spec, data)
 
 # With multiple seasonal periods
-spec = BatsSpec(@formula(sales = bats(seasonal_periods=[24, 168])))
+spec = BatsSpec(@formula(sales = bats(m=[24, 168])))
 fitted = fit(spec, data)
 
 # With custom parameters
-spec = BatsSpec(@formula(sales = bats(seasonal_periods=12, use_box_cox=true)))
+spec = BatsSpec(@formula(sales = bats(m=12, use_box_cox=true)))
 fitted = fit(spec, data, bc_lower=0.0, bc_upper=1.5)
 
 # Grouped data fit
-spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+spec = BatsSpec(@formula(sales = bats(m=12)))
 fitted = fit(spec, data, groupby = [:product, :location])
 ```
 
@@ -1367,7 +1370,7 @@ Generate forecasts from a fitted BATS model.
 
 # Examples
 ```julia
-spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+spec = BatsSpec(@formula(sales = bats(m=12)))
 fitted = fit(spec, data)
 
 # 12-period ahead forecast
@@ -1407,7 +1410,7 @@ function fit(spec::BatsSpec, panel::PanelData; kwargs...)
 end
 
 """
-    fit(spec::TbatsSpec, data; groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+    fit(spec::TbatsSpec, data; m=nothing, groupby=nothing, parallel=true, fail_fast=false, kwargs...)
 
 Fit a TBATS model specification to data (single series or grouped).
 
@@ -1420,6 +1423,7 @@ seasonal periods and efficient handling of very long seasonal cycles.
 - `data` - Tables.jl-compatible data (NamedTuple, DataFrame, CSV.File, etc.)
 
 # Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (consumed but not used; TBATS gets `m` from the formula's `seasonal_periods`/`m` term)
 - `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
 - `parallel::Bool` - Use parallel processing for grouped data (default true)
 - `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
@@ -1440,23 +1444,23 @@ spec = TbatsSpec(@formula(sales = tbats()))
 fitted = fit(spec, data)
 
 # With non-integer seasonal period (weekly data, yearly seasonality)
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+spec = TbatsSpec(@formula(sales = tbats(m=52.18)))
 fitted = fit(spec, data)
 
 # With multiple seasonal periods
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=[7, 365.25])))
+spec = TbatsSpec(@formula(sales = tbats(m=[7, 365.25])))
 fitted = fit(spec, data)
 
 # With explicit Fourier orders
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10])))
+spec = TbatsSpec(@formula(sales = tbats(m=[7, 365.25], k=[3, 10])))
 fitted = fit(spec, data)
 
 # With custom Box-Cox bounds
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18, use_box_cox=true)))
+spec = TbatsSpec(@formula(sales = tbats(m=52.18, use_box_cox=true)))
 fitted = fit(spec, data, bc_lower=0.0, bc_upper=1.5)
 
 # Grouped data fit (panel data)
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+spec = TbatsSpec(@formula(sales = tbats(m=52.18)))
 fitted = fit(spec, data, groupby = [:product, :location])
 
 fitted = fit(spec, data, groupby=:product, parallel=true, fail_fast=false)
@@ -1534,7 +1538,7 @@ Generate forecasts from a fitted TBATS model.
 
 # Examples
 ```julia
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+spec = TbatsSpec(@formula(sales = tbats(m=52.18)))
 fitted = fit(spec, data)
 
 # 12-period ahead forecast
@@ -2296,7 +2300,7 @@ function _diffusion_fixed_params(term)
 end
 
 """
-    fit(spec::DiffusionSpec, data; groupby=nothing, parallel=true, fail_fast=false, kwargs...)
+    fit(spec::DiffusionSpec, data; m=nothing, groupby=nothing, parallel=true, fail_fast=false, kwargs...)
 
 Fit a diffusion model specification to data (single series or grouped).
 
@@ -2305,6 +2309,7 @@ Fit a diffusion model specification to data (single series or grouped).
 - `data` - Tables.jl-compatible data
 
 # Keyword Arguments
+- `m::Union{Int, Nothing}=nothing` - Seasonal period (accepted for ModelCollection compatibility, not used by Diffusion)
 - `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
 - `parallel::Bool` - Use parallel processing for grouped data (default true)
 - `fail_fast::Bool` - Stop on first error in grouped fitting (default false)

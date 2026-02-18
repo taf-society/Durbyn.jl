@@ -40,34 +40,34 @@ TBATS extends BATS with Fourier-based seasonality, enabling:
 **Seasonal periods** (can be non-integer):
 ```julia
 # Single seasonal period (non-integer allowed)
-@formula(sales = tbats(seasonal_periods=52.18))
+@formula(sales = tbats(m=52.18))
 
 # Multiple seasonal periods
-@formula(sales = tbats(seasonal_periods=[7, 365.25]))
+@formula(sales = tbats(m=[7, 365.25]))
 
 # Dual calendar (Gregorian + Hijri)
-@formula(sales = tbats(seasonal_periods=[365.25, 354.37]))
+@formula(sales = tbats(m=[365.25, 354.37]))
 ```
 
 **Fourier orders** (k):
 ```julia
 # Explicit Fourier orders per seasonal period
-@formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10]))
+@formula(sales = tbats(m=[7, 365.25], k=[3, 10]))
 ```
 
 **Component selection**:
 ```julia
 # Specify Box-Cox transformation
-@formula(sales = tbats(seasonal_periods=52.18, use_box_cox=true))
+@formula(sales = tbats(m=52.18, use_box_cox=true))
 
 # Specify trend component
-@formula(sales = tbats(seasonal_periods=52.18, use_trend=true))
+@formula(sales = tbats(m=52.18, use_trend=true))
 
 # Specify damped trend
-@formula(sales = tbats(seasonal_periods=52.18, use_trend=true, use_damped_trend=true))
+@formula(sales = tbats(m=52.18, use_trend=true, use_damped_trend=true))
 
 # Include ARMA errors
-@formula(sales = tbats(seasonal_periods=52.18, use_arma_errors=true))
+@formula(sales = tbats(m=52.18, use_arma_errors=true))
 ```
 
 # Examples
@@ -76,20 +76,20 @@ TBATS extends BATS with Fourier-based seasonality, enabling:
 spec = TbatsSpec(@formula(sales = tbats()))
 
 # TBATS with non-integer seasonal period (weekly data, yearly pattern)
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+spec = TbatsSpec(@formula(sales = tbats(m=52.18)))
 
 # TBATS with multiple seasonal periods (daily + yearly)
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=[7, 365.25])))
+spec = TbatsSpec(@formula(sales = tbats(m=[7, 365.25])))
 
 # TBATS with explicit Fourier orders
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10])))
+spec = TbatsSpec(@formula(sales = tbats(m=[7, 365.25], k=[3, 10])))
 
 # TBATS with Box-Cox and damped trend
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18, use_box_cox=true, use_damped_trend=true)))
+spec = TbatsSpec(@formula(sales = tbats(m=52.18, use_box_cox=true, use_damped_trend=true)))
 
 # TBATS with all options
 spec = TbatsSpec(@formula(sales = tbats(
-    seasonal_periods=[7, 365.25],
+    m=[7, 365.25],
     k=[3, 10],
     use_box_cox=true,
     use_trend=true,
@@ -133,7 +133,7 @@ and metadata needed for forecasting.
 
 # Examples
 ```julia
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+spec = TbatsSpec(@formula(sales = tbats(m=52.18)))
 fitted = fit(spec, data)
 
 # Access underlying TBATS fit

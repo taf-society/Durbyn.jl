@@ -15,18 +15,18 @@ data = (
 fit = @formula(sales = bats()) |> f -> bats(f, data)
 
 # BATS with monthly seasonality
-fit = @formula(sales = bats(seasonal_periods=12)) |> f -> bats(f, data)
+fit = @formula(sales = bats(m=12)) |> f -> bats(f, data)
 
 # BATS with multiple seasonal periods
-fit = @formula(sales = bats(seasonal_periods=[24, 168])) |> f -> bats(f, data)
+fit = @formula(sales = bats(m=[24, 168])) |> f -> bats(f, data)
 
 # BATS with specific components
-fit = @formula(sales = bats(seasonal_periods=12, use_box_cox=true, use_trend=true)) |> f -> bats(f, data)
+fit = @formula(sales = bats(m=12, use_box_cox=true, use_trend=true)) |> f -> bats(f, data)
 
 # Using a Tables.jl table source
 using DataFrames
 df = DataFrame(data)
-fit = @formula(sales = bats(seasonal_periods=12)) |> f -> bats(f, df)
+fit = @formula(sales = bats(m=12)) |> f -> bats(f, df)
 ```
 """
 
@@ -44,7 +44,7 @@ This method allows you to specify BATS model parameters using a declarative form
 # Formula Terms
 **BATS Specification:**
 - `bats()` - Use default parameters (automatic component selection)
-- `bats(seasonal_periods=value)` - Specify seasonal period (Int) or periods (Vector{Int})
+- `bats(m=value)` - Specify seasonal period (Int) or periods (Vector{Int}). `seasonal_periods` also accepted as alias.
 - `bats(use_box_cox=value)` - Whether to use Box-Cox transformation (true/false/nothing for auto)
 - `bats(use_trend=value)` - Whether to include trend component (true/false/nothing for auto)
 - `bats(use_damped_trend=value)` - Whether to use damped trend (true/false/nothing for auto)
@@ -71,20 +71,20 @@ data = (sales = randn(120),)
 fit = @formula(sales = bats()) |> f -> bats(f, data)
 
 # BATS with monthly seasonality
-fit = @formula(sales = bats(seasonal_periods=12)) |> f -> bats(f, data)
+fit = @formula(sales = bats(m=12)) |> f -> bats(f, data)
 
 # BATS with multiple seasonal periods (e.g., hourly data with daily and weekly patterns)
-fit = @formula(sales = bats(seasonal_periods=[24, 168])) |> f -> bats(f, data)
+fit = @formula(sales = bats(m=[24, 168])) |> f -> bats(f, data)
 
 # BATS with Box-Cox and trend
-fit = @formula(sales = bats(seasonal_periods=12, use_box_cox=true, use_trend=true)) |> f -> bats(f, data)
+fit = @formula(sales = bats(m=12, use_box_cox=true, use_trend=true)) |> f -> bats(f, data)
 
 # BATS with all options specified
-fit = @formula(sales = bats(seasonal_periods=12, use_box_cox=true, use_trend=true,
+fit = @formula(sales = bats(m=12, use_box_cox=true, use_trend=true,
                            use_damped_trend=false, use_arma_errors=true)) |> f -> bats(f, data)
 
 # With additional kwargs
-fit = @formula(sales = bats(seasonal_periods=12)) |> f -> bats(f, data, bc_lower=0.0, bc_upper=1.5)
+fit = @formula(sales = bats(m=12)) |> f -> bats(f, data, bc_lower=0.0, bc_upper=1.5)
 
 # Generate forecasts
 fc = forecast(fit, h=12)

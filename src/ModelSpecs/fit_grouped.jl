@@ -641,7 +641,7 @@ seasonal periods and efficient handling of very long seasonal cycles.
 # Examples
 ```julia
 # Fit TBATS to each product
-spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=52.18)))
+spec = TbatsSpec(@formula(sales = tbats(m=52.18)))
 fitted = fit_grouped(spec, data, groupby=:product)
 
 # Multiple grouping columns

@@ -30,25 +30,25 @@ model structure using Durbyn's forecasting grammar.
 **Seasonal periods**:
 ```julia
 # Single seasonal period
-@formula(sales = bats(seasonal_periods=12))
+@formula(sales = bats(m=12))
 
 # Multiple seasonal periods
-@formula(sales = bats(seasonal_periods=[24, 168]))
+@formula(sales = bats(m=[24, 168]))
 ```
 
 **Component selection**:
 ```julia
 # Specify Box-Cox transformation
-@formula(sales = bats(seasonal_periods=12, use_box_cox=true))
+@formula(sales = bats(m=12, use_box_cox=true))
 
 # Specify trend component
-@formula(sales = bats(seasonal_periods=12, use_trend=true))
+@formula(sales = bats(m=12, use_trend=true))
 
 # Specify damped trend
-@formula(sales = bats(seasonal_periods=12, use_trend=true, use_damped_trend=true))
+@formula(sales = bats(m=12, use_trend=true, use_damped_trend=true))
 
 # Include ARMA errors
-@formula(sales = bats(seasonal_periods=12, use_arma_errors=true))
+@formula(sales = bats(m=12, use_arma_errors=true))
 ```
 
 # Examples
@@ -57,17 +57,17 @@ model structure using Durbyn's forecasting grammar.
 spec = BatsSpec(@formula(sales = bats()))
 
 # BATS with monthly seasonality
-spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+spec = BatsSpec(@formula(sales = bats(m=12)))
 
 # BATS with multiple seasonal periods (e.g., daily and weekly)
-spec = BatsSpec(@formula(sales = bats(seasonal_periods=[24, 168])))
+spec = BatsSpec(@formula(sales = bats(m=[24, 168])))
 
 # BATS with Box-Cox and trend
-spec = BatsSpec(@formula(sales = bats(seasonal_periods=12, use_box_cox=true, use_trend=true)))
+spec = BatsSpec(@formula(sales = bats(m=12, use_box_cox=true, use_trend=true)))
 
 # BATS with all options
 spec = BatsSpec(@formula(sales = bats(
-    seasonal_periods=12,
+    m=12,
     use_box_cox=true,
     use_trend=true,
     use_damped_trend=false,
@@ -109,7 +109,7 @@ and metadata needed for forecasting.
 
 # Examples
 ```julia
-spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
+spec = BatsSpec(@formula(sales = bats(m=12)))
 fitted = fit(spec, data)
 
 # Access underlying BATS fit

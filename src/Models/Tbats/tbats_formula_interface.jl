@@ -19,21 +19,21 @@ data = (
 fit = @formula(sales = tbats()) |> f -> tbats(f, data)
 
 # TBATS with non-integer seasonal period (52.18 weeks per year)
-fit = @formula(sales = tbats(seasonal_periods=52.18)) |> f -> tbats(f, data)
+fit = @formula(sales = tbats(m=52.18)) |> f -> tbats(f, data)
 
 # TBATS with multiple seasonal periods
-fit = @formula(sales = tbats(seasonal_periods=[7, 365.25])) |> f -> tbats(f, data)
+fit = @formula(sales = tbats(m=[7, 365.25])) |> f -> tbats(f, data)
 
 # TBATS with explicit Fourier orders
-fit = @formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10])) |> f -> tbats(f, data)
+fit = @formula(sales = tbats(m=[7, 365.25], k=[3, 10])) |> f -> tbats(f, data)
 
 # TBATS with specific components
-fit = @formula(sales = tbats(seasonal_periods=52.18, use_box_cox=true, use_trend=true)) |> f -> tbats(f, data)
+fit = @formula(sales = tbats(m=52.18, use_box_cox=true, use_trend=true)) |> f -> tbats(f, data)
 
 # Using a Tables.jl table source
 using DataFrames
 df = DataFrame(data)
-fit = @formula(sales = tbats(seasonal_periods=52.18)) |> f -> tbats(f, df)
+fit = @formula(sales = tbats(m=52.18)) |> f -> tbats(f, df)
 ```
 """
 
@@ -53,7 +53,7 @@ and efficient handling of very long seasonal cycles.
 # Formula Terms
 **TBATS Specification:**
 - `tbats()` - Use default parameters (automatic component selection)
-- `tbats(seasonal_periods=value)` - Specify seasonal period (Real) or periods (Vector{<:Real})
+- `tbats(m=value)` - Specify seasonal period (Real) or periods (Vector{<:Real}). `seasonal_periods` also accepted as alias.
   - Can be non-integer, e.g., `52.18` for weekly data with yearly seasonality
 - `tbats(k=value)` - Specify Fourier order(s) per seasonal period (Int or Vector{Int})
   - Higher k captures more complex seasonal patterns
@@ -83,27 +83,27 @@ data = (sales = randn(200),)
 fit = @formula(sales = tbats()) |> f -> tbats(f, data)
 
 # TBATS with non-integer seasonal period (weekly data, yearly seasonality)
-fit = @formula(sales = tbats(seasonal_periods=52.18)) |> f -> tbats(f, data)
+fit = @formula(sales = tbats(m=52.18)) |> f -> tbats(f, data)
 
 # TBATS with multiple seasonal periods (daily + yearly)
-fit = @formula(sales = tbats(seasonal_periods=[7, 365.25])) |> f -> tbats(f, data)
+fit = @formula(sales = tbats(m=[7, 365.25])) |> f -> tbats(f, data)
 
 # TBATS with explicit Fourier orders
-fit = @formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10])) |> f -> tbats(f, data)
+fit = @formula(sales = tbats(m=[7, 365.25], k=[3, 10])) |> f -> tbats(f, data)
 
 # Dual calendar effects (Gregorian + Hijri)
-fit = @formula(sales = tbats(seasonal_periods=[365.25, 354.37])) |> f -> tbats(f, data)
+fit = @formula(sales = tbats(m=[365.25, 354.37])) |> f -> tbats(f, data)
 
 # TBATS with Box-Cox and trend
-fit = @formula(sales = tbats(seasonal_periods=52.18, use_box_cox=true, use_trend=true)) |> f -> tbats(f, data)
+fit = @formula(sales = tbats(m=52.18, use_box_cox=true, use_trend=true)) |> f -> tbats(f, data)
 
 # TBATS with all options specified
-fit = @formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10],
+fit = @formula(sales = tbats(m=[7, 365.25], k=[3, 10],
                              use_box_cox=true, use_trend=true,
                              use_damped_trend=false, use_arma_errors=true)) |> f -> tbats(f, data)
 
 # With additional kwargs
-fit = @formula(sales = tbats(seasonal_periods=52.18)) |> f -> tbats(f, data, bc_lower=0.0, bc_upper=1.5)
+fit = @formula(sales = tbats(m=52.18)) |> f -> tbats(f, data, bc_lower=0.0, bc_upper=1.5)
 
 # Generate forecasts
 fc = forecast(fit, h=12)

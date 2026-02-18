@@ -1013,6 +1013,7 @@ fitted = fit(spec, data, groupby = [:product, :location])
 - [`forecast`](@ref)
 """
 function fit(spec::ArarSpec, data;
+             m::Union{Int, Nothing} = nothing,
              groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
              parallel::Bool = true,
              fail_fast::Bool = false,
@@ -1152,6 +1153,7 @@ fitted = fit(spec, data, groupby = [:product, :location])
 - [`forecast`](@ref)
 """
 function fit(spec::ArarmaSpec, data;
+             m::Union{Int, Nothing} = nothing,
              groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
              parallel::Bool = true,
              fail_fast::Bool = false,
@@ -1299,6 +1301,7 @@ fitted = fit(spec, data, groupby = [:product, :location])
 - [`forecast`](@ref)
 """
 function fit(spec::BatsSpec, data;
+             m::Union{Int, Nothing} = nothing,
              groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
              parallel::Bool = true,
              fail_fast::Bool = false,
@@ -1465,6 +1468,7 @@ fitted = fit(spec, data, groupby=:product, parallel=true, fail_fast=false)
 - [`BatsSpec`](@ref) - BATS specification (integer seasonal periods only)
 """
 function fit(spec::TbatsSpec, data;
+             m::Union{Int, Nothing} = nothing,
              groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
              parallel::Bool = true,
              fail_fast::Bool = false,
@@ -2323,6 +2327,7 @@ fitted = fit(spec, data, groupby=:product)
 ```
 """
 function fit(spec::DiffusionSpec, data;
+             m::Union{Int, Nothing} = nothing,
              groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
              datecol::Union{Symbol, Nothing} = nothing,
              parallel::Bool = true,

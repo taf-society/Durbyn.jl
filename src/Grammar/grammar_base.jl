@@ -835,13 +835,16 @@ function arar(; max_ar_depth::Union{Int, Nothing}=nothing, max_lag::Union{Int, N
 end
 
 """
-    bats(; seasonal_periods=nothing, use_box_cox=nothing, use_trend=nothing,
+    bats(; m=nothing, seasonal_periods=nothing, use_box_cox=nothing, use_trend=nothing,
          use_damped_trend=nothing, use_arma_errors=nothing)
 
 Specify BATS (Box-Cox transformation, ARMA errors, Trend and Seasonal) model in a formula.
 
 # Arguments
-- `seasonal_periods::Union{Int, Vector{Int}, Nothing}=nothing` - Seasonal period(s) for the model (e.g., 12 for monthly data, [24, 168] for multiple seasonality)
+- `m::Union{Int, Vector{Int}, Nothing}=nothing` - Seasonal period(s) (alias for `seasonal_periods`).
+  E.g., 12 for monthly data, [24, 168] for multiple seasonality.
+- `seasonal_periods::Union{Int, Vector{Int}, Nothing}=nothing` - Alias for `m`.
+  Cannot specify both `m` and `seasonal_periods`.
 - `use_box_cox::Union{Bool, Nothing}=nothing` - Whether to use Box-Cox transformation (nothing = automatic selection)
 - `use_trend::Union{Bool, Nothing}=nothing` - Whether to include trend component (nothing = automatic selection)
 - `use_damped_trend::Union{Bool, Nothing}=nothing` - Whether to use damped trend (nothing = automatic selection)
@@ -853,38 +856,45 @@ Specify BATS (Box-Cox transformation, ARMA errors, Trend and Seasonal) model in 
 @formula(y = bats())
 
 # BATS with monthly seasonality
-@formula(y = bats(seasonal_periods=12))
+@formula(y = bats(m=12))
 
 # BATS with multiple seasonal periods
-@formula(y = bats(seasonal_periods=[24, 168]))
+@formula(y = bats(m=[24, 168]))
 
 # BATS with Box-Cox and trend specified
-@formula(y = bats(seasonal_periods=12, use_box_cox=true, use_trend=true))
+@formula(y = bats(m=12, use_box_cox=true, use_trend=true))
 
 # BATS with all options
-@formula(y = bats(seasonal_periods=12, use_box_cox=true, use_trend=true,
+@formula(y = bats(m=12, use_box_cox=true, use_trend=true,
                   use_damped_trend=false, use_arma_errors=true))
 ```
 """
-function bats(; seasonal_periods::Union{Int, Vector{Int}, Nothing}=nothing,
+function bats(; m::Union{Int, Vector{Int}, Nothing}=nothing,
+               seasonal_periods::Union{Int, Vector{Int}, Nothing}=nothing,
                use_box_cox::Union{Bool, Nothing}=nothing,
                use_trend::Union{Bool, Nothing}=nothing,
                use_damped_trend::Union{Bool, Nothing}=nothing,
                use_arma_errors::Union{Bool, Nothing}=nothing)
 
-    if !isnothing(seasonal_periods)
-        if seasonal_periods isa Int
-            seasonal_periods > 0 || throw(ArgumentError("seasonal_periods must be positive, got $(seasonal_periods)"))
-        elseif seasonal_periods isa Vector{Int}
-            all(m -> m > 0, seasonal_periods) || throw(ArgumentError("All seasonal_periods must be positive"))
+    if !isnothing(m) && !isnothing(seasonal_periods)
+        throw(ArgumentError("Cannot specify both 'm' and 'seasonal_periods'; they are aliases"))
+    end
+    sp = !isnothing(m) ? m : seasonal_periods
+
+    if !isnothing(sp)
+        if sp isa Int
+            sp > 0 || throw(ArgumentError("seasonal_periods must be positive, got $(sp)"))
+        elseif sp isa Vector{Int}
+            all(x -> x > 0, sp) || throw(ArgumentError("All seasonal_periods must be positive"))
         end
     end
 
-    return BatsTerm(seasonal_periods, use_box_cox, use_trend, use_damped_trend, use_arma_errors)
+    return BatsTerm(sp, use_box_cox, use_trend, use_damped_trend, use_arma_errors)
 end
 
 """
-    tbats(; seasonal_periods, k, use_box_cox, use_trend, use_damped_trend, use_arma_errors)
+    tbats(; m=nothing, seasonal_periods=nothing, k=nothing, use_box_cox=nothing,
+           use_trend=nothing, use_damped_trend=nothing, use_arma_errors=nothing)
 
 Specify a TBATS model in a formula. TBATS (Trigonometric seasonality, Box-Cox
 transformation, ARMA errors, Trend and Seasonal components) uses Fourier-based
@@ -895,13 +905,15 @@ seasonal representation, enabling:
 - Dual calendar effects (e.g., Gregorian + Hijri calendars)
 
 # Arguments
-- `seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing` - Seasonal period(s).
+- `m::Union{Real, Vector{<:Real}, Nothing}=nothing` - Seasonal period(s) (alias for `seasonal_periods`).
   Can be non-integer (e.g., 52.18 for weekly data with yearly seasonality).
   Use a vector for multiple seasonalities: `[7, 365.25]`
+- `seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing` - Alias for `m`.
+  Cannot specify both `m` and `seasonal_periods`.
 - `k::Union{Int, Vector{Int}, Nothing}=nothing` - Fourier order(s) per seasonal period.
   Controls complexity of the seasonal shape. Higher k captures more complex patterns
   but increases computation. If `nothing`, auto-selected via AIC.
-  Must match length of `seasonal_periods` if both are vectors.
+  Must match length of `seasonal_periods`/`m` if both are vectors.
 - `use_box_cox::Union{Bool, Nothing}=nothing` - Box-Cox variance stabilization.
   `true`/`false` forces selection; `nothing` tries both, selects by AIC.
 - `use_trend::Union{Bool, Nothing}=nothing` - Include trend component (ℓ_t + φb_t).
@@ -920,22 +932,22 @@ seasonal representation, enabling:
 @formula(sales = tbats())
 
 # Weekly data with yearly seasonality (52.18 weeks/year)
-@formula(demand = tbats(seasonal_periods=52.18))
+@formula(demand = tbats(m=52.18))
 
 # Multiple seasonalities: daily (7) and yearly (365.25)
-@formula(sales = tbats(seasonal_periods=[7, 365.25]))
+@formula(sales = tbats(m=[7, 365.25]))
 
 # With explicit Fourier orders (3 for weekly, 10 for yearly)
-@formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10]))
+@formula(sales = tbats(m=[7, 365.25], k=[3, 10]))
 
 # Dual calendar (Gregorian + Hijri)
-@formula(sales = tbats(seasonal_periods=[365.25, 354.37]))
+@formula(sales = tbats(m=[365.25, 354.37]))
 
 # Force Box-Cox and damped trend
-@formula(sales = tbats(seasonal_periods=52.18, use_box_cox=true, use_damped_trend=true))
+@formula(sales = tbats(m=52.18, use_box_cox=true, use_damped_trend=true))
 
 # Full specification
-@formula(sales = tbats(seasonal_periods=[7, 365.25], k=[3, 10],
+@formula(sales = tbats(m=[7, 365.25], k=[3, 10],
                        use_box_cox=true, use_trend=true,
                        use_damped_trend=false, use_arma_errors=true))
 ```
@@ -944,19 +956,25 @@ seasonal representation, enabling:
 - [`bats`](@ref) - BATS model (integer seasonal periods only)
 - [`TbatsTerm`](@ref) - Term type created by this function
 """
-function tbats(; seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing,
+function tbats(; m::Union{Real, Vector{<:Real}, Nothing}=nothing,
+                seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing,
                 k::Union{Int, Vector{Int}, Nothing}=nothing,
                 use_box_cox::Union{Bool, Nothing}=nothing,
                 use_trend::Union{Bool, Nothing}=nothing,
                 use_damped_trend::Union{Bool, Nothing}=nothing,
                 use_arma_errors::Union{Bool, Nothing}=nothing)
 
-    if !isnothing(seasonal_periods)
-        if seasonal_periods isa Real
-            seasonal_periods > 0 || throw(ArgumentError(
-                "seasonal_periods must be positive, got $(seasonal_periods)"))
+    if !isnothing(m) && !isnothing(seasonal_periods)
+        throw(ArgumentError("Cannot specify both 'm' and 'seasonal_periods'; they are aliases"))
+    end
+    sp = !isnothing(m) ? m : seasonal_periods
+
+    if !isnothing(sp)
+        if sp isa Real
+            sp > 0 || throw(ArgumentError(
+                "seasonal_periods must be positive, got $(sp)"))
         else
-            all(m -> m > 0, seasonal_periods) || throw(ArgumentError(
+            all(x -> x > 0, sp) || throw(ArgumentError(
                 "All seasonal_periods must be positive"))
         end
     end
@@ -969,14 +987,14 @@ function tbats(; seasonal_periods::Union{Real, Vector{<:Real}, Nothing}=nothing,
         end
     end
 
-    if !isnothing(k) && !isnothing(seasonal_periods)
+    if !isnothing(k) && !isnothing(sp)
         k_len = k isa Int ? 1 : length(k)
-        m_len = seasonal_periods isa Real ? 1 : length(seasonal_periods)
+        m_len = sp isa Real ? 1 : length(sp)
         k_len == m_len || throw(ArgumentError(
             "Length of k ($(k_len)) must match length of seasonal_periods ($(m_len))"))
     end
 
-    return TbatsTerm(seasonal_periods, k, use_box_cox, use_trend, use_damped_trend, use_arma_errors)
+    return TbatsTerm(sp, k, use_box_cox, use_trend, use_damped_trend, use_arma_errors)
 end
 
 

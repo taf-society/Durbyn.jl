@@ -19,17 +19,6 @@ See also: [`forecast`](@ref)
 """
 function plot end
 
-function plot(x::Forecast; kwargs...)
-    error("Plotting requires a plotting backend. Load Plots.jl first:\n\n  using Plots\n  plot(forecast)")
-end
-
-function plot(x; kwargs...)
-    if hasproperty(x, :forecasts) || hasproperty(x, :mean)
-        error("Plotting requires a plotting backend. Load Plots.jl first:\n\n  using Plots\n  plot(forecast)")
-    end
-    error("No plot method defined for type $(typeof(x))")
-end
-
 """
     list_series(fc)
 

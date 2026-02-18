@@ -296,6 +296,3 @@ Panels (from top):
 
 Keyword arguments are forwarded to `Plots.plot!`.
 """
-function plot(res::MSTLResult; kwargs...)
-    error("Plotting MSTLResult requires a plotting backend. Load Plots.jl first:\n\n  using Plots\n  plot(mstl_result)")
-end

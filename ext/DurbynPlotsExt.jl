@@ -4,7 +4,9 @@ using Durbyn
 using Plots
 import Tables
 
-import Durbyn: plot, Forecast, ACFResult, PACFResult, IntermittentDemandForecast
+using Distributions: Normal, quantile
+import Durbyn: plot, Forecast, ACFResult, PACFResult, IntermittentDemandForecast,
+               DecomposedTimeSeries, CrostonForecast, CrostonFit, ArimaPredictions
 
 function Durbyn.plot(forecast::Durbyn.Generics.Forecast; show_fitted=true, show_residuals=false)
     n_history = length(forecast.x)
@@ -216,6 +218,88 @@ function Durbyn.plot(object::IntermittentDemandForecast; show_fitted::Bool = fal
 end
 
 """
+    plot(res::DecomposedTimeSeries; labels=nothing, col_range="lightgray", main=nothing, range_bars=true, kwargs...)
+
+Multi-panel plot for classical seasonal decomposition (`decompose()`).
+
+Panels (from top):
+  1. Data (original series)
+  2. Seasonal component
+  3. Trend component
+  4. Remainder (random) component
+
+# Arguments
+- `labels`: Optional vector of panel labels (length 4)
+- `col_range`: Color for range bars (default `"lightgray"`)
+- `main`: Optional overall title
+- `range_bars`: Show range comparison bars on right side (default `true`)
+- `kwargs...`: Additional arguments forwarded to `Plots.plot!`
+"""
+function _plot_decomposed(res::DecomposedTimeSeries; labels=nothing,
+              col_range::Any="lightgray",
+              main::Union{Nothing,String}=nothing,
+              range_bars::Bool=true,
+              kwargs...)
+
+    series = AbstractVector[res.x, res.seasonal, res.trend, res.random]
+    names = isnothing(labels) ? ["Data", "Seasonal", "Trend", "Remainder"] : labels
+
+    if !isnothing(labels)
+        @assert length(labels) == 4 "labels length must be 4 (Data, Seasonal, Trend, Remainder)."
+    end
+
+    title_text = if !isnothing(main)
+        main
+    else
+        "Decomposition of $(res.type) time series"
+    end
+
+    n = length(res.x)
+    nplot = 4
+
+    function _safe_extrema(s)
+        valid = filter(v -> !isnan(v) && !ismissing(v), Float64.(s))
+        isempty(valid) ? (0.0, 0.0) : extrema(valid)
+    end
+    rx  = map(_safe_extrema, series)
+    rng = [r[2] - r[1] for r in rx]
+    barh = range_bars && minimum(rng) > 0 ? minimum(rng) / 2 : 0.0
+
+    plt = Plots.plot(layout=(nplot, 1), legend=false, size=(900, 700); kwargs...)
+    for i in 1:nplot
+        Plots.plot!(plt[i], Float64.(series[i]), ylabel=names[i], seriestype=:line; kwargs...)
+
+        if range_bars && barh > 0
+            yr = rx[i]
+            ymid = (yr[1] + yr[2]) / 2
+            dx = 0.02 * n
+            xb = [n - dx, n - dx, n - 0.4dx, n - 0.4dx]
+            yb = [ymid - barh, ymid + barh, ymid + barh, ymid - barh]
+            Plots.plot!(plt[i], xb, yb, fill=(col_range, 0.5), linecolor=:transparent)
+        end
+
+        if names[i] == "Remainder" || names[i] == "Seasonal"
+            Plots.hline!(plt[i], [0.0], color=:black, linestyle=:dash)
+        end
+
+        if i == 1
+            Plots.plot!(plt[i], title=title_text)
+        end
+
+        if i < nplot
+            Plots.plot!(plt[i], xticks=:none)
+        end
+    end
+
+    Plots.xlabel!(plt[nplot], "index")
+    return plt
+end
+
+function Durbyn.plot(res::DecomposedTimeSeries; kwargs...)
+    return _plot_decomposed(res; kwargs...)
+end
+
+"""
     plot(fc::GroupedForecasts; series=nothing, facet=false, n_cols=2, actual=nothing, kwargs...)
 
 Plot forecasts from grouped/panel data.
@@ -256,6 +340,11 @@ plot(fc, series = "A", actual = test_data)
 ```
 """
 function Durbyn.plot(fc; series=nothing, facet=false, n_cols=2, actual=nothing, show_fitted=true, kwargs...)
+    # Redirect known types to their specific plot methods
+    if fc isa DecomposedTimeSeries
+        return _plot_decomposed(fc; kwargs...)
+    end
+
     if hasproperty(fc, :forecasts) && hasproperty(fc, :groups) && fc.forecasts isa Dict
         return _plot_grouped_forecasts(fc, series, facet, n_cols, actual, show_fitted; kwargs...)
     end
@@ -947,6 +1036,160 @@ function Durbyn.plot(result::Durbyn.Stats.PACFResult; main::Union{Nothing,String
         color = abs(values[i]) > ci ? :red : :steelblue
         Plots.plot!(p, [lag, lag], [0, values[i]], color=color, linewidth=2)
         Plots.scatter!(p, [lag], [values[i]], color=color, markersize=3)
+    end
+
+    return p
+end
+
+"""
+    plot(result::STLResult; labels=["data","seasonal","trend","remainder"],
+         col_range="lightgray", main=nothing, range_bars=true, kwargs...)
+
+Multi-panel plot for STL decomposition result.
+"""
+function Durbyn.plot(result::Durbyn.Stats.STLResult; labels::Vector{String}=["data","seasonal","trend","remainder"],
+              col_range::Any="lightgray", main::Union{Nothing,String}=nothing, range_bars::Bool=true,
+              kwargs...)
+    ts = result.time_series
+    n = length(ts.seasonal)
+    data = ts.seasonal .+ ts.trend .+ ts.remainder
+    series = [data, ts.seasonal, ts.trend, ts.remainder]
+    nplot = length(series)
+
+    rx = [extrema(s) for s in series]
+    rng = [r[2] - r[1] for r in rx]
+    mx = range_bars ? minimum(rng) : 0.0
+
+    plt = Plots.plot(layout=(nplot, 1), legend=false; kwargs...)
+    for i in 1:nplot
+        ptype = i < nplot ? :line : :sticks
+        Plots.plot!(plt[i], series[i], color=:blue, ylabel=labels[i], seriestype=ptype; kwargs...)
+        if range_bars
+            yrange = rx[i]
+            ymid = sum(yrange) / 2
+            barhalf = mx / 2
+            dx = 0.02 * n
+            xb = [n - dx, n - dx, n - 0.4 * dx, n - 0.4 * dx]
+            yb = [ymid - barhalf, ymid + barhalf, ymid + barhalf, ymid - barhalf]
+            Plots.plot!(plt[i], xb, yb, fill=(col_range, 0.5), linecolor=:transparent)
+        end
+        if i == 1 && !isnothing(main)
+            Plots.plot!(plt[i], title=main)
+        end
+        if i == nplot
+            Plots.hline!(plt[i], [0.0], color=:black, linestyle=:dash)
+        end
+        if i < nplot
+            Plots.plot!(plt[i], xticks=:none)
+        end
+    end
+
+    Plots.xlabel!(plt[nplot], "index")
+    return plt
+end
+
+"""
+    plot(forecast::CrostonForecast; show_fitted=false)
+
+Visualize Croston forecast with optional fitted values.
+"""
+function Durbyn.plot(forecast::CrostonForecast; show_fitted::Bool = false)
+    history = forecast.model.x
+    n_history = length(history)
+    mean_fc = forecast.mean
+    time_history = 1:n_history
+    time_forecast = (n_history+1):(n_history+length(mean_fc))
+
+    p = Plots.plot(
+        time_history,
+        history,
+        label = "Historical Data",
+        lw = 2,
+        title = forecast.method,
+        xlabel = "Time",
+        ylabel = "Value",
+        linestyle = :dash,
+    )
+    Plots.plot!(time_forecast, mean_fc, label = "Forecast Mean", lw = 3, color = :blue)
+
+    if show_fitted
+        fitted_val = Durbyn.fitted(forecast.model)
+        Plots.plot!(
+            time_history,
+            fitted_val,
+            label = "Fitted Values",
+            lw = 3,
+            linestyle = :dash,
+            color = :blue,
+        )
+    end
+
+    return p
+end
+
+"""
+    plot(pred::ArimaPredictions; levels=[80,95], show_fitted=true, show_residuals=false)
+
+Plot ARIMA predictions with prediction intervals.
+"""
+function Durbyn.plot(
+    pred::ArimaPredictions;
+    levels = [80, 95],
+    show_fitted = true,
+    show_residuals = false,
+)
+    n_hist = length(pred.y)
+    n_fore = length(pred.prediction)
+    t_hist = 1:n_hist
+    t_fore = (n_hist+1):(n_hist+n_fore)
+    se_vec = pred.se
+
+    k = length(levels)
+    lower = zeros(n_fore, k)
+    upper = zeros(n_fore, k)
+    for (i, lvl) in enumerate(levels)
+        α = 1 - lvl / 100
+        z = quantile(Normal(), 1 - α / 2)
+        me = se_vec .* z
+        lower[:, i] = pred.prediction .- me
+        upper[:, i] = pred.prediction .+ me
+    end
+
+    title = "Forecast Plot from " * pred.method
+    p = Plots.plot(
+        t_hist,
+        pred.y;
+        label = "Historical Data",
+        lw = 2,
+        linestyle = :dash,
+        title = title,
+        xlabel = "Time",
+        ylabel = "Value",
+    )
+
+    Plots.plot!(p, t_fore, pred.prediction; label = "Forecast Mean", lw = 3, color = :blue)
+
+    for i = 1:k
+        fillcol = i == k ? "#D5DBFF" : "#596DD5"
+        ribbon = upper[:, i] .- lower[:, i]
+        Plots.plot!(
+            p,
+            t_fore,
+            upper[:, i];
+            ribbon = ribbon,
+            fillcolor = fillcol,
+            linecolor = fillcol,
+            label = "$(levels[i])% PI",
+        )
+    end
+
+    if show_fitted && !isempty(pred.fitted)
+        Plots.plot!(p, t_hist, pred.fitted; label = "Fitted Values", linestyle = :dot)
+    end
+
+    if show_residuals && !isempty(pred.residuals)
+        pr = Plots.plot(t_hist, pred.residuals; label = "Residuals", lw = 1, color = :red)
+        p = Plots.plot(p, pr; layout = (2, 1), link = :x)
     end
 
     return p

@@ -797,8 +797,8 @@ function _wrap_croston_forecast(fitted::FittedCroston, croston_fc)
     mean_vec = Float64.(croston_fc.mean)
     levels = Float64[]
     x_data = croston_fc.model.x
-    upper = Vector{Vector{Float64}}()
-    lower = Vector{Vector{Float64}}()
+    upper = Matrix{Float64}(undef, length(mean_vec), 0)
+    lower = Matrix{Float64}(undef, length(mean_vec), 0)
 
     fitted_vals = try
         fitted(croston_fc.model)

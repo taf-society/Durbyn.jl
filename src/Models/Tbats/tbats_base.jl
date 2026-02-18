@@ -495,9 +495,9 @@ function make_parscale_tbats(control::TBATSParameterControl)
 
     if control.use_box_cox
         push!(parscale, 0.001)
-        push!(parscale, 0.1)
+        push!(parscale, 0.01)
     else
-        push!(parscale, 0.1)
+        push!(parscale, 0.01)
     end
 
     if control.use_beta
@@ -505,7 +505,7 @@ function make_parscale_tbats(control::TBATSParameterControl)
         push!(parscale, 1e-2)
     end
 
-    control.length_gamma > 0 && append!(parscale, fill(1e-2, control.length_gamma))
+    control.length_gamma > 0 && append!(parscale, fill(1e-5, control.length_gamma))
     (control.p + control.q > 0) && append!(parscale, fill(1e-1, control.p + control.q))
 
     return parscale

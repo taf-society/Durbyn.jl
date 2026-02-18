@@ -756,8 +756,8 @@ function forecast(fit::ThetaFit; h::Int, level::Vector{<:Real}=[80, 95])
         end
     end
 
-    lower = [intervals["lo_$(round(Int, lv))"] for lv in level]
-    upper = [intervals["hi_$(round(Int, lv))"] for lv in level]
+    lower = hcat([intervals["lo_$(round(Int, lv))"] for lv in level]...)
+    upper = hcat([intervals["hi_$(round(Int, lv))"] for lv in level]...)
 
     method = "Theta($(fit.model_type))"
 

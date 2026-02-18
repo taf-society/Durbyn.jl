@@ -86,37 +86,37 @@ const REFERENCE_SD_AP = 119.9663
         @testset "Default levels" begin
             fc = forecast(fit, 10, [80.0, 95.0])
 
-            @test length(fc.lower) == 2
-            @test length(fc.upper) == 2
-            @test length(fc.lower[1]) == 10
-            @test length(fc.upper[1]) == 10
+            @test size(fc.lower, 2) == 2
+            @test size(fc.upper, 2) == 2
+            @test size(fc.lower, 1) == 10
+            @test size(fc.upper, 1) == 10
         end
 
         @testset "Interval properties" begin
             fc = forecast(fit, 10, [80.0, 95.0])
 
-            @test all(fc.lower[1] .< fc.mean)
-            @test all(fc.lower[2] .< fc.mean)
-            @test all(fc.upper[1] .> fc.mean)
-            @test all(fc.upper[2] .> fc.mean)
+            @test all(fc.lower[:, 1] .< fc.mean)
+            @test all(fc.lower[:, 2] .< fc.mean)
+            @test all(fc.upper[:, 1] .> fc.mean)
+            @test all(fc.upper[:, 2] .> fc.mean)
 
-            width_80 = fc.upper[1] .- fc.lower[1]
-            width_95 = fc.upper[2] .- fc.lower[2]
+            width_80 = fc.upper[:, 1] .- fc.lower[:, 1]
+            width_95 = fc.upper[:, 2] .- fc.lower[:, 2]
             @test all(width_95 .> width_80)
         end
 
         @testset "Symmetric intervals" begin
             fc = forecast(fit, 10, [80.0])
 
-            lower_dist = fc.mean .- fc.lower[1]
-            upper_dist = fc.upper[1] .- fc.mean
+            lower_dist = fc.mean .- fc.lower[:, 1]
+            upper_dist = fc.upper[:, 1] .- fc.mean
             @test all(abs.(lower_dist .- upper_dist) .<= EPS_SCALAR)
         end
 
         @testset "Single level" begin
             fc = forecast(fit, 10, [90.0])
-            @test length(fc.lower) == 1
-            @test length(fc.upper) == 1
+            @test size(fc.lower, 2) == 1
+            @test size(fc.upper, 2) == 1
         end
     end
 
@@ -145,8 +145,8 @@ const REFERENCE_SD_AP = 119.9663
         fc = forecast(fit, 10, [80.0])
 
         @test all(fc.mean .> 0)
-        @test all(fc.lower[1] .> 0)
-        @test all(fc.upper[1] .> 0)
+        @test all(fc.lower[:, 1] .> 0)
+        @test all(fc.upper[:, 1] .> 0)
     end
 
     @testset "Simple Test Data" begin
@@ -230,7 +230,7 @@ const REFERENCE_SD_AP = 119.9663
         n = length(AirPassengers)
         fc_pi = forecast(fit, 12, [80.0, 95.0])
 
-        width_80 = fc_pi.upper[1][1] - fc_pi.lower[1][1]
+        width_80 = fc_pi.upper[1, 1] - fc_pi.lower[1, 1]
         @test 300 < width_80 < 320
     end
 
@@ -244,11 +244,11 @@ const REFERENCE_SD_AP = 119.9663
         @test !isempty(fc_boot.upper)
 
         @test length(fc_boot.mean) == 10
-        @test length(fc_boot.lower) == 2
-        @test length(fc_boot.lower[1]) == 10
+        @test size(fc_boot.lower, 2) == 2
+        @test size(fc_boot.lower, 1) == 10
 
-        @test all(fc_boot.lower[1] .< fc_boot.mean)
-        @test all(fc_boot.upper[1] .> fc_boot.mean)
+        @test all(fc_boot.lower[:, 1] .< fc_boot.mean)
+        @test all(fc_boot.upper[:, 1] .> fc_boot.mean)
     end
 
     @testset "MeanFit Structure Updated" begin
@@ -288,8 +288,8 @@ const REFERENCE_SD_AP = 119.9663
         @test length(fc.mean) == 5
         @test all(fc.mean .== 100.0)
 
-        @test all(fc.lower[1] .== -Inf)
-        @test all(fc.upper[1] .== Inf)
+        @test all(fc.lower[:, 1] .== -Inf)
+        @test all(fc.upper[:, 1] .== Inf)
     end
 
     @testset "meanf with n == 1 and lambda < 0" begin
@@ -304,8 +304,8 @@ const REFERENCE_SD_AP = 119.9663
         @test length(fc.mean) == 5
         @test all(isfinite.(fc.mean))
 
-        @test all(fc.lower[1] .== 0.0)
-        @test all(isnan.(fc.upper[1]))
+        @test all(fc.lower[:, 1] .== 0.0)
+        @test all(isnan.(fc.upper[:, 1]))
     end
 
     @testset "Level validation errors (meanf)" begin
@@ -371,26 +371,26 @@ const REFERENCE_SD_AP = 119.9663
         fit3 = meanf(y3, 1; lambda=0.5, biasadj=true)
         fc3 = forecast(fit3; h=3, level=[80.0, 95.0])
         @test all(isapprox.(fc3.mean, 2.7760112791, atol=1e-4))
-        @test fc3.lower[1][1] ≈ 0.3396946242 atol=1e-3
-        @test fc3.upper[1][1] ≈ 4.7582571684 atol=1e-3
-        @test fc3.lower[2][1] ≈ -0.1950746219 atol=1e-3
-        @test fc3.upper[2][1] ≈ 10.2774663652 atol=1e-3
+        @test fc3.lower[1, 1] ≈ 0.3396946242 atol=1e-3
+        @test fc3.upper[1, 1] ≈ 4.7582571684 atol=1e-3
+        @test fc3.lower[1, 2] ≈ -0.1950746219 atol=1e-3
+        @test fc3.upper[1, 2] ≈ 10.2774663652 atol=1e-3
 
         y4 = [1.0, 2.0, 3.0, 4.0]
         fit4 = meanf(y4, 1; lambda=0.5, biasadj=true)
         fc4 = forecast(fit4; h=3, level=[80.0, 95.0])
         @test all(isapprox.(fc4.mean, 2.9716666467, atol=1e-4))
-        @test fc4.lower[1][1] ≈ 0.5600892575 atol=1e-3
-        @test fc4.upper[1][1] ≈ 5.4044210534 atol=1e-3
+        @test fc4.lower[1, 1] ≈ 0.5600892575 atol=1e-3
+        @test fc4.upper[1, 1] ≈ 5.4044210534 atol=1e-3
 
         y5 = [1.0, 2.0, 3.0, 4.0, 5.0]
         fit5 = meanf(y5, 1; lambda=0.5, biasadj=true)
         fc5 = forecast(fit5; h=3, level=[80.0, 95.0])
         @test all(isapprox.(fc5.mean, 3.3808238368, atol=1e-4))
-        @test fc5.lower[1][1] ≈ 0.7380904235 atol=1e-3
-        @test fc5.upper[1][1] ≈ 6.2190935432 atol=1e-3
-        @test fc5.lower[2][1] ≈ 0.0385562688 atol=1e-3
-        @test fc5.upper[2][1] ≈ 9.9639684855 atol=1e-3
+        @test fc5.lower[1, 1] ≈ 0.7380904235 atol=1e-3
+        @test fc5.upper[1, 1] ≈ 6.2190935432 atol=1e-3
+        @test fc5.lower[1, 2] ≈ 0.0385562688 atol=1e-3
+        @test fc5.upper[1, 2] ≈ 9.9639684855 atol=1e-3
 
         fit5_no = meanf(y5, 1; lambda=0.5, biasadj=false)
         fc5_no = forecast(fit5_no; h=3, level=[80.0, 95.0])
@@ -402,18 +402,18 @@ const REFERENCE_SD_AP = 119.9663
         fit = meanf(y, 1; lambda=0.0, biasadj=true)
         fc = forecast(fit; h=3, level=[80.0, 95.0])
         @test all(isapprox.(fc.mean, 7.7439739967, atol=1e-4))
-        @test fc.lower[1][1] ≈ 1.7919060656 atol=1e-3
-        @test fc.upper[1][1] ≈ 15.1501610734 atol=1e-3
+        @test fc.lower[1, 1] ≈ 1.7919060656 atol=1e-3
+        @test fc.upper[1, 1] ≈ 15.1501610734 atol=1e-3
     end
 
     @testset "meanf biasadj AirPassengers" begin
         fit = meanf(AirPassengers, 12; lambda=0.5, biasadj=true)
         fc = forecast(fit; h=5, level=[80.0, 95.0])
         @test all(isapprox.(fc.mean, 280.6931260448, atol=0.1))
-        @test fc.lower[1][1] ≈ 138.4018740926 atol=0.5
-        @test fc.upper[1][1] ≈ 439.3208761357 atol=0.5
-        @test fc.lower[2][1] ≈ 86.5507506528 atol=0.5
-        @test fc.upper[2][1] ≈ 548.5502545995 atol=0.5
+        @test fc.lower[1, 1] ≈ 138.4018740926 atol=0.5
+        @test fc.upper[1, 1] ≈ 439.3208761357 atol=0.5
+        @test fc.lower[1, 2] ≈ 86.5507506528 atol=0.5
+        @test fc.upper[1, 2] ≈ 548.5502545995 atol=0.5
     end
 
     @testset "meanf bootstrap + biasadj + lambda" begin
@@ -466,8 +466,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
         @test all(fc.mean .== AirPassengers[end])
 
-        @test fc.lower[1][1] > fc.lower[1][10]
-        @test fc.upper[1][1] < fc.upper[1][10]
+        @test fc.lower[1, 1] > fc.lower[10, 1]
+        @test fc.upper[1, 1] < fc.upper[10, 1]
     end
 
     @testset "Seasonal Naive (snaive)" begin
@@ -564,8 +564,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
         fc = forecast(fit, h=10)
         @test all(fc.mean .> 0)
-        @test all(fc.lower[1] .> 0)
-        @test all(fc.upper[1] .> 0)
+        @test all(fc.lower[:, 1] .> 0)
+        @test all(fc.upper[:, 1] .> 0)
     end
 
     @testset "Box-Cox Bias Adjustment" begin
@@ -612,13 +612,13 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         fit = naive(AirPassengers, 12)
         fc = forecast(fit, h=12, level=[80, 95])
 
-        @test all(fc.lower[1] .< fc.mean)
-        @test all(fc.lower[2] .< fc.mean)
-        @test all(fc.mean .< fc.upper[1])
-        @test all(fc.mean .< fc.upper[2])
+        @test all(fc.lower[:, 1] .< fc.mean)
+        @test all(fc.lower[:, 2] .< fc.mean)
+        @test all(fc.mean .< fc.upper[:, 1])
+        @test all(fc.mean .< fc.upper[:, 2])
 
-        width_80 = fc.upper[1] .- fc.lower[1]
-        width_95 = fc.upper[2] .- fc.lower[2]
+        width_80 = fc.upper[:, 1] .- fc.lower[:, 1]
+        width_95 = fc.upper[:, 2] .- fc.lower[:, 2]
         @test all(width_95 .> width_80)
 
         @test width_80[1] < width_80[12]
@@ -629,7 +629,7 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
         fit = snaive(AirPassengers, 12)
         fc = forecast(fit, h=24, level=[80, 95])
 
-        width_80 = fc.upper[1] .- fc.lower[1]
+        width_80 = fc.upper[:, 1] .- fc.lower[:, 1]
 
         @test all(width_80[1:12] .≈ width_80[1])
 
@@ -745,8 +745,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
             fc = forecast(fit, h=5)
             @test all(fc.mean .== 20.0)
-            @test all(fc.lower[1] .< fc.mean)
-            @test all(fc.upper[1] .> fc.mean)
+            @test all(fc.lower[:, 1] .< fc.mean)
+            @test all(fc.upper[:, 1] .> fc.mean)
         end
 
         @testset "snaive with m+1 observations" begin
@@ -827,10 +827,10 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
 
         @test fc_n.mean ≈ fc_s.mean atol=EPS_SCALAR
 
-        @test fc_n.lower[1] ≈ fc_s.lower[1] atol=EPS_PI
-        @test fc_n.upper[1] ≈ fc_s.upper[1] atol=EPS_PI
-        @test fc_n.lower[2] ≈ fc_s.lower[2] atol=EPS_PI
-        @test fc_n.upper[2] ≈ fc_s.upper[2] atol=EPS_PI
+        @test fc_n.lower[:, 1] ≈ fc_s.lower[:, 1] atol=EPS_PI
+        @test fc_n.upper[:, 1] ≈ fc_s.upper[:, 1] atol=EPS_PI
+        @test fc_n.lower[:, 2] ≈ fc_s.lower[:, 2] atol=EPS_PI
+        @test fc_n.upper[:, 2] ≈ fc_s.upper[:, 2] atol=EPS_PI
     end
 
     @testset "lambda=\"auto\" path (naive/snaive/rw)" begin
@@ -934,8 +934,8 @@ import Durbyn.Naive: naive, snaive, rw, rwf, NaiveFit
             @test fc.mean[i] ≈ r_mean[i] atol=0.5
         end
         for i in 1:5
-            @test fc.lower[1][i] ≈ r_lower80[i] atol=1.0
-            @test fc.upper[1][i] ≈ r_upper80[i] atol=1.0
+            @test fc.lower[i, 1] ≈ r_lower80[i] atol=1.0
+            @test fc.upper[i, 1] ≈ r_upper80[i] atol=1.0
         end
     end
 

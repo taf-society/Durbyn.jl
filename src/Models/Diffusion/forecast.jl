@@ -58,8 +58,8 @@ function forecast(fit::DiffusionFit; h::Int, level::Vector{<:Real}=[80, 95])
 
     intervals = compute_prediction_intervals(fit, h, level)
 
-    lower = [intervals["lo_$(round(Int, lv))"] for lv in level]
-    upper = [intervals["hi_$(round(Int, lv))"] for lv in level]
+    lower = hcat([intervals["lo_$(round(Int, lv))"] for lv in level]...)
+    upper = hcat([intervals["hi_$(round(Int, lv))"] for lv in level]...)
 
     method = "Diffusion($(fit.model_type))"
 

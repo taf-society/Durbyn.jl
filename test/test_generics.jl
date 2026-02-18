@@ -13,8 +13,8 @@ import Durbyn.Naive: naive, NaiveFit
         [1.0, 2.0, 3.0],  # mean
         [80, 95],          # level
         [10.0, 20.0],      # x
-        [[1.5, 2.5, 3.5], [2.0, 3.0, 4.0]],  # upper
-        [[0.5, 1.5, 2.5], [0.0, 1.0, 2.0]],  # lower
+        [1.5 2.0; 2.5 3.0; 3.5 4.0],  # upper (h×n_levels matrix)
+        [0.5 0.0; 1.5 1.0; 2.5 2.0],  # lower (h×n_levels matrix)
         [9.5, 19.5],       # fitted
         [0.5, 0.5],        # residuals
     )
@@ -24,8 +24,8 @@ import Durbyn.Naive: naive, NaiveFit
     @test fc.mean == [1.0, 2.0, 3.0]
     @test fc.level == [80, 95]
     @test fc.x == [10.0, 20.0]
-    @test length(fc.upper) == 2
-    @test length(fc.lower) == 2
+    @test size(fc.upper, 2) == 2
+    @test size(fc.lower, 2) == 2
     @test fc.fitted == [9.5, 19.5]
     @test fc.residuals == [0.5, 0.5]
     @test fc.model === nothing
@@ -38,8 +38,8 @@ end
         [1.0, 2.0, 3.0],
         [80, 95],
         [10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
-        [[1.5, 2.5, 3.5], [2.0, 3.0, 4.0]],
-        [[0.5, 1.5, 2.5], [0.0, 1.0, 2.0]],
+        [1.5 2.0; 2.5 3.0; 3.5 4.0],
+        [0.5 0.0; 1.5 1.0; 2.5 2.0],
         [9.5, 19.5, 29.5, 39.5, 49.5, 59.5],
         [0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
     )
@@ -62,8 +62,8 @@ end
     @test fc isa Forecast
     @test length(fc.mean) == 10
     @test fc.level == [80, 95]
-    @test length(fc.upper) == 2
-    @test length(fc.lower) == 2
+    @test size(fc.upper, 2) == 2
+    @test size(fc.lower, 2) == 2
     @test length(fc.fitted) == length(y)
     @test length(fc.residuals) == length(y)
     @test length(fc.x) == length(y)
@@ -79,8 +79,8 @@ end
     @test fc isa Forecast
     @test length(fc.mean) == 12
     @test all(isfinite, fc.mean)
-    @test length(fc.upper) >= 1
-    @test length(fc.lower) >= 1
+    @test size(fc.upper, 2) >= 1
+    @test size(fc.lower, 2) >= 1
     @test length(fc.fitted) == length(y)
     @test length(fc.residuals) == length(y)
     @test !isempty(fc.method)

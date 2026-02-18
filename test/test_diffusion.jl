@@ -257,20 +257,18 @@ using Durbyn
         fc = forecast(fit, h=5)
 
         @test length(fc.mean) == 5
-        @test length(fc.upper) == 2  # 80% and 95%
-        @test length(fc.lower) == 2
-        @test length(fc.upper[1]) == 5
-        @test length(fc.upper[2]) == 5
-        @test length(fc.lower[1]) == 5
-        @test length(fc.lower[2]) == 5
+        @test size(fc.upper, 2) == 2  # 80% and 95%
+        @test size(fc.lower, 2) == 2
+        @test size(fc.upper, 1) == 5
+        @test size(fc.lower, 1) == 5
 
         # Forecasts should be non-negative
         @test all(fc.mean .>= 0)
 
         # Upper bounds should be >= mean >= lower bounds
         for i in 1:5
-            @test fc.upper[1][i] >= fc.mean[i]
-            @test fc.mean[i] >= fc.lower[1][i]
+            @test fc.upper[i, 1] >= fc.mean[i]
+            @test fc.mean[i] >= fc.lower[i, 1]
         end
     end
 
@@ -280,8 +278,8 @@ using Durbyn
         fit = fit_diffusion(y, model_type=Bass)
         fc = forecast(fit, h=5, level=[90])
 
-        @test length(fc.upper) == 1
-        @test length(fc.lower) == 1
+        @test size(fc.upper, 2) == 1
+        @test size(fc.lower, 2) == 1
         @test fc.level == [90]
     end
 
@@ -476,11 +474,11 @@ using Durbyn
         fc = forecast(fit, h=5)
 
         @test length(fc.mean) == 5
-        @test length(fc.upper) == 2
-        @test length(fc.lower) == 2
+        @test size(fc.upper, 2) == 2
+        @test size(fc.lower, 2) == 2
         for i in 1:5
-            @test fc.upper[1][i] >= fc.mean[i]
-            @test fc.mean[i] >= fc.lower[1][i]
+            @test fc.upper[i, 1] >= fc.mean[i]
+            @test fc.mean[i] >= fc.lower[i, 1]
         end
     end
 
@@ -490,11 +488,11 @@ using Durbyn
         fc = forecast(fit, h=5)
 
         @test length(fc.mean) == 5
-        @test length(fc.upper) == 2
-        @test length(fc.lower) == 2
+        @test size(fc.upper, 2) == 2
+        @test size(fc.lower, 2) == 2
         for i in 1:5
-            @test fc.upper[1][i] >= fc.mean[i]
-            @test fc.mean[i] >= fc.lower[1][i]
+            @test fc.upper[i, 1] >= fc.mean[i]
+            @test fc.mean[i] >= fc.lower[i, 1]
         end
     end
 
@@ -504,11 +502,11 @@ using Durbyn
         fc = forecast(fit, h=5)
 
         @test length(fc.mean) == 5
-        @test length(fc.upper) == 2
-        @test length(fc.lower) == 2
+        @test size(fc.upper, 2) == 2
+        @test size(fc.lower, 2) == 2
         for i in 1:5
-            @test fc.upper[1][i] >= fc.mean[i]
-            @test fc.mean[i] >= fc.lower[1][i]
+            @test fc.upper[i, 1] >= fc.mean[i]
+            @test fc.mean[i] >= fc.lower[i, 1]
         end
     end
 
@@ -518,8 +516,8 @@ using Durbyn
         fc = forecast(fit, h=10)
 
         # Lower bounds should be clamped at 0
-        for lv_idx in 1:length(fc.lower)
-            @test all(fc.lower[lv_idx] .>= 0.0)
+        for lv_idx in 1:size(fc.lower, 2)
+            @test all(fc.lower[:, lv_idx] .>= 0.0)
         end
     end
 
@@ -996,8 +994,8 @@ using Durbyn
 
         # Valid levels should work
         fc = forecast(fit, h=5, level=[50, 80, 95, 99])
-        @test length(fc.upper) == 4
-        @test length(fc.lower) == 4
+        @test size(fc.upper, 2) == 4
+        @test size(fc.lower, 2) == 4
     end
 
     @testset "Bass Init No-Clamp Consistency" begin

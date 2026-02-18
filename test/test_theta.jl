@@ -199,26 +199,24 @@ const THETA_LOWER = 0.5
             fc = forecast(fit; h=12, level=[80, 95])
 
             @test length(fc.mean) == 12
-            @test length(fc.lower) == 2
-            @test length(fc.upper) == 2
-            @test length(fc.lower[1]) == 12
-            @test length(fc.lower[2]) == 12
+            @test size(fc.lower) == (12, 2)
+            @test size(fc.upper) == (12, 2)
         end
 
         @testset "Interval ordering" begin
             fc = forecast(fit; h=12, level=[80, 95])
 
-            @test all(fc.lower[2] .<= fc.lower[1])
-            @test all(fc.upper[1] .<= fc.upper[2])
-            @test all(fc.lower[1] .<= fc.mean)
-            @test all(fc.mean .<= fc.upper[1])
+            @test all(fc.lower[:, 2] .<= fc.lower[:, 1])
+            @test all(fc.upper[:, 1] .<= fc.upper[:, 2])
+            @test all(fc.lower[:, 1] .<= fc.mean)
+            @test all(fc.mean .<= fc.upper[:, 1])
         end
 
         @testset "Intervals widen with horizon" begin
             fc = forecast(fit; h=24, level=[80])
 
-            width_early = fc.upper[1][1:6] .- fc.lower[1][1:6]
-            width_late = fc.upper[1][19:24] .- fc.lower[1][19:24]
+            width_early = fc.upper[1:6, 1] .- fc.lower[1:6, 1]
+            width_late = fc.upper[19:24, 1] .- fc.lower[19:24, 1]
 
             @test mean(width_late) >= mean(width_early)
         end

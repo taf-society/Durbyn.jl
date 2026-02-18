@@ -428,8 +428,8 @@ end
 
         @test length(fc.mean) == 6
         @test all(isfinite, fc.mean)
-        @test length(fc.lower) == 2
-        @test length(fc.upper) == 2
+        @test size(fc.lower, 2) == 2
+        @test size(fc.upper, 2) == 2
     end
 
     @testset "Extract metrics (empty)" begin
@@ -478,8 +478,8 @@ end
 
         @test length(fc.mean) == 12
         @test all(isfinite, fc.mean)
-        @test length(fc.lower) == 2
-        @test length(fc.upper) == 2
+        @test size(fc.lower, 2) == 2
+        @test size(fc.upper, 2) == 2
     end
 
     @testset "Extract metrics (empty)" begin
@@ -528,8 +528,8 @@ end
 
         @test length(fc.mean) == 6
         @test all(isfinite, fc.mean)
-        @test length(fc.lower) == 2
-        @test length(fc.upper) == 2
+        @test size(fc.lower, 2) == 2
+        @test size(fc.upper, 2) == 2
     end
 
     @testset "Extract metrics (empty)" begin
@@ -1134,8 +1134,8 @@ end
         fc = forecast(fitted_model, h=6, level=[80, 95])
 
         @test length(fc.mean) == 6
-        @test length(fc.lower) == 2
-        @test length(fc.upper) == 2
+        @test size(fc.lower, 2) == 2
+        @test size(fc.upper, 2) == 2
     end
 
     @testset "Extract metrics" begin
@@ -1186,8 +1186,8 @@ end
 
         @test length(fc.mean) == 6
         @test all(isfinite, fc.mean)
-        @test length(fc.lower) == 2
-        @test length(fc.upper) == 2
+        @test size(fc.lower, 2) == 2
+        @test size(fc.upper, 2) == 2
     end
 
     @testset "Extract metrics (empty)" begin
@@ -1326,8 +1326,8 @@ end
 
         @test length(fc.mean) == 5
         @test all(isfinite, fc.mean)
-        @test length(fc.lower) == 2  # default [80, 95]
-        @test length(fc.upper) == 2
+        @test size(fc.lower, 2) == 2  # default [80, 95]
+        @test size(fc.upper, 2) == 2
     end
 
     @testset "Forecast with custom levels" begin
@@ -1336,8 +1336,8 @@ end
         fitted = fit(spec, data)
         fc = forecast(fitted, h=5, level=[90, 99])
 
-        @test length(fc.lower) == 2
-        @test length(fc.upper) == 2
+        @test size(fc.lower, 2) == 2
+        @test size(fc.upper, 2) == 2
     end
 
     @testset "extract_metrics" begin
@@ -1499,15 +1499,15 @@ end
     @testset "Float64 levels work" begin
         fc = forecast(fit_result; h=6, level=[80.0, 95.0])
         @test length(fc.mean) == 6
-        @test length(fc.lower) == 2
-        @test length(fc.upper) == 2
+        @test size(fc.lower, 2) == 2
+        @test size(fc.upper, 2) == 2
     end
 
     @testset "Non-round levels round to Int for keys" begin
         fc = forecast(fit_result; h=6, level=[80.5])
         @test length(fc.mean) == 6
-        @test length(fc.lower) == 1
-        @test length(fc.upper) == 1
+        @test size(fc.lower, 2) == 1
+        @test size(fc.upper, 2) == 1
     end
 
     @testset "ModelSpecs Theta passes levels through" begin
@@ -1517,7 +1517,7 @@ end
         fc = forecast(fitted, h=6, level=[80.0, 95.0])
 
         @test length(fc.mean) == 6
-        @test length(fc.lower) == 2
+        @test size(fc.lower, 2) == 2
     end
 end
 
@@ -1531,12 +1531,12 @@ end
     @testset "Float64 levels work" begin
         fc = forecast(diff_fit; h=3, level=[80.0, 95.0])
         @test length(fc.mean) == 3
-        @test length(fc.lower) == 2
+        @test size(fc.lower, 2) == 2
     end
 
     @testset "Non-round levels" begin
         fc = forecast(diff_fit; h=3, level=[80.5])
         @test length(fc.mean) == 3
-        @test length(fc.lower) == 1
+        @test size(fc.lower, 2) == 1
     end
 end

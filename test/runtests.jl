@@ -53,6 +53,10 @@ using Test
         include("test_tbats_formula.jl")
     end
 
+    @testset "TBATS Parity" begin
+        include("test_tbats_parity.jl")
+    end
+
     @testset "Croston Model" begin
         include("test_croston.jl")
     end

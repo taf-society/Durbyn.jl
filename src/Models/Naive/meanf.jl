@@ -43,7 +43,7 @@ The mean method uses the sample mean as the forecast for all future periods.
 - `lambda::Union{Nothing, Float64}=nothing` - Box-Cox transformation parameter
 - `biasadj::Bool=false` - Apply bias adjustment for Box-Cox back-transformation
 """
-function meanf(y::AbstractArray, m::Int;
+function meanf(y::AbstractArray, m::Int=1;
                lambda::Union{Nothing, Float64, String}=nothing,
                biasadj::Bool=false)
     n_orig = length(y)
@@ -245,16 +245,18 @@ function forecast(object::MeanFit;
             f = inv_box_cox(f_trans; lambda=lambda)
         end
 
-        lower = Vector{Vector{Float64}}(undef, nconf)
-        upper = Vector{Vector{Float64}}(undef, nconf)
+        lower_vecs = Vector{Vector{Float64}}(undef, nconf)
+        upper_vecs = Vector{Vector{Float64}}(undef, nconf)
         for i in 1:nconf
-            lower[i] = inv_box_cox(lower_trans[i]; lambda=lambda)
-            upper[i] = inv_box_cox(upper_trans[i]; lambda=lambda)
+            lower_vecs[i] = inv_box_cox(lower_trans[i]; lambda=lambda)
+            upper_vecs[i] = inv_box_cox(upper_trans[i]; lambda=lambda)
         end
+        lower = hcat(lower_vecs...)
+        upper = hcat(upper_vecs...)
     else
         f = f_trans
-        lower = lower_trans
-        upper = upper_trans
+        lower = hcat(lower_trans...)
+        upper = hcat(upper_trans...)
     end
 
     level_out = Float64.(level)

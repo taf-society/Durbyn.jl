@@ -20,13 +20,13 @@ Holds the results of a time series forecast from a fitted models.
 - `x::Vector{Float64}`  
   The original time series data that the model was trained on.
 
-- `upper::Vector{Vector{Float64}}`  
-  Upper prediction bounds for each specified confidence level.  
-  Each inner vector corresponds to a different confidence level.
+- `upper::Matrix{Float64}`
+  Upper prediction bounds, sized `(h, n_levels)`.
+  Each column corresponds to a different confidence level.
 
-- `lower::Vector{Vector{Float64}}`  
-  Lower prediction bounds for each specified confidence level.  
-  Each inner vector corresponds to a different confidence level.
+- `lower::Matrix{Float64}`
+  Lower prediction bounds, sized `(h, n_levels)`.
+  Each column corresponds to a different confidence level.
 
 - `fitted::Vector{Union{Float64, Missing}}`  
   In-sample fitted values produced by the model.  
@@ -49,7 +49,7 @@ model = arar(y)
 fc = forecast(model, 12)
 
 fc.mean          # point forecasts
-fc.upper[2]      # 95% upper bound
+fc.upper[:, 2]   # 95% upper bound
 fc.residuals     # model residuals
 ```
 """

@@ -238,11 +238,11 @@ const SES_MAPE = 8.96
             fit = auto_arima(ap, 12)
             fc = forecast(fit; h=12, level=[80, 95])
 
-            @test length(fc.upper) >= 2
-            @test length(fc.lower) >= 2
+            @test size(fc.upper, 2) >= 2
+            @test size(fc.lower, 2) >= 2
 
-            width_80 = fc.upper[1] .- fc.lower[1]
-            width_95 = fc.upper[2] .- fc.lower[2]
+            width_80 = fc.upper[:, 1] .- fc.lower[:, 1]
+            width_95 = fc.upper[:, 2] .- fc.lower[:, 2]
 
             @test all(width_95 .>= width_80)
         end

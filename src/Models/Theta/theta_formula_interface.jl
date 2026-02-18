@@ -139,7 +139,12 @@ function theta(formula::ModelFormula, data; m::Int=1, kwargs...)
         return auto_theta(y, m; theta_args...)
     else
         model_enum = _symbol_to_theta_model_type(theta_term.model_type)
-        return theta(y, m; model_type=model_enum, theta_args...)
+        if haskey(theta_args, :decomposition_type)
+            # auto_theta handles decomposition; pass model to force the specific variant
+            return auto_theta(y, m; model=model_enum, theta_args...)
+        else
+            return theta(y, m; model_type=model_enum, theta_args...)
+        end
     end
 end
 

@@ -57,6 +57,10 @@ using Test
         include("test_tbats_parity.jl")
     end
 
+    @testset "ARIMAX Parity" begin
+        include("test_arimax_parity.jl")
+    end
+
     @testset "Croston Model" begin
         include("test_croston.jl")
     end

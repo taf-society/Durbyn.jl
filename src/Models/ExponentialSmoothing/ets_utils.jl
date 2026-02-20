@@ -1749,7 +1749,7 @@ function objective_fun(
     if isnan(lik) || abs(lik + 99999) < 1e-7
         lik = Inf
     elseif lik < -1e10
-        # Match forecast::ets behavior: keep very good (near-perfect) fits finite.
+        # Clamp near-perfect fits to a finite floor.
         lik = -1e10
     end
 

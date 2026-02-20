@@ -87,7 +87,7 @@ using Durbyn
         @test hasfield(typeof(init), :p)
         @test hasfield(typeof(init), :q)
 
-        # All values should be finite (clamping to positive is caller's job, matching R)
+        # All values should be finite (clamping to positive is caller's job)
         @test isfinite(init.m)
         @test isfinite(init.p)
         @test isfinite(init.q)
@@ -890,11 +890,11 @@ using Durbyn
 
     @testset "Bass Init Complex Roots" begin
         # Data that produces negative discriminant in bass_init regression
-        # R's polyroot uses Re(-c1/(2*c2)) for complex roots; we must match
+        # Complex roots use Re(-c1/(2*c2))
         y_complex = [1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 5.0, 8.0, 13.0, 21.0]
         init = Durbyn.Diffusion.bass_init(y_complex)
 
-        # bass_init matches R: no clamping, values may be negative (caller handles)
+        # bass_init: no clamping, values may be negative (caller handles)
         @test isfinite(init.m)
         @test isfinite(init.p)
         @test isfinite(init.q)

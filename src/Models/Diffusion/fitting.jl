@@ -190,7 +190,7 @@ fit = fit_diffusion(y)
 # Gompertz model with fixed market potential
 fit = fit_diffusion(y, model_type=Gompertz, w=(m=500.0, a=nothing, b=nothing))
 
-# Fully fixed parameters (matches R behavior)
+# Fully fixed parameters
 fit = fit_diffusion(y, model_type=Bass, w=(m=500.0, p=0.03, q=0.38))
 
 # Using L1 loss

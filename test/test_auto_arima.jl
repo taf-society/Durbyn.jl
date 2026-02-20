@@ -372,7 +372,7 @@ end
 
     @testset "Constant toggle: d=1 prefers no-drift (Nile)" begin
         # Regression test for !constant toggle fix in stepwise search.
-        # R's auto_arima on Nile with d=1 selects ARIMA(1,1,1) WITHOUT drift
+        # With d=1, ARIMA(1,1,1) WITHOUT drift should be selected
         # because the no-drift model has lower BIC. Before the fix, Julia
         # always tried the same constant setting, never toggling to !constant.
         fit = auto_arima(nile, 1; d=1, seasonal=false, ic="bic")

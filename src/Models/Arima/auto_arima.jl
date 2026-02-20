@@ -188,11 +188,13 @@ function auto_arima(
         else
             xregg = drop_constant_columns(xregg)
 
-            if is_rank_deficient(xregg; add_intercept = false)
+            if is_rank_deficient(xregg)
                 error("xreg is rank deficient")
             end
             j = .!ismissing.(x) .& .!ismissing.(row_sums(xregg))
-            fitt = ols(copy(x), copy(xregg.data))
+            # OLS with intercept for unit root test residuals
+            xregg_with_intercept = hcat(ones(size(xregg.data, 1)), xregg.data)
+            fitt = ols(copy(x), xregg_with_intercept)
             res = residuals(fitt)
             xx[j] .= res
         end
@@ -217,7 +219,7 @@ function auto_arima(
         # Ensure xreg not null after seasonal differencing
         if D > 0 && !isnothing(xregg)
             diffxreg = diff(xregg; differences = D, lag = m)
-            if any(is_constant(xregg))
+            if any(is_constant(diffxreg))
                 D -= 1
             end
         end

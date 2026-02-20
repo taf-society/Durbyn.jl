@@ -347,7 +347,7 @@ function predict_covariance_with_diff!(Pnew::Matrix{Float64}, P::Matrix{Float64}
     end
 
     # Step 2: Pnew = mm * Tᵀ
-    # Note: R uses column-major order, so indices are transposed compared to naive reading
+    # Column-major traversal: indices are transposed compared to row-major reading
     @inbounds for i in 1:r
         for j in 1:rd
             tmp = 0.0
@@ -427,7 +427,7 @@ function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, useResid, r
         sumlog[] += gain > 0 ? log(gain) : NaN
     end
 
-    # 5) store standardized innovation (matching R's arima.c: rsResid[l] = resid/sqrt(gain))
+    # 5) store standardized innovation: resid / sqrt(gain)
     if useResid
         rsResid[l] = gain > 0 ? resid / sqrt(gain) : NaN
     end
@@ -491,9 +491,7 @@ function compute_arima_likelihood(
     phi = model.phi
     theta = model.theta
     delta = model.Delta
-    # Use references (not copies) to match R's in-place modification behavior.
-    # R's ARIMA_Like (arima.c:613) uses: double *a = REAL(sa), *P = REAL(sP), *Pnew = REAL(sPn)
-    # This modifies mod$a, mod$P, and mod$Pn in place during Kalman filtering.
+    # Use references (not copies) for in-place modification of model state.
     a = model.a
     P = model.P
     Pnew = model.Pn
@@ -1650,8 +1648,7 @@ function process_xreg(xreg::Union{NamedMatrix,Nothing}, n::Int)
             throw(ArgumentError("Lengths of x and xreg do not match!"))
         end
         xreg_mat = xreg.data
-        # Ensure Float64 if needed as in R but I am not sure. I will discuss with Rob.
-        # For datasets where the integer are used such as dummy variables.
+        # Ensure Float64 for integer inputs (e.g. dummy variables).
         if !(eltype(xreg_mat) <: Float64)
             xreg_mat = Float64.(xreg_mat)
         end
@@ -1662,20 +1659,20 @@ function process_xreg(xreg::Union{NamedMatrix,Nothing}, n::Int)
 end
 
 """
-    regress_and_update!(init0, parscale, x, xreg, mask, narma, ncxreg, order_d, seasonal_d, m, Delta)
+    regress_and_update!(x, xreg, narma, ncxreg, order_d, seasonal_d, m, Delta)
 
 Regression block for exogenous regressors with missing value handling and coefficient scaling.
+SVD rotation of xreg (when applicable) is handled by the caller in `arima()`.
 
 # Arguments
-- `x::Vector{Float64}`: Target variable (can contain NaN for missing values).
-- `xreg::Matrix{Float64}`: Regressor matrix (can contain NaN for missing).
-- `mask::Vector{Bool}`: Boolean mask for fixed/free parameters (length: narma + ncxreg).
-- `narma::Int`: Number of ARMA params (used for mask indexing).
+- `x::AbstractArray`: Target variable (can contain NaN for missing values).
+- `xreg::Matrix`: Regressor matrix (possibly SVD-rotated, can contain NaN for missing).
+- `narma::Int`: Number of ARMA params.
 - `ncxreg::Int`: Number of exogenous regressors.
 - `order_d::Int`: Order of nonseasonal differencing.
 - `seasonal_d::Int`: Order of seasonal differencing.
 - `m::Int`: Seasonal period.
-- `Delta::Vector`: Differencing indices (used for n_used).
+- `Delta::AbstractArray`: Differencing polynomial (used for n_used).
 
 # Returns
 Tuple: (`init0`, `parscale`, `n_used`)
@@ -1683,7 +1680,6 @@ Tuple: (`init0`, `parscale`, `n_used`)
 function regress_and_update!(
     x::AbstractArray,
     xreg::Matrix,
-    mask::AbstractArray,
     narma::Int,
     ncxreg::Int,
     order_d::Int,
@@ -1694,18 +1690,6 @@ function regress_and_update!(
 
     init0 = zeros(narma)
     parscale = ones(narma)
-    # Convert missings to NaN everywhere
-    x, xreg = na_omit_pair(x, xreg)
-
-    orig_xreg = (ncxreg == 1) || any(.!mask[(narma+1):(narma+ncxreg)])
-
-    if !orig_xreg
-        rows_good = [all(isfinite, row) for row in eachrow(xreg)]
-        S = svd(xreg[rows_good, :])
-        xreg = xreg * S.V
-    else
-        S = nothing
-    end
 
     dx = copy(x)
     dxreg = copy(xreg)
@@ -1736,8 +1720,8 @@ function regress_and_update!(
     end
 
     if fit_rank == 0
-        x, xreg = na_omit_pair(x, xreg)
-        fit = Stats.ols(x, xreg)
+        x_clean, xreg_clean = na_omit_pair(x, xreg)
+        fit = Stats.ols(x_clean, xreg_clean)
     end
 
     isna = isnan.(x) .| [any(isnan, row) for row in eachrow(xreg)]
@@ -1747,7 +1731,7 @@ function regress_and_update!(
     ses = fit.se
     parscale = append!(parscale, 10 * ses)
 
-    return init0, parscale, n_used, orig_xreg, S
+    return init0, parscale, n_used
 end
 
 """
@@ -1947,7 +1931,7 @@ function arima(
         end
 
         result = 0.5 * (log(s2) + resss[2] / nu)
-        # NaN/+Inf → bad parameters; -Inf → perfect fit (s2=0), valid like R
+        # NaN/+Inf → bad parameters; -Inf → perfect fit (s2=0)
         return isnan(result) || result == Inf ? typemax(Float64) : result
     end
     # Conditional sum of squares objective
@@ -1965,13 +1949,13 @@ function arima(
         sigma2 = ross[:sigma2]
 
         # sigma2 < 0 or NaN/Inf → bad parameters
-        # sigma2 == 0 → perfect fit (log returns -Inf, matching R behavior)
+        # sigma2 == 0 → perfect fit (log returns -Inf)
         if sigma2 < 0 || isnan(sigma2) || sigma2 == Inf
             return typemax(Float64)
         end
 
         result = 0.5 * log(sigma2)
-        # NaN/+Inf → bad parameters; -Inf → perfect fit (sigma2=0), valid like R
+        # NaN/+Inf → bad parameters; -Inf → perfect fit (sigma2=0)
         return isnan(result) || result == Inf ? typemax(Float64) : result
     end
     
@@ -2056,10 +2040,23 @@ function arima(
         end
     end
 
+    # SVD rotation for multi-regressor numerical stability (must happen in
+    # arima() scope so that armafn/armaCSS closures capture the rotated xreg).
+    orig_xreg = true
+    S = nothing
+    if ncxreg > 0
+        orig_xreg = (ncxreg == 1) || any(.!mask[(narma+1):(narma+ncxreg)])
+        if !orig_xreg
+            rows_good = [all(isfinite, row) for row in eachrow(xreg)]
+            S = svd(xreg[rows_good, :])
+            xreg = xreg * S.V
+        end
+    end
+
     # estimate init and scale
     if ncxreg > 0
-        init0, parscale, n_used, orig_xreg, S = 
-        regress_and_update!(x, xreg, mask, narma, ncxreg, order.d, seasonal.d, m, Delta)
+        init0, parscale, n_used =
+        regress_and_update!(x, xreg, narma, ncxreg, order.d, seasonal.d, m, Delta)
     else
         init0 = zeros(narma)
         parscale = ones(narma)
@@ -2109,7 +2106,6 @@ function arima(
             ctrl = copy(optim_control)
             ctrl["parscale"] = parscale[mask]
             # CSS needs larger finite-difference step and more iterations
-            # than R's defaults to compensate for subtle BFGS implementation differences
             if !haskey(ctrl, "ndeps")
                 ctrl["ndeps"] = fill(1e-2, sum(mask))
             end
@@ -2182,7 +2178,6 @@ function arima(
                 ctrl = copy(optim_control)
                 ctrl["parscale"] = parscale[mask]
                 # CSS pre-init needs larger finite-difference step and more iterations
-                # than R's defaults to compensate for subtle BFGS implementation differences
                 if !haskey(ctrl, "ndeps")
                     ctrl["ndeps"] = fill(1e-2, sum(mask))
                 end
@@ -2452,16 +2447,14 @@ function kalman_forecast(n_ahead::Int, mod::ArimaStateSpace; update::Bool=false)
         fc = dot(Z, a)
         forecasts[l] = fc
 
-        # 3. Covariance prediction: Pnew = T * P * T' + V
-        # R's KalmanFore does this BEFORE computing variance
+        # 3. Covariance prediction: Pnew = T * P * T' + V (before computing variance)
         if d == 0
             predict_covariance_nodiff!(Pnew, P, r, p, q, phi, theta)
         else
             predict_covariance_with_diff!(Pnew, P, r, d, p, q, rd, phi, delta, theta, mm)
         end
 
-        # 4. Compute variance using Pnew (predicted covariance), matching R's KalmanFore
-        # R: tmp = h; for(i,j) tmp += Z[i] * Z[j] * Pnew[i,j]; se[l] = tmp
+        # 4. Compute variance: h + Z' * Pnew * Z
         tmpvar = h + dot(Z, Pnew, Z)
         variances[l] = tmpvar
 

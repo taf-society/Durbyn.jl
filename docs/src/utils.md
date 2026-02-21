@@ -248,6 +248,82 @@ custom = simulate_seasonal_data(100; m=12, seasonal_strength=1.5)
 
 ---
 
+## Data Cleaning Utilities
+
+The Utils module provides functions for handling missing values (`missing` and `NaN`) in vectors and matrices.
+
+### `dropmissing`
+
+Remove missing values from a vector, or remove rows with missing values from a vector-matrix pair.
+
+```julia
+dropmissing(x::AbstractVector)                    # drop missing/NaN from vector
+dropmissing(x::AbstractVector, X::AbstractMatrix)  # drop rows with missing/NaN from both
+```
+
+**Example:**
+```julia
+using Durbyn.Utils: dropmissing
+
+x = [1.0, NaN, 3.0, missing, 5.0]
+dropmissing(x)  # [1.0, 3.0, 5.0]
+
+# Paired removal (vector + matrix)
+x = [1.0, NaN, 3.0]
+X = [1.0 2.0; 3.0 4.0; 5.0 6.0]
+x_clean, X_clean = dropmissing(x, X)
+```
+
+### `ismissingish`
+
+Test whether a value is "missing-like" (`missing` or `NaN`). Follows Julia's `is*` predicate convention.
+
+```julia
+ismissingish(v)
+```
+
+**Example:**
+```julia
+using Durbyn.Utils: ismissingish
+
+ismissingish(missing)  # true
+ismissingish(NaN)      # true
+ismissingish(1.0)      # false
+ismissingish(Inf)      # false
+```
+
+### `completecases`
+
+Return a boolean vector indicating which elements are complete (neither `missing` nor `NaN`). Matches the DataFrames.jl naming convention.
+
+```julia
+completecases(x::AbstractArray)
+```
+
+**Example:**
+```julia
+using Durbyn.Utils: completecases
+
+completecases([1.0, missing, 3.0, NaN])  # [true, false, true, false]
+```
+
+### `mean2`
+
+Compute the mean, with an option to skip missing values.
+
+```julia
+mean2(x; skipmissing=false)
+```
+
+**Example:**
+```julia
+using Durbyn.Utils: mean2
+
+mean2([1.0, 2.0, missing, 4.0]; skipmissing=true)  # 2.333...
+```
+
+---
+
 ## References
 
 - Box, G. E. P., Jenkins, G. M., & Reinsel, G. C. (2015). *Time Series Analysis: Forecasting and Control* (5th ed.). Wiley.

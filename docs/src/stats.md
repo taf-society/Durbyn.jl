@@ -15,6 +15,7 @@ The Stats module exports the following functions and types:
 | **Differencing** | `diff`, `ndiffs`, `nsdiffs` |
 | **Autocorrelation** | `acf`, `pacf`, `ACFResult`, `PACFResult` |
 | **Unit Root Tests** | `adf`, `ADF`, `kpss`, `KPSS`, `phillips_perron`, `PhillipsPerron`, `ocsb`, `OCSB` |
+| **Missing Values** | `handle_missing`, `longest_contiguous`, `interpolate_missing`, `check_missing`, `MissingMethod`, `Contiguous`, `Interpolate`, `FailMissing` |
 | **Utilities** | `fourier`, `embed`, `ols`, `OlsFit`, `approx`, `approxfun`, `seasonal_strength` |
 
 ---
@@ -644,6 +645,136 @@ result = approx(x, y; n=10)
 # Create interpolation function
 f = approxfun(x, y)
 f(3)  # Interpolate at x=3
+```
+
+---
+
+## Missing Value Handling
+
+Durbyn provides a type-dispatched system for handling missing values (`missing` and `NaN`) in time series data.
+
+### Type Hierarchy
+
+All missing value strategies are subtypes of the abstract type `MissingMethod`:
+
+| Type | Description |
+|------|-------------|
+| `Contiguous()` | Extract the longest contiguous segment without missing values |
+| `Interpolate()` | Interpolate missing values (seasonal-aware) |
+| `Interpolate(; linear=true)` | Force linear interpolation |
+| `FailMissing()` | Throw an error if any missing values are present |
+
+### `handle_missing`
+
+Dispatch to the appropriate strategy based on the `MissingMethod` type.
+
+```julia
+handle_missing(x, Contiguous())           # longest contiguous segment
+handle_missing(x, Interpolate(); m=12)    # seasonal interpolation
+handle_missing(x, FailMissing())          # error if missing
+```
+
+**Arguments:**
+- `x::AbstractArray`: Input vector (may contain `missing` or `NaN`)
+- `method::MissingMethod`: Strategy to use
+- `m::Union{Int,Nothing}`: Seasonal period (used by `Interpolate`)
+
+**Example:**
+```julia
+using Durbyn.Stats
+
+x = [1.0, 2.0, missing, 4.0, 5.0]
+
+# Type dispatch replaces string dispatch
+result = handle_missing(x, Contiguous())
+result = handle_missing(x, Interpolate())
+result = handle_missing(x, FailMissing())  # throws ArgumentError
+```
+
+### `longest_contiguous`
+
+Extract the longest contiguous segment of non-missing values.
+
+```julia
+longest_contiguous(x)
+```
+
+Both `missing` and `NaN` are treated as missing values.
+
+**Example:**
+```julia
+x = [missing, 1.0, 2.0, 3.0, missing, 4.0, missing]
+longest_contiguous(x)  # Returns [1.0, 2.0, 3.0]
+```
+
+### `interpolate_missing`
+
+Interpolate missing values in a time series. For seasonal data, uses STL decomposition with seasonal-aware interpolation. For non-seasonal data, uses linear interpolation.
+
+```julia
+interpolate_missing(x; m=nothing, lambda=nothing, linear=nothing)
+```
+
+**Arguments:**
+- `x::AbstractVector`: Time series (may contain `missing` or `NaN`)
+- `m::Union{Int,Nothing}`: Seasonal period (`nothing` or `1` = non-seasonal)
+- `lambda::Union{Nothing,Real}`: Box-Cox transformation parameter
+- `linear::Union{Nothing,Bool}`: Force linear interpolation
+
+**Algorithm (seasonal):**
+1. Fit preliminary model with Fourier terms and polynomial trend
+2. Apply robust MSTL decomposition
+3. Linearly interpolate the seasonally adjusted series
+4. Add back the seasonal component
+5. Fall back to linear if results are unstable
+
+**Example:**
+```julia
+# Non-seasonal
+y = [1.0, 2.0, missing, 4.0, 5.0]
+interpolate_missing(y)
+
+# Seasonal (monthly)
+ap = air_passengers()
+ap[50] = NaN
+interpolate_missing(ap; m=12)
+
+# With Box-Cox
+interpolate_missing(y; lambda=0.5)
+```
+
+### `check_missing`
+
+Verify that a vector contains no missing values. Returns the input unchanged if clean; throws `ArgumentError` otherwise.
+
+```julia
+check_missing(x)
+```
+
+**Example:**
+```julia
+check_missing([1.0, 2.0, 3.0])         # Returns [1.0, 2.0, 3.0]
+check_missing([1.0, missing, 3.0])      # Throws ArgumentError
+check_missing([1.0, NaN, 3.0])          # Throws ArgumentError
+```
+
+### Usage in ETS
+
+The `ets()` function accepts a `missing_method` keyword argument:
+
+```julia
+using Durbyn.ExponentialSmoothing
+
+ap = air_passengers()
+
+# Default: extract longest contiguous segment
+fit1 = ets(ap, 12, "ZZZ")
+
+# Interpolate missing values
+fit2 = ets(ap, 12, "ZZZ"; missing_method=Interpolate())
+
+# Error on missing values
+fit3 = ets(ap, 12, "ZZZ"; missing_method=FailMissing())
 ```
 
 ---

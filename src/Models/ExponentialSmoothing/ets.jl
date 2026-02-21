@@ -20,7 +20,7 @@
         restrict::Bool = true,
         allow_multiplicative_trend::Bool = false,
         use_initial_values::Bool = false,
-        na_action_type::String = "na_contiguous",
+        missing_method::MissingMethod = Contiguous(),
         options::NelderMeadOptions = NelderMeadOptions()
     ) -> EtsModel
 
@@ -35,12 +35,12 @@ information criterion given by `ic`.
 # Positional arguments
 - `y::AbstractArray`: Univariate numeric series (vector or `AbstractArray`) to model.
 - `m::Int`: Seasonal period (e.g. `12` for monthly data with yearly seasonality).
-- `model::Union{String,ETS}`: Either a three-character code `"E T S"` where
-  - `E ∈ {"A","M","Z"}` is the error type (Additive, Multiplicative, or auto),
-  - `T ∈ {"N","A","M","Z"}` is the trend type (None, Additive, Multiplicative, or auto),
-  - `S ∈ {"N","A","M","Z"}` is the seasonal type (None, Additive, Multiplicative, or auto);
-  for example `"ANN"` = simple exponential smoothing with additive errors,
-  `"MAM"` = multiplicative Holt-Winters with multiplicative errors.
+- `model::Union{String,ETS}`: Either a three-character code `”E T S”` where
+  - `E ∈ {“A”,”M”,”Z”}` is the error type (Additive, Multiplicative, or auto),
+  - `T ∈ {“N”,”A”,”M”,”Z”}` is the trend type (None, Additive, Multiplicative, or auto),
+  - `S ∈ {“N”,”A”,”M”,”Z”}` is the seasonal type (None, Additive, Multiplicative, or auto);
+  for example `”ANN”` = simple exponential smoothing with additive errors,
+  `”MAM”` = multiplicative Holt-Winters with multiplicative errors.
   Alternatively, pass a previously fitted `ETS` object to refit the same structure
   to new data (see `use_initial_values`).
 
@@ -54,29 +54,29 @@ information criterion given by `ic`.
 - `phi::Union{Float64,Bool,Nothing}=nothing`: Damping parameter (for damped trend). If `nothing`, estimated.
 - `additive_only::Bool=false`: If `true`, restrict search to additive-error/season/trend models.
 - `lambda::Union{Float64,Bool,Nothing,String}=nothing`: Box-Cox transform parameter. Use a numeric
-  value to apply a fixed transform; pass `"auto"` to select via `BoxCox.lambda`-style search;
-  `nothing` = no transform. When set (including `"auto"`), only additive models are considered.
+  value to apply a fixed transform; pass `”auto”` to select via `BoxCox.lambda`-style search;
+  `nothing` = no transform. When set (including `”auto”`), only additive models are considered.
 - `biasadj::Bool=false`: Use bias-adjusted back-transformation to return *mean* (not median) forecasts
   and fits when Box-Cox is used.
 - `lower::AbstractArray=[1e-4, 1e-4, 1e-4, 0.8]`: Lower bounds for `(alpha, beta, gamma, phi)`.
-  Ignored if `bounds=="admissible"`.
+  Ignored if `bounds==”admissible”`.
 - `upper::AbstractArray=[0.9999, 0.9999, 0.9999, 0.98]`: Upper bounds for `(alpha, beta, gamma, phi)`.
-  Ignored if `bounds=="admissible"`.
-- `opt_crit::String="lik"`: Optimization criterion. One of
-  `"lik"` (log-likelihood), `"amse"` (average MSE over first `nmse` horizons),
-  `"mse"`, `"sigma"` (stdev of residuals), or `"mae"`.
-- `nmse::Int=3`: Horizons for `"amse"` (1 ≤ `nmse` ≤ 30).
-- `bounds::String="both"`: Parameter space restriction:
-  `"usual"` enforces `[lower, upper]`, `"admissible"` enforces ETS admissibility,
-  `"both"` uses their intersection.
-- `ic::String="aicc"`: Information criterion used for model selection; one of `"aicc"`, `"aic"`, `"bic"`.
+  Ignored if `bounds==”admissible”`.
+- `opt_crit::String=”lik”`: Optimization criterion. One of
+  `”lik”` (log-likelihood), `”amse”` (average MSE over first `nmse` horizons),
+  `”mse”`, `”sigma”` (stdev of residuals), or `”mae”`.
+- `nmse::Int=3`: Horizons for `”amse”` (1 ≤ `nmse` ≤ 30).
+- `bounds::String=”both”`: Parameter space restriction:
+  `”usual”` enforces `[lower, upper]`, `”admissible”` enforces ETS admissibility,
+  `”both”` uses their intersection.
+- `ic::String=”aicc”`: Information criterion used for model selection; one of `”aicc”`, `”aic”`, `”bic”`.
 - `restrict::Bool=true`: Disallow models with infinite variance.
 - `allow_multiplicative_trend::Bool=false`: If `true`, multiplicative trends may be considered when
   searching. Ignored if a multiplicative trend is explicitly requested in `model`.
 - `use_initial_values::Bool=false`: If `model isa ETS` and `true`, reuse both its structure and
   initial states (no re-estimation of initials). If `false`, initials are re-estimated.
-- `na_action_type::String="na_contiguous"`: Handling of missing values in `y`. One of
-  `"na_contiguous"` (use largest contiguous block), `"na_interp"` (interpolate), `"na_fail"` (error).
+- `missing_method::MissingMethod=Contiguous()`: Strategy for handling missing values in `y`.
+  Use `Contiguous()` (largest contiguous block), `Interpolate()` (interpolate), or `FailMissing()` (error).
 - `options::NelderMeadOptions=NelderMeadOptions()`: Optimizer configuration for parameter estimation.
 
 # Details
@@ -144,7 +144,7 @@ function ets(
     restrict::Bool = true,
     allow_multiplicative_trend::Bool = false,
     use_initial_values::Bool = false,
-    na_action_type::String = "na_contiguous",
+    missing_method::MissingMethod = Contiguous(),
     options::NelderMeadOptions = NelderMeadOptions(maxit=2000)
 )
 
@@ -173,7 +173,7 @@ function ets(
         restrict = restrict,
         allow_multiplicative_trend = allow_multiplicative_trend,
         use_initial_values = use_initial_values,
-        na_action_type = na_action_type,
+        missing_method = missing_method,
         options=options
     )
 

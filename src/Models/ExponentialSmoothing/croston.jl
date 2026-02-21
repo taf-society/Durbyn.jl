@@ -127,7 +127,7 @@ function croston(
 
     positions = findall(>(0), x)
     tt = diff(vcat(0, positions))
-    tt = na_omit(tt)
+    tt = dropmissing(tt)
 
     if length(y) == 1 && length(tt) == 1
         type = CrostonType(2)

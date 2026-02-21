@@ -1951,7 +1951,7 @@ function etsmodel(
     nstate = length(init_state)
     initial_params = par
     par = [par.alpha, par.beta, par.gamma, par.phi]
-    par = na_omit(par)
+    par = dropmissing(par)
     par = vcat(par, init_state)
 
     lower = vcat(lower, fill(-Inf, nstate))
@@ -2074,18 +2074,17 @@ function process_parameters(
     nmse,
     bounds,
     ic,
-    na_action_type,
+    missing_method::MissingMethod,
 )
 
     opt_crit = match_arg(opt_crit, ["lik", "amse", "mse", "sigma", "mae"])
     bounds = match_arg(bounds, ["both", "usual", "admissible"])
     ic = match_arg(ic, ["aicc", "aic", "bic"])
-    na_action_type = match_arg(na_action_type, ["na_contiguous", "na_interp", "na_fail"])
 
     ny = length(y)
-    y = na_action(y, na_action_type)
+    y = handle_missing(y, missing_method; m=m)
 
-    if ny != length(y) && na_action_type == "na_contiguous"
+    if ny != length(y) && missing_method isa Contiguous
         @warn "Missing values encountered. Using longest contiguous portion of time series"
         ny = length(y)
     end
@@ -2121,7 +2120,7 @@ function process_parameters(
     opt_crit,
     bounds,
     ic,
-    na_action_type,
+    missing_method,
     ny
 end
 
@@ -2656,7 +2655,7 @@ function ets_base_model(
     restrict::Bool = true,
     allow_multiplicative_trend::Bool = false,
     use_initial_values::Bool = false,
-    na_action_type::String = "na_contiguous",
+    missing_method::MissingMethod = Contiguous(),
     options::NelderMeadOptions,
 )
 
@@ -2672,7 +2671,7 @@ function ets_base_model(
     opt_crit,
     bounds,
     ic,
-    na_action_type,
+    missing_method,
     ny = process_parameters(
         y,
         m,
@@ -2690,7 +2689,7 @@ function ets_base_model(
         nmse,
         bounds,
         ic,
-        na_action_type,
+        missing_method,
     )
 
     if model isa ETS

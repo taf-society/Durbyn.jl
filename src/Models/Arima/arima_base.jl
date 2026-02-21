@@ -1696,12 +1696,12 @@ function regress_and_update!(
     if order_d > 0
         dx = diff(dx; lag = 1, differences = order_d)
         dxreg = diff(dxreg; lag = 1, differences = order_d)
-        dx, dxreg = na_omit_pair(dx, dxreg)
+        dx, dxreg = dropmissing(dx, dxreg)
     end
     if m > 1 && seasonal_d > 0
         dx = diff(dx; lag = m, differences = seasonal_d)
         dxreg = diff(dxreg; lag = m, differences = seasonal_d)
-        dx, dxreg = na_omit_pair(dx, dxreg)
+        dx, dxreg = dropmissing(dx, dxreg)
     end
 
     if length(dx) > size(dxreg, 2)
@@ -1720,12 +1720,12 @@ function regress_and_update!(
     end
 
     if fit_rank == 0
-        x_clean, xreg_clean = na_omit_pair(x, xreg)
+        x_clean, xreg_clean = dropmissing(x, xreg)
         fit = Stats.ols(x_clean, xreg_clean)
     end
 
-    isna = isnan.(x) .| [any(isnan, row) for row in eachrow(xreg)]
-    n_used = sum(.!isna) - length(Delta)
+    has_na = isnan.(x) .| [any(isnan, row) for row in eachrow(xreg)]
+    n_used = sum(.!has_na) - length(Delta)
     model_coefs = Stats.coefficients(fit)
     init0 = append!(init0, model_coefs)
     ses = fit.se
@@ -1981,7 +1981,7 @@ function arima(
     Delta = -Delta[2:end]
 
     nd = order.d + seasonal.d
-    n_used = length(na_omit(x)) - length(Delta)
+    n_used = length(dropmissing(x)) - length(Delta)
 
     xreg_original = xreg
 

@@ -6,7 +6,7 @@ import Statistics: mean
 export NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind, setrow!
 export Formula, parse_formula, compile, model_matrix, model_frame, as_vector
 export air_passengers, ausbeer, lynx, sunspots, pedestrian_counts, simulate_seasonal_data
-export complete_cases
+export completecases
 include("named_matrix.jl")
 include("model_frame.jl")
 include("math.jl")
@@ -200,7 +200,7 @@ is_constant_all(data::AbstractVector) = is_constant(data)
 
 
 """
-    na_omit_pair(x::AbstractVector, X::AbstractMatrix)
+    dropmissing(x::AbstractVector, X::AbstractMatrix)
 
 Remove all rows from the input vector `x` and matrix `X` where either `x` or any column of the corresponding row in `X` contains missing data or `NaN`.
 
@@ -225,13 +225,13 @@ X = [1.0 2.0;
      7.0 8.0;
      missing 10.0]
 
-x_clean, X_clean = na_omit_pair(x, X)
+x_clean, X_clean = dropmissing(x, X)
 
 println(x_clean)  # Output: [1.0, 3.0]
 println(X_clean)  # Output: [1.0 2.0; 5.0 6.0]
 ```
 """
-function na_omit_pair(x::AbstractVector, X::AbstractMatrix)
+function dropmissing(x::AbstractVector, X::AbstractMatrix)
     @assert length(x) == size(X, 1) "x and X must have the same number of rows"
     function row_ok(i)
         xi = x[i]
@@ -244,11 +244,11 @@ function na_omit_pair(x::AbstractVector, X::AbstractMatrix)
     return x[idxs], X[idxs, :]
 end
 
-function na_omit(x::AbstractVector)
+function dropmissing(x::AbstractVector)
     [v for v in x if !ismissing(v) && !(v isa AbstractFloat && isnan(v))]
 end
 
-isna(v) = ismissing(v) || (v isa AbstractFloat && isnan(v))
+ismissingish(v) = ismissing(v) || (v isa AbstractFloat && isnan(v))
 
 
 function duplicated(arr::Vector{T})::Vector{Bool} where {T}
@@ -268,13 +268,13 @@ function match_arg(arg, choices)
     return !isnothing(findfirst(x -> x == arg, choices)) ? arg : error("Invalid argument")
 end
 
-function complete_cases(x::AbstractArray)
-    return .!ismissing.(x)
+function completecases(x::AbstractArray)
+    return [!ismissingish(v) for v in x]
 end
 
-function mean2(x::AbstractVector{<:Union{Missing,Number}}; omit_na::Bool=false)
-    if omit_na
-        x = na_omit(x)
+function mean2(x::AbstractVector{<:Union{Missing,Number}}; skipmissing::Bool=false)
+    if skipmissing
+        x = dropmissing(x)
     end
     return mean(x)
 end

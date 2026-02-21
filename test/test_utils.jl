@@ -2,11 +2,12 @@ using Test
 using Durbyn
 using Statistics
 
-import Durbyn.Utils: is_constant, is_constant_all, na_omit, na_omit_pair, isna
-import Durbyn.Utils: duplicated, complete_cases, as_integer, mean2
+import Durbyn.Utils: is_constant, is_constant_all, dropmissing, ismissingish
+import Durbyn.Utils: duplicated, completecases, as_integer, mean2
 import Durbyn.Utils: as_vector, ModelFitError, evaluation_metrics
 import Durbyn.Utils: NamedMatrix, air_passengers, ausbeer, lynx, sunspots
-import Durbyn.Stats: na_contiguous, na_action, na_fail, na_interp
+import Durbyn.Stats: longest_contiguous, handle_missing, check_missing, interpolate_missing
+import Durbyn.Stats: MissingMethod, Contiguous, Interpolate, FailMissing
 
 const EPS_SCALAR = 1e-10
 
@@ -99,40 +100,40 @@ const EPS_SCALAR = 1e-10
         end
     end
 
-    @testset "na_omit (Vector)" begin
+    @testset "dropmissing (Vector)" begin
 
         @testset "No missing values" begin
             x = [1.0, 2.0, 3.0]
-            result = na_omit(x)
+            result = dropmissing(x)
             @test result == x
         end
 
         @testset "With missing values" begin
             x = [1.0, missing, 3.0, missing, 5.0]
-            result = na_omit(x)
+            result = dropmissing(x)
             @test result == [1.0, 3.0, 5.0]
         end
 
         @testset "With NaN values" begin
             x = [1.0, NaN, 3.0, NaN, 5.0]
-            result = na_omit(x)
+            result = dropmissing(x)
             @test result == [1.0, 3.0, 5.0]
         end
 
         @testset "With both missing and NaN" begin
             x = [1.0, missing, NaN, 4.0]
-            result = na_omit(x)
+            result = dropmissing(x)
             @test result == [1.0, 4.0]
         end
 
         @testset "All missing/NaN" begin
             x = [missing, NaN, missing]
-            result = na_omit(x)
+            result = dropmissing(x)
             @test isempty(result)
         end
     end
 
-    @testset "na_omit_pair (Vector, Matrix)" begin
+    @testset "dropmissing (Vector, Matrix)" begin
 
         @testset "Basic removal" begin
             x = [1.0, NaN, 3.0, 4.0, 5.0]
@@ -142,7 +143,7 @@ const EPS_SCALAR = 1e-10
                  7.0 8.0;
                  9.0 10.0]
 
-            x_clean, X_clean = na_omit_pair(x, X)
+            x_clean, X_clean = dropmissing(x, X)
 
             @test length(x_clean) == 4
             @test size(X_clean) == (4, 2)
@@ -155,7 +156,7 @@ const EPS_SCALAR = 1e-10
                  3.0 NaN;
                  5.0 6.0]
 
-            x_clean, X_clean = na_omit_pair(x, X)
+            x_clean, X_clean = dropmissing(x, X)
 
             @test length(x_clean) == 2
             @test size(X_clean) == (2, 2)
@@ -167,19 +168,19 @@ const EPS_SCALAR = 1e-10
                  3.0 4.0;
                  5.0 6.0]
 
-            x_clean, X_clean = na_omit_pair(x, X)
+            x_clean, X_clean = dropmissing(x, X)
 
             @test x_clean == x
             @test X_clean == X
         end
     end
 
-    @testset "isna" begin
-        @test isna(missing) == true
-        @test isna(NaN) == true
-        @test isna(1.0) == false
-        @test isna(0.0) == false
-        @test isna(Inf) == false
+    @testset "ismissingish" begin
+        @test ismissingish(missing) == true
+        @test ismissingish(NaN) == true
+        @test ismissingish(1.0) == false
+        @test ismissingish(0.0) == false
+        @test ismissingish(Inf) == false
     end
 
     @testset "duplicated" begin
@@ -209,16 +210,22 @@ const EPS_SCALAR = 1e-10
         end
     end
 
-    @testset "complete_cases" begin
+    @testset "completecases" begin
         @testset "No missing" begin
             x = [1.0, 2.0, 3.0]
-            result = complete_cases(x)
+            result = completecases(x)
             @test all(result)
         end
 
         @testset "With missing" begin
             x = [1.0, missing, 3.0]
-            result = complete_cases(x)
+            result = completecases(x)
+            @test result == [true, false, true]
+        end
+
+        @testset "With NaN" begin
+            x = [1.0, NaN, 3.0]
+            result = completecases(x)
             @test result == [true, false, true]
         end
     end
@@ -246,57 +253,57 @@ const EPS_SCALAR = 1e-10
         end
     end
 
-    @testset "mean2 (with na handling)" begin
+    @testset "mean2 (with missing handling)" begin
         @testset "No missing" begin
             x = [1.0, 2.0, 3.0, 4.0, 5.0]
             result = mean2(x)
             @test abs(result - 3.0) <= EPS_SCALAR
         end
 
-        @testset "With missing, omit_na=false (default)" begin
+        @testset "With missing, skipmissing=true" begin
             x = [1.0, 2.0, missing, 4.0, 5.0]
-            result = mean2(x; omit_na=true)
+            result = mean2(x; skipmissing=true)
             @test abs(result - 3.0) <= EPS_SCALAR
         end
 
-        @testset "With missing, omit_na=true" begin
+        @testset "With missing, skipmissing=true (repeated)" begin
             x = [1.0, 2.0, missing, 4.0, 5.0]
-            result = mean2(x; omit_na=true)
+            result = mean2(x; skipmissing=true)
             @test abs(result - 3.0) <= EPS_SCALAR
         end
     end
 
-    @testset "na_contiguous" begin
+    @testset "longest_contiguous" begin
         @testset "No missing" begin
             x = [1.0, 2.0, 3.0, 4.0, 5.0]
-            result = na_contiguous(x)
+            result = longest_contiguous(x)
             @test result == x
         end
 
         @testset "Missing at start" begin
             x = [missing, missing, 1.0, 2.0, 3.0]
-            result = na_contiguous(x)
+            result = longest_contiguous(x)
             @test length(result) == 3
             @test result == [1.0, 2.0, 3.0]
         end
 
         @testset "Missing at end" begin
             x = [1.0, 2.0, 3.0, missing, missing]
-            result = na_contiguous(x)
+            result = longest_contiguous(x)
             @test length(result) == 3
         end
 
         @testset "All missing should error" begin
             x = [missing, missing, missing]
-            @test_throws ErrorException na_contiguous(x)
+            @test_throws ErrorException longest_contiguous(x)
         end
     end
 
-    @testset "na_action dispatcher" begin
+    @testset "handle_missing dispatcher" begin
         x = [missing, 1.0, 2.0, 3.0, missing]
 
-        @testset "na_contiguous action" begin
-            result = na_action(x, "na_contiguous")
+        @testset "Contiguous" begin
+            result = handle_missing(x, Contiguous())
             @test !any(ismissing.(result))
         end
     end
@@ -396,17 +403,17 @@ const EPS_SCALAR = 1e-10
         @test result["mae"] >= 0
     end
 
-    @testset "na_fail action" begin
+    @testset "check_missing via handle_missing" begin
         clean_data = [1.0, 2.0, 3.0]
-        @test na_action(clean_data, "na_fail") == clean_data
+        @test handle_missing(clean_data, FailMissing()) == clean_data
 
         missing_data = [1.0, missing, 3.0]
-        @test_throws ArgumentError na_action(missing_data, "na_fail")
+        @test_throws ArgumentError handle_missing(missing_data, FailMissing())
     end
 
-    @testset "na_interp action" begin
+    @testset "interpolate_missing via handle_missing" begin
         x = Union{Float64,Missing}[1.0, missing, 3.0]
-        result = na_action(x, "na_interp")
+        result = handle_missing(x, Interpolate())
         @test !any(ismissing.(result))
         @test result[2] ≈ 2.0  # Interpolated value
     end

@@ -143,7 +143,7 @@ function auto_arima(
                 x,
                 m,
                 order = PDQ(0, 0, 0),
-                fixed = [mean2(x, omit_na = true)],
+                fixed = [mean2(x, skipmissing = true)],
                 kwargs...,
             )
         else
@@ -264,7 +264,7 @@ function auto_arima(
         # Ensure dx not all missing after additional differencing
         if d > 0
             diffdx = diff(dx; differences = d, lag = 1)
-            if all(isna, diffdx) # TODO
+            if all(ismissingish, diffdx) # TODO
                 d -= 1
             end
         end

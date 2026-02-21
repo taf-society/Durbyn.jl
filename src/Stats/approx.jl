@@ -9,8 +9,8 @@ function regularize_values(x, y; ties::Union{Function,Symbol}=mean, warn_collaps
     length(x) == length(y) || throw(ArgumentError("x and y must have the same length"))
 
     keptNA = false
-    na_x = isna.(x)
-    na_y = isna.(y)
+    na_x = ismissingish.(x)
+    na_y = ismissingish.(y)
     any_na = any(na_x .| na_y)
 
     notNA = nothing
@@ -61,7 +61,7 @@ function regularize_values(x, y; ties::Union{Function,Symbol}=mean, warn_collaps
             x = newx
             y = newy
             if keptNA
-                notNA = .!isna.(x)
+                notNA = .!ismissingish.(x)
             end
         end
     end

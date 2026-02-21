@@ -1365,7 +1365,7 @@ function tbats(
         copy(m)
     end
 
-    y_contig = na_contiguous(y)
+    y_contig = longest_contiguous(y)
     if length(y_contig) != orig_len
         @warn "Missing values encountered. Using longest contiguous portion of time series"
     end

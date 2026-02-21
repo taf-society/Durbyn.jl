@@ -166,7 +166,7 @@ end
 function run_test(x::AbstractVector{<:Real}, m::Int, ::Val{:ocsb}, α::Real; kwargs...)
     try
         
-        oc = ocsb(na_omit(x), m, lag_method=:AIC, maxlag=3, kwargs...)
+        oc = ocsb(dropmissing(x), m, lag_method=:AIC, maxlag=3, kwargs...)
         return oc.teststat > oc.cval
     catch e
         @warn "OCSB test failed. From $(nameof(typeof(e))): $(sprint(showerror, e)). " *

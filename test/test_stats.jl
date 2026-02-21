@@ -8,7 +8,7 @@ import Durbyn.Stats: decompose, DecomposedTimeSeries
 import Durbyn.Stats: adf, ADF, kpss, KPSS, ocsb, OCSB
 import Durbyn.Stats: embed, diff, fourier, ndiffs, nsdiffs
 import Durbyn.Stats: ols, OlsFit, approx, approxfun, seasonal_strength, modelrank
-import Durbyn.Stats: na_interp, na_contiguous, na_fail
+import Durbyn.Stats: interpolate_missing, longest_contiguous, check_missing
 import Durbyn.Stats: mstl, MSTLResult
 
 const EPS_SCALAR = 1e-6
@@ -486,11 +486,11 @@ const REF_KPSS_STAT_AP = 2.8767
         end
     end
 
-    @testset "na_interp (Missing Value Interpolation)" begin
+    @testset "interpolate_missing (Missing Value Interpolation)" begin
 
         @testset "Linear interpolation - interior gaps" begin
             x = Union{Float64,Missing}[1.0, 2.0, missing, 4.0, 5.0]
-            result = na_interp(x; linear=true)
+            result = interpolate_missing(x; linear=true)
 
             @test length(result) == length(x)
             @test !any(ismissing.(result))
@@ -503,7 +503,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "Linear interpolation - multiple gaps" begin
             x = Union{Float64,Missing}[1.0, missing, missing, 4.0, missing, 6.0]
-            result = na_interp(x; linear=true)
+            result = interpolate_missing(x; linear=true)
 
             @test !any(ismissing.(result))
             @test result[2] ≈ 2.0
@@ -513,7 +513,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "Linear interpolation - edge missing values" begin
             x = Union{Float64,Missing}[missing, missing, 3.0, 4.0, 5.0, missing]
-            result = na_interp(x; linear=true)
+            result = interpolate_missing(x; linear=true)
 
             @test !any(ismissing.(result))
             @test result[1] ≈ 3.0
@@ -523,7 +523,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "NaN values treated as missing" begin
             x = [1.0, NaN, 3.0, 4.0, NaN]
-            result = na_interp(x; linear=true)
+            result = interpolate_missing(x; linear=true)
 
             @test !any(isnan.(result))
             @test result[2] ≈ 2.0
@@ -531,7 +531,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "No missing values - returns input unchanged" begin
             x = [1.0, 2.0, 3.0, 4.0, 5.0]
-            result = na_interp(x; linear=true)
+            result = interpolate_missing(x; linear=true)
 
             @test result == x
         end
@@ -541,7 +541,7 @@ const REF_KPSS_STAT_AP = 2.8767
             ap_miss[50] = NaN
             ap_miss[100] = NaN
 
-            result = na_interp(ap_miss; m=12)
+            result = interpolate_missing(ap_miss; m=12)
 
             @test length(result) == length(ap_miss)
             @test !any(isnan.(result))
@@ -551,7 +551,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "Box-Cox transformation support" begin
             x = Union{Float64,Missing}[100.0, missing, 300.0, 400.0, 500.0]
-            result = na_interp(x; linear=true, lambda=0.5)
+            result = interpolate_missing(x; linear=true, lambda=0.5)
 
             @test !any(ismissing.(result))
             @test all(result .> 0)
@@ -560,7 +560,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "Log transformation (lambda=0)" begin
             x = Union{Float64,Missing}[10.0, missing, 1000.0]
-            result = na_interp(x; linear=true, lambda=0.0)
+            result = interpolate_missing(x; linear=true, lambda=0.0)
 
             @test !any(ismissing.(result))
             @test all(result .> 0)
@@ -569,7 +569,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "Automatic linear fallback for short series" begin
             x = Union{Float64,Missing}[1.0, missing, 3.0, 4.0, 5.0]
-            result = na_interp(x; m=12)
+            result = interpolate_missing(x; m=12)
 
             @test !any(ismissing.(result))
             @test result[2] ≈ 2.0
@@ -577,7 +577,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "Automatic linear when m=1" begin
             x = Union{Float64,Missing}[1.0, missing, 3.0, 4.0, 5.0]
-            result = na_interp(x; m=1)
+            result = interpolate_missing(x; m=1)
 
             @test !any(ismissing.(result))
             @test result[2] ≈ 2.0
@@ -585,17 +585,17 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "Error on all missing" begin
             x = Union{Float64,Missing}[missing, missing, missing]
-            @test_throws ErrorException na_interp(x)
+            @test_throws ErrorException interpolate_missing(x)
         end
 
         @testset "Single non-missing value - requires at least two" begin
             x = Union{Float64,Missing}[missing, 5.0, missing]
-            @test_throws ErrorException na_interp(x; linear=true)
+            @test_throws ErrorException interpolate_missing(x; linear=true)
         end
 
         @testset "Integer input converted to Float" begin
             x = Union{Int,Missing}[1, missing, 3, 4, 5]
-            result = na_interp(x; linear=true)
+            result = interpolate_missing(x; linear=true)
 
             @test eltype(result) <: AbstractFloat
             @test result[2] ≈ 2.0
@@ -784,22 +784,22 @@ const REF_KPSS_STAT_AP = 2.8767
             @test -1.0 < res.lambda < 2.0
         end
 
-        @testset "na_interp seasonal matches R na.interp" begin
+        @testset "interpolate_missing seasonal matches R na.interp" begin
             ap_nan = copy(AirPassengers)
             ap_nan[50] = NaN
 
-            result_seas = na_interp(ap_nan; m=12)
+            result_seas = interpolate_missing(ap_nan; m=12)
             @test !isnan(result_seas[50])
             @test 165.0 < result_seas[50] < 225.0
 
-            result_lin = na_interp(ap_nan; m=1)
+            result_lin = interpolate_missing(ap_nan; m=1)
             @test !isnan(result_lin[50])
             @test isapprox(result_lin[50], 215.0, atol=2.0)
 
             @test abs(result_seas[50] - result_lin[50]) > 1.0
         end
 
-        @testset "mstl NaN uses seasonal interpolation via na_interp(m=...)" begin
+        @testset "mstl NaN uses seasonal interpolation via interpolate_missing(m=...)" begin
             ap_nan = copy(AirPassengers)
             ap_nan[50] = NaN
             ap_nan[100] = NaN
@@ -883,23 +883,23 @@ const REF_KPSS_STAT_AP = 2.8767
             @test d[2:end] ≈ [2.0, 3.0, 4.0]
         end
 
-        @testset "na_contiguous treats NaN as missing" begin
-            result = na_contiguous([NaN, 1.0, 2.0, 3.0, NaN, 4.0, NaN])
+        @testset "longest_contiguous treats NaN as missing" begin
+            result = longest_contiguous([NaN, 1.0, 2.0, 3.0, NaN, 4.0, NaN])
             @test result == [1.0, 2.0, 3.0]
 
-            result2 = na_contiguous(Union{Float64,Missing}[missing, 1.0, 2.0, 3.0, missing])
+            result2 = longest_contiguous(Union{Float64,Missing}[missing, 1.0, 2.0, 3.0, missing])
             @test collect(skipmissing(result2)) == [1.0, 2.0, 3.0]
 
-            result3 = na_contiguous(Union{Float64,Missing}[NaN, missing, 5.0, 6.0, 7.0, NaN])
+            result3 = longest_contiguous(Union{Float64,Missing}[NaN, missing, 5.0, 6.0, 7.0, NaN])
             @test result3 == [5.0, 6.0, 7.0]
         end
 
-        @testset "na_fail treats NaN as missing" begin
-            @test_throws ArgumentError na_fail([1.0, NaN, 2.0])
+        @testset "check_missing treats NaN as missing" begin
+            @test_throws ArgumentError check_missing([1.0, NaN, 2.0])
 
-            @test_throws ArgumentError na_fail(Union{Float64,Missing}[1.0, missing, 2.0])
+            @test_throws ArgumentError check_missing(Union{Float64,Missing}[1.0, missing, 2.0])
 
-            @test na_fail([1.0, 2.0, 3.0]) == [1.0, 2.0, 3.0]
+            @test check_missing([1.0, 2.0, 3.0]) == [1.0, 2.0, 3.0]
         end
 
         @testset "approx handles missing with na_rm=false" begin

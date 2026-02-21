@@ -1,5 +1,47 @@
 """
-    na_contiguous(x::AbstractArray)
+    MissingMethod
+
+Abstract type for missing value handling strategies.
+
+Subtypes:
+- [`Contiguous`](@ref): Extract longest contiguous non-missing segment
+- [`Interpolate`](@ref): Interpolate missing values
+- [`FailMissing`](@ref): Error if any missing values present
+"""
+abstract type MissingMethod end
+
+"""
+    Contiguous <: MissingMethod
+
+Extract the longest contiguous segment of non-missing values.
+"""
+struct Contiguous <: MissingMethod end
+
+"""
+    Interpolate <: MissingMethod
+
+Interpolate missing values. For seasonal series, uses STL decomposition;
+for non-seasonal series, uses linear interpolation.
+
+# Fields
+- `linear::Union{Nothing,Bool}`: Force linear interpolation if `true`.
+  If `nothing` (default), linear interpolation is used when `m <= 1`
+  or when there are fewer than `2*m` non-missing values.
+"""
+struct Interpolate <: MissingMethod
+    linear::Union{Nothing,Bool}
+end
+Interpolate(; linear=nothing) = Interpolate(linear)
+
+"""
+    FailMissing <: MissingMethod
+
+Error if any missing values are present.
+"""
+struct FailMissing <: MissingMethod end
+
+"""
+    longest_contiguous(x::AbstractArray)
 
 Extract the longest contiguous segment of non-missing values from `x`.
 
@@ -12,10 +54,10 @@ The longest contiguous segment of `x` without missing values.
 # Example
 ```julia
 x = [missing, 1.0, 2.0, 3.0, missing, 4.0, missing]
-na_contiguous(x)  # Returns [1.0, 2.0, 3.0]
+longest_contiguous(x)  # Returns [1.0, 2.0, 3.0]
 ```
 """
-function na_contiguous(x::AbstractArray)
+function longest_contiguous(x::AbstractArray)
     good = [!ismissing(v) && !(v isa AbstractFloat && isnan(v)) for v in x]
     if sum(good) == 0
         error("all times contain an NA")
@@ -50,7 +92,7 @@ function na_contiguous(x::AbstractArray)
 end
 
 """
-    na_fail(x::AbstractArray)
+    check_missing(x::AbstractArray)
 
 Return `x` unchanged if it contains no missing values; otherwise throw an error.
 
@@ -65,11 +107,11 @@ The input array `x` if no missing values are present.
 
 # Example
 ```julia
-na_fail([1.0, 2.0, 3.0])  # Returns [1.0, 2.0, 3.0]
-na_fail([1.0, missing, 3.0])  # Throws ArgumentError
+check_missing([1.0, 2.0, 3.0])  # Returns [1.0, 2.0, 3.0]
+check_missing([1.0, missing, 3.0])  # Throws ArgumentError
 ```
 """
-function na_fail(x::AbstractArray)
+function check_missing(x::AbstractArray)
     has_na = any(v -> ismissing(v) || (v isa AbstractFloat && isnan(v)), x)
     if !has_na
         return x
@@ -79,46 +121,46 @@ function na_fail(x::AbstractArray)
 end
 
 """
-    na_action(x::AbstractArray, type::String="na_contiguous"; m::Union{Int,Nothing}=nothing)
+    handle_missing(x::AbstractArray, method::MissingMethod; m::Union{Int,Nothing}=nothing)
 
-Handle missing data in a vector `x` based on the specified `type` of action.
+Handle missing data in a vector `x` using the specified `method`.
 
 # Arguments
 - `x::AbstractArray`: The input vector containing data which may have missing values.
-- `type::String`: The type of action to take on the missing data:
-    - `"na_contiguous"` (default): Extract the longest contiguous segment without missing values.
-    - `"na_interp"`: Interpolate missing values (requires `m` for seasonal data).
-    - `"na_fail"`: Throw an error if any missing values are present.
-- `m::Union{Int,Nothing}`: Seasonal period for `na_interp`. Required for seasonal interpolation.
+- `method::MissingMethod`: The strategy for handling missing data:
+    - `Contiguous()`: Extract the longest contiguous segment without missing values.
+    - `Interpolate()`: Interpolate missing values (uses `m` for seasonal data).
+    - `FailMissing()`: Throw an error if any missing values are present.
+- `m::Union{Int,Nothing}`: Seasonal period for `Interpolate`. Required for seasonal interpolation.
 
 # Returns
-The vector `x` after applying the specified missing data handling action.
+The vector `x` after applying the specified missing data handling strategy.
 
 # Example
 ```julia
 x = [1.0, 2.0, missing, 4.0, 5.0]
-na_action(x, "na_contiguous")  # Returns longest contiguous segment
-na_action(x, "na_interp")      # Returns [1.0, 2.0, 3.0, 4.0, 5.0] (interpolated)
-na_action(x, "na_fail")        # Throws ArgumentError
+handle_missing(x, Contiguous())      # Returns longest contiguous segment
+handle_missing(x, Interpolate())     # Returns [1.0, 2.0, 3.0, 4.0, 5.0] (interpolated)
+handle_missing(x, FailMissing())     # Throws ArgumentError
 ```
 
 # See also
-[`na_contiguous`](@ref), [`na_interp`](@ref), [`na_fail`](@ref)
+[`longest_contiguous`](@ref), [`interpolate_missing`](@ref), [`check_missing`](@ref)
 """
-function na_action(x::AbstractArray, type::String="na_contiguous"; m::Union{Int,Nothing}=nothing)
-    if type == "na_contiguous"
-        return na_contiguous(x)
-    elseif type == "na_interp"
-        return na_interp(x; m=m)
-    elseif type == "na_fail"
-        return na_fail(x)
-    else
-        error("Invalid type: $type. Must be one of \"na_contiguous\", \"na_interp\", or \"na_fail\".")
-    end
+function handle_missing(x::AbstractArray, ::Contiguous; m::Union{Int,Nothing}=nothing)
+    return longest_contiguous(x)
+end
+
+function handle_missing(x::AbstractArray, method::Interpolate; m::Union{Int,Nothing}=nothing)
+    return interpolate_missing(x; m=m, linear=method.linear)
+end
+
+function handle_missing(x::AbstractArray, ::FailMissing; m::Union{Int,Nothing}=nothing)
+    return check_missing(x)
 end
 
 """
-    na_interp(x::AbstractVector{T};
+    interpolate_missing(x::AbstractVector{T};
               m::Union{Int,Nothing}=nothing,
               lambda::Union{Nothing,Real}=nothing,
               linear::Union{Nothing,Bool}=nothing) where T
@@ -154,14 +196,14 @@ A vector with missing values replaced by interpolated values.
 ```julia
 # Non-seasonal interpolation
 y = [1.0, 2.0, missing, 4.0, 5.0]
-y_filled = na_interp(y)
+y_filled = interpolate_missing(y)
 
 # Seasonal interpolation
 y_seasonal = [missing, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 1.0, 2.0, 3.0, 4.0]
-y_filled = na_interp(y_seasonal; m=4)
+y_filled = interpolate_missing(y_seasonal; m=4)
 
 # With Box-Cox transformation
-y_filled = na_interp(y; lambda=0.5)
+y_filled = interpolate_missing(y; lambda=0.5)
 ```
 
 # References
@@ -170,7 +212,7 @@ y_filled = na_interp(y; lambda=0.5)
 # See also
 [`mstl`](@ref), [`approx`](@ref)
 """
-function na_interp(x::AbstractVector{T};
+function interpolate_missing(x::AbstractVector{T};
                    m::Union{Int,Nothing}=nothing,
                    lambda::Union{Nothing,Real}=nothing,
                    linear::Union{Nothing,Bool}=nothing) where T
@@ -295,7 +337,7 @@ function na_interp(x::AbstractVector{T};
     if !use_linear
         xu_max, xu_min = maximum(xu), minimum(xu)
         if xu_max > rangex[2] + 0.5 * drangex || xu_min < rangex[1] - 0.5 * drangex
-            return na_interp(origx; m=m, lambda=lambda, linear=true)
+            return interpolate_missing(origx; m=m, lambda=lambda, linear=true)
         end
     end
 
@@ -303,7 +345,7 @@ function na_interp(x::AbstractVector{T};
 end
 
 """
-Helper function to create Fourier design matrix for na_interp.
+Helper function to create Fourier design matrix for interpolate_missing.
 """
 function _fourier_matrix(n::Int, period::Int, K::Int)
     if K <= 0
@@ -324,7 +366,7 @@ function _fourier_matrix(n::Int, period::Int, K::Int)
 end
 
 """
-Helper function to create orthogonal polynomial design matrix for na_interp.
+Helper function to create orthogonal polynomial design matrix for interpolate_missing.
 Uses three-term recurrence to match R's poly() function exactly.
 """
 function _poly_matrix(tt::AbstractVector, degree::Int)

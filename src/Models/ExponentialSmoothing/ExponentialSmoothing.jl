@@ -8,8 +8,9 @@ using Polynomials
 using Distributions
 
 # Internal modules
-import ..Utils: is_constant, match_arg, na_omit, check_component
-import ..Stats: box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, fourier, na_action
+import ..Utils: is_constant, match_arg, dropmissing, check_component
+import ..Stats: box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, fourier
+import ..Stats: handle_missing, MissingMethod, Contiguous, Interpolate, FailMissing
 import ..Generics: Forecast, forecast, plot, fitted
 import ..Optimize: nelder_mead, NelderMeadOptions, scaler, descaler
 

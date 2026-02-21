@@ -122,7 +122,7 @@ function ndiffs(x::AbstractVector;
     while d < maxd
         d += 1
         xclean = diff(xclean)
-        xclean = na_omit(xclean)
+        xclean = dropmissing(xclean)
 
         if isempty(xclean) || length(xclean) == 1 || is_constant(xclean)
             return d

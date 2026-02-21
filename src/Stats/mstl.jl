@@ -124,7 +124,7 @@ function mstl(
 
     if any(isnan, xu)
         interp_m = isa(m, Integer) ? Int(m) : Int(floor(maximum(m)))
-        xu = na_interp(xu; m=interp_m)
+        xu = interpolate_missing(xu; m=interp_m)
     end
 
     λ = lambda

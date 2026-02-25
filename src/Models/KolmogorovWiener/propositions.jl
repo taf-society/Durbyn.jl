@@ -100,27 +100,21 @@ function proposition3_rw_symmetric(ideal_B::AbstractVector, n1::Int, n2::Int, be
         return proposition2_random_walk(ideal_B, n1, n2)
     end
 
-    # General case: solve [D; ones'] * B_hat = [D * B_extended + (beta/2)*tau; beta]
-    D = build_D_matrix(N)
+    # General case (Eq. 21): solve [D; ι'] * B̂ = [M*B + (β/2)*τ; β]
+    # D = cumulation matrix (N-1)×N, M = block matrix (N-1)×N, τ = ones(N-1)
+    D = build_D_cumul_matrix(N)
+    M = build_M_matrix(n1, n2)
+    tau = ones(N - 1)
 
-    # Build the "extended" ideal filter in observation space,
-    # then apply D to get the first-difference RHS
-    # B_extended[i] for i=1:N: what the ideal filter would assign to obs i
-    B_extended = zeros(N)
+    # Map ideal filter coefficients into N-dimensional observation space
+    B_ext = zeros(N)
     j_lo = max(-Q, -n1)
     j_hi = min(Q, n2)
     for j in j_lo:j_hi
-        B_extended[n1 + 1 + j] = ideal_B[center + j]
+        B_ext[n1 + 1 + j] = ideal_B[center + j]
     end
 
-    rhs_diff = D * B_extended
-
-    # tau vector for endpoint correction: [-1, 0, ..., 0, 1]
-    tau = zeros(N - 1)
-    tau[1] = -1.0
-    tau[N - 1] = 1.0
-
-    rhs_upper = rhs_diff .+ (beta / 2) .* tau
+    rhs_upper = M * B_ext .+ (beta / 2) .* tau
 
     A = vcat(D, ones(1, N))
     rhs = vcat(rhs_upper, [beta])
@@ -136,7 +130,11 @@ Proposition 4 (Schleicher 2002): Optimal filter for an **ARIMA** process (d>=1)
 with non-trivial ARMA stationary component.
 
 Solves the augmented system (Eq. 25):
-    [D * Gamma_hat; iota'] * B_hat = [D * Gamma * B; beta]
+    [Γ̂D; ι'] * B̂ = [ΓC; β]
+
+where Γ̂ is (N-1)×(N-1) autocovariance Toeplitz, D is (N-1)×N cumulation matrix,
+Γ is (N-1)×(N-1+2Q) integrated cross-covariance, and C is the cumulated ideal
+coefficient vector.
 
 Returns the filter weight vector of length N.
 """
@@ -144,18 +142,19 @@ function proposition4_arima(gamma::AbstractVector, ideal_B::AbstractVector, n1::
     N = n1 + 1 + n2
     Q = div(length(ideal_B) - 1, 2)
 
-    Gamma_hat = build_toeplitz_gamma_hat(gamma, N)
-    D = build_D_matrix(N)
-    Gamma_cross = build_gamma_cross(gamma, N, Q, n1)
+    Gamma_hat = build_toeplitz_gamma_hat(gamma, N - 1)          # (N-1)×(N-1)
+    D = build_D_cumul_matrix(N)                                  # (N-1)×N
+    Gamma_cross = build_gamma_cross_integrated(gamma, N, Q)      # (N-1)×(N-1+2Q)
+    C = build_C_vector(ideal_B, N, Q, n1)                        # (N-1+2Q)-vector
 
-    # D * Gamma_hat: (N-1) x N
-    Gamma_hat_D = D * Gamma_hat
+    # Γ̂D: (N-1)×N
+    GammaD = Gamma_hat * D
 
-    # RHS upper: D * Gamma_cross * ideal_B
-    rhs_upper = D * (Gamma_cross * ideal_B)
+    # ΓC: (N-1)-vector
+    rhs_upper = Gamma_cross * C
 
-    # Augmented system: [D*Gamma_hat; ones'] * B_hat = [D*Gamma*B; beta]
-    A = vcat(Gamma_hat_D, ones(1, N))
+    # [Γ̂D; ι'] B̂ = [ΓC; β]
+    A = vcat(Matrix(GammaD), ones(1, N))
     rhs = vcat(rhs_upper, [beta])
 
     B_hat = A \ rhs

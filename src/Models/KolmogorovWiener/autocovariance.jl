@@ -66,6 +66,10 @@ function extract_arma_for_kw(fit::ArimaFit)
     # fit.arma = [p, q, P, Q, s, d, D]
     d_nonseasonal = fit.arma[6]
     D_seasonal = fit.arma[7]
+    # Approximation: the paper assumes (1-L)^d but we collapse seasonal
+    # differencing into the same order (d = d_ns + D).  The autocovariance γ
+    # is still exact (computed from the expanded ARMA representation); only
+    # the filter weight computation (Props 2–4) uses this simplified order.
     d = d_nonseasonal + D_seasonal
 
     # The state-space model stores the expanded (full) AR and MA polynomials

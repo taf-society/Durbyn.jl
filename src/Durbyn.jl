@@ -16,6 +16,7 @@ include("Models/Bats/Bats.jl")
 include("Models/Tbats/Tbats.jl")
 include("Models/Theta/Theta.jl")
 include("Models/Diffusion/Diffusion.jl")
+include("Models/KolmogorovWiener/KolmogorovWiener.jl")
 
 include("ModelSpecs/ModelSpecs.jl")
 include("TableOps/TableOps.jl")
@@ -37,6 +38,8 @@ using .Bats
 using .Tbats
 using .Theta
 using .Diffusion
+using .KolmogorovWiener
+import .KolmogorovWiener: kolmogorov_wiener, KWFilterResult, kw_decomposition
 
 import .Utils: air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
 import .Utils: Formula, parse_formula, compile, model_matrix, model_frame
@@ -58,6 +61,7 @@ import .Tbats: tbats, TBATSModel
 import .Theta: theta, auto_theta, ThetaFit, ThetaModelType, STM, OTM, DSTM, DOTM
 import .Diffusion: diffusion, fit_diffusion, DiffusionFit, DiffusionModelType, Bass, Gompertz, GSGompertz, Weibull
 import .TableOps: select, query, arrange, groupby, mutate, summarise, summarize, pivot_longer, pivot_wider, glimpse, GroupedTable
+import .Stats: Decomposition
 import .Stats: acf, pacf, ACFResult, PACFResult, interpolate_missing, longest_contiguous, check_missing, handle_missing
 import .Stats: MissingMethod, Contiguous, Interpolate, FailMissing
 
@@ -88,6 +92,7 @@ export theta, auto_theta
 export ararma, auto_ararma
 export naive, snaive, rw, rwf, meanf
 export diffusion, fit_diffusion
+export kolmogorov_wiener, kw_decomposition
 
 # Stats
 export acf, pacf
@@ -131,6 +136,7 @@ public BATSModel, TBATSModel
 public ARAR, ArarmaModel
 public ThetaFit, ThetaModelType, STM, OTM, DSTM, DOTM
 public DiffusionFit, DiffusionModelType, Bass, Gompertz, GSGompertz, Weibull
+public KWFilterResult, Decomposition
 
 # Result types
 public ACFResult, PACFResult, GroupedTable

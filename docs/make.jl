@@ -38,6 +38,7 @@ makedocs(
             "Diffusion"              => "diffusion.md",
             "ARAR"                   => "arar.md",
             "ARARMA"                 => "ararma.md",
+            "Kolmogorov-Wiener"      => "kolmogorov_wiener.md",
             "Statistics"             => "stats.md",
             "Optimization"           => "optimize.md",
             "Utilities"              => "utils.md",

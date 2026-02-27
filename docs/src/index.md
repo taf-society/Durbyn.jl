@@ -375,6 +375,7 @@ Apache License 2.0.
   - [Intermittent Demand](intermittent.md) — Croston methods
   - [ARAR](arar.md) — Memory-shortening AR model (Brockwell & Davis)
   - [ARARMA](ararma.md) — Memory-shortening with ARMA fitting (Parzen)
+  - [Kolmogorov-Wiener](kolmogorov_wiener.md) — Optimal finite-sample filters for trend-cycle decomposition and forecasting
   - [Statistics](stats.md) — Box-Cox transformations, decomposition (STL, MSTL), unit root tests, ACF/PACF
   - [Optimization](optimize.md) — Nelder-Mead, BFGS, L-BFGS-B, and Brent optimization algorithms
   - [Utilities](utils.md) — Example datasets, data manipulation helpers, and other utilities

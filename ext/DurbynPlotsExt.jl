@@ -6,7 +6,8 @@ import Tables
 
 using Distributions: Normal, quantile
 import Durbyn: plot, Forecast, ACFResult, PACFResult, IntermittentDemandForecast,
-               DecomposedTimeSeries, CrostonForecast, CrostonFit, ArimaPredictions
+               DecomposedTimeSeries, CrostonForecast, CrostonFit, ArimaPredictions,
+               Decomposition
 
 function Durbyn.plot(forecast::Durbyn.Generics.Forecast; show_fitted=true, show_residuals=false)
     n_history = length(forecast.x)
@@ -916,6 +917,99 @@ function Durbyn.plot(res::Durbyn.Stats.MSTLResult; labels=nothing,
 
     Plots.xlabel!(plt[nplot], "index")
     Plots.display(plt)
+    return plt
+end
+
+"""
+    plot(d::Decomposition; labels=nothing, col_range="lightgray", main=nothing,
+         range_bars=true, kwargs...)
+
+Multi-panel plot for a `Decomposition` result (e.g. from `kw_decomposition`).
+
+Panels (from top):
+  1. Data (original series)
+  2..(1+S) Seasonal(p) for each period p in `d.m` (if any)
+  next: Trend
+  last: Remainder
+
+# Arguments
+- `labels`: Optional vector of panel labels (must match number of panels)
+- `col_range`: Color for range bars (default `"lightgray"`)
+- `main`: Optional overall title
+- `range_bars`: Show range comparison bars on right side (default `true`)
+- `kwargs...`: Additional arguments forwarded to `Plots.plot!`
+"""
+function Durbyn.plot(d::Decomposition; labels=nothing,
+              col_range::Any="lightgray",
+              main::Union{Nothing,String}=nothing,
+              range_bars::Bool=true,
+              kwargs...)
+
+    # Build panel series: Data, [Seasonal(p)...], Trend, Remainder
+    series = AbstractVector[d.data]
+    names = String["Data"]
+    for (i, p) in enumerate(d.m)
+        if i <= length(d.seasonals)
+            push!(series, d.seasonals[i])
+            push!(names, "Seasonal($p)")
+        end
+    end
+    push!(series, d.trend)
+    push!(names, "Trend")
+    push!(series, d.remainder)
+    push!(names, "Remainder")
+
+    if !isnothing(labels)
+        length(labels) == length(series) ||
+            throw(ArgumentError("labels length must match number of panels ($(length(series)))."))
+        names = labels
+    end
+
+    n = length(d.data)
+    nplot = length(series)
+
+    function _safe_extrema(s)
+        valid = filter(v -> !isnan(v) && !ismissing(v), Float64.(s))
+        isempty(valid) ? (0.0, 0.0) : extrema(valid)
+    end
+    rx = map(_safe_extrema, series)
+    rng = [r[2] - r[1] for r in rx]
+    barh = range_bars && minimum(rng) > 0 ? minimum(rng) / 2 : 0.0
+
+    title_text = if !isnothing(main)
+        main
+    else
+        d.method === :kw ? "Kolmogorov-Wiener Filter Decomposition" :
+            "Decomposition of $(d.type) time series ($(d.method))"
+    end
+
+    plt = Plots.plot(layout=(nplot, 1), legend=false, size=(900, 200 * nplot); kwargs...)
+    for i in 1:nplot
+        Plots.plot!(plt[i], Float64.(series[i]), ylabel=names[i], seriestype=:line; kwargs...)
+
+        if range_bars && barh > 0
+            yr = rx[i]
+            ymid = (yr[1] + yr[2]) / 2
+            dx = 0.02 * n
+            xb = [n - dx, n - dx, n - 0.4dx, n - 0.4dx]
+            yb = [ymid - barh, ymid + barh, ymid + barh, ymid - barh]
+            Plots.plot!(plt[i], xb, yb, fill=(col_range, 0.5), linecolor=:transparent)
+        end
+
+        if names[i] == "Remainder" || startswith(names[i], "Seasonal(")
+            Plots.hline!(plt[i], [0.0], color=:black, linestyle=:dash)
+        end
+
+        if i == 1
+            Plots.plot!(plt[i], title=title_text)
+        end
+
+        if i < nplot
+            Plots.plot!(plt[i], xticks=:none)
+        end
+    end
+
+    Plots.xlabel!(plt[nplot], "index")
     return plt
 end
 

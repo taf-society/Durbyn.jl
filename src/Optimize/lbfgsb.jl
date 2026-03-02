@@ -1381,6 +1381,7 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
 
     f_tol = options.ftol_factor * eps(Float64)
     fail = 1
+    message = nothing
     iter = 0
     nfree = n
     nact = 0

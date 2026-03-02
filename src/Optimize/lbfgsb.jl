@@ -84,8 +84,7 @@ struct SingularFactorizationError <: Exception end
     LBFGSBWorkspace
 
 Pre-allocated mutable workspace holding all arrays and state for the L-BFGS-B
-algorithm. Replaces the Fortran-style pattern of passing 20+ separate arrays
-as positional arguments to every internal function.
+algorithm.
 """
 mutable struct LBFGSBWorkspace
     # Problem dimensions
@@ -124,8 +123,8 @@ mutable struct LBFGSBWorkspace
     breakpoint_work::Vector{Float64}   # GCP work buffer
     v_work::Vector{Float64}            # GCP temporary
     subspace_work::Vector{Float64}     # subspace minimization work
-    solve_result::Vector{Float64}      # compact solve output (replaces wa[1:2m])
-    solve_input::Vector{Float64}       # compact solve input (replaces wa[2m+1:4m])
+    solve_result::Vector{Float64}      # compact solve output
+    solve_input::Vector{Float64}       # compact solve input
 
     # L-BFGS state scalars
     theta::Float64                     # Scaling factor θ
@@ -214,19 +213,19 @@ Byrd et al. (1995), Section 2.
 """
 function _classify_bound_types(lb::Vector{Float64}, ub::Vector{Float64})
     n = length(lb)
-    nbd = Vector{BoundType}(undef, n)
+    bounds = Vector{BoundType}(undef, n)
     @inbounds for i in 1:n
         if isfinite(lb[i]) && isfinite(ub[i])
-            nbd[i] = BOTH_BOUNDS
+            bounds[i] = BOTH_BOUNDS
         elseif isfinite(lb[i])
-            nbd[i] = LOWER_ONLY
+            bounds[i] = LOWER_ONLY
         elseif isfinite(ub[i])
-            nbd[i] = UPPER_ONLY
+            bounds[i] = UPPER_ONLY
         else
-            nbd[i] = UNBOUNDED
+            bounds[i] = UNBOUNDED
         end
     end
-    return nbd
+    return bounds
 end
 
 @inline function _project!(y::AbstractVector{Float64}, lb::Vector{Float64}, ub::Vector{Float64})
@@ -243,7 +242,7 @@ end
 
 
 """
-    _proj_grad!(pg, x, grad, lb, ub, nbd)
+    _proj_grad!(pg, x, grad, lb, ub, bounds)
 
 Compute the projected gradient and return its infinity norm.
 The projected gradient measures first-order optimality for box-constrained problems.
@@ -251,10 +250,10 @@ The projected gradient measures first-order optimality for box-constrained probl
 Byrd et al. (1995), Eq. (2.1).
 """
 function _proj_grad!(pg::Vector{Float64}, x::Vector{Float64}, grad::Vector{Float64},
-    lb::Vector{Float64}, ub::Vector{Float64}, nbd::Vector{BoundType})
+    lb::Vector{Float64}, ub::Vector{Float64}, bounds::Vector{BoundType})
     @inbounds for i in eachindex(x)
         gi = grad[i]
-        bi = nbd[i]
+        bi = bounds[i]
         if _is_bounded(bi)
             if gi < 0.0
                 if _has_upper(bi)
@@ -269,17 +268,7 @@ function _proj_grad!(pg::Vector{Float64}, x::Vector{Float64}, grad::Vector{Float
         pg[i] = gi
     end
 
-    proj_grad_norm = 0.0
-    @inbounds for i in eachindex(pg)
-        v = abs(pg[i])
-        if isnan(v)
-            return NaN
-        end
-        if v > proj_grad_norm
-            proj_grad_norm = v
-        end
-    end
-    return proj_grad_norm
+    return norm(pg, Inf)
 end
 
 
@@ -290,20 +279,10 @@ function _cholesky!(A::AbstractMatrix{Float64}, n::Int)
     return nothing
 end
 
-function _triangular_solve!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVector{Float64}, boff::Int)
+@inline function _check_diag_nonzero!(A::AbstractMatrix, n::Int)
     @inbounds for j in 1:n
-        A[r+j-1, r+j-1] == 0.0 && throw(SingularFactorizationError())
+        A[j, j] == 0.0 && throw(SingularFactorizationError())
     end
-    ldiv!(UpperTriangular(view(A, r:r+n-1, r:r+n-1)), view(b, boff+1:boff+n))
-    return nothing
-end
-
-function _triangular_solve_t!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVector{Float64}, boff::Int)
-    @inbounds for j in 1:n
-        A[r+j-1, r+j-1] == 0.0 && throw(SingularFactorizationError())
-    end
-    ldiv!(UpperTriangular(view(A, r:r+n-1, r:r+n-1))', view(b, boff+1:boff+n))
-    return nothing
 end
 
 """
@@ -318,32 +297,33 @@ Byrd et al. (1995), Theorem 2.3.
 """
 function _compact_representation_solve!(p::AbstractVector{Float64}, ws::LBFGSBWorkspace,
     v::AbstractVector{Float64})
-    col = ws.n_corrections
-    if col == 0
+    ncorr = ws.n_corrections
+    if ncorr == 0
         return nothing
     end
-    sy = ws.sy_products
-    wt = ws.compact_form
-    p[col+1] = v[col+1]
-    @inbounds for i in 2:col
+    sy_prod = ws.sy_products
+    compact = ws.compact_form
+    p[ncorr+1] = v[ncorr+1]
+    @inbounds for i in 2:ncorr
         s = 0.0
         for k in 1:i-1
-            s += sy[i, k] * v[k] / sy[k, k]
+            s += sy_prod[i, k] * v[k] / sy_prod[k, k]
         end
-        p[col+i] = v[col+i] + s
+        p[ncorr+i] = v[ncorr+i] + s
     end
-    _triangular_solve_t!(wt, 1, col, p, col)
-    @inbounds for i in 1:col
-        p[i] = v[i] / sqrt(sy[i, i])
+    _check_diag_nonzero!(compact, ncorr)
+    ldiv!(UpperTriangular(view(compact, 1:ncorr, 1:ncorr))', view(p, ncorr+1:2*ncorr))
+    @inbounds for i in 1:ncorr
+        p[i] = v[i] / sqrt(sy_prod[i, i])
     end
-    _triangular_solve!(wt, 1, col, p, col)
-    @inbounds for i in 1:col
-        p[i] = -p[i] / sqrt(sy[i, i])
+    ldiv!(UpperTriangular(view(compact, 1:ncorr, 1:ncorr)), view(p, ncorr+1:2*ncorr))
+    @inbounds for i in 1:ncorr
+        p[i] = -p[i] / sqrt(sy_prod[i, i])
     end
-    @inbounds for i in 1:col
+    @inbounds for i in 1:ncorr
         s = 0.0
-        for k in i+1:col
-            s += sy[k, i] * p[col+k] / sy[i, i]
+        for k in i+1:ncorr
+            s += sy_prod[k, i] * p[ncorr+k] / sy_prod[i, i]
         end
         p[i] += s
     end
@@ -351,7 +331,7 @@ function _compact_representation_solve!(p::AbstractVector{Float64}, ws::LBFGSBWo
 end
 
 """
-    _initialize_active_set!(x, lb, ub, nbd, var_status, n)
+    _initialize_active_set!(x, lb, ub, bounds, var_status)
 
 Project `x` onto the feasible region and classify each variable as free or active.
 
@@ -363,18 +343,19 @@ Returns `(was_projected, has_bounds, boxed)` where:
 Byrd et al. (1995), Section 3.
 """
 function _initialize_active_set!(x::Vector{Float64}, lb::Vector{Float64}, ub::Vector{Float64},
-    nbd::Vector{BoundType}, var_status::Vector{VarStatus}, n::Int)
+    bounds::Vector{BoundType}, var_status::Vector{VarStatus})
+    n = length(x)
     was_projected = false
     has_bounds = false
     boxed = true
     @inbounds for i in 1:n
-        if _is_bounded(nbd[i])
-            if _has_lower(nbd[i]) && x[i] <= lb[i]
+        if _is_bounded(bounds[i])
+            if _has_lower(bounds[i]) && x[i] <= lb[i]
                 if x[i] < lb[i]
                     was_projected = true
                     x[i] = lb[i]
                 end
-            elseif _has_upper(nbd[i]) && x[i] >= ub[i]
+            elseif _has_upper(bounds[i]) && x[i] >= ub[i]
                 if x[i] > ub[i]
                     was_projected = true
                     x[i] = ub[i]
@@ -383,14 +364,14 @@ function _initialize_active_set!(x::Vector{Float64}, lb::Vector{Float64}, ub::Ve
         end
     end
     @inbounds for i in 1:n
-        if nbd[i] != BOTH_BOUNDS
+        if bounds[i] != BOTH_BOUNDS
             boxed = false
         end
-        if nbd[i] == UNBOUNDED
+        if bounds[i] == UNBOUNDED
             var_status[i] = VAR_UNBOUNDED
         else
             has_bounds = true
-            if nbd[i] == BOTH_BOUNDS && ub[i] - lb[i] <= 0.0
+            if bounds[i] == BOTH_BOUNDS && ub[i] - lb[i] <= 0.0
                 var_status[i] = VAR_FIXED
             else
                 var_status[i] = VAR_FREE
@@ -417,20 +398,20 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
 
     n = ws.n
     m = ws.m
-    col = ws.n_corrections
+    ncorr = ws.n_corrections
     ring_head = ws.ring_head
     theta = ws.theta
-    nbd = ws.bound_types
+    bounds = ws.bound_types
     var_status = ws.var_status
     sort_order = ws.sort_order
     breakpoint_times = ws.breakpoint_times
     search_dir = ws.search_dir
     cauchy_point = ws.cauchy_point
-    p = ws.p_work
-    c = ws.c_work
+    p_work = ws.p_work
+    c_work = ws.c_work
     breakpoint_work = ws.breakpoint_work
-    v = ws.v_work
-    wy = ws.grad_corrections
+    v_work = ws.v_work
+    grad_corr = ws.grad_corrections
     step_corr = ws.step_corrections
 
     if proj_grad_norm <= 0.0
@@ -438,29 +419,27 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
         return 0
     end
     all_bounded_active = true
-    n_unbounded_free = n + 1
+    n_unbounded_free = 0
     n_breakpoints = 0
-    n_corrections_2x = 2 * col
+    n_corrections_2x = 2 * ncorr
     quad_term = 0.0
     n_intervals = 1
 
-    @inbounds for i in 1:n_corrections_2x
-        p[i] = 0.0
-    end
+    fill!(view(p_work, 1:n_corrections_2x), 0.0)
 
     dist_to_lower = 0.0
     dist_to_upper = 0.0
     @inbounds for i in 1:n
         neg_grad_i = -grad[i]
         if var_status[i] != VAR_FIXED && var_status[i] != VAR_UNBOUNDED
-            if _has_lower(nbd[i])
+            if _has_lower(bounds[i])
                 dist_to_lower = x[i] - lb[i]
             end
-            if _has_upper(nbd[i])
+            if _has_upper(bounds[i])
                 dist_to_upper = ub[i] - x[i]
             end
-            xlower = _has_lower(nbd[i]) && dist_to_lower <= 0.0
-            xupper = _has_upper(nbd[i]) && dist_to_upper <= 0.0
+            xlower = _has_lower(bounds[i]) && dist_to_lower <= 0.0
+            xupper = _has_upper(bounds[i]) && dist_to_upper <= 0.0
             var_status[i] = VAR_FREE
             if xlower
                 if neg_grad_i <= 0.0
@@ -482,22 +461,22 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
         else
             search_dir[i] = neg_grad_i
             quad_term -= neg_grad_i * neg_grad_i
-            for j in 1:col
-                p[j] += wy[i, ring_ptr] * neg_grad_i
-                p[col+j] += step_corr[i, ring_ptr] * neg_grad_i
+            for j in 1:ncorr
+                p_work[j] += grad_corr[i, ring_ptr] * neg_grad_i
+                p_work[ncorr+j] += step_corr[i, ring_ptr] * neg_grad_i
                 ring_ptr = _next_ring(ring_ptr, m)
             end
-            if _has_lower(nbd[i]) && nbd[i] != UNBOUNDED && neg_grad_i < 0.0
+            if _has_lower(bounds[i]) && bounds[i] != UNBOUNDED && neg_grad_i < 0.0
                 n_breakpoints += 1
                 sort_order[n_breakpoints] = i
                 breakpoint_times[n_breakpoints] = dist_to_lower / (-neg_grad_i)
-            elseif _has_upper(nbd[i]) && neg_grad_i > 0.0
+            elseif _has_upper(bounds[i]) && neg_grad_i > 0.0
                 n_breakpoints += 1
                 sort_order[n_breakpoints] = i
                 breakpoint_times[n_breakpoints] = dist_to_upper / neg_grad_i
             else
-                n_unbounded_free -= 1
-                sort_order[n_unbounded_free] = i
+                n_unbounded_free += 1
+                sort_order[n + 1 - n_unbounded_free] = i
                 if abs(neg_grad_i) > 0.0
                     all_bounded_active = false
                 end
@@ -506,27 +485,19 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
     end
 
     if theta != 1.0
-        @inbounds for j in col+1:n_corrections_2x
-            p[j] *= theta
-        end
+        view(p_work, ncorr+1:n_corrections_2x) .*= theta
     end
     copyto!(cauchy_point, x)
-    if n_breakpoints == 0 && n_unbounded_free == n + 1
+    if n_breakpoints == 0 && n_unbounded_free == 0
         return 0
     end
-    @inbounds for j in 1:n_corrections_2x
-        c[j] = 0.0
-    end
+    fill!(view(c_work, 1:n_corrections_2x), 0.0)
 
     deriv_sum = -theta * quad_term
     deriv_sum_org = deriv_sum
-    if col > 0
-        _compact_representation_solve!(v, ws, p)
-        s = 0.0
-        @inbounds for i in 1:n_corrections_2x
-            s += v[i] * p[i]
-        end
-        deriv_sum -= s
+    if ncorr > 0
+        _compact_representation_solve!(v_work, ws, p_work)
+        deriv_sum -= dot(view(v_work, 1:n_corrections_2x), view(p_work, 1:n_corrections_2x))
     end
     dtm = -quad_term / deriv_sum
     tsum = 0.0
@@ -534,7 +505,7 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
     skip_xcp_update = false
 
     if n_breakpoints > 0
-        # Sort breakpoints ascending by time (replaces incremental heap extraction)
+        # Sort breakpoints ascending by time
         if n_breakpoints > 1
             bp_perm = sortperm(view(breakpoint_times, 1:n_breakpoints))
             sorted_t = breakpoint_times[bp_perm]
@@ -579,26 +550,20 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
             d_at_break_sq = d_at_break * d_at_break
             quad_term += dt_break * deriv_sum + d_at_break_sq - theta * d_at_break * z_at_break
             deriv_sum -= theta * d_at_break_sq
-            if col > 0
-                @inbounds for j in 1:n_corrections_2x
-                    c[j] += dt_break * p[j]
-                end
+            if ncorr > 0
+                view(c_work, 1:n_corrections_2x) .+= dt_break .* view(p_work, 1:n_corrections_2x)
                 ring_ptr = ring_head
-                @inbounds for j in 1:col
-                    breakpoint_work[j] = wy[breakpoint_var, ring_ptr]
-                    breakpoint_work[col+j] = theta * step_corr[breakpoint_var, ring_ptr]
+                @inbounds for j in 1:ncorr
+                    breakpoint_work[j] = grad_corr[breakpoint_var, ring_ptr]
+                    breakpoint_work[ncorr+j] = theta * step_corr[breakpoint_var, ring_ptr]
                     ring_ptr = _next_ring(ring_ptr, m)
                 end
-                _compact_representation_solve!(v, ws, breakpoint_work)
-                wy_c = 0.0; wy_p = 0.0; ws_delta = 0.0
-                @inbounds for j in 1:n_corrections_2x
-                    wy_c += c[j] * v[j]
-                    wy_p += p[j] * v[j]
-                    ws_delta += breakpoint_work[j] * v[j]
-                end
-                @inbounds for j in 1:n_corrections_2x
-                    p[j] -= d_at_break * breakpoint_work[j]
-                end
+                _compact_representation_solve!(v_work, ws, breakpoint_work)
+                vw = view(v_work, 1:n_corrections_2x)
+                wy_c = dot(view(c_work, 1:n_corrections_2x), vw)
+                wy_p = dot(view(p_work, 1:n_corrections_2x), vw)
+                ws_delta = dot(view(breakpoint_work, 1:n_corrections_2x), vw)
+                view(p_work, 1:n_corrections_2x) .-= d_at_break .* view(breakpoint_work, 1:n_corrections_2x)
                 quad_term += d_at_break * wy_c
                 deriv_sum += 2.0 * d_at_break * wy_p - d_at_break_sq * ws_delta
             end
@@ -618,15 +583,11 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
     if !skip_xcp_update
         dtm = max(dtm, 0.0)
         tsum += dtm
-        @inbounds for i in 1:n
-            cauchy_point[i] += tsum * search_dir[i]
-        end
+        view(cauchy_point, 1:n) .+= tsum .* view(search_dir, 1:n)
     end
 
-    if col > 0
-        @inbounds for j in 1:n_corrections_2x
-            c[j] += dtm * p[j]
-        end
+    if ncorr > 0
+        view(c_work, 1:n_corrections_2x) .+= dtm .* view(p_work, 1:n_corrections_2x)
     end
     return n_intervals
 end
@@ -704,65 +665,65 @@ function _assemble_reduced_hessian!(ws::LBFGSBWorkspace)
     leaving_start = ws.leaving_start
     free_vars = ws.free_vars
     sort_order = ws.sort_order
-    col = ws.n_corrections
+    ncorr = ws.n_corrections
     ring_head = ws.ring_head
     theta = ws.theta
-    wn = ws.reduced_hessian
-    hp = ws.hessian_parts
+    red_hess = ws.reduced_hessian
+    parts = ws.hessian_parts
     step_corr = ws.step_corrections
-    wy = ws.grad_corrections
-    sy = ws.sy_products
+    grad_corr = ws.grad_corrections
+    sy_prod = ws.sy_products
 
     if ws.did_update
         if ws.update_count > m
             for row_y in 1:m-1
                 row_s = m + row_y
                 for i in 1:m-row_y
-                    hp[row_y+i-1, row_y] = hp[row_y+i, row_y+1]
-                    hp[row_s+i-1, row_s] = hp[row_s+i, row_s+1]
+                    parts[row_y+i-1, row_y] = parts[row_y+i, row_y+1]
+                    parts[row_s+i-1, row_s] = parts[row_s+i, row_s+1]
                 end
                 for i in 1:m-1
-                    hp[m+i, row_y] = hp[m+i+1, row_y+1]
+                    parts[m+i, row_y] = parts[m+i+1, row_y+1]
                 end
             end
         end
-        col_ptr = ((ring_head + col - 2) % m) + 1
+        col_ptr = ((ring_head + ncorr - 2) % m) + 1
         row_ptr = ring_head
-        for col_y in 1:col
+        for col_y in 1:ncorr
             col_s = m + col_y
             yy_sum = 0.0; ss_sum = 0.0; sy_sum = 0.0
             for k in 1:n_free
                 var_idx = free_vars[k]
-                yy_sum += wy[var_idx, col_ptr] * wy[var_idx, row_ptr]
+                yy_sum += grad_corr[var_idx, col_ptr] * grad_corr[var_idx, row_ptr]
             end
             for k in n_free+1:n
                 var_idx = free_vars[k]
                 ss_sum += step_corr[var_idx, col_ptr] * step_corr[var_idx, row_ptr]
-                sy_sum += step_corr[var_idx, col_ptr] * wy[var_idx, row_ptr]
+                sy_sum += step_corr[var_idx, col_ptr] * grad_corr[var_idx, row_ptr]
             end
-            hp[col, col_y] = yy_sum
-            hp[m + col, col_s] = ss_sum
-            hp[m + col, col_y] = sy_sum
+            parts[ncorr, col_y] = yy_sum
+            parts[m + ncorr, col_s] = ss_sum
+            parts[m + ncorr, col_y] = sy_sum
             row_ptr = _next_ring(row_ptr, m)
         end
-        row_ptr = ((ring_head + col - 2) % m) + 1
+        row_ptr = ((ring_head + ncorr - 2) % m) + 1
         col_ptr = ring_head
-        for i in 1:col
+        for i in 1:ncorr
             sy_sum = 0.0
             for k in 1:n_free
                 var_idx = free_vars[k]
-                sy_sum += step_corr[var_idx, col_ptr] * wy[var_idx, row_ptr]
+                sy_sum += step_corr[var_idx, col_ptr] * grad_corr[var_idx, row_ptr]
             end
             col_ptr = _next_ring(col_ptr, m)
-            hp[m + i, col] = sy_sum
+            parts[m + i, ncorr] = sy_sum
         end
-        upcl = col - 1
+        cols_to_update = ncorr - 1
     else
-        upcl = col
+        cols_to_update = ncorr
     end
 
     col_ptr = ring_head
-    for row_y in 1:upcl
+    for row_y in 1:cols_to_update
         row_s = m + row_y
         row_ptr = ring_head
         for col_y in 1:row_y
@@ -770,76 +731,69 @@ function _assemble_reduced_hessian!(ws::LBFGSBWorkspace)
             enter_yy = 0.0; enter_ss = 0.0; leave_yy = 0.0; leave_ss = 0.0
             for k in 1:n_entering
                 var_idx = sort_order[k]
-                enter_yy += wy[var_idx, col_ptr] * wy[var_idx, row_ptr]
+                enter_yy += grad_corr[var_idx, col_ptr] * grad_corr[var_idx, row_ptr]
                 enter_ss += step_corr[var_idx, col_ptr] * step_corr[var_idx, row_ptr]
             end
             for k in leaving_start:n
                 var_idx = sort_order[k]
-                leave_yy += wy[var_idx, col_ptr] * wy[var_idx, row_ptr]
+                leave_yy += grad_corr[var_idx, col_ptr] * grad_corr[var_idx, row_ptr]
                 leave_ss += step_corr[var_idx, col_ptr] * step_corr[var_idx, row_ptr]
             end
-            hp[row_y, col_y] += enter_yy - leave_yy
-            hp[row_s, col_s] += -enter_ss + leave_ss
+            parts[row_y, col_y] += enter_yy - leave_yy
+            parts[row_s, col_s] += -enter_ss + leave_ss
             row_ptr = _next_ring(row_ptr, m)
         end
         col_ptr = _next_ring(col_ptr, m)
     end
     col_ptr = ring_head
-    for row_s in m+1:m+upcl
+    for row_s in m+1:m+cols_to_update
         row_ptr = ring_head
-        for col_y in 1:upcl
+        for col_y in 1:cols_to_update
             enter_sy = 0.0; leave_sy = 0.0
             for k in 1:n_entering
                 var_idx = sort_order[k]
-                enter_sy += step_corr[var_idx, col_ptr] * wy[var_idx, row_ptr]
+                enter_sy += step_corr[var_idx, col_ptr] * grad_corr[var_idx, row_ptr]
             end
             for k in leaving_start:n
                 var_idx = sort_order[k]
-                leave_sy += step_corr[var_idx, col_ptr] * wy[var_idx, row_ptr]
+                leave_sy += step_corr[var_idx, col_ptr] * grad_corr[var_idx, row_ptr]
             end
             if row_s <= col_y + m
-                hp[row_s, col_y] += enter_sy - leave_sy
+                parts[row_s, col_y] += enter_sy - leave_sy
             else
-                hp[row_s, col_y] += -enter_sy + leave_sy
+                parts[row_s, col_y] += -enter_sy + leave_sy
             end
             row_ptr = _next_ring(row_ptr, m)
         end
         col_ptr = _next_ring(col_ptr, m)
     end
 
-    for row_y in 1:col
-        wn_s = col + row_y
+    for row_y in 1:ncorr
+        rh_s = ncorr + row_y
         hp_s = m + row_y
         for col_y in 1:row_y
-            wn_js = col + col_y
+            rh_js = ncorr + col_y
             hp_js = m + col_y
-            wn[col_y, row_y] = hp[row_y, col_y] / theta
-            wn[wn_js, wn_s] = hp[hp_s, hp_js] * theta
+            red_hess[col_y, row_y] = parts[row_y, col_y] / theta
+            red_hess[rh_js, rh_s] = parts[hp_s, hp_js] * theta
         end
         for col_y in 1:row_y-1
-            wn[col_y, wn_s] = -hp[hp_s, col_y]
+            red_hess[col_y, rh_s] = -parts[hp_s, col_y]
         end
-        for col_y in row_y:col
-            wn[col_y, wn_s] = hp[hp_s, col_y]
+        for col_y in row_y:ncorr
+            red_hess[col_y, rh_s] = parts[hp_s, col_y]
         end
-        wn[row_y, row_y] += sy[row_y, row_y]
+        red_hess[row_y, row_y] += sy_prod[row_y, row_y]
     end
 
-    _cholesky!(wn, col)
-    n_corrections_2x = 2 * col
-    for js in col+1:n_corrections_2x
-        _triangular_solve_t!(wn, 1, col, view(wn, :, js), 0)
-    end
-    for is_ in col+1:n_corrections_2x
-        for js in is_:n_corrections_2x
-            s = 0.0
-            @inbounds for k in 1:col
-                s += wn[k, is_] * wn[k, js]
-            end
-            wn[is_, js] += s
-        end
-    end
-    _cholesky!(view(wn, col+1:n_corrections_2x, col+1:n_corrections_2x), col)
+    _cholesky!(red_hess, ncorr)
+    n_corrections_2x = 2 * ncorr
+    _check_diag_nonzero!(red_hess, ncorr)
+    ldiv!(UpperTriangular(view(red_hess, 1:ncorr, 1:ncorr))', view(red_hess, 1:ncorr, ncorr+1:n_corrections_2x))
+    LinearAlgebra.BLAS.syrk!('U', 'T', 1.0,
+        view(red_hess, 1:ncorr, ncorr+1:n_corrections_2x),
+        1.0, view(red_hess, ncorr+1:n_corrections_2x, ncorr+1:n_corrections_2x))
+    _cholesky!(view(red_hess, ncorr+1:n_corrections_2x, ncorr+1:n_corrections_2x), ncorr)
     return nothing
 end
 
@@ -854,25 +808,25 @@ Throws `SingularFactorizationError` on non-positive definiteness.
 Byrd et al. (1995), Eq. (3.2).
 """
 function _factorize_wt_matrix!(ws::LBFGSBWorkspace)
-    col = ws.n_corrections
+    ncorr = ws.n_corrections
     theta = ws.theta
-    wt = ws.compact_form
-    sy = ws.sy_products
-    ss = ws.ss_products
-    for j in 1:col
-        wt[1, j] = theta * ss[1, j]
+    compact = ws.compact_form
+    sy_prod = ws.sy_products
+    ss_prod = ws.ss_products
+    for j in 1:ncorr
+        compact[1, j] = theta * ss_prod[1, j]
     end
-    for i in 2:col
-        for j in i:col
+    for i in 2:ncorr
+        for j in i:ncorr
             k1 = min(i, j) - 1
             accum = 0.0
             for k in 1:k1
-                accum += sy[i, k] * sy[j, k] / sy[k, k]
+                accum += sy_prod[i, k] * sy_prod[j, k] / sy_prod[k, k]
             end
-            wt[i, j] = accum + theta * ss[i, j]
+            compact[i, j] = accum + theta * ss_prod[i, j]
         end
     end
-    _cholesky!(wt, col)
+    _cholesky!(compact, ncorr)
     return nothing
 end
 
@@ -889,7 +843,7 @@ Byrd et al. (1995), Section 5.
 function _reduced_gradient!(ws::LBFGSBWorkspace, x::Vector{Float64}, grad::Vector{Float64})
     n = ws.n
     m = ws.m
-    col = ws.n_corrections
+    ncorr = ws.n_corrections
     ring_head = ws.ring_head
     theta = ws.theta
     n_free = ws.n_free
@@ -897,12 +851,10 @@ function _reduced_gradient!(ws::LBFGSBWorkspace, x::Vector{Float64}, grad::Vecto
     cauchy_point = ws.cauchy_point
     reduced_grad = ws.reduced_grad
     step_corr = ws.step_corrections
-    wy = ws.grad_corrections
+    grad_corr = ws.grad_corrections
 
-    if !ws.has_bounds && col > 0
-        for i in 1:n
-            reduced_grad[i] = -grad[i]
-        end
+    if !ws.has_bounds && ncorr > 0
+        view(reduced_grad, 1:n) .= .-view(grad, 1:n)
     else
         for i in 1:n_free
             k = free_vars[i]
@@ -910,12 +862,12 @@ function _reduced_gradient!(ws::LBFGSBWorkspace, x::Vector{Float64}, grad::Vecto
         end
         _compact_representation_solve!(ws.solve_result, ws, ws.solve_input)
         ring_ptr = ring_head
-        for j in 1:col
+        for j in 1:ncorr
             step_i = ws.solve_result[j]
-            bound_dist = theta * ws.solve_result[col+j]
+            bound_dist = theta * ws.solve_result[ncorr+j]
             for i in 1:n_free
                 k = free_vars[i]
-                reduced_grad[i] += wy[k, ring_ptr] * step_i + step_corr[k, ring_ptr] * bound_dist
+                reduced_grad[i] += grad_corr[k, ring_ptr] * step_i + step_corr[k, ring_ptr] * bound_dist
             end
             ring_ptr = _next_ring(ring_ptr, m)
         end
@@ -940,48 +892,45 @@ function _subspace_minimization!(ws::LBFGSBWorkspace, lb::Vector{Float64}, ub::V
         return nothing
     end
     m = ws.m
-    col = ws.n_corrections
+    ncorr = ws.n_corrections
     ring_head = ws.ring_head
     theta = ws.theta
     free_vars = ws.free_vars
-    nbd = ws.bound_types
+    bounds = ws.bound_types
     cauchy_point = ws.cauchy_point
     search_dir = ws.search_dir
     step_corr = ws.step_corrections
-    wy = ws.grad_corrections
+    grad_corr = ws.grad_corrections
     subspace_work = ws.subspace_work
-    wn = ws.reduced_hessian
+    red_hess = ws.reduced_hessian
 
     ring_ptr = ring_head
-    @inbounds for i in 1:col
+    @inbounds for i in 1:ncorr
         wy_sum = 0.0; ws_sum = 0.0
         for j in 1:n_free
             k = free_vars[j]
-            wy_sum += wy[k, ring_ptr] * search_dir[j]
+            wy_sum += grad_corr[k, ring_ptr] * search_dir[j]
             ws_sum += step_corr[k, ring_ptr] * search_dir[j]
         end
         subspace_work[i] = wy_sum
-        subspace_work[col+i] = theta * ws_sum
+        subspace_work[ncorr+i] = theta * ws_sum
         ring_ptr = _next_ring(ring_ptr, m)
     end
-    n_corrections_2x = 2 * col
-    _triangular_solve_t!(wn, 1, n_corrections_2x, subspace_work, 0)
-    @inbounds for i in 1:col
-        subspace_work[i] = -subspace_work[i]
-    end
-    _triangular_solve!(wn, 1, n_corrections_2x, subspace_work, 0)
+    n_corrections_2x = 2 * ncorr
+    _check_diag_nonzero!(red_hess, n_corrections_2x)
+    ldiv!(UpperTriangular(view(red_hess, 1:n_corrections_2x, 1:n_corrections_2x))', view(subspace_work, 1:n_corrections_2x))
+    view(subspace_work, 1:ncorr) .*= -1
+    ldiv!(UpperTriangular(view(red_hess, 1:n_corrections_2x, 1:n_corrections_2x)), view(subspace_work, 1:n_corrections_2x))
     ring_ptr = ring_head
-    @inbounds for jy in 1:col
-        js = col + jy
+    @inbounds for jy in 1:ncorr
+        js = ncorr + jy
         for i in 1:n_free
             k = free_vars[i]
-            search_dir[i] += (wy[k, ring_ptr] * subspace_work[jy] / theta + step_corr[k, ring_ptr] * subspace_work[js])
+            search_dir[i] += (grad_corr[k, ring_ptr] * subspace_work[jy] / theta + step_corr[k, ring_ptr] * subspace_work[js])
         end
         ring_ptr = _next_ring(ring_ptr, m)
     end
-    @inbounds for i in 1:n_free
-        search_dir[i] /= theta
-    end
+    view(search_dir, 1:n_free) ./= theta
 
     alpha = 1.0
     candidate_alpha = alpha
@@ -989,15 +938,15 @@ function _subspace_minimization!(ws::LBFGSBWorkspace, lb::Vector{Float64}, ub::V
     @inbounds for i in 1:n_free
         k = free_vars[i]
         dir_k = search_dir[i]
-        if _is_bounded(nbd[k])
-            if dir_k < 0.0 && _has_lower(nbd[k])
+        if _is_bounded(bounds[k])
+            if dir_k < 0.0 && _has_lower(bounds[k])
                 bound_dist = lb[k] - cauchy_point[k]
                 if bound_dist >= 0.0
                     candidate_alpha = 0.0
                 elseif dir_k * alpha < bound_dist
                     candidate_alpha = bound_dist / dir_k
                 end
-            elseif dir_k > 0.0 && _has_upper(nbd[k])
+            elseif dir_k > 0.0 && _has_upper(bounds[k])
                 bound_dist = ub[k] - cauchy_point[k]
                 if bound_dist <= 0.0
                     candidate_alpha = 0.0
@@ -1050,37 +999,35 @@ function _update_lbfgs_matrices!(ws::LBFGSBWorkspace,
         ws.tail_index = _next_ring(ws.tail_index, m)
         ws.ring_head = _next_ring(ws.ring_head, m)
     end
-    col = ws.n_corrections
+    ncorr = ws.n_corrections
     tail_idx = ws.tail_index
     ring_head = ws.ring_head
     step_corr = ws.step_corrections
-    wy = ws.grad_corrections
-    sy = ws.sy_products
-    ss = ws.ss_products
+    grad_corr = ws.grad_corrections
+    sy_prod = ws.sy_products
+    ss_prod = ws.ss_products
 
-    @inbounds for i in 1:n
-        step_corr[i, tail_idx] = step[i]
-        wy[i, tail_idx] = grad_diff[i]
-    end
+    step_corr[:, tail_idx] .= step
+    grad_corr[:, tail_idx] .= grad_diff
     ws.theta = rr / dr
     if ws.update_count > m
-        for j in 1:col-1
+        for j in 1:ncorr-1
             for i in 1:j
-                ss[i, j] = ss[i+1, j+1]
+                ss_prod[i, j] = ss_prod[i+1, j+1]
             end
-            for i in 1:col-j
-                sy[j+i-1, j] = sy[j+i, j+1]
+            for i in 1:ncorr-j
+                sy_prod[j+i-1, j] = sy_prod[j+i, j+1]
             end
         end
     end
     ring_ptr = ring_head
-    for j in 1:col-1
-        sy[col, j] = dot(view(step_corr, :, tail_idx), view(wy, :, ring_ptr))
-        ss[j, col] = dot(view(step_corr, :, ring_ptr), view(step_corr, :, tail_idx))
+    for j in 1:ncorr-1
+        sy_prod[ncorr, j] = dot(view(step_corr, :, tail_idx), view(grad_corr, :, ring_ptr))
+        ss_prod[j, ncorr] = dot(view(step_corr, :, ring_ptr), view(step_corr, :, tail_idx))
         ring_ptr = _next_ring(ring_ptr, m)
     end
-    ss[col, col] = dtd
-    sy[col, col] = dr
+    ss_prod[ncorr, ncorr] = dtd
+    sy_prod[ncorr, ncorr] = dr
     return nothing
 end
 
@@ -1399,7 +1346,7 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
     wk = LBFGSBWorkspace(n, m, lb, ub)
 
     x = copy(x0)
-    _, wk.has_bounds, wk.boxed = _initialize_active_set!(x, lb, ub, wk.bound_types, wk.var_status, n)
+    _, wk.has_bounds, wk.boxed = _initialize_active_set!(x, lb, ub, wk.bound_types, wk.var_status)
 
     fx = f(x)
     fn_evals = 1
@@ -1412,12 +1359,10 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
     grad = copy(g(x))
     gr_evals = 1
 
-    for i in eachindex(grad)
-        if !isfinite(grad[i])
-            return (x_opt=x, f_opt=fx, n_iter=0,
-                fail=52, fn_evals=fn_evals, gr_evals=gr_evals,
-                message="Error: gradient contains non-finite values")
-        end
+    if !all(isfinite, grad)
+        return (x_opt=x, f_opt=fx, n_iter=0,
+            fail=52, fn_evals=fn_evals, gr_evals=gr_evals,
+            message="Error: gradient contains non-finite values")
     end
 
     proj_grad_norm = _proj_grad!(wk.proj_grad, x, grad, lb, ub, wk.bound_types)
@@ -1464,13 +1409,10 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
                 if wrk
                     _assemble_reduced_hessian!(wk)
                 end
-                @inbounds for i in 1:2*wk.n_corrections
-                    wk.solve_input[i] = wk.c_work[i]
-                end
+                n2c = 2 * wk.n_corrections
+                view(wk.solve_input, 1:n2c) .= view(wk.c_work, 1:n2c)
                 _reduced_gradient!(wk, x, grad)
-                @inbounds for i in 1:wk.n_free
-                    search_dir[i] = wk.reduced_grad[i]
-                end
+                view(search_dir, 1:wk.n_free) .= view(wk.reduced_grad, 1:wk.n_free)
                 _subspace_minimization!(wk, lb, ub)
             catch e
                 e isa SingularFactorizationError || rethrow()
@@ -1482,9 +1424,7 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
             end
         end
 
-        @inbounds for i in 1:n
-            search_dir[i] = cauchy_point[i] - x[i]
-        end
+        search_dir .= cauchy_point .- x
 
         dnorm_sq = dot(search_dir, search_dir)
         if dnorm_sq < 1e-32
@@ -1497,33 +1437,12 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
         grad_prev = copy(grad)
         fold = fx
 
-        max_step = 1e10
-        if wk.has_bounds
-            nbd = wk.bound_types
-            if iter == 1
-                max_step = 1.0
-            else
-                @inbounds for i in 1:n
-                    step_i = search_dir[i]
-                    if _is_bounded(nbd[i])
-                        if step_i < 0.0 && _has_lower(nbd[i])
-                            bound_dist = lb[i] - x[i]
-                            if bound_dist >= 0.0
-                                max_step = 0.0
-                            elseif step_i * max_step < bound_dist
-                                max_step = bound_dist / step_i
-                            end
-                        elseif step_i > 0.0 && _has_upper(nbd[i])
-                            bound_dist = ub[i] - x[i]
-                            if bound_dist <= 0.0
-                                max_step = 0.0
-                            elseif step_i * max_step > bound_dist
-                                max_step = bound_dist / step_i
-                            end
-                        end
-                    end
-                end
-            end
+        max_step = if !wk.has_bounds
+            1e10
+        elseif iter == 1
+            1.0
+        else
+            min(_max_feasible_step(x, search_dir, lb, ub), 1e10)
         end
 
         ok, _, fnew, gnew, xnew, fe, ge = _strong_wolfe_line_search!(x, fx, grad, search_dir, lb, ub,
@@ -1561,14 +1480,7 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
         fx = fnew
         grad .= copy(gnew)
 
-        has_nonfinite_grad = false
-        for i in eachindex(grad)
-            if !isfinite(grad[i])
-                has_nonfinite_grad = true
-                break
-            end
-        end
-        if has_nonfinite_grad
+        if !all(isfinite, grad)
             fail = 52
             message = "Error: gradient contains non-finite values"
             break
@@ -1596,10 +1508,8 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
             break
         end
 
-        @inbounds for i in 1:n
-            search_dir[i] = x[i] - x_prev[i]
-            wk.reduced_grad[i] = grad[i] - grad_prev[i]
-        end
+        search_dir .= x .- x_prev
+        wk.reduced_grad .= grad .- grad_prev
         rr = dot(wk.reduced_grad, wk.reduced_grad)
         dr = dot(wk.reduced_grad, search_dir)
         dtd = dot(search_dir, search_dir)

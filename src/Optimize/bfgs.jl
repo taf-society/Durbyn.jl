@@ -66,7 +66,6 @@ Fields:
 - `grad_diff::Vector{Float64}` — Gradient difference vector (length `n`)
 - `inv_hessian::Matrix{Float64}` — Approximate inverse Hessian matrix (`n × n`)
 - `Bc::Vector{Float64}` — Temporary buffer for B*c product in Hessian updates (length `n`)
-- `gradient_new::Vector{Float64}` — Buffer for storing the new gradient (length `n0`)
 
 The workspace is automatically managed by the optimizer, but it can also be
 created and reused manually if desired.
@@ -78,7 +77,6 @@ mutable struct BFGSWorkspace
     grad_diff::Vector{Float64}
     inv_hessian::Matrix{Float64}
     Bc::Vector{Float64}
-    gradient_new::Vector{Float64}
 
     function BFGSWorkspace(n0::Int, n::Int)
         new(
@@ -87,8 +85,7 @@ mutable struct BFGSWorkspace
             zeros(n),
             zeros(n),
             zeros(n, n),
-            zeros(n),
-            zeros(n0)
+            zeros(n)
         )
     end
 end
@@ -141,20 +138,20 @@ full form (lower triangle).
         Bc[i] = s
     end
 
-    # D2 = 1 + y_k^T H_k y_k / (s_k^T y_k)
-    D2 = 0.0
+    # hessian_scale = 1 + y_k^T H_k y_k / (s_k^T y_k)
+    hessian_scale = 0.0
     @inbounds @simd for i in 1:n
-        D2 += Bc[i] * grad_diff[i]
+        hessian_scale += Bc[i] * grad_diff[i]
     end
-    D2 = 1.0 + D2 / curvature
+    hessian_scale = 1.0 + hessian_scale / curvature
 
-    inv_D1 = 1.0 / curvature
+    inv_curvature = 1.0 / curvature
     @inbounds for i in 1:n
-        ti_scaled = step[i] * inv_D1
-        xi_scaled = Bc[i] * inv_D1
+        rho_step_i = step[i] * inv_curvature
+        rho_Hy_i = Bc[i] * inv_curvature
 
         @simd for j in 1:i
-            inv_hessian[i, j] += D2 * ti_scaled * step[j] - xi_scaled * step[j] - ti_scaled * Bc[j]
+            inv_hessian[i, j] += hessian_scale * rho_step_i * step[j] - rho_Hy_i * step[j] - rho_step_i * Bc[j]
         end
     end
 end
@@ -371,8 +368,8 @@ function bfgs(
                 f, f_best, dir_deriv)
             fn_eval_count += bt_evals
 
-            enough = (fval > abstol) && abs(fval - f_best) > reltol * (abs(f_best) + reltol)
-            if !enough
+            sufficient_decrease = (fval > abstol) && abs(fval - f_best) > reltol * (abs(f_best) + reltol)
+            if !sufficient_decrease
                 stagnant = true
                 f_best = fval
             end

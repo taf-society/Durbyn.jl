@@ -124,7 +124,6 @@ function optimize(x0::AbstractVector{<:Real}, fn::Function;
         "lmm" => 5,
         "factr" => 1e7,
         "pgtol" => 0.0,
-        "type" => 1,
         "warn.1d.NelderMead" => true
     )
 

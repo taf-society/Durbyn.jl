@@ -1,5 +1,5 @@
 import LinearAlgebra
-using LinearAlgebra: dot, norm
+using LinearAlgebra: dot, norm, ldiv!, UpperTriangular
 
 """
     LBFGSBOptions
@@ -284,50 +284,25 @@ end
 
 
 function _cholesky!(A::AbstractMatrix{Float64}, n::Int)
-    @inbounds for j in 1:n
-        s = 0.0
-        for k in 1:j-1
-            t = A[k,j]
-            for i in 1:k-1
-                t -= A[i,k] * A[i,j]
-            end
-            t /= A[k,k]
-            A[k,j] = t
-            s += t * t
-        end
-        s = A[j,j] - s
-        if s <= 0.0
-            throw(SingularFactorizationError())
-        end
-        A[j,j] = sqrt(s)
-    end
+    R = view(A, 1:n, 1:n)
+    _, info = LinearAlgebra.LAPACK.potrf!('U', R)
+    info > 0 && throw(SingularFactorizationError())
     return nothing
 end
 
 function _triangular_solve!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVector{Float64}, boff::Int)
-    @inbounds for j in n:-1:1
-        if A[r+j-1, r+j-1] == 0.0
-            throw(SingularFactorizationError())
-        end
-        b[boff+j] /= A[r+j-1, r+j-1]
-        for i in 1:j-1
-            b[boff+i] -= A[r+i-1, r+j-1] * b[boff+j]
-        end
+    @inbounds for j in 1:n
+        A[r+j-1, r+j-1] == 0.0 && throw(SingularFactorizationError())
     end
+    ldiv!(UpperTriangular(view(A, r:r+n-1, r:r+n-1)), view(b, boff+1:boff+n))
     return nothing
 end
 
 function _triangular_solve_t!(A::AbstractMatrix{Float64}, r::Int, n::Int, b::AbstractVector{Float64}, boff::Int)
     @inbounds for j in 1:n
-        s = b[boff+j]
-        for i in 1:j-1
-            s -= A[r+i-1, r+j-1] * b[boff+i]
-        end
-        if A[r+j-1, r+j-1] == 0.0
-            throw(SingularFactorizationError())
-        end
-        b[boff+j] = s / A[r+j-1, r+j-1]
+        A[r+j-1, r+j-1] == 0.0 && throw(SingularFactorizationError())
     end
+    ldiv!(UpperTriangular(view(A, r:r+n-1, r:r+n-1))', view(b, boff+1:boff+n))
     return nothing
 end
 
@@ -374,56 +349,6 @@ function _compact_representation_solve!(p::AbstractVector{Float64}, ws::LBFGSBWo
     end
     return nothing
 end
-
-function _heap_sort!(t::Vector{Float64}, iorder::Vector{Int}, n::Int, needs_heapify::Bool)
-    if needs_heapify
-        @inbounds for k in 2:n
-            val = t[k]
-            key_in = iorder[k]
-            i = k
-            while i > 1
-                j = div(i, 2)
-                if val < t[j]
-                    t[i] = t[j]
-                    iorder[i] = iorder[j]
-                    i = j
-                else
-                    break
-                end
-            end
-            t[i] = val
-            iorder[i] = key_in
-        end
-    end
-    if n > 1
-        out = t[1]
-        key_out = iorder[1]
-        val = t[n]
-        key_in = iorder[n]
-        i = 1
-        @inbounds while true
-            j = 2 * i
-            if j > n - 1
-                break
-            end
-            if t[j+1] < t[j]
-                j += 1
-            end
-            if t[j] < val
-                t[i] = t[j]
-                iorder[i] = iorder[j]
-                i = j
-            else
-                break
-            end
-        end
-        t[i] = val
-        iorder[i] = key_in
-        t[n] = out
-        iorder[n] = key_out
-    end
-end
-
 
 """
     _initialize_active_set!(x, lb, ub, nbd, var_status, n)
@@ -515,8 +440,6 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
     all_bounded_active = true
     n_unbounded_free = n + 1
     n_breakpoints = 0
-    min_break_idx = 0
-    min_break_time = 0.0
     n_corrections_2x = 2 * col
     quad_term = 0.0
     n_intervals = 1
@@ -568,18 +491,10 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
                 n_breakpoints += 1
                 sort_order[n_breakpoints] = i
                 breakpoint_times[n_breakpoints] = dist_to_lower / (-neg_grad_i)
-                if n_breakpoints == 1 || breakpoint_times[n_breakpoints] < min_break_time
-                    min_break_time = breakpoint_times[n_breakpoints]
-                    min_break_idx = n_breakpoints
-                end
             elseif _has_upper(nbd[i]) && neg_grad_i > 0.0
                 n_breakpoints += 1
                 sort_order[n_breakpoints] = i
                 breakpoint_times[n_breakpoints] = dist_to_upper / neg_grad_i
-                if n_breakpoints == 1 || breakpoint_times[n_breakpoints] < min_break_time
-                    min_break_time = breakpoint_times[n_breakpoints]
-                    min_break_idx = n_breakpoints
-                end
             else
                 n_unbounded_free -= 1
                 sort_order[n_unbounded_free] = i
@@ -619,33 +534,31 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
     skip_xcp_update = false
 
     if n_breakpoints > 0
+        # Sort breakpoints ascending by time (replaces incremental heap extraction)
+        if n_breakpoints > 1
+            bp_perm = sortperm(view(breakpoint_times, 1:n_breakpoints))
+            sorted_t = breakpoint_times[bp_perm]
+            sorted_o = sort_order[bp_perm]
+            for i in 1:n_breakpoints
+                breakpoint_times[i] = sorted_t[i]
+                sort_order[i] = sorted_o[i]
+            end
+        end
         nleft = n_breakpoints
-        cauchyiter = 1
+        bp_idx = 1
         tj = 0.0
 
         while true
             tj0 = tj
-            if cauchyiter == 1
-                tj = min_break_time
-                breakpoint_var = sort_order[min_break_idx]
-            else
-                if cauchyiter == 2
-                    if min_break_idx != n_breakpoints
-                        breakpoint_times[min_break_idx] = breakpoint_times[n_breakpoints]
-                        sort_order[min_break_idx] = sort_order[n_breakpoints]
-                    end
-                end
-                _heap_sort!(breakpoint_times, sort_order, nleft, cauchyiter == 2)
-                tj = breakpoint_times[nleft]
-                breakpoint_var = sort_order[nleft]
-            end
+            tj = breakpoint_times[bp_idx]
+            breakpoint_var = sort_order[bp_idx]
+            bp_idx += 1
             dt_break = tj - tj0
             if dtm < dt_break
                 break
             end
             tsum += dt_break
             nleft -= 1
-            cauchyiter += 1
             d_at_break = search_dir[breakpoint_var]
             search_dir[breakpoint_var] = 0.0
             if d_at_break > 0.0

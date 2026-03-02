@@ -126,31 +126,29 @@ trial point feasible, using the asymmetric difference:
     upper::Union{Nothing,AbstractVector{Float64}},
 )
     n = length(x)
-    @inbounds for i in 1:n
-        x_trial[i] = x[i]
-    end
+    copyto!(x_trial, 1, x, 1, n)
 
     @inbounds for i in 1:n
-        step_fwd = step_sizes[i]
-        step_bwd = step_sizes[i]
+        h = step_sizes[i]
+        x_hi = x[i] + h
+        x_lo = x[i] - h
 
-        tmp = x[i] + step_fwd
-        if !isnothing(upper) && tmp > upper[i]
-            tmp = upper[i]
-            step_fwd = tmp - x[i]
+        # Clamp perturbations to stay within finite bounds (NaN/Inf bounds are ignored)
+        if !isnothing(upper) && x_hi > upper[i]
+            x_hi = upper[i]
         end
-        x_trial[i] = tmp
+        if !isnothing(lower) && x_lo < lower[i]
+            x_lo = lower[i]
+        end
+
+        x_trial[i] = x_hi
         f_plus = f(x_trial)
 
-        tmp = x[i] - step_bwd
-        if !isnothing(lower) && tmp < lower[i]
-            tmp = lower[i]
-            step_bwd = x[i] - tmp
-        end
-        x_trial[i] = tmp
+        x_trial[i] = x_lo
         f_minus = f(x_trial)
 
-        grad[i] = (f_plus - f_minus) * inv(step_fwd + step_bwd)
+        # Asymmetric central difference: denominator is actual distance between evaluation points
+        grad[i] = (f_plus - f_minus) / (x_hi - x_lo)
 
         if !isfinite(grad[i])
             error("non-finite finite-difference value [$i]")

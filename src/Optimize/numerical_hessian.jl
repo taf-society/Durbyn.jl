@@ -1,56 +1,12 @@
 """
-    _fd_gradient(p, fn, grad, fnscale, parscale, step_sizes; kwargs...)
-
-Compute the gradient at scaled parameters `p` using either an analytical gradient
-function or central finite differences.
-
-This is a private helper used by [`numerical_hessian`](@ref) for computing
-second derivatives via gradient differencing.
-
-# References
-
-- Nocedal, J. & Wright, S. J. (2006). *Numerical Optimization*, 2nd ed., Section 8.1.
-  Springer.
-"""
-function _fd_gradient(p, fn, grad, fnscale, parscale, step_sizes; kwargs...)
-    n = length(p)
-    df = zeros(n)
-
-    if !isnothing(grad)
-        x = p .* parscale
-        df = grad(x; kwargs...) .* parscale ./ fnscale
-        return df
-    end
-
-    x = p .* parscale
-    for i in 1:n
-        step_i = step_sizes[i]
-        xp = copy(x); xp[i] += step_i * parscale[i]
-        f_plus = fn(xp; kwargs...) / fnscale
-
-        xm = copy(x); xm[i] -= step_i * parscale[i]
-        f_minus = fn(xm; kwargs...) / fnscale
-
-        df[i] = (f_plus - f_minus) / (2 * step_i)
-
-        if !isfinite(df[i])
-            error("non-finite finite-difference value at index $(i)")
-        end
-    end
-
-    return df
-end
-
-
-"""
     numerical_hessian(fn, x, grad=nothing; fnscale=1.0, parscale=nothing, step_sizes=nothing, kwargs...)
 
-Compute the Hessian matrix of `fn` at `x` using finite differences.
+Compute the Hessian matrix of `fn` at `x` using finite differences of the gradient.
 
-If a gradient function `grad` is provided, the Hessian is computed by differencing
-the gradient. Otherwise, the gradient is first estimated numerically via central
-differences, then differenced again to obtain second derivatives. The result is
-symmetrized by averaging off-diagonal elements.
+If an analytical gradient `grad` is provided, second derivatives are approximated by
+differencing the gradient. Otherwise, each gradient evaluation is itself approximated
+via central finite differences, yielding a fully numerical second-derivative estimate.
+The result is symmetrized by averaging `H[i,j]` and `H[j,i]`.
 
 # Arguments
 
@@ -78,38 +34,70 @@ H = numerical_hessian(rosenbrock, [1.0, 1.0])
 ```
 """
 function numerical_hessian(fn, x, grad = nothing; fnscale = 1.0, parscale = nothing, step_sizes = nothing, kwargs...)
+    n = length(x)
+    ps = something(parscale, ones(n))
+    h = something(step_sizes, fill(0.001, n))
 
-    npar = length(x)
-    fn1(x) = fn(x; kwargs...)
-
-    parscale = isnothing(parscale) ? ones(npar) : parscale
-    step_sizes = isnothing(step_sizes) ? fill(0.001, npar) : step_sizes
-
-    hessian = zeros(npar, npar)
-    dpar = x ./ parscale
-
-    for i in 1:npar
-        step_i = step_sizes[i] / parscale[i]
-
-        dpar[i] += step_i
-        df1 = _fd_gradient(dpar, fn1, grad, fnscale, parscale, step_sizes; kwargs...)
-
-        dpar[i] -= 2 * step_i
-        df2 = _fd_gradient(dpar, fn1, grad, fnscale, parscale, step_sizes; kwargs...)
-
-        for j in 1:npar
-            hessian[i, j] = fnscale * (df1[j] - df2[j]) /
-                            (2 * step_i * parscale[i] * parscale[j])
-        end
-
-        dpar[i] += step_i
+    fn_k = let fn = fn, kw = values(kwargs)
+        x -> fn(x; kw...)
     end
 
-    for i in 1:npar
-        for j in 1:(i - 1)
-            tmp = 0.5 * (hessian[i, j] + hessian[j, i])
-            hessian[i, j] = hessian[j, i] = tmp
+    grad_k = if !isnothing(grad)
+        let grad = grad, kw = values(kwargs)
+            x -> grad(x; kw...)
+        end
+    else
+        nothing
+    end
+
+    # Evaluate gradient at a point in original parameter space.
+    # When no analytical gradient is available, uses central finite differences
+    # with perturbation h[j] * parscale[j] in each coordinate.
+    function gradient_at(xp)
+        if !isnothing(grad_k)
+            return grad_k(xp)
+        end
+        g = Vector{Float64}(undef, n)
+        xt = copy(xp)
+        for j in 1:n
+            delta_j = h[j] * ps[j]
+            xt[j] = xp[j] + delta_j
+            fp = fn_k(xt)
+            xt[j] = xp[j] - delta_j
+            fm = fn_k(xt)
+            g[j] = (fp - fm) / (2 * delta_j)
+            xt[j] = xp[j]
+            isfinite(g[j]) || error("non-finite finite-difference value at index $j")
+        end
+        return g
+    end
+
+    H = zeros(n, n)
+    xp = copy(x)
+
+    # Second derivatives via gradient differencing: H[i,j] ≈ (g_j(x+δ_i) - g_j(x-δ_i)) / (2δ_i)
+    for i in 1:n
+        delta_i = h[i]
+
+        xp[i] = x[i] + delta_i
+        g_plus = gradient_at(xp)
+
+        xp[i] = x[i] - delta_i
+        g_minus = gradient_at(xp)
+
+        xp[i] = x[i]  # restore
+
+        for j in 1:n
+            H[i, j] = (g_plus[j] - g_minus[j]) / (2 * delta_i)
         end
     end
-    return hessian
+
+    # Symmetrize: average H[i,j] and H[j,i] to reduce numerical asymmetry
+    for i in 2:n, j in 1:i-1
+        avg = (H[i, j] + H[j, i]) / 2
+        H[i, j] = avg
+        H[j, i] = avg
+    end
+
+    return H
 end

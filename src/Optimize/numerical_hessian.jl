@@ -1,4 +1,18 @@
-function compute_gradient(p, fn, grad, fnscale, parscale, step_sizes; kwargs...)
+"""
+    _fd_gradient(p, fn, grad, fnscale, parscale, step_sizes; kwargs...)
+
+Compute the gradient at scaled parameters `p` using either an analytical gradient
+function or central finite differences.
+
+This is a private helper used by [`numerical_hessian`](@ref) for computing
+second derivatives via gradient differencing.
+
+# References
+
+- Nocedal, J. & Wright, S. J. (2006). *Numerical Optimization*, 2nd ed., Section 8.1.
+  Springer.
+"""
+function _fd_gradient(p, fn, grad, fnscale, parscale, step_sizes; kwargs...)
     n = length(p)
     df = zeros(n)
 
@@ -10,14 +24,14 @@ function compute_gradient(p, fn, grad, fnscale, parscale, step_sizes; kwargs...)
 
     x = p .* parscale
     for i in 1:n
-        eps = step_sizes[i]
-        xp = copy(x); xp[i] += eps * parscale[i]
-        val1 = fn(xp; kwargs...) / fnscale
+        step_i = step_sizes[i]
+        xp = copy(x); xp[i] += step_i * parscale[i]
+        f_plus = fn(xp; kwargs...) / fnscale
 
-        xm = copy(x); xm[i] -= eps * parscale[i]
-        val2 = fn(xm; kwargs...) / fnscale
+        xm = copy(x); xm[i] -= step_i * parscale[i]
+        f_minus = fn(xm; kwargs...) / fnscale
 
-        df[i] = (val1 - val2) / (2 * eps)
+        df[i] = (f_plus - f_minus) / (2 * step_i)
 
         if !isfinite(df[i])
             error("non-finite finite-difference value at index $(i)")
@@ -53,7 +67,7 @@ Symmetric Hessian matrix of size `(n, n)`.
 
 # References
 
-- Nocedal, J. & Wright, S. J. (1999). *Numerical Optimization*, Chapter 8.
+- Nocedal, J. & Wright, S. J. (2006). *Numerical Optimization*, 2nd ed., Section 8.1.
   Springer.
 
 # Examples
@@ -75,20 +89,20 @@ function numerical_hessian(fn, x, grad = nothing; fnscale = 1.0, parscale = noth
     dpar = x ./ parscale
 
     for i in 1:npar
-        eps = step_sizes[i] / parscale[i]
+        step_i = step_sizes[i] / parscale[i]
 
-        dpar[i] += eps
-        df1 = compute_gradient(dpar, fn1, grad, fnscale, parscale, step_sizes; kwargs...)
+        dpar[i] += step_i
+        df1 = _fd_gradient(dpar, fn1, grad, fnscale, parscale, step_sizes; kwargs...)
 
-        dpar[i] -= 2 * eps
-        df2 = compute_gradient(dpar, fn1, grad, fnscale, parscale, step_sizes; kwargs...)
+        dpar[i] -= 2 * step_i
+        df2 = _fd_gradient(dpar, fn1, grad, fnscale, parscale, step_sizes; kwargs...)
 
         for j in 1:npar
             hessian[i, j] = fnscale * (df1[j] - df2[j]) /
-                            (2 * eps * parscale[i] * parscale[j])
+                            (2 * step_i * parscale[i] * parscale[j])
         end
 
-        dpar[i] += eps
+        dpar[i] += step_i
     end
 
     for i in 1:npar
@@ -99,5 +113,3 @@ function numerical_hessian(fn, x, grad = nothing; fnscale = 1.0, parscale = noth
     end
     return hessian
 end
-
-

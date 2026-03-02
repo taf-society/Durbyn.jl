@@ -1,7 +1,7 @@
 """
 	NelderMeadOptions(; abstol=-Inf, reltol=sqrt(eps(Float64)), alpha=1.0, beta=0.5,
-                        gamma=2.0, trace=false, maxit=500, invalid_penalty=1e35, 
-                        project_to_bounds=false, lower=nothing, upper=nothing, 
+                        gamma=2.0, trace=false, maxit=500, invalid_penalty=1e35,
+                        project_to_bounds=false, lower=nothing, upper=nothing,
                         init_step_cap=nothing)
 
 A configuration container for the Nelder-Mead optimization algorithm.
@@ -20,6 +20,13 @@ A configuration container for the Nelder-Mead optimization algorithm.
 - `lower::Union{Nothing,AbstractVector{<:Real}}`: Lower bounds (only used if `project_to_bounds=true`). Default is `nothing`.
 - `upper::Union{Nothing,AbstractVector{<:Real}}`: Upper bounds (only used if `project_to_bounds=true`). Default is `nothing`.
 - `init_step_cap::Union{Nothing,Float64}`: Maximum initial step size. Default is `nothing` (uncapped).
+
+# References
+
+- Nelder, J. A. & Mead, R. (1965). A simplex method for function minimization.
+  *The Computer Journal*, 7(4), 308–313.
+- Lagarias, J. C. et al. (1998). Convergence properties of the Nelder-Mead simplex
+  method in low dimensions. *SIAM J. Optim.*, 9(1), 112–147.
 
 # Example
 
@@ -74,6 +81,165 @@ NelderMeadOptions(;
 )
 
 """
+Simplex action identifiers for the Nelder-Mead algorithm.
+
+Following the terminology of Lagarias et al. (1998):
+- `BUILD`: Initial simplex construction
+- `REFLECT`: Reflection step accepted
+- `EXPAND`: Expansion step accepted
+- `CONTRACT_OUTSIDE`: Outside contraction (reflected point better than worst)
+- `CONTRACT_INSIDE`: Inside contraction (reflected point worse than worst)
+- `SHRINK`: Shrink toward best vertex
+"""
+@enum SimplexAction begin
+    SIMPLEX_BUILD
+    SIMPLEX_REFLECT
+    SIMPLEX_EXPAND
+    SIMPLEX_CONTRACT_OUTSIDE
+    SIMPLEX_CONTRACT_INSIDE
+    SIMPLEX_SHRINK
+end
+
+const _SIMPLEX_ACTION_NAMES = Dict{SimplexAction,String}(
+    SIMPLEX_BUILD             => "BUILD",
+    SIMPLEX_REFLECT           => "REFLECT",
+    SIMPLEX_EXPAND            => "EXPAND",
+    SIMPLEX_CONTRACT_OUTSIDE  => "LO-REDUCTION",
+    SIMPLEX_CONTRACT_INSIDE   => "HI-REDUCTION",
+    SIMPLEX_SHRINK            => "SHRINK",
+)
+
+"""
+    SimplexState
+
+Internal workspace for the Nelder-Mead simplex algorithm. Stores the simplex
+vertices and their corresponding function values.
+
+# Fields
+- `vertices::Matrix{Float64}` — `n × (n+1)` matrix; each column is a vertex
+- `fvals::Vector{Float64}` — Function value at each vertex
+- `idx_best::Int` — Column index of the best (lowest f) vertex
+- `idx_worst::Int` — Column index of the worst (highest f) vertex
+
+# References
+
+- Nelder, J. A. & Mead, R. (1965). A simplex method for function minimization.
+  *The Computer Journal*, 7(4), 308–313.
+"""
+mutable struct SimplexState
+    vertices::Matrix{Float64}
+    fvals::Vector{Float64}
+    idx_best::Int
+    idx_worst::Int
+end
+
+"""
+    _simplex_centroid!(centroid, simplex, idx_worst, n)
+
+Compute the centroid of all simplex vertices except the worst, storing
+the result in `centroid`.
+"""
+@inline function _simplex_centroid!(centroid::AbstractVector{Float64},
+    simplex::SimplexState, n::Int)
+    idx_worst = simplex.idx_worst
+    n_vertices = n + 1
+    @inbounds for i in 1:n
+        s = -simplex.vertices[i, idx_worst]
+        for j in 1:n_vertices
+            s += simplex.vertices[i, j]
+        end
+        centroid[i] = s / n
+    end
+end
+
+"""
+    _simplex_reflect!(trial, simplex, centroid, alpha, n)
+
+Compute the reflection point: trial = (1 + α) * centroid - α * worst.
+"""
+@inline function _simplex_reflect!(trial::AbstractVector{Float64},
+    simplex::SimplexState, centroid::AbstractVector{Float64},
+    alpha::Float64, n::Int)
+    idx_worst = simplex.idx_worst
+    @inbounds for i in 1:n
+        trial[i] = (1 + alpha) * centroid[i] - alpha * simplex.vertices[i, idx_worst]
+    end
+end
+
+"""
+    _simplex_expand!(trial, reflect_pt, centroid, gamma, n)
+
+Compute the expansion point: trial = γ * reflect_pt + (1 - γ) * centroid.
+"""
+@inline function _simplex_expand!(trial::AbstractVector{Float64},
+    reflect_pt::AbstractVector{Float64}, centroid::AbstractVector{Float64},
+    gamma::Float64, n::Int)
+    @inbounds for i in 1:n
+        trial[i] = gamma * reflect_pt[i] + (1 - gamma) * centroid[i]
+    end
+end
+
+"""
+    _simplex_contract!(trial, simplex, centroid, beta, n)
+
+Compute the contraction point: trial = (1 - β) * worst + β * centroid.
+"""
+@inline function _simplex_contract!(trial::AbstractVector{Float64},
+    simplex::SimplexState, centroid::AbstractVector{Float64},
+    beta::Float64, n::Int)
+    idx_worst = simplex.idx_worst
+    @inbounds for i in 1:n
+        trial[i] = (1 - beta) * simplex.vertices[i, idx_worst] + beta * centroid[i]
+    end
+end
+
+"""
+    _simplex_shrink!(simplex, beta, n) -> Float64
+
+Shrink all vertices toward the best vertex. Returns the new simplex diameter.
+"""
+function _simplex_shrink!(simplex::SimplexState, beta::Float64, n::Int)
+    n_vertices = n + 1
+    idx_best = simplex.idx_best
+    diameter = 0.0
+    @inbounds for j in 1:n_vertices
+        if j != idx_best
+            for i in 1:n
+                simplex.vertices[i, j] = beta * (simplex.vertices[i, j] - simplex.vertices[i, idx_best]) + simplex.vertices[i, idx_best]
+                diameter += abs(simplex.vertices[i, j] - simplex.vertices[i, idx_best])
+            end
+        end
+    end
+    return diameter
+end
+
+"""
+    _simplex_update_extremes!(simplex, n)
+
+Find the best and worst vertices in the simplex.
+"""
+function _simplex_update_extremes!(simplex::SimplexState, n::Int)
+    n_vertices = n + 1
+    f_best = simplex.fvals[simplex.idx_best]
+    f_worst = f_best
+    idx_worst = simplex.idx_best
+    @inbounds for j in 1:n_vertices
+        if j != simplex.idx_best
+            fj = simplex.fvals[j]
+            if fj < f_best
+                f_best = fj
+                simplex.idx_best = j
+            end
+            if fj > f_worst
+                f_worst = fj
+                idx_worst = j
+            end
+        end
+    end
+    simplex.idx_worst = idx_worst
+end
+
+"""
 	nelder_mead(f, x0, options::NelderMeadOptions)
 
 Minimize a function of several variables using the Nelder-Mead simplex algorithm.
@@ -110,6 +276,8 @@ A named tuple `(x_opt, f_opt, fncount, fail)` where:
 
 - Nelder, J. A. & Mead, R. (1965). A simplex method for function minimization.
   *The Computer Journal*, 7(4), 308–313.
+- Lagarias, J. C. et al. (1998). Convergence properties of the Nelder-Mead simplex
+  method in low dimensions. *SIAM J. Optim.*, 9(1), 112–147.
 - Nash, J. C. (1990). *Compact Numerical Methods for Computers*, 2nd ed., Algorithm 19.
   Adam Hilger.
 
@@ -146,7 +314,7 @@ function nelder_mead(f::Function, x0::AbstractVector{<:Real}, options::NelderMea
     init_step_cap = options.init_step_cap
 
     n = length(x0)
-    B = collect(float.(x0))
+    trial = collect(float.(x0))
 
     @inline function clamp_inplace!(
         x::AbstractVector{T},
@@ -168,10 +336,10 @@ function nelder_mead(f::Function, x0::AbstractVector{<:Real}, options::NelderMea
 
     if maxit <= 0
         if project_to_bounds && !isnothing(lower) && !isnothing(upper)
-            clamp_inplace!(B, lower, upper)
+            clamp_inplace!(trial, lower, upper)
         end
-        fmin = f(B)
-        return (x_opt = copy(B), f_opt = fmin, fncount = 0, fail = 0)
+        fmin = f(trial)
+        return (x_opt = copy(trial), f_opt = fmin, fncount = 0, fail = 0)
     end
 
     if trace
@@ -179,205 +347,193 @@ function nelder_mead(f::Function, x0::AbstractVector{<:Real}, options::NelderMea
     end
 
     if project_to_bounds && !isnothing(lower) && !isnothing(upper)
-        clamp_inplace!(B, lower, upper)
+        clamp_inplace!(trial, lower, upper)
     end
-    fB = f(B)
-    if !(isfinite(fB))
+    f_initial = f(trial)
+    if !(isfinite(f_initial))
         error("function cannot be evaluated at initial parameters")
     end
 
     if trace
-        println("function value for initial parameters = ", fB)
+        println("function value for initial parameters = ", f_initial)
     end
 
     fncount = 1
-    convtol = reltol * (abs(fB) + reltol)
+    scaled_tol = reltol * (abs(f_initial) + reltol)
     if trace
-        println("  Scaled convergence tolerance is ", convtol)
+        println("  Scaled convergence tolerance is ", scaled_tol)
     end
 
-    n1 = n + 1
-    C = n + 2  
+    n_vertices = n + 1
 
-    P = [zeros(Float64, n, n1 + 1); zeros(Float64, 1, n1 + 1)]
+    # Initialize simplex state
+    simplex = SimplexState(
+        zeros(Float64, n, n_vertices),
+        zeros(Float64, n_vertices),
+        1,  # idx_best
+        1   # idx_worst (will be updated)
+    )
+    centroid = zeros(Float64, n)
 
-    P[1:n, 1] .= B
-    P[end, 1] = fB
-    L = 1 
+    simplex.vertices[:, 1] .= trial
+    simplex.fvals[1] = f_initial
 
-    step = 0.0
+    # Compute initial step size (10% of largest coordinate magnitude, or 0.1)
+    initial_step = 0.0
     @inbounds for i = 1:n
-        step = max(step, 0.1 * abs(B[i]))
+        initial_step = max(initial_step, 0.1 * abs(trial[i]))
     end
-    if step == 0.0
-        step = 0.1
+    if initial_step == 0.0
+        initial_step = 0.1
     end
     if trace
-        println("Stepsize computed as ", step)
+        println("Stepsize computed as ", initial_step)
     end
 
-    size = 0.0
-    @inbounds for j = 2:n1
-        P[1:n, j] .= B
-        trystep = step
-        while P[j-1, j] == B[j-1]
-            P[j-1, j] = B[j-1] + trystep
+    # Build remaining n vertices by perturbing each coordinate
+    diameter = 0.0
+    @inbounds for j = 2:n_vertices
+        simplex.vertices[:, j] .= trial
+        trystep = initial_step
+        while simplex.vertices[j-1, j] == trial[j-1]
+            simplex.vertices[j-1, j] = trial[j-1] + trystep
 
             if !isnothing(init_step_cap) && abs(trystep) > init_step_cap
                 trystep = init_step_cap
-                P[j-1, j] = B[j-1] + trystep
+                simplex.vertices[j-1, j] = trial[j-1] + trystep
             end
 
             if project_to_bounds && !isnothing(lower) && !isnothing(upper)
                 lj = Float64(lower[j-1])
                 uj = Float64(upper[j-1])
-                v = P[j-1, j]
+                v = simplex.vertices[j-1, j]
                 if v < lj
-                    P[j-1, j] = lj
+                    simplex.vertices[j-1, j] = lj
                 end
                 if v > uj
-                    P[j-1, j] = uj
+                    simplex.vertices[j-1, j] = uj
                 end
             end
 
             trystep *= 10.0
 
             if !isnothing(init_step_cap) && trystep > init_step_cap
-                P[j-1, j] = nextfloat(B[j-1])
+                simplex.vertices[j-1, j] = nextfloat(trial[j-1])
                 break
             end
         end
-        size += trystep
+        diameter += trystep
     end
-    oldsize = size
-    calcvert = true
+    prev_diameter = diameter
+    needs_eval = true
 
-    action = "BUILD          "
+    action = SIMPLEX_BUILD
 
     while fncount <= maxit
-        if calcvert
-            
-            @inbounds for j = 1:n1
-                if j != L
-                    B .= P[1:n, j]
+        if needs_eval
+            # Evaluate function at all non-best vertices
+            @inbounds for j = 1:n_vertices
+                if j != simplex.idx_best
+                    trial .= simplex.vertices[:, j]
                     if project_to_bounds && !isnothing(lower) && !isnothing(upper)
-                        clamp_inplace!(B, lower, upper)
+                        clamp_inplace!(trial, lower, upper)
                     end
-                    fval = f(B)
+                    fval = f(trial)
                     fval = isfinite(fval) ? fval : invalid_penalty
                     fncount += 1
-                    P[end, j] = fval
+                    simplex.fvals[j] = fval
                 end
             end
-            calcvert = false
+            needs_eval = false
         end
 
-        VL = P[end, L]
-        VH = VL
-        H = L
-        @inbounds for j = 1:n1
-            if j != L
-                fval = P[end, j]
-                if fval < VL
-                    VL = fval
-                    L = j
-                end
-                if fval > VH
-                    VH = fval
-                    H = j
-                end
-            end
-        end
+        # Find best and worst vertices
+        _simplex_update_extremes!(simplex, n)
+        f_best = simplex.fvals[simplex.idx_best]
+        f_worst = simplex.fvals[simplex.idx_worst]
 
-        if (VH <= VL + convtol) || (VL <= abstol)
+        # Check convergence
+        if (f_worst <= f_best + scaled_tol) || (f_best <= abstol)
             break
         end
 
         if trace
-            println(action, lpad(string(fncount), 5), " ", VH, " ", VL)
+            println(rpad(_SIMPLEX_ACTION_NAMES[action], 15), lpad(string(fncount), 5), " ", f_worst, " ", f_best)
         end
 
-        @inbounds for i = 1:n
-            temp = -P[i, H]
-            for j = 1:n1
-                temp += P[i, j]
-            end
-            P[i, C] = temp / n
-        end
-        @inbounds for i = 1:n
-            B[i] = (1 + alpha) * P[i, C] - alpha * P[i, H]
-        end
+        # Compute centroid of all vertices except worst
+        _simplex_centroid!(centroid, simplex, n)
+
+        # === Reflection ===
+        _simplex_reflect!(trial, simplex, centroid, alpha, n)
         if project_to_bounds && !isnothing(lower) && !isnothing(upper)
-            clamp_inplace!(B, lower, upper)
+            clamp_inplace!(trial, lower, upper)
         end
-        fR = f(B)
-        fR = isfinite(fR) ? fR : invalid_penalty
+        f_reflect = f(trial)
+        f_reflect = isfinite(f_reflect) ? f_reflect : invalid_penalty
         fncount += 1
-        VR = fR
-        if VR < VL
-            P[end, C] = fR
-            @inbounds for i = 1:n
-                tmp = gamma * B[i] + (1 - gamma) * P[i, C]
-                P[i, C] = B[i]
-                B[i] = tmp
-            end
+
+        if f_reflect < f_best
+            # Reflected point is best so far — try expansion
+            # Save reflected point in centroid temporarily
+            reflect_pt = copy(trial)
+            f_reflect_saved = f_reflect
+
+            _simplex_expand!(trial, reflect_pt, centroid, gamma, n)
             if project_to_bounds && !isnothing(lower) && !isnothing(upper)
-                clamp_inplace!(B, lower, upper)
+                clamp_inplace!(trial, lower, upper)
             end
-            fE = f(B)
-            fE = isfinite(fE) ? fE : invalid_penalty
+            f_expand = f(trial)
+            f_expand = isfinite(f_expand) ? f_expand : invalid_penalty
             fncount += 1
-            if fE < VR
-                @inbounds P[1:n, H] .= B
-                P[end, H] = fE
-                action = "EXTENSION      "
+
+            if f_expand < f_reflect_saved
+                # === Accept expansion ===
+                @inbounds simplex.vertices[:, simplex.idx_worst] .= trial
+                simplex.fvals[simplex.idx_worst] = f_expand
+                action = SIMPLEX_EXPAND
             else
-                @inbounds P[1:n, H] .= P[1:n, C]
-                P[end, H] = VR
-                action = "REFLECTION     "
+                # === Accept reflection ===
+                @inbounds simplex.vertices[:, simplex.idx_worst] .= reflect_pt
+                simplex.fvals[simplex.idx_worst] = f_reflect_saved
+                action = SIMPLEX_REFLECT
             end
         else
-            action = "HI-REDUCTION   "
-            if VR < VH
-                @inbounds P[1:n, H] .= B
-                P[end, H] = VR
-                action = "LO-REDUCTION   "
+            # Reflected point is not better than best
+            action = SIMPLEX_CONTRACT_INSIDE
+            if f_reflect < f_worst
+                # Accept reflection, then contract
+                @inbounds simplex.vertices[:, simplex.idx_worst] .= trial
+                simplex.fvals[simplex.idx_worst] = f_reflect
+                action = SIMPLEX_CONTRACT_OUTSIDE
             end
 
-            @inbounds for i = 1:n
-                B[i] = (1 - beta) * P[i, H] + beta * P[i, C]
-            end
+            # === Contraction ===
+            _simplex_contract!(trial, simplex, centroid, beta, n)
             if project_to_bounds && !isnothing(lower) && !isnothing(upper)
-                clamp_inplace!(B, lower, upper)
+                clamp_inplace!(trial, lower, upper)
             end
-            fC = f(B)
-            fC = isfinite(fC) ? fC : invalid_penalty
+            f_contract = f(trial)
+            f_contract = isfinite(f_contract) ? f_contract : invalid_penalty
             fncount += 1
 
-            if fC < P[end, H]
-                @inbounds P[1:n, H] .= B
-                P[end, H] = fC
+            if f_contract < simplex.fvals[simplex.idx_worst]
+                @inbounds simplex.vertices[:, simplex.idx_worst] .= trial
+                simplex.fvals[simplex.idx_worst] = f_contract
             else
-                if VR >= VH
-                    action = "SHRINK         "
-                    calcvert = true
-                    size = 0.0
-                    @inbounds for j = 1:n1
-                        if j != L
-                            for i = 1:n
-                                P[i, j] = beta * (P[i, j] - P[i, L]) + P[i, L]
-                                size += abs(P[i, j] - P[i, L])
-                            end
-                        end
-                    end
-                    if size < oldsize
-                        oldsize = size
+                if f_reflect >= f_worst
+                    # === Shrink ===
+                    action = SIMPLEX_SHRINK
+                    needs_eval = true
+                    diameter = _simplex_shrink!(simplex, beta, n)
+                    if diameter < prev_diameter
+                        prev_diameter = diameter
                     else
                         if trace
                             println("Polytope size measure not decreased in shrink")
                         end
-                        xopt = vec(copy(P[1:n, L]))
-                        return (x_opt = xopt, f_opt = P[end, L], fncount = fncount, fail = 10)
+                        xopt = vec(copy(simplex.vertices[:, simplex.idx_best]))
+                        return (x_opt = xopt, f_opt = simplex.fvals[simplex.idx_best], fncount = fncount, fail = 10)
                     end
                 end
             end
@@ -388,8 +544,8 @@ function nelder_mead(f::Function, x0::AbstractVector{<:Real}, options::NelderMea
         println("Exiting from Nelder Mead minimizer")
         println("    ", fncount, " function evaluations used")
     end
-    fmin = P[end, L]
-    xopt = vec(copy(P[1:n, L]))
+    fmin = simplex.fvals[simplex.idx_best]
+    xopt = vec(copy(simplex.vertices[:, simplex.idx_best]))
     failcode = (fncount > maxit) ? 1 : 0
     return (x_opt = xopt, f_opt = fmin, fncount = fncount, fail = failcode)
 end

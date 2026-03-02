@@ -13,7 +13,7 @@ Supports both analytical and numerical gradients (via `numgrad_with_cache!`).
 
 # References
 
-- Nocedal, J. & Wright, S. J. (1999). *Numerical Optimization*, Chapter 6.
+- Nocedal, J. & Wright, S. J. (2006). *Numerical Optimization*, 2nd ed., Algorithm 6.1.
   Springer.
 - Broyden, C. G. (1970). The convergence of a class of double-rank minimization
   algorithms. *J. Inst. Math. Appl.*, 6, 76–90.
@@ -21,9 +21,11 @@ Supports both analytical and numerical gradients (via `numgrad_with_cache!`).
   *The Computer Journal*, 13(3), 317–322.
 """
 
-const RELTEST = 10.0
-const ACCTOL = 1.0e-4
-const STEPREDN = 0.2
+# Armijo sufficient decrease parameter c₁ (Nocedal & Wright (2006), Eq. 3.6a)
+const SUFFICIENT_DECREASE = 1.0e-4
+
+# Backtracking contraction factor ρ ∈ (0,1) (Nocedal & Wright (2006), Algorithm 3.1)
+const BACKTRACK_FACTOR = 0.2
 
 """
     BFGSOptions
@@ -94,25 +96,29 @@ end
 """
     bfgs_hessian_update!(inv_hessian, step, grad_diff, Bc, curvature)
 
-Perform the standard **BFGS inverse Hessian update**:
+Perform the standard **BFGS inverse Hessian update** (Nocedal & Wright (2006), Eq. 6.17):
 
 ```math
-B_{k+1} = B_k + \frac{(1 + c' B_k c / D_1)}{D_1} t t' - \frac{1}{D_1} (t (B_k c)' + (B_k c) t')
+H_{k+1} = (I - ρ_k s_k y_k^T) H_k (I - ρ_k y_k s_k^T) + ρ_k s_k s_k^T
 ```
 
-where `step` is the parameter step, `grad_diff` is the gradient difference, and
-`curvature = step' * grad_diff`.
+where `s_k = step`, `y_k = grad_diff`, and `ρ_k = 1 / (y_k^T s_k)`.
 
 Arguments:
 - `inv_hessian::AbstractMatrix` — Inverse Hessian approximation (`n × n`, symmetric)
-- `step::AbstractVector` — Step direction vector (length `n`)
-- `grad_diff::AbstractVector` — Gradient difference vector (length `n`)
-- `Bc::AbstractVector` — Temporary buffer (`n`), used for storing `inv_hessian * grad_diff`
-- `curvature::Float64` — Dot product `step' * grad_diff`
+- `step::AbstractVector` — Step vector sₖ = x_{k+1} - x_k (length `n`)
+- `grad_diff::AbstractVector` — Gradient difference yₖ = ∇f_{k+1} - ∇f_k (length `n`)
+- `Bc::AbstractVector` — Temporary buffer (`n`), used for storing `H_k * y_k`
+- `curvature::Float64` — Curvature condition `y_k^T s_k` (must be positive)
 
 This operation updates the inverse Hessian approximation in-place using the
 standard BFGS formula. The matrix `inv_hessian` is assumed to be symmetric and stored in
-full form.
+full form (lower triangle).
+
+# References
+
+- Nocedal, J. & Wright, S. J. (2006). *Numerical Optimization*, 2nd ed., Eq. 6.17.
+  Springer.
 """
 @inline function bfgs_hessian_update!(
     inv_hessian::AbstractMatrix,
@@ -123,6 +129,7 @@ full form.
 )
     n = length(step)
 
+    # Compute Bc = H_k * y_k (using lower-triangular storage)
     @inbounds for i in 1:n
         s = 0.0
         @simd for j in 1:i
@@ -134,6 +141,7 @@ full form.
         Bc[i] = s
     end
 
+    # D2 = 1 + y_k^T H_k y_k / (s_k^T y_k)
     D2 = 0.0
     @inbounds @simd for i in 1:n
         D2 += Bc[i] * grad_diff[i]
@@ -152,23 +160,68 @@ full form.
 end
 
 """
+    _armijo_backtrack!(x_current, workspace, active_indices, n_active, f, f_best, dir_deriv)
+
+Perform Armijo backtracking line search (Nocedal & Wright (2006), Algorithm 3.1).
+
+Returns `(steplength, fval, stagnant, fn_evals)` where `stagnant` indicates
+the step had no numerically detectable effect on the parameters.
+"""
+function _armijo_backtrack!(
+    x_current::Vector{Float64},
+    workspace::BFGSWorkspace,
+    active_indices::Vector{Int},
+    n_active::Int,
+    f::Function,
+    f_best::Float64,
+    dir_deriv::Float64
+)
+    steplength = 1.0
+    fval = f_best
+    fn_evals = 0
+
+    while true
+        @inbounds for i in 1:n_active
+            x_current[active_indices[i]] = workspace.x[i] + steplength * workspace.step[i]
+        end
+
+        # Check if step is negligible relative to x
+        max_rel_step = 0.0
+        @inbounds for i in 1:n_active
+            dx = abs(steplength * workspace.step[i])
+            max_rel_step = max(max_rel_step, dx / max(abs(workspace.x[i]), 1.0))
+        end
+        if max_rel_step < eps(Float64)
+            return steplength, fval, true, fn_evals
+        end
+
+        fval = f(x_current)
+        fn_evals += 1
+
+        if isfinite(fval) && (fval <= f_best + dir_deriv * steplength * SUFFICIENT_DECREASE)
+            return steplength, fval, false, fn_evals
+        end
+        steplength *= BACKTRACK_FACTOR
+    end
+end
+
+"""
     bfgs(f, g, x0; mask=trues(length(x0)), options=BFGSOptions(), step_sizes=nothing,
-         numgrad_cache=nothing, extra=nothing) -> NamedTuple
+         numgrad_cache=nothing) -> NamedTuple
 
 Minimize a function using the BFGS quasi-Newton algorithm with Armijo backtracking
 line search and periodic inverse Hessian restarts.
 
 # Arguments
 
-- `f::Function`: Objective function, signature `f(n::Int, x::Vector, extra)` → `Float64`.
-- `g::Union{Function, Nothing}`: Gradient function, signature `g(n::Int, x::Vector, grad::Vector, extra)`
+- `f::Function`: Objective function, signature `f(x::Vector)` → `Float64`.
+- `g::Union{Function, Nothing}`: Gradient function, signature `g(grad::Vector, x::Vector)`
   modifies `grad` in-place and returns `nothing`. Pass `nothing` for numerical gradients.
 - `x0::Vector{Float64}`: Initial parameter vector.
 - `mask::BitVector`: Logical mask for active parameters (default: all active).
 - `options::BFGSOptions`: Optimization options (tolerances, iteration limits, etc.).
 - `step_sizes::Union{Nothing, Vector{Float64}}`: Step sizes for numerical differentiation.
 - `numgrad_cache::Union{Nothing, NumericalGradientCache}`: Pre-allocated cache for numerical gradients.
-- `extra`: External data passed to `f` and `g` (default: `nothing`).
 
 # Returns
 
@@ -176,15 +229,16 @@ A named tuple `(x_opt, f_opt, n_iter, fail, fn_evals, gr_evals)`.
 
 # References
 
-- Nocedal, J. & Wright, S. J. (1999). *Numerical Optimization*, Chapter 6. Springer.
+- Nocedal, J. & Wright, S. J. (2006). *Numerical Optimization*, 2nd ed., Algorithm 6.1.
+  Springer.
 - Nash, J. C. (1990). *Compact Numerical Methods for Computers*, 2nd ed. Adam Hilger.
 
 # Examples
 
 ```julia
-rosenbrock(n, x, ex) = 100.0 * (x[2] - x[1]^2)^2 + (1.0 - x[1])^2
+rosenbrock(x) = 100.0 * (x[2] - x[1]^2)^2 + (1.0 - x[1])^2
 
-function rosenbrock_grad!(n, x, g, ex)
+function rosenbrock_grad!(g, x)
     g[1] = -400.0 * (x[2] - x[1]^2) * x[1] - 2.0 * (1.0 - x[1])
     g[2] = 200.0 * (x[2] - x[1]^2)
     nothing
@@ -201,7 +255,6 @@ function bfgs(
     options::BFGSOptions = BFGSOptions(),
     step_sizes::Union{Nothing,Vector{Float64}} = nothing,
     numgrad_cache::Union{Nothing,NumericalGradientCache} = nothing,
-    extra = nothing
 )
     abstol = options.abstol
     reltol = options.reltol
@@ -212,44 +265,44 @@ function bfgs(
 
     converged_gradient = false
 
-    n0 = length(x0)
-    l = findall(mask)
-    n = length(l)
-    b = copy(x0)
+    n_total = length(x0)
+    active_indices = findall(mask)
+    n_active = length(active_indices)
+    x_current = copy(x0)
 
     if maxit <= 0
         fail = 0
-        Fmin = f(n0, b, extra)
-        fncount = 0
-        grcount = 0
+        f_best = f(x_current)
+        fn_eval_count = 0
+        grad_eval_count = 0
         return (
-            x_opt = copy(b),
-            f_opt = Fmin,
+            x_opt = copy(x_current),
+            f_opt = f_best,
             n_iter = 0,
             fail = fail,
-            fn_evals = fncount,
-            gr_evals = grcount
+            fn_evals = fn_eval_count,
+            gr_evals = grad_eval_count
         )
     end
 
     if report_interval <= 0
-        throw(ArgumentError("REPORT must be > 0 (method = \"BFGS\")"))
+        throw(ArgumentError("report_interval must be positive for BFGS"))
     end
 
-    workspace = BFGSWorkspace(n0, n)
+    workspace = BFGSWorkspace(n_total, n_active)
 
     if isnothing(g)
-        ndeps_actual = isnothing(step_sizes) ? fill(1e-3, n0) : step_sizes
-        if length(ndeps_actual) != n0
-            throw(ArgumentError("ndeps must have length $n0"))
+        ndeps_actual = isnothing(step_sizes) ? fill(1e-3, n_total) : step_sizes
+        if length(ndeps_actual) != n_total
+            throw(ArgumentError("ndeps must have length $n_total"))
         end
 
         if isnothing(numgrad_cache)
-            numgrad_cache = NumericalGradientCache(n0)
+            numgrad_cache = NumericalGradientCache(n_total)
         end
 
-        gfunc = function(n, x, g_out, ex_arg)
-            g_temp = numgrad_with_cache!(numgrad_cache, f, n, x, ex_arg, ndeps_actual)
+        gfunc = function(g_out, x)
+            g_temp = numgrad_with_cache!(numgrad_cache, f, x, ndeps_actual)
             g_out .= g_temp
             nothing
         end
@@ -257,136 +310,125 @@ function bfgs(
         gfunc = g
     end
 
-    fval = f(n0, b, extra)
+    fval = f(x_current)
     if !isfinite(fval)
-        error("initial value in 'vmmin' is not finite")
+        error("BFGS: initial objective value is not finite")
     end
     if trace
         println("initial  value $fval ")
     end
 
-    Fmin = fval
-    funcount = 1
-    gradcount = 1
+    f_best = fval
+    fn_eval_count = 1
+    grad_eval_count = 1
 
-    gfunc(n0, b, workspace.gradient, extra)
+    gfunc(workspace.gradient, x_current)
 
-    @inbounds for i in 1:n
-        if !isfinite(workspace.gradient[l[i]])
-            return (x_opt=copy(b), f_opt=Fmin, n_iter=0,
-                fail=1, fn_evals=funcount, gr_evals=gradcount)
+    @inbounds for i in 1:n_active
+        if !isfinite(workspace.gradient[active_indices[i]])
+            return (x_opt=copy(x_current), f_opt=f_best, n_iter=0,
+                fail=1, fn_evals=fn_eval_count, gr_evals=grad_eval_count)
         end
     end
 
-    iter = 0
-    iter += 1
-    ilast = gradcount
+    iter = 1
+    last_restart_eval = grad_eval_count
 
     while true
-        if ilast == gradcount
+        # Reset inverse Hessian to identity when needed (periodic restart)
+        if last_restart_eval == grad_eval_count
             fill!(workspace.inv_hessian, 0.0)
-            @inbounds for i in 1:n
+            @inbounds for i in 1:n_active
                 workspace.inv_hessian[i, i] = 1.0
             end
         end
 
-        @inbounds for i in 1:n
-            workspace.x[i] = b[l[i]]
-            workspace.grad_diff[i] = workspace.gradient[l[i]]
+        # Save current active parameters and gradient
+        @inbounds for i in 1:n_active
+            workspace.x[i] = x_current[active_indices[i]]
+            workspace.grad_diff[i] = workspace.gradient[active_indices[i]]
         end
 
-        gradproj = 0.0
-        @inbounds for i in 1:n
+        # Compute search direction: p = -H * g (Nocedal & Wright, Eq. 6.18)
+        dir_deriv = 0.0
+        @inbounds for i in 1:n_active
             s = 0.0
             @simd for j in 1:i
-                s -= workspace.inv_hessian[i, j] * workspace.gradient[l[j]]
+                s -= workspace.inv_hessian[i, j] * workspace.gradient[active_indices[j]]
             end
-            @simd for j in (i+1):n
-                s -= workspace.inv_hessian[j, i] * workspace.gradient[l[j]]
+            @simd for j in (i+1):n_active
+                s -= workspace.inv_hessian[j, i] * workspace.gradient[active_indices[j]]
             end
             workspace.step[i] = s
-            gradproj += s * workspace.gradient[l[i]]
+            dir_deriv += s * workspace.gradient[active_indices[i]]
         end
 
-        if gradproj < 0.0
-            steplength = 1.0
-            accpoint = false
-            count = n
-            while true
-                count = 0
-                @inbounds for i in 1:n
-                    b[l[i]] = workspace.x[i] + steplength * workspace.step[i]
-                    if RELTEST + workspace.x[i] == RELTEST + b[l[i]]
-                        count += 1
-                    end
-                end
-                if count < n
-                    fval = f(n0, b, extra)
-                    funcount += 1
-                    accpoint = isfinite(fval) && (fval <= Fmin + gradproj * steplength * ACCTOL)
-                    if !accpoint
-                        steplength *= STEPREDN
-                    end
-                end
-                if count == n || accpoint
-                    break
-                end
-            end
+        stagnant = true
+        if dir_deriv < 0.0
+            # Armijo backtracking line search (Nocedal & Wright, Algorithm 3.1)
+            steplength, fval, stagnant, bt_evals = _armijo_backtrack!(
+                x_current, workspace, active_indices, n_active,
+                f, f_best, dir_deriv)
+            fn_eval_count += bt_evals
 
-            enough = (fval > abstol) && abs(fval - Fmin) > reltol * (abs(Fmin) + reltol)
+            enough = (fval > abstol) && abs(fval - f_best) > reltol * (abs(f_best) + reltol)
             if !enough
-                count = n
-                Fmin = fval
+                stagnant = true
+                f_best = fval
             end
 
-            if count < n
-                Fmin = fval
-                gfunc(n0, b, workspace.gradient, extra)
-                gradcount += 1
+            if !stagnant
+                f_best = fval
+                gfunc(workspace.gradient, x_current)
+                grad_eval_count += 1
                 iter += 1
 
                 has_nonfinite_grad = false
-                @inbounds for i in 1:n
-                    if !isfinite(workspace.gradient[l[i]])
+                @inbounds for i in 1:n_active
+                    if !isfinite(workspace.gradient[active_indices[i]])
                         has_nonfinite_grad = true
                         break
                     end
                 end
                 if has_nonfinite_grad
-                    return (x_opt=copy(b), f_opt=Fmin, n_iter=iter,
-                        fail=1, fn_evals=funcount, gr_evals=gradcount)
+                    return (x_opt=copy(x_current), f_opt=f_best, n_iter=iter,
+                        fail=1, fn_evals=fn_eval_count, gr_evals=grad_eval_count)
                 end
 
-                D1 = 0.0
-                @inbounds for i in 1:n
+                # BFGS update: compute sₖ and yₖ, then curvature sₖᵀyₖ
+                curvature = 0.0
+                @inbounds for i in 1:n_active
                     workspace.step[i] = steplength * workspace.step[i]
-                    workspace.grad_diff[i] = workspace.gradient[l[i]] - workspace.grad_diff[i]
-                    D1 += workspace.step[i] * workspace.grad_diff[i]
+                    workspace.grad_diff[i] = workspace.gradient[active_indices[i]] - workspace.grad_diff[i]
+                    curvature += workspace.step[i] * workspace.grad_diff[i]
                 end
 
-                if D1 > 0.0
+                if curvature > 0.0
+                    # Curvature condition satisfied — update inverse Hessian
                     bfgs_hessian_update!(
                         workspace.inv_hessian,
                         workspace.step,
                         workspace.grad_diff,
                         workspace.Bc,
-                        D1
+                        curvature
                     )
                 else
-                    ilast = gradcount
+                    # Skip update, schedule restart
+                    last_restart_eval = grad_eval_count
                 end
             else
-                if ilast < gradcount
-                    count = 0
-                    ilast = gradcount
+                if last_restart_eval < grad_eval_count
+                    stagnant = false
+                    last_restart_eval = grad_eval_count
                 end
             end
         else
-            count = 0
-            if ilast == gradcount
-                count = n
+            # Search direction is not a descent direction — restart
+            stagnant = false
+            if last_restart_eval == grad_eval_count
+                stagnant = true
             else
-                ilast = gradcount
+                last_restart_eval = grad_eval_count
             end
         end
 
@@ -394,16 +436,17 @@ function bfgs(
             println("iter", lpad(iter, 4), " value ", fval)
         end
 
+        # Gradient norm convergence check (first-order optimality)
         if gtol > 0.0
             grad_norm_sq = 0.0
-            @inbounds for i in 1:n
-                grad_norm_sq += workspace.gradient[l[i]]^2
+            @inbounds for i in 1:n_active
+                grad_norm_sq += workspace.gradient[active_indices[i]]^2
             end
             grad_norm = sqrt(grad_norm_sq)
-            if grad_norm < gtol * max(1.0, abs(Fmin))
+            if grad_norm < gtol * max(1.0, abs(f_best))
                 converged_gradient = true
                 if trace
-                    println("converged: gradient norm ", grad_norm, " < ", gtol * max(1.0, abs(Fmin)))
+                    println("converged: gradient norm ", grad_norm, " < ", gtol * max(1.0, abs(f_best)))
                 end
                 break
             end
@@ -412,16 +455,17 @@ function bfgs(
         if iter >= maxit
             break
         end
-        if gradcount - ilast > 2 * n
-            ilast = gradcount
+        # Periodic restart after 2n gradient evaluations without improvement
+        if grad_eval_count - last_restart_eval > 2 * n_active
+            last_restart_eval = grad_eval_count
         end
-        if count == n && ilast == gradcount
+        if stagnant && last_restart_eval == grad_eval_count
             break
         end
     end
 
     if trace
-        println("final  value ", Fmin, " ")
+        println("final  value ", f_best, " ")
         if iter < maxit || converged_gradient
             println("converged")
         else
@@ -432,11 +476,11 @@ function bfgs(
     fail = (iter < maxit || converged_gradient) ? 0 : 1
 
     return (
-        x_opt = copy(b),
-        f_opt = Fmin,
+        x_opt = copy(x_current),
+        f_opt = f_best,
         n_iter = iter,
         fail = fail,
-        fn_evals = funcount,
-        gr_evals = gradcount
+        fn_evals = fn_eval_count,
+        gr_evals = grad_eval_count
     )
 end

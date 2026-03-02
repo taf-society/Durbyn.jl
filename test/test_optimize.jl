@@ -43,28 +43,28 @@ sphere_grad(x) = 2.0 .* x
     end
 
     @testset "bfgs - Sphere with analytic gradient" begin
-        f_bfgs(n, x, ex) = sum(x .^ 2)
-        function g_bfgs(n, x, grad, ex)
+        f_bfgs(x) = sum(x .^ 2)
+        function g_bfgs!(grad, x)
             grad .= 2.0 .* x
             return nothing
         end
         x0 = [5.0, -3.0]
-        result = bfgs(f_bfgs, g_bfgs, x0)
+        result = bfgs(f_bfgs, g_bfgs!, x0)
         @test all(abs.(result.x_opt) .<= 0.01)
         @test result.f_opt < 1e-6
         @test result.fail == 0
     end
 
     @testset "bfgs - with mask (partial optimization)" begin
-        f_bfgs(n, x, ex) = (x[1] - 3.0)^2 + (x[2] - 5.0)^2
-        function g_bfgs(n, x, grad, ex)
+        f_bfgs(x) = (x[1] - 3.0)^2 + (x[2] - 5.0)^2
+        function g_bfgs!(grad, x)
             grad[1] = 2.0 * (x[1] - 3.0)
             grad[2] = 2.0 * (x[2] - 5.0)
             return nothing
         end
         x0 = [0.0, 0.0]
         mask = BitVector([true, false])
-        result = bfgs(f_bfgs, g_bfgs, x0; mask=mask)
+        result = bfgs(f_bfgs, g_bfgs!, x0; mask=mask)
         @test abs(result.x_opt[1] - 3.0) <= 0.01
         @test result.x_opt[2] == 0.0
     end
@@ -112,26 +112,26 @@ sphere_grad(x) = 2.0 .* x
     end
 
     @testset "numgrad - Sphere gradient" begin
-        f_ng(n, x, ex) = sum(x .^ 2)
+        f_ng(x) = sum(x .^ 2)
         x = [1.0, 2.0, 3.0]
-        grad = numgrad(f_ng, 3, x, nothing)
+        grad = numgrad(f_ng, x)
         @test isapprox(grad, 2.0 .* x, atol=1e-4)
     end
 
     @testset "numgrad - Quadratic gradient" begin
         A = [2.0 1.0; 1.0 3.0]
-        f_quad(n, x, ex) = dot(x, ex * x)
+        f_quad(x) = dot(x, A * x)
         x = [1.0, 2.0]
-        grad = numgrad(f_quad, 2, x, A)
+        grad = numgrad(f_quad, x)
         analytic = 2.0 .* (A * x)
         @test isapprox(grad, analytic, atol=1e-3)
     end
 
     @testset "numgrad - with explicit ndeps" begin
-        f_ng(n, x, ex) = sum(x .^ 2)
+        f_ng(x) = sum(x .^ 2)
         x = [1.0, -2.0]
         ndeps = fill(1e-5, 2)
-        grad = numgrad(f_ng, 2, x, nothing, ndeps)
+        grad = numgrad(f_ng, x, ndeps)
         @test isapprox(grad, 2.0 .* x, atol=1e-4)
     end
 
@@ -202,14 +202,14 @@ sphere_grad(x) = 2.0 .* x
     @testset "L-BFGS-B convergence message (bug fix)" begin
         result = optimize([5.0, 3.0], sphere; method=:lbfgsb)
         @test result.message !== nothing
-        @test occursin("CONVERGENCE", result.message)
+        @test occursin("Converged", result.message)
     end
 
     @testset "L-BFGS-B infeasible bounds returns code 52 (bug fix)" begin
         result = optimize([1.0, 1.0], sphere; method=:lbfgsb,
                        lower=[5.0, 5.0], upper=[0.0, 0.0])
         @test result.convergence == 52
-        @test occursin("NO FEASIBLE SOLUTION", result.message)
+        @test occursin("no feasible", result.message)
     end
 
     @testset "L-BFGS-B maxit convergence code (bug fix)" begin
@@ -483,34 +483,34 @@ sphere_grad(x) = 2.0 .* x
 
     @testset "lbfgsb NaN gradient does not falsely converge (bug fix)" begin
         using Durbyn.Optimize: lbfgsb
-        f_ok(n, x, _) = sum(x .^ 2)
-        g_nan(n, x, _) = [NaN, NaN]
+        f_ok(x) = sum(x .^ 2)
+        g_nan(x) = [NaN, NaN]
         r = lbfgsb(f_ok, g_nan, [1.0, 1.0])
         @test r.fail != 0
-        @test occursin("NON-FINITE", r.message)
+        @test occursin("non-finite", r.message)
     end
 
     @testset "lbfgsb Inf gradient returns non-finite error (bug fix)" begin
         using Durbyn.Optimize: lbfgsb
-        f_ok(n, x, _) = sum(x .^ 2)
-        g_inf(n, x, _) = [Inf, Inf]
+        f_ok(x) = sum(x .^ 2)
+        g_inf(x) = [Inf, Inf]
         r = lbfgsb(f_ok, g_inf, [1.0, 1.0])
         @test r.fail != 0
-        @test occursin("NON-FINITE", r.message)
+        @test occursin("non-finite", r.message)
     end
 
     @testset "bfgs NaN gradient does not falsely converge (bug fix)" begin
         using Durbyn.Optimize: bfgs
-        f_bfgs(n, x, ex) = sum(x .^ 2)
-        g_nan_bfgs(n, x, gvec, ex) = (gvec .= NaN; nothing)
+        f_bfgs(x) = sum(x .^ 2)
+        g_nan_bfgs(gvec, x) = (gvec .= NaN; nothing)
         r = bfgs(f_bfgs, g_nan_bfgs, [1.0, 1.0])
         @test r.fail != 0
     end
 
     @testset "bfgs Inf gradient does not falsely converge (bug fix)" begin
         using Durbyn.Optimize: bfgs
-        f_bfgs2(n, x, ex) = sum(x .^ 2)
-        g_inf_bfgs(n, x, gvec, ex) = (gvec .= Inf; nothing)
+        f_bfgs2(x) = sum(x .^ 2)
+        g_inf_bfgs(gvec, x) = (gvec .= Inf; nothing)
         r = bfgs(f_bfgs2, g_inf_bfgs, [1.0, 1.0])
         @test r.fail != 0
     end

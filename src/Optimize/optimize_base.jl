@@ -88,7 +88,7 @@ function optimize(x0::AbstractVector{<:Real}, fn::Function;
     _check_arg(method, valid_methods, "method")
 
     if (any(lower .> -Inf) || any(upper .< Inf)) && !(method === :lbfgsb || method === :brent)
-        @warn "bounds can only be used with method :lbfgsb or :brent, switching to :lbfgsb"
+        @warn "finite bounds require method :lbfgsb or :brent; switching to :lbfgsb"
         method = :lbfgsb
     end
 
@@ -139,7 +139,7 @@ function optimize(x0::AbstractVector{<:Real}, fn::Function;
     merge!(con, control_str)
 
     if con["trace"] < 0
-        @warn "read the documentation for 'trace' more carefully"
+        @warn "trace should be non-negative"
     end
 
     if method === :brent
@@ -199,13 +199,13 @@ function optimize(x0::AbstractVector{<:Real}, fn::Function;
     x0_scaled = x0 ./ parscale
 
     result = if method === :nelder_mead
-        _optim_neldermead(x0_scaled, fn_scaled, con, lower_vec, upper_vec, parscale)
+        _dispatch_nelder_mead(x0_scaled, fn_scaled, con, lower_vec, upper_vec, parscale)
     elseif method === :bfgs
-        _optim_bfgs(x0_scaled, fn_scaled, grad_scaled, con, parscale)
+        _dispatch_bfgs(x0_scaled, fn_scaled, grad_scaled, con, parscale)
     elseif method === :lbfgsb
-        _optim_lbfgsb(x0_scaled, fn_scaled, grad_scaled, con, lower_vec, upper_vec, parscale)
+        _dispatch_lbfgsb(x0_scaled, fn_scaled, grad_scaled, con, lower_vec, upper_vec, parscale)
     elseif method === :brent
-        _optim_brent(x0_scaled[1], fn_scaled, con, lower_vec[1], upper_vec[1], parscale[1])
+        _dispatch_brent(x0_scaled[1], fn_scaled, con, lower_vec[1], upper_vec[1], parscale[1])
     end
 
     hess = if hessian
@@ -225,7 +225,7 @@ function optimize(x0::AbstractVector{<:Real}, fn::Function;
 end
 
 
-function _optim_neldermead(par, fn, con, lower, upper, parscale)
+function _dispatch_nelder_mead(par, fn, con, lower, upper, parscale)
     opts = NelderMeadOptions(
         abstol = con["abstol"],
         reltol = con["reltol"],
@@ -249,9 +249,8 @@ function _optim_neldermead(par, fn, con, lower, upper, parscale)
 end
 
 
-function _optim_bfgs(par, fn, gr, con, parscale)
-    fn_internal(n, x, ex) = fn(x)
-    gr_internal = isnothing(gr) ? nothing : (n, x, grad, ex) -> (grad .= gr(x); nothing)
+function _dispatch_bfgs(par, fn, gr, con, parscale)
+    gr_internal = isnothing(gr) ? nothing : (grad, x) -> (grad .= gr(x); nothing)
 
     opts = BFGSOptions(
         abstol = con["abstol"],
@@ -262,7 +261,7 @@ function _optim_bfgs(par, fn, gr, con, parscale)
         report_interval = con["REPORT"]
     )
 
-    result = bfgs(fn_internal, gr_internal, par;
+    result = bfgs(fn, gr_internal, par;
                   options=opts, step_sizes=con["ndeps"])
 
     return (
@@ -276,7 +275,7 @@ function _optim_bfgs(par, fn, gr, con, parscale)
 end
 
 
-function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
+function _dispatch_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     npar = length(par)
 
     if npar == 0
@@ -297,7 +296,7 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     fn_count = Ref(0)
     gr_count = Ref(0)
 
-    fn_internal(n, x, ex) = begin
+    fn_internal = x -> begin
         fn_count[] += 1
         val = fn(x)
         if !isfinite(val)
@@ -307,7 +306,7 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
     end
 
     gr_internal = if !isnothing(gr)
-        (n, x, ex) -> begin
+        x -> begin
             gr_count[] += 1
             gval = gr(x)
             for i in eachindex(gval)
@@ -321,9 +320,9 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
         npar_local = length(par)
         ndeps = con["ndeps"]
         cache = NumericalGradientCache(npar_local)
-        (n, x, ex) -> begin
+        x -> begin
             gr_count[] += 1
-            numgrad_bounded!(cache.gradient, cache.x_trial, fn_internal, n, x, ex, ndeps,
+            numgrad_bounded!(cache.gradient, cache.x_trial, fn_internal, x, ndeps,
                              lower_scaled, upper_scaled)
             return cache.gradient
         end
@@ -361,7 +360,7 @@ function _optim_lbfgsb(par, fn, gr, con, lower, upper, parscale)
 end
 
 
-function _optim_brent(par, fn, con, lower, upper, parscale)
+function _dispatch_brent(par, fn, con, lower, upper, parscale)
     opts = BrentOptions(
         tol = con["reltol"],
         trace = con["trace"] > 0

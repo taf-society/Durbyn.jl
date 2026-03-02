@@ -26,6 +26,14 @@ end
 BrentOptions(; tol=1.5e-8, trace=false, maxit=1000) =
     BrentOptions(tol, trace, maxit)
 
+# Golden section ratio: (3 - √5) / 2 ≈ 0.381966
+# Brent (1973), Chapter 5
+const GOLDEN_SECTION = 0.5 * (3.0 - sqrt(5.0))
+
+# Machine epsilon for convergence checks
+# Brent (1973), Chapter 5
+const SQRT_MACH_EPS = sqrt(eps(Float64))
+
 """
     brent(f, lower, upper; options=BrentOptions())
 
@@ -52,9 +60,10 @@ Named tuple `(x_opt, f_opt, n_iter, fail, fn_evals)`.
 
 # References
 
-- Brent, R. P. (1973). *Algorithms for Minimization Without Derivatives*.
+- Brent, R. P. (1973). *Algorithms for Minimization Without Derivatives*, Chapter 5.
   Prentice-Hall.
-- Nash, J. C. (1990). *Compact Numerical Methods for Computers*, 2nd ed. Adam Hilger.
+- Lagarias, J. C. et al. (1998). Convergence properties of the Nelder-Mead simplex
+  method in low dimensions. *SIAM J. Optim.*, 9(1), 112–147.
 
 # Examples
 
@@ -75,43 +84,33 @@ function brent(f::Function, lower::Float64, upper::Float64; options::BrentOption
     trace = options.trace
     maxit = options.maxit
 
-    c = 0.5 * (3.0 - sqrt(5.0))
+    lo = lower
+    hi = upper
+    x_min = lo + GOLDEN_SECTION * (hi - lo)
+    x_second = x_min   # second-best point
+    x_prev = x_min     # previous second-best point
+    prev_step = 0.0     # distance moved two steps ago
+    step_size = 0.0     # current step size
 
-    eps = 1.0
-    tol1 = 1.0 + eps
-    while tol1 > 1.0
-        eps = eps / 2.0
-        tol1 = 1.0 + eps
-    end
-    eps = sqrt(eps)
+    f_min = f(x_min)
+    f_second = f_min
+    f_prev = f_min
+    fn_eval_count = 1
 
-    a = lower
-    b = upper
-    v = a + c * (b - a)
-    w = v
-    x = v
-    e = 0.0
-    d = 0.0
-
-    fx = f(x)
-    fv = fx
-    fw = fx
-    funcount = 1
-
-    if !isfinite(fx)
-        if fx == -Inf
-            @warn "-Inf replaced by maximally negative value"
-            fx = -floatmax(Float64)
+    if !isfinite(f_min)
+        if f_min == -Inf
+            @warn "Brent: non-finite f(x) clamped to floatmax (-Inf)"
+            f_min = -floatmax(Float64)
         else
-            @warn "$(isnan(fx) ? "NaN" : "Inf") replaced by maximum positive value"
-            fx = floatmax(Float64)
+            @warn "Brent: non-finite f(x) clamped to floatmax ($(isnan(f_min) ? "NaN" : "Inf"))"
+            f_min = floatmax(Float64)
         end
-        fv = fx
-        fw = fx
+        f_second = f_min
+        f_prev = f_min
     end
 
     if trace
-        println("Brent's fmin: Initial f(x) = ", fx, " at x = ", x)
+        println("Brent's fmin: Initial f(x) = ", f_min, " at x = ", x_min)
     end
 
     iter = 0
@@ -120,111 +119,119 @@ function brent(f::Function, lower::Float64, upper::Float64; options::BrentOption
     while iter < maxit
         iter += 1
 
-        xm = 0.5 * (a + b)
-        tol1 = eps * abs(x) + tol / 3.0
-        tol2 = 2.0 * tol1
+        midpoint = 0.5 * (lo + hi)
+        tol_abs = SQRT_MACH_EPS * abs(x_min) + tol / 3.0
+        tol_bracket = 2.0 * tol_abs
 
-        if abs(x - xm) <= (tol2 - 0.5 * (b - a))
+        # Convergence check: is x_min close enough to the midpoint?
+        if abs(x_min - midpoint) <= (tol_bracket - 0.5 * (hi - lo))
             fail = 0
             break
         end
 
-        if abs(e) <= tol1
-            if x >= xm
-                e = a - x
+        # Decide between parabolic interpolation and golden section
+        if abs(prev_step) <= tol_abs
+            # Golden section step
+            if x_min >= midpoint
+                prev_step = lo - x_min
             else
-                e = b - x
+                prev_step = hi - x_min
             end
-            d = c * e
+            step_size = GOLDEN_SECTION * prev_step
         else
-            r = (x - w) * (fx - fv)
-            q = (x - v) * (fx - fw)
-            p = (x - v) * q - (x - w) * r
+            # Attempt parabolic interpolation
+            r = (x_min - x_second) * (f_min - f_prev)
+            q = (x_min - x_prev) * (f_min - f_second)
+            p = (x_min - x_prev) * q - (x_min - x_second) * r
             q = 2.0 * (q - r)
             if q > 0.0
                 p = -p
             end
             q = abs(q)
-            r = e
-            e = d
+            r = prev_step
+            prev_step = step_size
 
             parabola_ok = (abs(p) < abs(0.5 * q * r)) &&
-                          (p > q * (a - x)) &&
-                          (p < q * (b - x))
+                          (p > q * (lo - x_min)) &&
+                          (p < q * (hi - x_min))
 
             if parabola_ok
-                d = p / q
-                u = x + d
+                step_size = p / q
+                u = x_min + step_size
 
-                if (u - a) < tol2 || (b - u) < tol2
-                    d = copysign(tol1, xm - x)
+                # Ensure trial point is not too close to bounds
+                if (u - lo) < tol_bracket || (hi - u) < tol_bracket
+                    step_size = copysign(tol_abs, midpoint - x_min)
                 end
             else
-                if x >= xm
-                    e = a - x
+                # Fall back to golden section
+                if x_min >= midpoint
+                    prev_step = lo - x_min
                 else
-                    e = b - x
+                    prev_step = hi - x_min
                 end
-                d = c * e
+                step_size = GOLDEN_SECTION * prev_step
             end
         end
 
-        if abs(d) >= tol1
-            u = x + d
+        # Compute trial point, ensuring minimum step size
+        if abs(step_size) >= tol_abs
+            u = x_min + step_size
         else
-            u = x + copysign(tol1, d)
+            u = x_min + copysign(tol_abs, step_size)
         end
 
         fu = f(u)
-        funcount += 1
+        fn_eval_count += 1
 
         if trace && (iter % 10 == 0 || !isfinite(fu))
-            println("Iter $iter: x = $u, f(x) = $fu, interval = [$(a), $(b)]")
+            println("Iter $iter: x = $u, f(x) = $fu, interval = [$(lo), $(hi)]")
         end
 
         if !isfinite(fu)
             if fu == -Inf
-                @warn "-Inf replaced by maximally negative value"
+                @warn "Brent: non-finite f(x) clamped to floatmax (-Inf)"
                 fu = -floatmax(Float64)
             else
-                @warn "$(isnan(fu) ? "NaN" : "Inf") replaced by maximum positive value"
+                @warn "Brent: non-finite f(x) clamped to floatmax ($(isnan(fu) ? "NaN" : "Inf"))"
                 fu = floatmax(Float64)
             end
         end
 
-        if fu <= fx
-            if u >= x
-                a = x
+        # Update bracket and best/second-best/previous points
+        if fu <= f_min
+            if u >= x_min
+                lo = x_min
             else
-                b = x
+                hi = x_min
             end
-            v = w
-            fv = fw
-            w = x
-            fw = fx
-            x = u
-            fx = fu
+            x_prev = x_second
+            f_prev = f_second
+            x_second = x_min
+            f_second = f_min
+            x_min = u
+            f_min = fu
         else
-            if u < x
-                a = u
+            if u < x_min
+                lo = u
             else
-                b = u
+                hi = u
             end
 
-            if fu <= fw || w == x
-                v = w
-                fv = fw
-                w = u
-                fw = fu
-            elseif fu <= fv || v == x || v == w
-                v = u
-                fv = fu
+            if fu <= f_second || x_second == x_min
+                x_prev = x_second
+                f_prev = f_second
+                x_second = u
+                f_second = fu
+            elseif fu <= f_prev || x_prev == x_min || x_prev == x_second
+                x_prev = u
+                f_prev = fu
             end
         end
     end
 
     if trace
-        println("Final value: f(x) = $fx at x = $x")
+        println("Final value: f(x) = $f_min at x = $x_min")
         if fail == 0
             println("Converged in $iter iterations")
         else
@@ -233,10 +240,10 @@ function brent(f::Function, lower::Float64, upper::Float64; options::BrentOption
     end
 
     return (
-        x_opt = x,
-        f_opt = fx,
+        x_opt = x_min,
+        f_opt = f_min,
         n_iter = iter,
         fail = fail,
-        fn_evals = funcount
+        fn_evals = fn_eval_count
     )
 end

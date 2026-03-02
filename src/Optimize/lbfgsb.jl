@@ -305,11 +305,7 @@ function _compact_representation_solve!(p::AbstractVector{Float64}, ws::LBFGSBWo
     compact = ws.compact_form
     p[ncorr+1] = v[ncorr+1]
     @inbounds for i in 2:ncorr
-        s = 0.0
-        for k in 1:i-1
-            s += sy_prod[i, k] * v[k] / sy_prod[k, k]
-        end
-        p[ncorr+i] = v[ncorr+i] + s
+        p[ncorr+i] = v[ncorr+i] + sum(sy_prod[i, k] * v[k] / sy_prod[k, k] for k in 1:i-1)
     end
     _check_diag_nonzero!(compact, ncorr)
     ldiv!(UpperTriangular(view(compact, 1:ncorr, 1:ncorr))', view(p, ncorr+1:2*ncorr))
@@ -321,11 +317,7 @@ function _compact_representation_solve!(p::AbstractVector{Float64}, ws::LBFGSBWo
         p[i] = -p[i] / sqrt(sy_prod[i, i])
     end
     @inbounds for i in 1:ncorr
-        s = 0.0
-        for k in i+1:ncorr
-            s += sy_prod[k, i] * p[ncorr+k] / sy_prod[i, i]
-        end
-        p[i] += s
+        p[i] += sum(sy_prod[k, i] * p[ncorr+k] / sy_prod[i, i] for k in i+1:ncorr; init=0.0)
     end
     return nothing
 end
@@ -438,14 +430,14 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
             if _has_upper(bounds[i])
                 dist_to_upper = ub[i] - x[i]
             end
-            xlower = _has_lower(bounds[i]) && dist_to_lower <= 0.0
-            xupper = _has_upper(bounds[i]) && dist_to_upper <= 0.0
+            at_lower_bound = _has_lower(bounds[i]) && dist_to_lower <= 0.0
+            at_upper_bound = _has_upper(bounds[i]) && dist_to_upper <= 0.0
             var_status[i] = VAR_FREE
-            if xlower
+            if at_lower_bound
                 if neg_grad_i <= 0.0
                     var_status[i] = VAR_LOWER_ACTIVE
                 end
-            elseif xupper
+            elseif at_upper_bound
                 if neg_grad_i >= 0.0
                     var_status[i] = VAR_UPPER_ACTIVE
                 end
@@ -494,13 +486,13 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
     fill!(view(c_work, 1:n_corrections_2x), 0.0)
 
     deriv_sum = -theta * quad_term
-    deriv_sum_org = deriv_sum
+    deriv_sum_init = deriv_sum
     if ncorr > 0
         _compact_representation_solve!(v_work, ws, p_work)
         deriv_sum -= dot(view(v_work, 1:n_corrections_2x), view(p_work, 1:n_corrections_2x))
     end
-    dtm = -quad_term / deriv_sum
-    tsum = 0.0
+    step_to_min = -quad_term / deriv_sum
+    time_sum = 0.0
 
     skip_xcp_update = false
 
@@ -515,21 +507,21 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
                 sort_order[i] = sorted_o[i]
             end
         end
-        nleft = n_breakpoints
+        n_remaining = n_breakpoints
         bp_idx = 1
-        tj = 0.0
+        t_break = 0.0
 
         while true
-            tj0 = tj
-            tj = breakpoint_times[bp_idx]
+            t_prev = t_break
+            t_break = breakpoint_times[bp_idx]
             breakpoint_var = sort_order[bp_idx]
             bp_idx += 1
-            dt_break = tj - tj0
-            if dtm < dt_break
+            dt_break = t_break - t_prev
+            if step_to_min < dt_break
                 break
             end
-            tsum += dt_break
-            nleft -= 1
+            time_sum += dt_break
+            n_remaining -= 1
             d_at_break = search_dir[breakpoint_var]
             search_dir[breakpoint_var] = 0.0
             if d_at_break > 0.0
@@ -541,8 +533,8 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
                 cauchy_point[breakpoint_var] = lb[breakpoint_var]
                 var_status[breakpoint_var] = VAR_LOWER_ACTIVE
             end
-            if nleft == 0 && n_breakpoints == n
-                dtm = dt_break
+            if n_remaining == 0 && n_breakpoints == n
+                step_to_min = dt_break
                 skip_xcp_update = true
                 break
             end
@@ -560,34 +552,34 @@ function _generalized_cauchy_point!(ws::LBFGSBWorkspace, x::Vector{Float64},
                 end
                 _compact_representation_solve!(v_work, ws, breakpoint_work)
                 vw = view(v_work, 1:n_corrections_2x)
-                wy_c = dot(view(c_work, 1:n_corrections_2x), vw)
-                wy_p = dot(view(p_work, 1:n_corrections_2x), vw)
-                ws_delta = dot(view(breakpoint_work, 1:n_corrections_2x), vw)
+                v_dot_c = dot(view(c_work, 1:n_corrections_2x), vw)
+                v_dot_p = dot(view(p_work, 1:n_corrections_2x), vw)
+                v_dot_bp = dot(view(breakpoint_work, 1:n_corrections_2x), vw)
                 view(p_work, 1:n_corrections_2x) .-= d_at_break .* view(breakpoint_work, 1:n_corrections_2x)
-                quad_term += d_at_break * wy_c
-                deriv_sum += 2.0 * d_at_break * wy_p - d_at_break_sq * ws_delta
+                quad_term += d_at_break * v_dot_c
+                deriv_sum += 2.0 * d_at_break * v_dot_p - d_at_break_sq * v_dot_bp
             end
-            deriv_sum = max(deriv_sum, eps(Float64) * deriv_sum_org)
-            if nleft > 0
-                dtm = -quad_term / deriv_sum
+            deriv_sum = max(deriv_sum, eps(Float64) * deriv_sum_init)
+            if n_remaining > 0
+                step_to_min = -quad_term / deriv_sum
                 continue
             elseif all_bounded_active
-                quad_term = 0.0; deriv_sum = 0.0; dtm = 0.0
+                quad_term = 0.0; deriv_sum = 0.0; step_to_min = 0.0
             else
-                dtm = -quad_term / deriv_sum
+                step_to_min = -quad_term / deriv_sum
             end
             break
         end
     end
 
     if !skip_xcp_update
-        dtm = max(dtm, 0.0)
-        tsum += dtm
-        view(cauchy_point, 1:n) .+= tsum .* view(search_dir, 1:n)
+        step_to_min = max(step_to_min, 0.0)
+        time_sum += step_to_min
+        view(cauchy_point, 1:n) .+= time_sum .* view(search_dir, 1:n)
     end
 
     if ncorr > 0
-        view(c_work, 1:n_corrections_2x) .+= dtm .* view(p_work, 1:n_corrections_2x)
+        view(c_work, 1:n_corrections_2x) .+= step_to_min .* view(p_work, 1:n_corrections_2x)
     end
     return n_intervals
 end
@@ -599,13 +591,13 @@ Partition variables into free and active sets based on the current `var_status` 
 Track which variables entered or left the free set since last iteration.
 Updates `ws.n_free`, `ws.n_entering`, `ws.leaving_start` in place.
 
-Returns `wrk::Bool` indicating whether the reduced Hessian needs reassembly.
+Returns `needs_reassembly::Bool` indicating whether the reduced Hessian needs reassembly.
 
 Byrd et al. (1995), Section 5.
 """
 function _partition_free_active!(ws::LBFGSBWorkspace, iter::Int)
     n = ws.n
-    nfree_prev = ws.n_free
+    n_free_prev = ws.n_free
     free_vars = ws.free_vars
     var_status = ws.var_status
     sort_order = ws.sort_order
@@ -613,14 +605,14 @@ function _partition_free_active!(ws::LBFGSBWorkspace, iter::Int)
     n_entering = 0
     leaving_start = n + 1
     if iter > 0 && ws.has_bounds
-        for i in 1:nfree_prev
+        for i in 1:n_free_prev
             k = free_vars[i]
             if _is_active(var_status[k])
                 leaving_start -= 1
                 sort_order[leaving_start] = k
             end
         end
-        for i in nfree_prev+1:n
+        for i in n_free_prev+1:n
             k = free_vars[i]
             if _is_free(var_status[k])
                 n_entering += 1
@@ -628,22 +620,22 @@ function _partition_free_active!(ws::LBFGSBWorkspace, iter::Int)
             end
         end
     end
-    wrk = (leaving_start < n + 1) || (n_entering > 0) || ws.did_update
+    needs_reassembly = (leaving_start <= n) || (n_entering > 0) || ws.did_update
     n_free = 0
-    iact = n + 1
+    n_active = 0
     @inbounds for i in 1:n
         if _is_free(var_status[i])
             n_free += 1
             free_vars[n_free] = i
         else
-            iact -= 1
-            free_vars[iact] = i
+            n_active += 1
+            free_vars[n + 1 - n_active] = i
         end
     end
     ws.n_free = n_free
     ws.n_entering = n_entering
     ws.leaving_start = leaving_start
-    return wrk
+    return needs_reassembly
 end
 
 
@@ -687,7 +679,7 @@ function _assemble_reduced_hessian!(ws::LBFGSBWorkspace)
                 end
             end
         end
-        col_ptr = ((ring_head + ncorr - 2) % m) + 1
+        col_ptr = ws.tail_index
         row_ptr = ring_head
         for col_y in 1:ncorr
             col_s = m + col_y
@@ -706,7 +698,7 @@ function _assemble_reduced_hessian!(ws::LBFGSBWorkspace)
             parts[m + ncorr, col_y] = sy_sum
             row_ptr = _next_ring(row_ptr, m)
         end
-        row_ptr = ((ring_head + ncorr - 2) % m) + 1
+        row_ptr = ws.tail_index
         col_ptr = ring_head
         for i in 1:ncorr
             sy_sum = 0.0
@@ -769,19 +761,19 @@ function _assemble_reduced_hessian!(ws::LBFGSBWorkspace)
     end
 
     for row_y in 1:ncorr
-        rh_s = ncorr + row_y
-        hp_s = m + row_y
+        s_block_row = ncorr + row_y
+        parts_s_row = m + row_y
         for col_y in 1:row_y
-            rh_js = ncorr + col_y
-            hp_js = m + col_y
+            s_block_col = ncorr + col_y
+            parts_s_col = m + col_y
             red_hess[col_y, row_y] = parts[row_y, col_y] / theta
-            red_hess[rh_js, rh_s] = parts[hp_s, hp_js] * theta
+            red_hess[s_block_col, s_block_row] = parts[parts_s_row, parts_s_col] * theta
         end
         for col_y in 1:row_y-1
-            red_hess[col_y, rh_s] = -parts[hp_s, col_y]
+            red_hess[col_y, s_block_row] = -parts[parts_s_row, col_y]
         end
         for col_y in row_y:ncorr
-            red_hess[col_y, rh_s] = parts[hp_s, col_y]
+            red_hess[col_y, s_block_row] = parts[parts_s_row, col_y]
         end
         red_hess[row_y, row_y] += sy_prod[row_y, row_y]
     end
@@ -818,12 +810,8 @@ function _factorize_wt_matrix!(ws::LBFGSBWorkspace)
     end
     for i in 2:ncorr
         for j in i:ncorr
-            k1 = min(i, j) - 1
-            accum = 0.0
-            for k in 1:k1
-                accum += sy_prod[i, k] * sy_prod[j, k] / sy_prod[k, k]
-            end
-            compact[i, j] = accum + theta * ss_prod[i, j]
+            compact[i, j] = sum(sy_prod[i, k] * sy_prod[j, k] / sy_prod[k, k] for k in 1:i-1) +
+                            theta * ss_prod[i, j]
         end
     end
     _cholesky!(compact, ncorr)
@@ -906,14 +894,14 @@ function _subspace_minimization!(ws::LBFGSBWorkspace, lb::Vector{Float64}, ub::V
 
     ring_ptr = ring_head
     @inbounds for i in 1:ncorr
-        wy_sum = 0.0; ws_sum = 0.0
+        grad_corr_dot = 0.0; step_corr_dot = 0.0
         for j in 1:n_free
             k = free_vars[j]
-            wy_sum += grad_corr[k, ring_ptr] * search_dir[j]
-            ws_sum += step_corr[k, ring_ptr] * search_dir[j]
+            grad_corr_dot += grad_corr[k, ring_ptr] * search_dir[j]
+            step_corr_dot += step_corr[k, ring_ptr] * search_dir[j]
         end
-        subspace_work[i] = wy_sum
-        subspace_work[ncorr+i] = theta * ws_sum
+        subspace_work[i] = grad_corr_dot
+        subspace_work[ncorr+i] = theta * step_corr_dot
         ring_ptr = _next_ring(ring_ptr, m)
     end
     n_corrections_2x = 2 * ncorr
@@ -922,11 +910,11 @@ function _subspace_minimization!(ws::LBFGSBWorkspace, lb::Vector{Float64}, ub::V
     view(subspace_work, 1:ncorr) .*= -1
     ldiv!(UpperTriangular(view(red_hess, 1:n_corrections_2x, 1:n_corrections_2x)), view(subspace_work, 1:n_corrections_2x))
     ring_ptr = ring_head
-    @inbounds for jy in 1:ncorr
-        js = ncorr + jy
+    @inbounds for j in 1:ncorr
+        j_s = ncorr + j
         for i in 1:n_free
             k = free_vars[i]
-            search_dir[i] += (grad_corr[k, ring_ptr] * subspace_work[jy] / theta + step_corr[k, ring_ptr] * subspace_work[js])
+            search_dir[i] += (grad_corr[k, ring_ptr] * subspace_work[j] / theta + step_corr[k, ring_ptr] * subspace_work[j_s])
         end
         ring_ptr = _next_ring(ring_ptr, m)
     end
@@ -987,14 +975,13 @@ Byrd et al. (1995), Section 3.
 """
 function _update_lbfgs_matrices!(ws::LBFGSBWorkspace,
     step::Vector{Float64}, grad_diff::Vector{Float64},
-    rr::Float64, dr::Float64, dtd::Float64)
+    grad_diff_sq::Float64, step_grad_dot::Float64, step_sq::Float64)
 
-    n = ws.n
     m = ws.m
 
     if ws.update_count <= m
         ws.n_corrections = ws.update_count
-        ws.tail_index = (ws.ring_head + ws.update_count - 2) % m + 1
+        ws.tail_index = (ws.ring_head + ws.update_count - 2) % m + 1  # newest correction position
     else
         ws.tail_index = _next_ring(ws.tail_index, m)
         ws.ring_head = _next_ring(ws.ring_head, m)
@@ -1009,7 +996,7 @@ function _update_lbfgs_matrices!(ws::LBFGSBWorkspace,
 
     step_corr[:, tail_idx] .= step
     grad_corr[:, tail_idx] .= grad_diff
-    ws.theta = rr / dr
+    ws.theta = grad_diff_sq / step_grad_dot
     if ws.update_count > m
         for j in 1:ncorr-1
             for i in 1:j
@@ -1026,8 +1013,8 @@ function _update_lbfgs_matrices!(ws::LBFGSBWorkspace,
         ss_prod[j, ncorr] = dot(view(step_corr, :, ring_ptr), view(step_corr, :, tail_idx))
         ring_ptr = _next_ring(ring_ptr, m)
     end
-    ss_prod[ncorr, ncorr] = dtd
-    sy_prod[ncorr, ncorr] = dr
+    ss_prod[ncorr, ncorr] = step_sq
+    sy_prod[ncorr, ncorr] = step_grad_dot
     return nothing
 end
 
@@ -1091,7 +1078,7 @@ function _strong_wolfe_line_search!(x::Vector{Float64}, fx::Float64, grad::Vecto
         return false, 0.0, fx, grad, x, 0, 0
     end
 
-    Dnorm = sqrt(dot(d, d))
+    Dnorm = norm(d)
     alpha_init = (iter == 1 && !boxed) ? (1.0 / max(Dnorm, eps())) : 1.0
     alpha = isfinite(alpha_max) ? min(alpha_init, alpha_max) : alpha_init
 
@@ -1386,38 +1373,38 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
     while true
         iter += 1
 
-        wrk = false
+        needs_reassembly = false
         if !wk.has_bounds && wk.n_corrections > 0
             copyto!(cauchy_point, x)
-            wrk = wk.did_update
+            needs_reassembly = wk.did_update
         else
             try
                 _generalized_cauchy_point!(wk, x, lb, ub, grad, proj_grad_norm)
             catch e
                 e isa SingularFactorizationError || rethrow()
                 if options.print_level > 0
-                    println("Singular triangular system in cauchy; refreshing memory.")
+                    println("Singular triangular system in GCP computation; refreshing memory.")
                 end
                 _reset_memory!(wk)
                 continue
             end
-            wrk = _partition_free_active!(wk, iter - 1)
+            needs_reassembly = _partition_free_active!(wk, iter - 1)
         end
 
         if wk.n_free != 0 && wk.n_corrections != 0
             try
-                if wrk
+                if needs_reassembly
                     _assemble_reduced_hessian!(wk)
                 end
-                n2c = 2 * wk.n_corrections
-                view(wk.solve_input, 1:n2c) .= view(wk.c_work, 1:n2c)
+                n_corrections_2x = 2 * wk.n_corrections
+                view(wk.solve_input, 1:n_corrections_2x) .= view(wk.c_work, 1:n_corrections_2x)
                 _reduced_gradient!(wk, x, grad)
                 view(search_dir, 1:wk.n_free) .= view(wk.reduced_grad, 1:wk.n_free)
                 _subspace_minimization!(wk, lb, ub)
             catch e
                 e isa SingularFactorizationError || rethrow()
                 if options.print_level > 0
-                    println("Singular triangular system in subsm; refreshing memory.")
+                    println("Singular triangular system in subspace minimization; refreshing memory.")
                 end
                 _reset_memory!(wk)
                 continue
@@ -1435,7 +1422,7 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
 
         x_prev = copy(x)
         grad_prev = copy(grad)
-        fold = fx
+        f_prev = fx
 
         max_step = if !wk.has_bounds
             1e10
@@ -1453,7 +1440,7 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
         if !ok
             x .= x_prev
             grad .= grad_prev
-            fx = fold
+            fx = f_prev
             if wk.n_corrections == 0
                 fail = 52
                 message = "Error: line search failed to find acceptable step"
@@ -1470,7 +1457,7 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
         if !isfinite(fnew)
             x .= x_prev
             grad .= grad_prev
-            fx = fold
+            fx = f_prev
             fail = 52
             message = "Error: objective function returned non-finite value"
             break
@@ -1501,8 +1488,8 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
             message = "Converged: projected gradient norm below tolerance"
             break
         end
-        max_f = max(abs(fold), abs(fx), 1.0)
-        if fold - fx <= f_tol * max_f
+        max_f = max(abs(f_prev), abs(fx), 1.0)
+        if f_prev - fx <= f_tol * max_f
             fail = 0
             message = "Converged: relative function reduction below tolerance"
             break
@@ -1510,23 +1497,23 @@ function lbfgsb(f::Function, g::Function, x0::Vector{Float64};
 
         search_dir .= x .- x_prev
         wk.reduced_grad .= grad .- grad_prev
-        rr = dot(wk.reduced_grad, wk.reduced_grad)
-        dr = dot(wk.reduced_grad, search_dir)
-        dtd = dot(search_dir, search_dir)
+        grad_diff_sq = dot(wk.reduced_grad, wk.reduced_grad)
+        step_grad_dot = dot(wk.reduced_grad, search_dir)
+        step_sq = dot(search_dir, search_dir)
         descent_magnitude = -dot(grad_prev, search_dir)
 
-        if dr <= eps(Float64) * descent_magnitude
+        if step_grad_dot <= eps(Float64) * descent_magnitude
             wk.did_update = false
         else
             wk.did_update = true
             wk.update_count += 1
-            _update_lbfgs_matrices!(wk, search_dir, wk.reduced_grad, rr, dr, dtd)
+            _update_lbfgs_matrices!(wk, search_dir, wk.reduced_grad, grad_diff_sq, step_grad_dot, step_sq)
             try
                 _factorize_wt_matrix!(wk)
             catch e
                 e isa SingularFactorizationError || rethrow()
                 if options.print_level > 0
-                    println("Nonpositive definiteness in formt; refreshing memory.")
+                    println("Nonpositive definiteness in compact form factorization; refreshing memory.")
                 end
                 _reset_memory!(wk)
             end

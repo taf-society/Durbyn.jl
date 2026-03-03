@@ -79,7 +79,7 @@ where `hᵢ` is the step size for dimension `i`.
         grad[i] = (f_plus - f_minus) * inv(2.0 * step_i)
 
         if !isfinite(grad[i])
-            error("non-finite finite-difference value [$i]")
+            error("numerical gradient is non-finite at index $i")
         end
 
         x_trial[i] = x[i]
@@ -151,7 +151,7 @@ trial point feasible, using the asymmetric difference:
         grad[i] = (f_plus - f_minus) / (x_hi - x_lo)
 
         if !isfinite(grad[i])
-            error("non-finite finite-difference value [$i]")
+            error("numerical gradient is non-finite at index $i")
         end
 
         x_trial[i] = x[i]

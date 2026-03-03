@@ -360,12 +360,11 @@ function optimize_theta_parameters(y::AbstractVector{T}, model_type::ThetaModelT
     end
 
     # Use L-BFGS-B for bounded optimization
-    result = optimize(x0, objective;
-                      method=:lbfgsb,
+    result = optimize(objective, x0, :lbfgsb;
                       lower=lower, upper=upper,
-                      control=Dict("maxit" => 1000))
+                      max_iterations=1000)
 
-    opt_params = result.par
+    opt_params = result.minimizer
     j = 1
 
     opt_level = init_params.optimize_level ? opt_params[j] : init_params.initial_level

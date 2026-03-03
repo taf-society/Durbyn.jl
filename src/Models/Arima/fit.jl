@@ -348,17 +348,11 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         if no_optim
             res = (converged=true, minimizer=zeros(0), minimum=_armaCSS(zeros(0)))
         else
-            ctrl = copy(optim_control)
-            ctrl["parscale"] = parscale[mask]
-            if !haskey(ctrl, "ndeps")
-                ctrl["ndeps"] = fill(1e-2, sum(mask))
-            end
-            if !haskey(ctrl, "maxit")
-                ctrl["maxit"] = 500
-            end
-
-            opt = optimize(init[mask], p -> _armaCSS(p); method=optim_method, control=ctrl)
-            res = (converged=opt.convergence == 0, minimizer=opt.par, minimum=opt.value)
+            opt = optimize(p -> _armaCSS(p), init[mask], optim_method;
+                param_scale = parscale[mask],
+                step_sizes = get(optim_control, "ndeps", fill(1e-2, sum(mask))),
+                max_iterations = get(optim_control, "maxit", 500))
+            res = (converged=opt.converged, minimizer=opt.minimizer, minimum=opt.minimum)
         end
 
         if !res.converged
@@ -394,17 +388,11 @@ function fit!(model::SARIMA{Fl}) where {Fl}
             if no_optim
                 res = (converged=true, minimizer=zeros(sum(mask)), minimum=_armaCSS(zeros(0)))
             else
-                ctrl = copy(optim_control)
-                ctrl["parscale"] = parscale[mask]
-                if !haskey(ctrl, "ndeps")
-                    ctrl["ndeps"] = fill(1e-2, sum(mask))
-                end
-                if !haskey(ctrl, "maxit")
-                    ctrl["maxit"] = 500
-                end
-
-                opt = optimize(init[mask], p -> _armaCSS(p); method=optim_method, control=ctrl)
-                res = (converged=opt.convergence == 0, minimizer=opt.par, minimum=opt.value)
+                opt = optimize(p -> _armaCSS(p), init[mask], optim_method;
+                    param_scale = parscale[mask],
+                    step_sizes = get(optim_control, "ndeps", fill(1e-2, sum(mask))),
+                    max_iterations = get(optim_control, "maxit", 500))
+                res = (converged=opt.converged, minimizer=opt.minimizer, minimum=opt.minimum)
             end
 
             if res.converged
@@ -443,10 +431,11 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         if no_optim
             res = (converged=true, minimizer=zeros(0), minimum=_armafn(zeros(0), transform_pars))
         else
-            ctrl = copy(optim_control)
-            ctrl["parscale"] = parscale[mask]
-            opt = optimize(init[mask], p -> _armafn(p, transform_pars); method=optim_method, control=ctrl)
-            res = (converged=opt.convergence == 0, minimizer=opt.par, minimum=opt.value)
+            opt = optimize(p -> _armafn(p, transform_pars), init[mask], optim_method;
+                param_scale = parscale[mask],
+                step_sizes = get(optim_control, "ndeps", nothing),
+                max_iterations = get(optim_control, "maxit", nothing))
+            res = (converged=opt.converged, minimizer=opt.minimizer, minimum=opt.minimum)
         end
 
         if !res.converged
@@ -470,11 +459,10 @@ function fit!(model::SARIMA{Fl}) where {Fl}
             end
 
             if any(coef[mask] .!= res.minimizer)
-                ctrl = copy(optim_control)
-                ctrl["parscale"] = parscale[mask]
-                ctrl["maxit"] = 0
-                opt = optimize(coef[mask], p -> _armafn(p, true); method=optim_method, control=ctrl)
-                res = (converged=opt.convergence == 0, minimizer=opt.par, minimum=opt.value)
+                opt = optimize(p -> _armafn(p, true), coef[mask], optim_method;
+                    param_scale = parscale[mask],
+                    max_iterations = 0)
+                res = (converged=opt.converged, minimizer=opt.minimizer, minimum=opt.minimum)
                 hessian = numerical_hessian(p -> _armafn(p, true), res.minimizer)
                 coef[mask] .= res.minimizer
             else

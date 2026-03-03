@@ -355,17 +355,15 @@ function fit_diffusion(y::AbstractVector{<:Real};
     end
 
     function _run_optim(x0_start)
-        res = optimize(x0_start, objective;
-                       method=method,
+        res = optimize(objective, x0_start, method;
                        lower=lower,
                        upper=upper,
-                       control=Dict("maxit" => maxiter))
+                       max_iterations=maxiter)
 
         if method !== :nelder_mead
-            res_nm = optimize(x0_start, objective;
-                              method=:nelder_mead,
-                              control=Dict("maxit" => maxiter))
-            if res_nm.value < res.value
+            res_nm = optimize(objective, x0_start, :nelder_mead;
+                              max_iterations=maxiter)
+            if res_nm.minimum < res.minimum
                 res = res_nm
             end
         end
@@ -381,7 +379,7 @@ function fit_diffusion(y::AbstractVector{<:Real};
                 x0_alt = copy(x0)
                 x0_alt[idx] = max(x0[idx] * scale, lower[idx])
                 alt_result = _run_optim(x0_alt)
-                if alt_result.value < result.value
+                if alt_result.minimum < result.minimum
                     result = alt_result
                 end
             end
@@ -393,7 +391,7 @@ function fit_diffusion(y::AbstractVector{<:Real};
                     x0_alt = copy(x0)
                     x0_alt[idx] = max(probe, lower[idx])
                     alt_result = _run_optim(x0_alt)
-                    if alt_result.value < result.value
+                    if alt_result.minimum < result.minimum
                         result = alt_result
                     end
                 end
@@ -401,7 +399,7 @@ function fit_diffusion(y::AbstractVector{<:Real};
         end
     end
 
-    opt_params = result.par
+    opt_params = result.minimizer
     final_params = _reconstruct_params(opt_params, model_type, fixed_params, mscal_factor)
 
     curve = get_curve(model_type, n_clean, final_params)

@@ -1490,13 +1490,13 @@ function fit_specific_bats(
 
         maxit = 100 * length(param_vector)^2
         opt_result = optimize(
+            objective_scaled,
             scaled_param0,
-            objective_scaled;
-            method = :nelder_mead,
-            control = Dict("maxit" => maxit),
+            :nelder_mead;
+            max_iterations = maxit,
         )
 
-        opt_par_scaled = opt_result.par
+        opt_par_scaled = opt_result.minimizer
         opt_par = opt_par_scaled .* par_scale
 
 
@@ -1558,21 +1558,20 @@ function fit_specific_bats(
         if length(param_vector) > 1
             maxit = 100 * length(param_vector)^2
             opt_result = optimize(
+                objective_scaled,
                 scaled_param0,
-                objective_scaled;
-                method = :nelder_mead,
-                control = Dict("maxit" => maxit),
+                :nelder_mead;
+                max_iterations = maxit,
             )
         else
-
             opt_result = optimize(
+                objective_scaled,
                 scaled_param0,
-                objective_scaled;
-                method = :bfgs,
+                :bfgs,
             )
         end
 
-        opt_par_scaled = opt_result.par
+        opt_par_scaled = opt_result.minimizer
         opt_par = opt_par_scaled .* par_scale
 
         paramz = unparameterise(opt_par, control)
@@ -1605,7 +1604,7 @@ function fit_specific_bats(
     end
 
 
-    likelihood = opt_result.value
+    likelihood = opt_result.minimum
 
     aic = likelihood + 2 * (length(param_vector) + size(x_nought, 1))
 
@@ -1619,7 +1618,7 @@ function fit_specific_bats(
         ar_coefficients = ar_coefs,
         ma_coefficients = ma_coefs,
         likelihood = likelihood,
-        optim_return_code = opt_result.convergence,
+        optim_return_code = opt_result.converged ? 0 : 1,
         variance = variance,
         aic = aic,
         parameters = (vect = opt_par, control = control),

@@ -1,3 +1,5 @@
+using LinearAlgebra: mul!
+
 """
     BFGS Quasi-Newton Optimizer
 
@@ -64,6 +66,11 @@ Fields:
 - `grad_diff::Vector{Float64}` — Gradient difference yₖ = ∇f_{k+1} - ∇f_k (length `n_active`)
 - `inv_hessian::Matrix{Float64}` — Inverse Hessian approximation Hₖ (`n_active × n_active`)
 - `Hy::Vector{Float64}` — Buffer for H*y product (length `n_active`)
+- `d_full::Vector{Float64}` — Full search direction in original space (length `n_total`)
+- `x_trial::Vector{Float64}` — Line-search trial point buffer (length `n_total`)
+- `g_trial::Vector{Float64}` — Line-search trial gradient buffer (length `n_total`)
+- `g_best::Vector{Float64}` — Best line-search gradient snapshot (length `n_total`)
+- `g_saved::Vector{Float64}` — Zoom-phase saved gradient buffer (length `n_total`)
 """
 mutable struct BFGSWorkspace
     gradient::Vector{Float64}
@@ -72,6 +79,11 @@ mutable struct BFGSWorkspace
     grad_diff::Vector{Float64}
     inv_hessian::Matrix{Float64}
     Hy::Vector{Float64}
+    d_full::Vector{Float64}
+    x_trial::Vector{Float64}
+    g_trial::Vector{Float64}
+    g_best::Vector{Float64}
+    g_saved::Vector{Float64}
 
     function BFGSWorkspace(n_total::Int, n_active::Int)
         new(
@@ -80,7 +92,12 @@ mutable struct BFGSWorkspace
             zeros(n_active),
             zeros(n_active),
             zeros(n_active, n_active),
-            zeros(n_active)
+            zeros(n_active),
+            zeros(n_total),
+            zeros(n_total),
+            zeros(n_total),
+            zeros(n_total),
+            zeros(n_total)
         )
     end
 end
@@ -119,14 +136,8 @@ Arguments:
 )
     n = length(s)
 
-    # Compute Hy = H * y
-    @inbounds for i in 1:n
-        acc = 0.0
-        @simd for j in 1:n
-            acc += H[i, j] * y[j]
-        end
-        Hy[i] = acc
-    end
+    # Compute Hy = H * y (BLAS dgemv for n ≥ 4, hand loop for tiny problems)
+    mul!(Hy, H, y)
 
     # scale = (1 + yᵀHy / sᵀy) / sᵀy
     yTHy = 0.0
@@ -273,20 +284,18 @@ function bfgs(
         workspace.inv_hessian[i, i] = 1.0
     end
 
-    # Set up bounds vectors for the line search (unbounded for BFGS)
-    lb = fill(-Inf, n_total)
-    ub = fill(Inf, n_total)
-
-    # Line search objective and gradient wrappers
-    ls_f = x_ls -> f(x_ls)
+    # Line search gradient wrapper: writes into workspace buffer, returns it.
+    # Non-finite gradients (e.g. at singularities) are replaced with NaN to
+    # let the line search detect failure rather than throwing.
     ls_g = x_ls -> begin
-        g_out = similar(x_ls)
-        try
-            gfunc(g_out, x_ls)
-        catch
-            fill!(g_out, NaN)
+        gfunc(workspace.g_trial, x_ls)
+        @inbounds for i in eachindex(workspace.g_trial)
+            if !isfinite(workspace.g_trial[i])
+                fill!(workspace.g_trial, NaN)
+                break
+            end
         end
-        return g_out
+        return workspace.g_trial
     end
 
     f_best = fval
@@ -296,32 +305,33 @@ function bfgs(
     while iter < maxit
         iter += 1
 
-        # Save current active parameters and gradient for later yₖ computation
+        # Save current active parameters and gradient, and extract active
+        # gradient into Hy buffer for search direction computation
         @inbounds for i in 1:n_active
-            workspace.x_active[i] = x_current[active_indices[i]]
-            workspace.grad_diff[i] = workspace.gradient[active_indices[i]]
+            idx = active_indices[i]
+            workspace.x_active[i] = x_current[idx]
+            gi = workspace.gradient[idx]
+            workspace.grad_diff[i] = gi
+            workspace.Hy[i] = gi
         end
 
         # Compute search direction: p = -H * g (N&W Eq. 6.18)
-        @inbounds for i in 1:n_active
-            s = 0.0
-            @simd for j in 1:n_active
-                s -= workspace.inv_hessian[i, j] * workspace.gradient[active_indices[j]]
-            end
-            workspace.search_dir[i] = s
-        end
+        mul!(workspace.search_dir, workspace.inv_hessian, workspace.Hy)
 
-        # Build full-dimensional search direction for line search
-        d_full = zeros(n_total)
+        # Build full-dimensional search direction and negate
+        fill!(workspace.d_full, 0.0)
         @inbounds for i in 1:n_active
-            d_full[active_indices[i]] = workspace.search_dir[i]
+            workspace.search_dir[i] = -workspace.search_dir[i]
+            workspace.d_full[active_indices[i]] = workspace.search_dir[i]
         end
 
         # Strong Wolfe line search (N&W Algorithm 3.5)
         ok, alpha, f_new, g_new, x_new, ls_fe, ls_ge = _strong_wolfe_line_search!(
-            x_current, f_best, workspace.gradient, d_full, lb, ub,
-            ls_f, ls_g;
-            c1=1e-4, c2=0.9, iter=iter)
+            x_current, f_best, workspace.gradient, workspace.d_full, nothing, nothing,
+            f, ls_g;
+            c1=1e-4, c2=0.9, iter=iter, boxed=false,
+            xtrial_buf=workspace.x_trial, gtrial_buf=workspace.g_trial,
+            gbest_buf=workspace.g_best, gsave_buf=workspace.g_saved)
         fn_eval_count += ls_fe
         gr_eval_count += ls_ge
 
@@ -335,13 +345,15 @@ function bfgs(
             # Recompute steepest descent direction
             @inbounds for i in 1:n_active
                 workspace.search_dir[i] = -workspace.gradient[active_indices[i]]
-                d_full[active_indices[i]] = workspace.search_dir[i]
+                workspace.d_full[active_indices[i]] = workspace.search_dir[i]
             end
 
             ok, alpha, f_new, g_new, x_new, ls_fe2, ls_ge2 = _strong_wolfe_line_search!(
-                x_current, f_best, workspace.gradient, d_full, lb, ub,
-                ls_f, ls_g;
-                c1=1e-4, c2=0.9, iter=iter)
+                x_current, f_best, workspace.gradient, workspace.d_full, nothing, nothing,
+                f, ls_g;
+                c1=1e-4, c2=0.9, iter=iter, boxed=false,
+                xtrial_buf=workspace.x_trial, gtrial_buf=workspace.g_trial,
+                gbest_buf=workspace.g_best, gsave_buf=workspace.g_saved)
             fn_eval_count += ls_fe2
             gr_eval_count += ls_ge2
 
@@ -354,9 +366,9 @@ function bfgs(
         end
 
         # Accept step
-        x_current .= x_new
+        copyto!(x_current, x_new)
         f_best = f_new
-        workspace.gradient .= g_new
+        copyto!(workspace.gradient, g_new)
 
         # Check for non-finite gradient
         has_nonfinite = false

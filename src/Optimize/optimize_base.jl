@@ -222,12 +222,27 @@ end
 
 """Build scaled objective and gradient closures that apply parscale/fnscale transformations."""
 function _build_scaled_fns(fn, grad, npar::Int, parscale::Vector{Float64}, fnscale::Float64; kwargs...)
-    needs_parscale = any(parscale .!= 1.0)
+    needs_parscale = any(p -> p != 1.0, parscale)
+    x_scaled_fn = needs_parscale ? Vector{Float64}(undef, npar) : Float64[]
+    x_scaled_grad = needs_parscale ? Vector{Float64}(undef, npar) : Float64[]
+
+    scale_params! = function (dst::Vector{Float64}, x::AbstractVector, scale::Vector{Float64})
+        @inbounds @simd for i in eachindex(dst, x, scale)
+            dst[i] = x[i] * scale[i]
+        end
+        return dst
+    end
 
     fn_scaled = if needs_parscale && fnscale != 1.0
-        x -> _to_scalar(fn(x .* parscale; kwargs...)) / fnscale
+        x -> begin
+            scale_params!(x_scaled_fn, x, parscale)
+            _to_scalar(fn(x_scaled_fn; kwargs...)) / fnscale
+        end
     elseif needs_parscale
-        x -> _to_scalar(fn(x .* parscale; kwargs...))
+        x -> begin
+            scale_params!(x_scaled_fn, x, parscale)
+            _to_scalar(fn(x_scaled_fn; kwargs...))
+        end
     elseif fnscale != 1.0
         x -> _to_scalar(fn(x; kwargs...)) / fnscale
     else
@@ -235,15 +250,49 @@ function _build_scaled_fns(fn, grad, npar::Int, parscale::Vector{Float64}, fnsca
     end
 
     grad_scaled = if !isnothing(grad)
-        validate_grad = g -> begin
+        g_buffer = Vector{Float64}(undef, npar)
+        validate_grad! = (dst, g) -> begin
             (g isa AbstractVector && length(g) == npar) ||
                 throw(ArgumentError("gradient returned length $(g isa AbstractVector ? length(g) : 0), expected $npar"))
-            g
+            copyto!(dst, g)
         end
-        if fnscale != 1.0 || needs_parscale
-            x -> (validate_grad(grad(x .* parscale; kwargs...)) .* parscale) / fnscale
+        if needs_parscale && fnscale != 1.0
+            inv_fnscale = inv(fnscale)
+            x -> begin
+                scale_params!(x_scaled_grad, x, parscale)
+                raw = grad(x_scaled_grad; kwargs...)
+                validate_grad!(g_buffer, raw)
+                @inbounds @simd for i in eachindex(g_buffer)
+                    g_buffer[i] *= parscale[i] * inv_fnscale
+                end
+                g_buffer
+            end
+        elseif needs_parscale
+            x -> begin
+                scale_params!(x_scaled_grad, x, parscale)
+                raw = grad(x_scaled_grad; kwargs...)
+                validate_grad!(g_buffer, raw)
+                @inbounds @simd for i in eachindex(g_buffer)
+                    g_buffer[i] *= parscale[i]
+                end
+                g_buffer
+            end
+        elseif fnscale != 1.0
+            inv_fnscale = inv(fnscale)
+            x -> begin
+                raw = grad(x; kwargs...)
+                validate_grad!(g_buffer, raw)
+                @inbounds @simd for i in eachindex(g_buffer)
+                    g_buffer[i] *= inv_fnscale
+                end
+                g_buffer
+            end
         else
-            x -> validate_grad(grad(x; kwargs...))
+            x -> begin
+                raw = grad(x; kwargs...)
+                validate_grad!(g_buffer, raw)
+                g_buffer
+            end
         end
     else
         nothing
@@ -304,7 +353,15 @@ end
 
 function _run_bfgs(par, fn, gr, parscale, fnscale,
                    ndeps, maxit, abstol, reltol, gtol, trace, report_interval)
-    gr_internal = isnothing(gr) ? nothing : (grad, x) -> (grad .= gr(x); nothing)
+    gr_internal = if isnothing(gr)
+        nothing
+    else
+        (grad, x) -> begin
+            g_vec = gr(x)
+            copyto!(grad, g_vec)
+            nothing
+        end
+    end
 
     opts = BFGSOptions(
         abstol = abstol,

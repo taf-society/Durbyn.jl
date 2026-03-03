@@ -12,6 +12,32 @@ Shared by both BFGS and L-BFGS-B solvers.
   Algorithms 3.5, 3.6, Eq. 3.59. Springer.
 """
 
+# Allocation-free dot product and norm for hot-path use.
+# LinearAlgebra.dot/norm dispatch through BLAS on small vectors and allocate
+# wrapper objects; these hand-written versions avoid that overhead entirely.
+
+@inline function _ls_dot(a::Vector{Float64}, b::Vector{Float64})
+    s = 0.0
+    @inbounds @simd for i in eachindex(a, b)
+        s += a[i] * b[i]
+    end
+    s
+end
+
+@inline function _ls_norm(v::Vector{Float64})
+    s = 0.0
+    @inbounds @simd for i in eachindex(v)
+        s += v[i] * v[i]
+    end
+    sqrt(s)
+end
+
+@inline function _ls_axpy!(dst::Vector{Float64}, x::Vector{Float64}, alpha::Float64, d::Vector{Float64})
+    @inbounds @simd for i in eachindex(dst, x, d)
+        dst[i] = x[i] + alpha * d[i]
+    end
+end
+
 
 """
     _max_feasible_step(x, d, lb, ub)
@@ -59,6 +85,21 @@ function _cubic_interpolation_min(a1, f1, dphi1, a2, f2, dphi2)
 end
 
 
+# Inline evaluation: compute xtrial = x + alpha*d, then f(xtrial) and g(xtrial).
+# Returns (f_val, gtrial) and increments eval counters via Ref.
+@inline function _ls_eval!(xtrial, gtrial, x, alpha, d, f, g, fevals, gevals)
+    _ls_axpy!(xtrial, x, alpha, d)
+    ft = f(xtrial)
+    fevals[] += 1
+    gt = g(xtrial)
+    gevals[] += 1
+    if gt !== gtrial
+        copyto!(gtrial, gt)
+    end
+    return ft, gtrial
+end
+
+
 """
     _strong_wolfe_line_search!(x, fx, grad, d, lb, ub, f, g; kwargs...)
 
@@ -88,20 +129,28 @@ Nocedal & Wright (2006), Algorithm 3.5.
 Tuple `(success, alpha, f_new, g_new, x_new, fevals, gevals)`
 """
 function _strong_wolfe_line_search!(x::Vector{Float64}, fx::Float64, grad::Vector{Float64},
-    d::Vector{Float64}, lb::Vector{Float64}, ub::Vector{Float64},
+    d::Vector{Float64}, lb::Union{Nothing,Vector{Float64}}, ub::Union{Nothing,Vector{Float64}},
     f::Function, g::Function;
     c1::Float64=1e-3, c2::Float64=0.9, iter::Int=1,
     xtol::Float64=0.1, boxed::Bool=false,
-    max_evals::Int=40, max_step::Float64=Inf)
+    max_evals::Int=40, max_step::Float64=Inf,
+    xtrial_buf::Union{Nothing,Vector{Float64}}=nothing,
+    gtrial_buf::Union{Nothing,Vector{Float64}}=nothing,
+    gbest_buf::Union{Nothing,Vector{Float64}}=nothing,
+    gsave_buf::Union{Nothing,Vector{Float64}}=nothing)
 
-    n = length(x)
-    phi0prime = dot(grad, d)
+    phi0prime = _ls_dot(grad, d)
     if !(isfinite(phi0prime)) || phi0prime >= 0.0
-
         return false, 0.0, fx, grad, x, 0, 0
     end
 
-    alpha_max = _max_feasible_step(x, d, lb, ub)
+    alpha_max = if boxed
+        (isnothing(lb) || isnothing(ub)) &&
+            throw(ArgumentError("boxed line search requires finite bound vectors"))
+        _max_feasible_step(x, d, lb, ub)
+    else
+        Inf
+    end
     if isfinite(max_step) && max_step < alpha_max
         alpha_max = max_step
     end
@@ -109,76 +158,73 @@ function _strong_wolfe_line_search!(x::Vector{Float64}, fx::Float64, grad::Vecto
         return false, 0.0, fx, grad, x, 0, 0
     end
 
-    Dnorm = norm(d)
+    Dnorm = _ls_norm(d)
     alpha_init = (iter == 1 && !boxed) ? (1.0 / max(Dnorm, eps())) : 1.0
     alpha = isfinite(alpha_max) ? min(alpha_init, alpha_max) : alpha_init
 
-    xtrial = similar(x)
-    gtrial = similar(grad)
+    xtrial = isnothing(xtrial_buf) ? similar(x) : xtrial_buf
+    gtrial = isnothing(gtrial_buf) ? similar(grad) : gtrial_buf
 
-    fevals = 0
-    gevals = 0
+    fevals = Ref(0)
+    gevals = Ref(0)
 
     f_prev = fx
     alpha_prev = 0.0
     f_best = fx
     alpha_best = 0.0
-    g_best = copy(grad)
+    g_best = isnothing(gbest_buf) ? similar(grad) : gbest_buf
+    g_saved = isnothing(gsave_buf) ? similar(grad) : gsave_buf
+    copyto!(g_best, grad)
 
-    eval_at = function (alphat)
-        @inbounds @. xtrial = x + alphat * d
-        ft = f(xtrial)
-        fevals += 1
-        gt = g(xtrial)
-        gevals += 1
-        return ft, gt
-    end
-
-    ft, gt = eval_at(alpha)
-    phialpha = dot(gt, d)
+    ft, gt = _ls_eval!(xtrial, gtrial, x, alpha, d, f, g, fevals, gevals)
+    phialpha = _ls_dot(gt, d)
     if ft <= fx + c1 * alpha * phi0prime
         f_best = ft
         alpha_best = alpha
-        g_best .= gt
+        copyto!(g_best, gt)
     end
 
     for k in 1:max_evals
         if (ft > fx + c1 * alpha * phi0prime) || (k > 1 && ft >= f_prev)
             ok, alphaz, fz, gz, ez_fe, ez_ge = _wolfe_zoom!(x, fx, grad, d, lb, ub, f, g,
                 alpha_prev, alpha, f_prev, ft,
-                phi0prime; c1=c1, c2=c2, xtol=xtol, max_evals=max_evals - (fevals + gevals))
-            fevals += ez_fe
-            gevals += ez_ge
+                phi0prime;
+                c1=c1, c2=c2, xtol=xtol, max_evals=max_evals - (fevals[] + gevals[]),
+                xtrial_buf=xtrial, gtrial_buf=gtrial, gsave_buf=g_saved)
+            fevals[] += ez_fe
+            gevals[] += ez_ge
             if ok
-                @inbounds @. xtrial = x + alphaz * d
-                return true, alphaz, fz, gz, xtrial, fevals, gevals
+                _ls_axpy!(xtrial, x, alphaz, d)
+                return true, alphaz, fz, gz, xtrial, fevals[], gevals[]
             else
                 if alpha_best > 0.0
-                    @inbounds @. xtrial = x + alpha_best * d
-                    return true, alpha_best, f_best, g_best, xtrial, fevals, gevals
+                    _ls_axpy!(xtrial, x, alpha_best, d)
+                    return true, alpha_best, f_best, g_best, xtrial, fevals[], gevals[]
                 end
-                return false, 0.0, fx, grad, x, fevals, gevals
+                return false, 0.0, fx, grad, x, fevals[], gevals[]
             end
         end
         if abs(phialpha) <= c2 * abs(phi0prime)
-            @inbounds @. xtrial = x + alpha * d
-            return true, alpha, ft, gt, xtrial, fevals, gevals
+            _ls_axpy!(xtrial, x, alpha, d)
+            return true, alpha, ft, gt, xtrial, fevals[], gevals[]
         end
         if phialpha >= 0.0
             ok, alphaz, fz, gz, ez_fe, ez_ge = _wolfe_zoom!(x, fx, grad, d, lb, ub, f, g,
                 alpha, alpha_prev, ft, f_prev,
-                phi0prime; c1=c1, c2=c2, xtol=xtol, max_evals=max_evals - (fevals + gevals))
-            fevals += ez_fe
-            gevals += ez_ge
+                phi0prime;
+                c1=c1, c2=c2, xtol=xtol, max_evals=max_evals - (fevals[] + gevals[]),
+                xtrial_buf=xtrial, gtrial_buf=gtrial, gsave_buf=g_saved)
+            fevals[] += ez_fe
+            gevals[] += ez_ge
             if ok
-                @inbounds @. xtrial = x + alphaz * d
-                return true, alphaz, fz, gz, xtrial, fevals, gevals
+                _ls_axpy!(xtrial, x, alphaz, d)
+                return true, alphaz, fz, gz, xtrial, fevals[], gevals[]
             else
                 if alpha_best > 0.0
-                    @inbounds @. xtrial = x + alpha_best * d
-                    return true, alpha_best, f_best, g_best, xtrial, fevals, gevals
+                    _ls_axpy!(xtrial, x, alpha_best, d)
+                    return true, alpha_best, f_best, g_best, xtrial, fevals[], gevals[]
                 end
-                return false, 0.0, fx, grad, x, fevals, gevals
+                return false, 0.0, fx, grad, x, fevals[], gevals[]
             end
         end
 
@@ -186,29 +232,29 @@ function _strong_wolfe_line_search!(x::Vector{Float64}, fx::Float64, grad::Vecto
         alpha = min(2.0 * alpha, alpha_max)
         if alpha == alpha_prev
             if alpha_best > 0.0
-                @inbounds @. xtrial = x + alpha_best * d
-                return true, alpha_best, f_best, g_best, xtrial, fevals, gevals
+                _ls_axpy!(xtrial, x, alpha_best, d)
+                return true, alpha_best, f_best, g_best, xtrial, fevals[], gevals[]
             elseif ft < fx
-                @inbounds @. xtrial = x + alpha * d
-                return true, alpha, ft, gt, xtrial, fevals, gevals
+                _ls_axpy!(xtrial, x, alpha, d)
+                return true, alpha, ft, gt, xtrial, fevals[], gevals[]
             else
-                return false, 0.0, fx, grad, x, fevals, gevals
+                return false, 0.0, fx, grad, x, fevals[], gevals[]
             end
         end
-        ft, gt = eval_at(alpha)
-        phialpha = dot(gt, d)
+        ft, gt = _ls_eval!(xtrial, gtrial, x, alpha, d, f, g, fevals, gevals)
+        phialpha = _ls_dot(gt, d)
         if ft <= fx + c1 * alpha * phi0prime
             f_best = ft
             alpha_best = alpha
-            g_best .= gt
+            copyto!(g_best, gt)
         end
     end
 
     if alpha_best > 0.0
-        @inbounds @. xtrial = x + alpha_best * d
-        return true, alpha_best, f_best, g_best, xtrial, fevals, gevals
+        _ls_axpy!(xtrial, x, alpha_best, d)
+        return true, alpha_best, f_best, g_best, xtrial, fevals[], gevals[]
     end
-    return false, 0.0, fx, grad, x, fevals, gevals
+    return false, 0.0, fx, grad, x, fevals[], gevals[]
 end
 
 
@@ -222,29 +268,28 @@ Wolfe conditions are satisfied.
 Nocedal & Wright (2006), Algorithm 3.6.
 """
 function _wolfe_zoom!(x, fx, gx, d, lb, ub, f, g,
-    alpha_lo, alpha_hi, f_lo, f_hi, phi0prime; c1=1e-3, c2=0.9, xtol=0.1, max_evals=30)
+    alpha_lo, alpha_hi, f_lo, f_hi, phi0prime;
+    c1=1e-3, c2=0.9, xtol=0.1, max_evals=30,
+    xtrial_buf::Union{Nothing,Vector{Float64}}=nothing,
+    gtrial_buf::Union{Nothing,Vector{Float64}}=nothing,
+    gsave_buf::Union{Nothing,Vector{Float64}}=nothing)
     fevals = 0
     gevals = 0
-    xtrial = similar(x)
-    gtrial = similar(gx)
+    xtrial = isnothing(xtrial_buf) ? similar(x) : xtrial_buf
+    gtrial = isnothing(gtrial_buf) ? similar(gx) : gtrial_buf
+    g_lo_saved = isnothing(gsave_buf) ? similar(gx) : gsave_buf
 
-    @inbounds @. xtrial = x + alpha_lo * d
+    _ls_axpy!(xtrial, x, alpha_lo, d)
     f_lo_eval = f_lo
     g_lo = g(xtrial)
     gevals += 1
-    phi_lo = dot(g_lo, d)
-    g_lo_saved = copy(g_lo)
+    if g_lo !== gtrial
+        copyto!(gtrial, g_lo)
+    end
+    phi_lo = _ls_dot(gtrial, d)
+    copyto!(g_lo_saved, gtrial)
 
     phi_hi = NaN
-
-    eval_at = function (alphat)
-        @inbounds @. xtrial = x + alphat * d
-        ft = f(xtrial)
-        fevals += 1
-        gt = g(xtrial)
-        gevals += 1
-        return ft, gt
-    end
 
     for _ in 1:max_evals
         bracket_max = max(alpha_lo, alpha_hi)
@@ -258,12 +303,22 @@ function _wolfe_zoom!(x, fx, gx, d, lb, ub, f, g,
             alpha_j = 0.5 * (alpha_lo + alpha_hi)
         end
 
-        fj, gj = eval_at(alpha_j)
+        # Inline eval_at
+        _ls_axpy!(xtrial, x, alpha_j, d)
+        fj = f(xtrial)
+        fevals += 1
+        gj_raw = g(xtrial)
+        gevals += 1
+        if gj_raw !== gtrial
+            copyto!(gtrial, gj_raw)
+        end
+        gj = gtrial
+
         if (fj > fx + c1 * alpha_j * phi0prime) || (fj >= f_lo_eval)
             alpha_hi, f_hi = alpha_j, fj
-            phi_hi = dot(gj, d)
+            phi_hi = _ls_dot(gj, d)
         else
-            phij = dot(gj, d)
+            phij = _ls_dot(gj, d)
             if abs(phij) <= c2 * abs(phi0prime)
                 return true, alpha_j, fj, gj, fevals, gevals
             end
@@ -273,7 +328,7 @@ function _wolfe_zoom!(x, fx, gx, d, lb, ub, f, g,
             end
             alpha_lo, f_lo_eval = alpha_j, fj
             phi_lo = phij
-            g_lo_saved .= gj
+            copyto!(g_lo_saved, gj)
         end
         if abs(alpha_hi - alpha_lo) <= 1e-16
             return true, alpha_lo, f_lo_eval, g_lo_saved, fevals, gevals

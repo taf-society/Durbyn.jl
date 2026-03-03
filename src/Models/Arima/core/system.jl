@@ -56,7 +56,7 @@ function initialize_arima_state(phi::Vector{Float64}, theta::Vector{Float64}, De
     return ArimaStateSpace(phi, theta, Delta, Z, a, P, T, V, h, Pn)
 end
 
-function update_arima(mod::Union{ArimaStateSpace,SARIMASystem}, phi, theta; ss_g=true)
+function update_arima(mod::Union{ArimaStateSpace,SARIMASystem}, phi, theta; use_gardner_init=true)
     p = length(phi)
     q = length(theta)
     r = max(p, q + 1)
@@ -69,7 +69,7 @@ function update_arima(mod::Union{ArimaStateSpace,SARIMASystem}, phi, theta; ss_g
     end
 
     if r > 1
-        if ss_g
+        if use_gardner_init
             mod.Pn[1:r, 1:r] .= compute_q0_covariance_matrix(phi, theta)
         else
             mod.Pn[1:r, 1:r] .= compute_q0_bis_covariance_matrix(phi, theta, 0.0)
@@ -205,7 +205,7 @@ end
 
 function update_system!(model::SARIMA, phi::Vector{Float64}, theta::Vector{Float64})
     sys = model.system
-    SS_G = model.SSinit === :gardner1980
-    update_arima(sys, phi, theta; ss_g=SS_G)
+    gardner = model.SSinit === :gardner1980
+    update_arima(sys, phi, theta; use_gardner_init=gardner)
     return model
 end

@@ -3,7 +3,7 @@ function compute_css_residuals(
     arma::Vector{Int},
     phi::AbstractArray,
     theta::AbstractArray,
-    ncond::Int,
+    n_conditioning::Int,
 )
     n = length(y)
     p = length(phi)
@@ -25,14 +25,14 @@ function compute_css_residuals(
     end
 
     resid = Vector{Float64}(undef, n)
-    for i = 1:ncond
+    for i = 1:n_conditioning
         resid[i] = 0.0
     end
 
     ssq = 0.0
     nu = 0
 
-    for l = (ncond+1):n
+    for l = (n_conditioning+1):n
         tmp = w[l]
         for j = 1:p
             if (l - j) < 1
@@ -41,7 +41,7 @@ function compute_css_residuals(
             tmp -= phi[j] * w[l-j]
         end
 
-        jmax = min(l - ncond, q)
+        jmax = min(l - n_conditioning, q)
         for j = 1:jmax
             if (l - j) < 1
                 continue
@@ -63,35 +63,35 @@ end
 function process_xreg(xreg::Union{NamedMatrix,Nothing}, n::Int)
     if isnothing(xreg)
         xreg_mat = Matrix{Float64}(undef, n, 0)
-        ncxreg = 0
-        nmxreg = String[]
+        n_xreg_cols = 0
+        xreg_names = String[]
     else
         if size(xreg.data, 1) != n
-            throw(ArgumentError("Lengths of x and xreg do not match!"))
+            throw(ArgumentError("time series length ($n) does not match xreg row count ($(size(xreg.data, 1)))"))
         end
         xreg_mat = xreg.data
         if !(eltype(xreg_mat) <: Float64)
             xreg_mat = Float64.(xreg_mat)
         end
-        ncxreg = size(xreg_mat, 2)
-        nmxreg = xreg.colnames
+        n_xreg_cols = size(xreg_mat, 2)
+        xreg_names = xreg.colnames
     end
-    return xreg_mat, ncxreg, nmxreg
+    return xreg_mat, n_xreg_cols, xreg_names
 end
 
 function regress_and_update!(
     x::AbstractArray,
     xreg::Matrix,
-    narma::Int,
-    ncxreg::Int,
+    n_arma_params::Int,
+    n_xreg_cols::Int,
     order_d::Int,
     seasonal_d::Int,
     m::Int,
     Delta::AbstractArray,
 )
 
-    init0 = zeros(narma)
-    parscale = ones(narma)
+    init0 = zeros(n_arma_params)
+    parscale = ones(n_arma_params)
 
     dx = copy(x)
     dxreg = copy(xreg)
@@ -136,7 +136,7 @@ function regress_and_update!(
     return init0, parscale, n_used
 end
 
-function prep_coefs(arma::Vector{Int}, coef::AbstractArray, cn::Vector{String}, ncxreg::Int)
+function prep_coefs(arma::Vector{Int}, coef::AbstractArray, cn::Vector{String}, n_xreg_cols::Int)
     names = String[]
     if arma[1] > 0
         append!(names, ["ar$(i)" for i in 1:arma[1]])
@@ -150,7 +150,7 @@ function prep_coefs(arma::Vector{Int}, coef::AbstractArray, cn::Vector{String}, 
     if arma[4] > 0
         append!(names, ["sma$(i)" for i in 1:arma[4]])
     end
-    if ncxreg > 0
+    if n_xreg_cols > 0
         append!(names, cn)
     end
     mat = reshape(coef, 1, :)
@@ -172,7 +172,7 @@ Returns the model itself (for chaining).
 function fit!(model::SARIMA{Fl}) where {Fl}
     order = model.order
     arma = arma_vector(order)
-    narma = sum(arma[1:4])
+    n_arma_params = sum(arma[1:4])
     Delta = build_delta(order)
     method = model.method
     transform_pars = model.transform_pars
@@ -180,7 +180,7 @@ function fit!(model::SARIMA{Fl}) where {Fl}
     optim_control = model.optim_control
     kappa = model.kappa
     SSinit = model.SSinit
-    SS_G = SSinit === :gardner1980
+    use_gardner_init = SSinit === :gardner1980
 
     x = model.y
     n = length(x)
@@ -199,12 +199,12 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         xreg = add_drift_term(xreg, ones(n), "intercept")
     end
 
-    xreg_mat, ncxreg, nmxreg = process_xreg(xreg, n)
+    xreg_mat, n_xreg_cols, xreg_names = process_xreg(xreg, n)
 
     if method === :css_ml
         has_missing = xi -> (ismissing(xi) || isnan(xi))
         anyna = any(has_missing, x)
-        if ncxreg > 0
+        if n_xreg_cols > 0
             anyna |= any(has_missing, xreg_mat)
         end
         if anyna
@@ -214,19 +214,19 @@ function fit!(model::SARIMA{Fl}) where {Fl}
 
     n_cond_input = model.fixed
     if method in (:css, :css_ml)
-        ncond = order.d + order.D * order.s
-        ncond1 = order.p + order.P * order.s
-        ncond += ncond1
+        n_conditioning = order.d + order.D * order.s
+        n_cond_arma = order.p + order.P * order.s
+        n_conditioning += n_cond_arma
     else
-        ncond = 0
+        n_conditioning = 0
     end
 
     fixed = if isnothing(model.fixed)
-        fill(NaN, narma + ncxreg)
+        fill(NaN, n_arma_params + n_xreg_cols)
     else
         f = Float64.(model.fixed)
-        if length(f) != narma + ncxreg
-            throw(ArgumentError("Wrong length for 'fixed'"))
+        if length(f) != n_arma_params + n_xreg_cols
+            throw(ArgumentError("'fixed' has length $(length(f)), expected $(n_arma_params + n_xreg_cols)"))
         end
         f
     end
@@ -247,8 +247,8 @@ function fit!(model::SARIMA{Fl}) where {Fl}
 
     orig_xreg_flag = true
     S_svd = nothing
-    if ncxreg > 0
-        orig_xreg_flag = (ncxreg == 1) || any(.!mask[(narma+1):(narma+ncxreg)])
+    if n_xreg_cols > 0
+        orig_xreg_flag = (n_xreg_cols == 1) || any(.!mask[(n_arma_params+1):(n_arma_params+n_xreg_cols)])
         if !orig_xreg_flag
             rows_good = [all(isfinite, row) for row in eachrow(xreg_mat)]
             S_svd = svd(xreg_mat[rows_good, :])
@@ -256,16 +256,16 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         end
     end
 
-    if ncxreg > 0
+    if n_xreg_cols > 0
         init0, parscale, n_used =
-            regress_and_update!(x, xreg_mat, narma, ncxreg, order.d, order.D, order.s, Delta)
+            regress_and_update!(x, xreg_mat, n_arma_params, n_xreg_cols, order.d, order.D, order.s, Delta)
     else
-        init0 = zeros(narma)
-        parscale = ones(narma)
+        init0 = zeros(n_arma_params)
+        parscale = ones(n_arma_params)
     end
 
     if n_used <= 0
-        throw(ArgumentError("Too few non-missing observations"))
+        throw(ArgumentError("insufficient non-missing observations for estimation"))
     end
 
     init = model.init
@@ -282,13 +282,13 @@ function fit!(model::SARIMA{Fl}) where {Fl}
             p_ar = arma[1]
             P_ar = arma[3]
             if p_ar > 0 && !ar_check(init[1:p_ar])
-                error("non-stationary AR part")
+                throw(ArgumentError("AR polynomial has roots inside the unit circle"))
             end
             if P_ar > 0
                 sa_start = arma[1] + arma[2] + 1
                 sa_stop = arma[1] + arma[2] + P_ar
                 if !ar_check(init[sa_start:sa_stop])
-                    error("non-stationary seasonal AR part")
+                    throw(ArgumentError("seasonal AR polynomial has roots inside the unit circle"))
                 end
             end
         end
@@ -308,14 +308,14 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         xxi = copy(x)
 
         Z = try
-            update_arima(mod, trarma[1], trarma[2]; ss_g=SS_G)
+            update_arima(mod, trarma[1], trarma[2]; use_gardner_init=use_gardner_init)
         catch e
             @warn "Updating arima failed $e"
             return typemax(Float64)
         end
 
-        if ncxreg > 0
-            xxi = xxi .- xreg_mat * par[narma+1:narma+ncxreg]
+        if n_xreg_cols > 0
+            xxi = xxi .- xreg_mat * par[n_arma_params+1:n_arma_params+n_xreg_cols]
         end
         resss = compute_arima_likelihood(xxi, Z, 0, false; workspace=kalman_ws[])
 
@@ -333,11 +333,11 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         trarma = transform_arima_parameters(par, arma, false)
         x_in = copy(x)
 
-        if ncxreg > 0
-            x_in = x_in .- xreg_mat * par[narma+1:narma+ncxreg]
+        if n_xreg_cols > 0
+            x_in = x_in .- xreg_mat * par[n_arma_params+1:n_arma_params+n_xreg_cols]
         end
 
-        ross = compute_css_residuals(x_in, arma, trarma[1], trarma[2], ncond)
+        ross = compute_css_residuals(x_in, arma, trarma[1], trarma[2], n_conditioning)
         sigma2 = ross[:sigma2]
         (sigma2 < 0 || isnan(sigma2) || sigma2 == Inf) && return typemax(Float64)
         result = 0.5 * log(sigma2)
@@ -363,11 +363,11 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         trarma = transform_arima_parameters(coef, arma, false)
         mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=Float64(kappa), SSinit=SSinit)
 
-        if ncxreg > 0
-            x = x - xreg_mat * coef[narma+1:narma+ncxreg]
+        if n_xreg_cols > 0
+            x = x - xreg_mat * coef[n_arma_params+1:n_arma_params+n_xreg_cols]
         end
         _ssl(x, mod)
-        val = compute_css_residuals(x, arma, trarma[1], trarma[2], ncond)
+        val = compute_css_residuals(x, arma, trarma[1], trarma[2], n_conditioning)
         sigma2 = val[:sigma2]
 
         if no_optim
@@ -380,9 +380,9 @@ function fit!(model::SARIMA{Fl}) where {Fl}
     else
         if method in (:css_ml, :ml)
             if method === :ml
-                ncond = order.d + order.D * order.s
-                ncond1 = order.p + order.P * order.s
-                ncond += ncond1
+                n_conditioning = order.d + order.D * order.s
+                n_cond_arma = order.p + order.P * order.s
+                n_conditioning += n_cond_arma
             end
 
             if no_optim
@@ -400,13 +400,13 @@ function fit!(model::SARIMA{Fl}) where {Fl}
             end
 
             if arma[1] > 0 && !ar_check(init[1:arma[1]])
-                error("Non-stationary AR part from CSS")
+                throw(ArgumentError("CSS initialization produced non-stationary AR polynomial"))
             end
             if arma[3] > 0 && !ar_check(init[(sum(arma[1:2])+1):(sum(arma[1:2])+arma[3])])
-                error("Non-stationary seasonal AR part from CSS")
+                throw(ArgumentError("CSS initialization produced non-stationary seasonal AR polynomial"))
             end
 
-            ncond = 0
+            n_conditioning = 0
         end
 
         if transform_pars
@@ -439,7 +439,7 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         end
 
         if !res.converged
-            @warn "Possible convergence problem"
+            @warn "Optimizer may not have fully converged"
         end
 
         coef[mask] .= res.minimizer
@@ -485,8 +485,8 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         trarma = transform_arima_parameters(coef, arma, false)
         mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=Float64(kappa), SSinit=SSinit)
 
-        val = if ncxreg > 0
-            _ssl(x - xreg_mat * coef[narma+1:narma+ncxreg], mod)
+        val = if n_xreg_cols > 0
+            _ssl(x - xreg_mat * coef[n_arma_params+1:n_arma_params+n_xreg_cols], mod)
         else
             _ssl(x, mod)
         end
@@ -497,16 +497,16 @@ function fit!(model::SARIMA{Fl}) where {Fl}
     aic = method !== :css ? value + 2 * sum(mask) + 2 : nothing
     loglik = -0.5 * value
 
-    if ncxreg > 0 && !orig_xreg_flag
-        ind = narma .+ (1:ncxreg)
+    if n_xreg_cols > 0 && !orig_xreg_flag
+        ind = n_arma_params .+ (1:n_xreg_cols)
         coef[ind] = S_svd.V * coef[ind]
-        A = Matrix{Float64}(I, narma + ncxreg, narma + ncxreg)
+        A = Matrix{Float64}(I, n_arma_params + n_xreg_cols, n_arma_params + n_xreg_cols)
         A[ind, ind] = S_svd.V
         A = A[mask, mask]
         var = A * var * transpose(A)
     end
 
-    arima_coef = prep_coefs(arma, coef, nmxreg, ncxreg)
+    arima_coef = prep_coefs(arma, coef, xreg_names, n_xreg_cols)
     resid = val[:residuals]
     fitted_vals = y_save .- resid
 
@@ -516,7 +516,7 @@ function fit!(model::SARIMA{Fl}) where {Fl}
 
     o = order
     s = model.order
-    fit_method = if ncxreg > 0
+    fit_method = if n_xreg_cols > 0
         "Regression with ARIMA($(o.p),$(o.d),$(o.q))($(s.P),$(s.D),$(s.Q))[$(s.s)] errors"
     else
         "ARIMA($(o.p),$(o.d),$(o.q))($(s.P),$(s.D),$(s.Q))[$(s.s)]"
@@ -544,12 +544,12 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         resid,
         fitted_vals,
         res.converged,
-        ncond,
+        n_conditioning,
         n_used,
     )
 
     model.method = method
-    model.n_cond = ncond
+    model.n_cond = n_conditioning
     model.xreg = xreg_original
     model.transform_pars = transform_pars
 

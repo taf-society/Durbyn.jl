@@ -119,8 +119,8 @@ A [`Forecast`](@ref) struct with the following fields:
   as during training.
 - **Drift:** If a drift term was estimated, a `"drift"` column is expected in
   the training regressors and is handled automatically. For drift-only models,
-  a future `"drift"` regressor is generated internally as `(n+1):(n+h)` when
-  `xreg` is not supplied (mirroring the R implementation).
+  a future `"drift"` regressor is generated automatically for drift-only models when
+  `xreg` is not supplied.
 - **Box-Cox:** When `lambda ≠ nothing`, the mean forecast is back-transformed via
   `inv_box_cox(mean; lambda, biasadj, fvar = se.^2)`. Normal-theory intervals
   are also back-transformed; bootstrapped intervals are assumed to be simulated

@@ -1,6 +1,6 @@
 module Arima
 export arima, ArimaFit, PDQ, predict_arima, ArimaPredictions
-export ArimaRJHFit, arima_rjh, auto_arima
+export arima_rjh, auto_arima
 
 using LinearAlgebra
 import Statistics: mean

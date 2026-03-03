@@ -139,7 +139,7 @@ function predict_covariance_with_diff!(Pnew::Matrix{Float64}, P::Matrix{Float64}
     end
 end
 
-function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, useResid, rsResid, l, ssq, sumlog, nu,)
+function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, store_residuals, standardized_residuals, l, sum_sq_resid, sum_log_gain, n_valid,)
 
     resid = y_obs - anew[1]
     @inbounds for i in 1:d
@@ -160,13 +160,13 @@ function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, useResid, r
     end
 
     if gain < 1e4
-        nu[] += 1
-        ssq[] += resid^2 / gain
-        sumlog[] += gain > 0 ? log(gain) : NaN
+        n_valid[] += 1
+        sum_sq_resid[] += resid^2 / gain
+        sum_log_gain[] += gain > 0 ? log(gain) : NaN
     end
 
-    if useResid
-        rsResid[l] = gain > 0 ? resid / sqrt(gain) : NaN
+    if store_residuals
+        standardized_residuals[l] = gain > 0 ? resid / sqrt(gain) : NaN
     end
 
     @inbounds for i in 1:rd
@@ -202,21 +202,21 @@ function compute_arima_likelihood(
     d = length(delta)
     r = rd - d
 
-    ssq = Ref(0.0)
-    sumlog = Ref(0.0)
-    nu = Ref(0)
+    sum_sq_resid = Ref(0.0)
+    sum_log_gain = Ref(0.0)
+    n_valid = Ref(0)
 
     if isnothing(workspace)
         anew = zeros(rd)
         M = zeros(rd)
         mm = d > 0 ? zeros(rd, rd) : nothing
-        rsResid = give_resid ? zeros(n) : nothing
+        standardized_residuals = give_resid ? zeros(n) : nothing
     else
         reset!(workspace)
         anew = workspace.anew
         M = workspace.M
         mm = workspace.mm
-        rsResid = workspace.rsResid
+        standardized_residuals = workspace.standardized_residuals
     end
     @inbounds for l = 1:n
         state_prediction!(anew, a, p, r, d, rd, phi, delta)
@@ -231,20 +231,20 @@ function compute_arima_likelihood(
 
         if !isnan(y[l])
 
-            kalman_update!(y[l], anew, delta, Pnew, M, d, r, rd, a, P, give_resid, rsResid, l, ssq, sumlog, nu)
+            kalman_update!(y[l], anew, delta, Pnew, M, d, r, rd, a, P, give_resid, standardized_residuals, l, sum_sq_resid, sum_log_gain, n_valid)
         else
             a .= anew
             copyto!(P, Pnew)
             if give_resid
-                rsResid[l] = NaN
+                standardized_residuals[l] = NaN
             end
         end
     end
 
-    result_stats = [ssq[], sumlog[], nu[]]
+    result_stats = [sum_sq_resid[], sum_log_gain[], n_valid[]]
 
     if give_resid
-        return (stats = result_stats, residuals = rsResid)
+        return (stats = result_stats, residuals = standardized_residuals)
     else
         return result_stats
     end

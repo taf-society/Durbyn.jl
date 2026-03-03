@@ -4,7 +4,7 @@ function transform_unconstrained_to_ar_params!(
     new::AbstractVector,
 )
     if p > 100
-        throw(ArgumentError("The function can only transform 100 parameters in arima0"))
+        throw(ArgumentError("AR parameter transformation supports at most 100 parameters (got p=$p)"))
     end
 
     @inbounds new[1:p] .= tanh.(raw[1:p])
@@ -24,46 +24,46 @@ function compute_arima_transform_gradient(x::AbstractArray, arma::AbstractArray)
     eps = 1e-3
     mp, mq, msp = arma[1:3]
     if mp > 100 || msp > 100
-        throw(ArgumentError("AR order > 100 not supported (p=$mp, P=$msp)"))
+        throw(ArgumentError("AR order exceeds maximum of 100 (p=$mp, P=$msp)"))
     end
     n = length(x)
     y = Matrix{Float64}(I, n, n)
 
-    w1 = Vector{Float64}(undef, 100)
-    w2 = Vector{Float64}(undef, 100)
-    w3 = Vector{Float64}(undef, 100)
+    buffer_input = Vector{Float64}(undef, 100)
+    buffer_base = Vector{Float64}(undef, 100)
+    buffer_perturbed = Vector{Float64}(undef, 100)
 
     if mp > 0
 
         for i = 1:mp
-            w1[i] = x[i]
+            buffer_input[i] = x[i]
         end
 
-        transform_unconstrained_to_ar_params!(mp, w1, w2)
+        transform_unconstrained_to_ar_params!(mp, buffer_input, buffer_base)
 
         for i = 1:mp
-            w1[i] += eps
-            transform_unconstrained_to_ar_params!(mp, w1, w3)
+            buffer_input[i] += eps
+            transform_unconstrained_to_ar_params!(mp, buffer_input, buffer_perturbed)
             for j = 1:mp
-                y[i, j] = (w3[j] - w2[j]) / eps
+                y[i, j] = (buffer_perturbed[j] - buffer_base[j]) / eps
             end
-            w1[i] -= eps
+            buffer_input[i] -= eps
         end
     end
 
     if msp > 0
         v = mp + mq
         for i = 1:msp
-            w1[i] = x[i+v]
+            buffer_input[i] = x[i+v]
         end
-        transform_unconstrained_to_ar_params!(msp, w1, w2)
+        transform_unconstrained_to_ar_params!(msp, buffer_input, buffer_base)
         for i = 1:msp
-            w1[i] += eps
-            transform_unconstrained_to_ar_params!(msp, w1, w3)
+            buffer_input[i] += eps
+            transform_unconstrained_to_ar_params!(msp, buffer_input, buffer_perturbed)
             for j = 1:msp
-                y[i+v, j+v] = (w3[j] - w2[j]) / eps
+                y[i+v, j+v] = (buffer_perturbed[j] - buffer_base[j]) / eps
             end
-            w1[i] -= eps
+            buffer_input[i] -= eps
         end
     end
     return y

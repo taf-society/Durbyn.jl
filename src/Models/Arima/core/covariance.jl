@@ -1,44 +1,44 @@
 function update_least_squares!(
     n_parameters::Int,
-    xnext::AbstractArray,
-    xrow::AbstractArray,
-    ynext::Float64,
-    d::AbstractArray,
-    rbar::AbstractArray,
-    thetab::AbstractArray,
+    input_row::AbstractArray,
+    work_row::AbstractArray,
+    rhs_value::Float64,
+    diag::AbstractArray,
+    upper_triangle::AbstractArray,
+    rhs_solution::AbstractArray,
 )
 
 for i = 1:n_parameters
-        xrow[i] = xnext[i]
+        work_row[i] = input_row[i]
     end
 
-    ithisr = 1
+    tri_idx = 1
     for i = 1:n_parameters
-        if xrow[i] != 0.0
-            xi = xrow[i]
-            di = d[i]
-            dpi = di + xi * xi
-            d[i] = dpi
-            cbar = dpi != 0.0 ? di / dpi : Inf
-            sbar = dpi != 0.0 ? xi / dpi : Inf
+        if work_row[i] != 0.0
+            pivot = work_row[i]
+            diag_old = diag[i]
+            diag_new = diag_old + pivot * pivot
+            diag[i] = diag_new
+            cos_rotation = diag_new != 0.0 ? diag_old / diag_new : Inf
+            sin_rotation = diag_new != 0.0 ? pivot / diag_new : Inf
 
             for k = (i+1):n_parameters
-                xk = xrow[k]
-                rbthis = rbar[ithisr]
-                xrow[k] = xk - xi * rbthis
-                rbar[ithisr] = cbar * rbthis + sbar * xk
-                ithisr += 1
+                elem = work_row[k]
+                upper_elem = upper_triangle[tri_idx]
+                work_row[k] = elem - pivot * upper_elem
+                upper_triangle[tri_idx] = cos_rotation * upper_elem + sin_rotation * elem
+                tri_idx += 1
             end
 
-            xk = ynext
-            ynext = xk - xi * thetab[i]
-            thetab[i] = cbar * thetab[i] + sbar * xk
+            elem = rhs_value
+            rhs_value = elem - pivot * rhs_solution[i]
+            rhs_solution[i] = cos_rotation * rhs_solution[i] + sin_rotation * elem
 
-            if di == 0.0
+            if diag_old == 0.0
                 return
             end
         else
-            ithisr = ithisr + n_parameters - i
+            tri_idx = tri_idx + n_parameters - i
         end
     end
 
@@ -49,30 +49,30 @@ function compute_v(phi::AbstractArray, theta::AbstractArray, r::Int)
     p = length(phi)
     q = length(theta)
     num_params = r * (r + 1) ÷ 2
-    V = zeros(Float64, num_params)
+    cross_products = zeros(Float64, num_params)
 
-    ind = 0
+    pack_idx = 0
     for j = 0:(r-1)
-        vj = 0.0
+        ma_coef_j = 0.0
         if j == 0
-            vj = 1.0
+            ma_coef_j = 1.0
         elseif (j - 1) < q && (j - 1) ≥ 0
-            vj = theta[j-1+1]
+            ma_coef_j = theta[j-1+1]
         end
 
         for i = j:(r-1)
-            vi = 0.0
+            ma_coef_i = 0.0
             if i == 0
-                vi = 1.0
+                ma_coef_i = 1.0
             elseif (i - 1) < q && (i - 1) ≥ 0
-                vi = theta[i-1+1]
+                ma_coef_i = theta[i-1+1]
             end
 
-            V[ind+1] = vi * vj
-            ind += 1
+            cross_products[pack_idx+1] = ma_coef_i * ma_coef_j
+            pack_idx += 1
         end
     end
-    return V
+    return cross_products
 end
 
 function handle_r_equals_1(p::Int, phi::AbstractArray)
@@ -89,18 +89,18 @@ function handle_p_equals_0(V::AbstractArray, r::Int)
     num_params = r * (r + 1) ÷ 2
     res = zeros(Float64, r * r)
 
-    ind = num_params
-    indn = num_params
+    pack_idx = num_params
+    accum_idx = num_params
 
     for i = 0:(r-1)
         for j = 0:i
-            ind -= 1
+            pack_idx -= 1
 
-            res[ind + 1] = V[ind+1]
+            res[pack_idx + 1] = V[pack_idx+1]
 
             if j != 0
-                indn -= 1
-                res[ind+1] += res[indn+1]
+                accum_idx -= 1
+                res[pack_idx+1] += res[accum_idx+1]
             end
         end
     end
@@ -116,98 +116,98 @@ function handle_p_greater_than_0(
     nrbar::Int,
 )
 
-    res = zeros(Float64, r * r)
+    packed_cov = zeros(Float64, r * r)
 
-    rbar = zeros(Float64, nrbar)
-    thetab = zeros(Float64, num_params)
-    xnext = zeros(Float64, num_params)
-    xrow = zeros(Float64, num_params)
+    upper_triangle = zeros(Float64, nrbar)
+    rhs_solution = zeros(Float64, num_params)
+    equation_row = zeros(Float64, num_params)
+    work_row = zeros(Float64, num_params)
 
-    ind = 0
-    ind1 = -1
-    npr = num_params - r
-    npr1 = npr + 1
-    indj = npr
-    ind2 = npr - 1
+    v_idx = 0
+    identity_idx = -1
+    n_packed_minus_r = num_params - r
+    n_packed_minus_r_plus1 = n_packed_minus_r + 1
+    col_offset_j = n_packed_minus_r
+    wrap_idx = n_packed_minus_r - 1
 
     for j = 0:(r-1)
 
-        phij = (j < p) ? phi[j+1] : 0.0
+        ar_coef_j = (j < p) ? phi[j+1] : 0.0
 
-        xnext[indj+1] = 0.0
-        indj += 1
+        equation_row[col_offset_j+1] = 0.0
+        col_offset_j += 1
 
-        indi = npr1 + j
+        row_offset_i = n_packed_minus_r_plus1 + j
         for i = j:(r-1)
-            ynext = V[ind+1]
-            ind += 1
+            ynext = V[v_idx+1]
+            v_idx += 1
 
-            phii = (i < p) ? phi[i+1] : 0.0
+            ar_coef_i = (i < p) ? phi[i+1] : 0.0
 
             if j != (r - 1)
-                xnext[indj+1] = -phii
+                equation_row[col_offset_j+1] = -ar_coef_i
                 if i != (r - 1)
-                    xnext[indi+1] -= phij
-                    ind1 += 1
-                    xnext[ind1+1] = -1.0
+                    equation_row[row_offset_i+1] -= ar_coef_j
+                    identity_idx += 1
+                    equation_row[identity_idx+1] = -1.0
                 end
             end
 
-            xnext[npr+1] = -phii * phij
-            ind2 += 1
-            if ind2 >= num_params
-                ind2 = 0
+            equation_row[n_packed_minus_r+1] = -ar_coef_i * ar_coef_j
+            wrap_idx += 1
+            if wrap_idx >= num_params
+                wrap_idx = 0
             end
-            xnext[ind2+1] += 1.0
+            equation_row[wrap_idx+1] += 1.0
 
-            update_least_squares!(num_params, xnext, xrow, ynext, res, rbar, thetab)
+            update_least_squares!(num_params, equation_row, work_row, ynext, packed_cov, upper_triangle, rhs_solution)
 
-            xnext[ind2+1] = 0.0
+            equation_row[wrap_idx+1] = 0.0
             if i != (r - 1)
-                xnext[indi+1] = 0.0
-                indi += 1
-                xnext[ind1+1] = 0.0
+                equation_row[row_offset_i+1] = 0.0
+                row_offset_i += 1
+                equation_row[identity_idx+1] = 0.0
             end
         end
     end
 
-    ithisr = nrbar - 1
-    im = num_params - 1
+    tri_idx = nrbar - 1
+    result_idx = num_params - 1
 
     for i = 0:(num_params-1)
-        bi = thetab[im+1]
-        jm = num_params - 1
+        accum = rhs_solution[result_idx+1]
+        backsolve_idx = num_params - 1
         for j = 0:(i-1)
 
-            bi -= rbar[ithisr+1] * res[jm+1]
+            accum -= upper_triangle[tri_idx+1] * packed_cov[backsolve_idx+1]
 
-            ithisr -= 1
-            jm -= 1
+            tri_idx -= 1
+            backsolve_idx -= 1
         end
-        res[im+1] = bi
-        im -= 1
+        packed_cov[result_idx+1] = accum
+        result_idx -= 1
     end
 
-    xcopy = zeros(Float64, r)
-    ind = npr
+    diag_save = zeros(Float64, r)
+    idx = n_packed_minus_r
     for i = 0:(r-1)
-        xcopy[i+1] = res[ind+1]
-        ind += 1
+        diag_save[i+1] = packed_cov[idx+1]
+        idx += 1
     end
 
-    ind = num_params - 1
-    ind1 = npr - 1
-    for i = 1:(npr)
-        res[ind+1] = res[ind1+1]
-        ind -= 1
-        ind1 -= 1
+    write_idx = num_params - 1
+    read_idx = n_packed_minus_r - 1
+    for i = 1:(n_packed_minus_r)
+        packed_cov[write_idx+1] = packed_cov[read_idx+1]
+        write_idx -= 1
+        read_idx -= 1
     end
 
     for i = 0:(r-1)
-        res[i+1] = xcopy[i+1]
+        packed_cov[i+1] = diag_save[i+1]
     end
 
-    return res
+    return packed_cov
 end
 
 function unpack_full_matrix(res_flat::AbstractArray, r::Int)
@@ -240,16 +240,16 @@ function compute_q0_covariance_matrix(phi::AbstractArray, theta::AbstractArray)
     num_params = r * (r + 1) ÷ 2
     nrbar = num_params * (num_params - 1) ÷ 2
 
-    V = compute_v(phi, theta, r)
+    cross_products = compute_v(phi, theta, r)
 
     if r == 1
         return handle_r_equals_1(p, phi)
     end
 
     if p > 0
-        res_flat = handle_p_greater_than_0(V, phi, p, r, num_params, nrbar)
+        res_flat = handle_p_greater_than_0(cross_products, phi, p, r, num_params, nrbar)
     else
-        res_flat = handle_p_equals_0(V, r)
+        res_flat = handle_p_equals_0(cross_products, r)
     end
 
     res_full = unpack_full_matrix(res_flat, r)
@@ -267,10 +267,10 @@ function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
     q = length(θ)
     r = max(p, q + 1)
 
-    ttheta = zeros(Float64, r + q)
-    @inbounds ttheta[1] = 1.0
+    extended_theta = zeros(Float64, r + q)
+    @inbounds extended_theta[1] = 1.0
     @inbounds for i in 1:q
-        ttheta[i + 1] = θ[i]
+        extended_theta[i + 1] = θ[i]
     end
 
     P = zeros(Float64, r, r)
@@ -341,7 +341,7 @@ function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
                     L_end = k0 + q
 
                     for L0 in L_start:L_end
-                        tLk = ttheta[L0 - k0 + 1]
+                        tLk = extended_theta[L0 - k0 + 1]
                         φ_ik_tLk = φ_ik * tLk
 
                         for m0 in 0:m_max
@@ -351,7 +351,7 @@ function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
                             n_end = m0 + q
 
                             for n0 in n_start:n_end
-                                tnm = ttheta[n0 - m0 + 1]
+                                tnm = extended_theta[n0 - m0 + 1]
                                 u_idx = abs(L0 - n0) + 1
                                 acc += φ_product * tnm * u[u_idx]
                             end
@@ -366,7 +366,7 @@ function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
         if q > 0
             @inbounds for i0 in 0:(q-1)
                 i_idx = i0 + 1
-                val = ttheta[i_idx]
+                val = extended_theta[i_idx]
                 jstart = max(0, i0 - p)
                 for j0 in jstart:(i0-1)
                     val -= rrz[j0 + 1] * tphi[i0 - j0 + 1]
@@ -392,7 +392,7 @@ function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
                     for L0 in L_start:L_end
                         j0_L0 = j0 + L0
                         if j0_L0 < q + 1
-                            acc += φ_ik * ttheta[j0_L0 + 1] * rrz[L0 - k0]
+                            acc += φ_ik * extended_theta[j0_L0 + 1] * rrz[L0 - k0]
                         end
                     end
                 end
@@ -405,7 +405,7 @@ function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
                     for L0 in L_start:L_end
                         i0_L0 = i0 + L0
                         if i0_L0 < q + 1
-                            acc += φ_jk * ttheta[i0_L0 + 1] * rrz[L0 - k0]
+                            acc += φ_jk * extended_theta[i0_L0 + 1] * rrz[L0 - k0]
                         end
                     end
                 end
@@ -422,7 +422,7 @@ function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
             k_max = q - j0
             acc = 0.0
             @simd for k0 in 0:k_max
-                acc += ttheta[i0 + k0 + 1] * ttheta[j0 + k0 + 1]
+                acc += extended_theta[i0 + k0 + 1] * extended_theta[j0 + k0 + 1]
             end
             P[i_idx, j_idx] += acc
         end

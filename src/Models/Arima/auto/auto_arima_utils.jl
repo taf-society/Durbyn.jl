@@ -30,32 +30,32 @@ function compute_approx_offset(;
     end
 
 
-    xx = x
-    Xreg = xreg
-    N0 = length(xx)
+    x_truncated = x
+    xreg_truncated = xreg
+    N0 = length(x_truncated)
 
     # truncate tail of x (and xreg if it aligns with x)
     if !isnothing(truncate) && N0 > truncate
         start_idx = N0 - truncate + 1
-        xx = collect(@view xx[start_idx:end])
+        x_truncated = collect(@view x_truncated[start_idx:end])
 
-        if !isnothing(Xreg)
+        if !isnothing(xreg_truncated)
             # row count of xreg
-            nrows = size(Xreg.data, 1)
+            nrows = size(xreg_truncated.data, 1)
             if nrows == N0
-                Xreg = select_rows(Xreg, start_idx:nrows)
+                xreg_truncated = select_rows(xreg_truncated, start_idx:nrows)
             end
         end
     end
 
-    serieslength = length(xx)
+    serieslength = length(x_truncated)
 
     # quick ARIMA fit and offset
     try
         fit = if D == 0
-            arima(xx, m; order = PDQ(0, d, 0), seasonal = PDQ(0, 0, 0), xreg = Xreg, kwargs...)
+            arima(x_truncated, m; order = PDQ(0, d, 0), seasonal = PDQ(0, 0, 0), xreg = xreg_truncated, kwargs...)
         else
-            arima(xx, m; order = PDQ(0, d, 0), seasonal = PDQ(0, D, 0), xreg = Xreg, kwargs...)
+            arima(x_truncated, m; order = PDQ(0, d, 0), seasonal = PDQ(0, D, 0), xreg = xreg_truncated, kwargs...)
         end
 
         loglik = fit.loglik
@@ -64,7 +64,7 @@ function compute_approx_offset(;
         #return (offset=offset, fit=fit)
         return offset
     catch
-        # mirrors try-error fallback: offset <- 0
+        # default offset when approximation fit fails
         #return (offset=0.0, fit=nothing)
         return 0.0
     end
@@ -446,7 +446,7 @@ function search_arima(
             end
         end
     else
-        error("No ARIMA model able to be estimated")
+        throw(ArgumentError("no valid ARIMA model found in search"))
     end
 
     return bestfit

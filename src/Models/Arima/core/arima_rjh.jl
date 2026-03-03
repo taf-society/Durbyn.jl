@@ -108,13 +108,11 @@ end
         kwargs...
     ) -> ArimaFit
 
-Fit an ARIMA model to a **univariate** time series.
+Fit an ARIMA model with optional drift term and Box-Cox transformation.
 
-This is a Julia adaptation of Rob J. Hyndman's ARIMA routine (a wrapper around
-`stats::arima`) with two key extensions: support for a **drift** term and
-optional **Box-Cox transformation** with mean (bias) adjustment on the
-back-transformed scale. You can also pass a previously fitted model and
-re-apply it to new data `y` without re-estimating parameters.
+Supports a **drift** term and optional **Box-Cox transformation** with mean
+(bias) adjustment on the back-transformed scale. You can also pass a previously
+fitted model and re-apply it to new data `y` without re-estimating parameters.
 
 # Arguments
 - `y`: Univariate time series (vector or `AbstractArray`) to be modeled.
@@ -164,7 +162,7 @@ Notable components inside `model` include:
 
 # Notes
 - `include_constant=true` is a convenience that sets sensible defaults for
-  `include_mean`/`include_drift` based on differencing, mirroring Hyndman's design.
+  `include_mean`/`include_drift` based on differencing, following the convention for differenced series.
 - If `d + D > 1`, no constant is included irrespective of settings, to avoid
   induced quadratic or higher-order trends.
 - Passing `model` refits that model structure to `y` without re-optimization.

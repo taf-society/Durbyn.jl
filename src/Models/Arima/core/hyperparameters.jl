@@ -1,3 +1,5 @@
+# --- Jones 1980: Constrained ↔ unconstrained AR parameter transform ---
+
 function transform_unconstrained_to_ar_params!(
     p::Int,
     raw::AbstractVector,
@@ -20,68 +22,6 @@ function transform_unconstrained_to_ar_params!(
 
 end
 
-function compute_arima_transform_gradient(x::AbstractArray, arma::AbstractArray)
-    eps = 1e-3
-    mp, mq, msp = arma[1:3]
-    if mp > 100 || msp > 100
-        throw(ArgumentError("AR order exceeds maximum of 100 (p=$mp, P=$msp)"))
-    end
-    n = length(x)
-    y = Matrix{Float64}(I, n, n)
-
-    buffer_input = Vector{Float64}(undef, 100)
-    buffer_base = Vector{Float64}(undef, 100)
-    buffer_perturbed = Vector{Float64}(undef, 100)
-
-    if mp > 0
-
-        for i = 1:mp
-            buffer_input[i] = x[i]
-        end
-
-        transform_unconstrained_to_ar_params!(mp, buffer_input, buffer_base)
-
-        for i = 1:mp
-            buffer_input[i] += eps
-            transform_unconstrained_to_ar_params!(mp, buffer_input, buffer_perturbed)
-            for j = 1:mp
-                y[i, j] = (buffer_perturbed[j] - buffer_base[j]) / eps
-            end
-            buffer_input[i] -= eps
-        end
-    end
-
-    if msp > 0
-        v = mp + mq
-        for i = 1:msp
-            buffer_input[i] = x[i+v]
-        end
-        transform_unconstrained_to_ar_params!(msp, buffer_input, buffer_base)
-        for i = 1:msp
-            buffer_input[i] += eps
-            transform_unconstrained_to_ar_params!(msp, buffer_input, buffer_perturbed)
-            for j = 1:msp
-                y[i+v, j+v] = (buffer_perturbed[j] - buffer_base[j]) / eps
-            end
-            buffer_input[i] -= eps
-        end
-    end
-    return y
-end
-
-function undo_arima_parameter_transform(x::AbstractArray, arma::AbstractArray)
-    mp, mq, msp = arma[1:3]
-    res = copy(x)
-    if mp > 0
-        transform_unconstrained_to_ar_params!(mp, x, res)
-    end
-    v = mp + mq
-    if msp > 0
-        transform_unconstrained_to_ar_params!(msp, @view(x[v+1:end]), @view(res[v+1:end]))
-    end
-    return res
-end
-
 function time_series_convolution(a::AbstractArray, b::AbstractArray)
     na = length(a)
     nb = length(b)
@@ -95,6 +35,8 @@ function time_series_convolution(a::AbstractArray, b::AbstractArray)
     end
     return ab
 end
+
+# --- Monahan 1984: Inverse AR parameter transform ---
 
 function inverse_ar_parameter_transform(ϕ::AbstractVector)
     p = length(ϕ)
@@ -113,32 +55,53 @@ function inverse_ar_parameter_transform(ϕ::AbstractVector)
     return map(x -> abs(x) <= 1 ? atanh(x) : NaN, new)
 end
 
-function inverse_arima_parameter_transform(θ::AbstractVector, arma::AbstractVector{Int})
-    mp, mq, msp = arma
-    n = length(θ)
-    v = mp + mq
-    v + msp ≤ n || throw(ArgumentError("Sum mp+mq+msp exceeds length(θ)"))
-    raw = Array{Float64}(undef, n)
-    copy!(raw, θ)
-    transformed = raw
-
-    if mp > 0
-        transformed[1:mp] = inverse_ar_parameter_transform(raw[1:mp])
+function ar_check(ar)
+    v = vcat(1.0, -ar...)
+    last_nz = findlast(x -> x != 0.0, v)
+    p = isnothing(last_nz) ? 0 : last_nz - 1
+    if p == 0
+        return true
     end
 
-    if msp > 0
-        transformed[v+1:v+msp] = inverse_ar_parameter_transform(raw[v+1:v+msp])
-    end
+    coeffs = vcat(1.0, -ar[1:p]...)
+    rts = roots(Polynomial(coeffs))
 
-    return transformed
+    return all(abs.(rts) .> 1.0)
 end
+
+function ma_invert(ma)
+    q = length(ma)
+    cdesc = vcat(1.0, ma...)
+    nz = findall(x -> x != 0.0, cdesc)
+    q0 = isempty(nz) ? 0 : maximum(nz) - 1
+    if q0 == 0
+        return ma
+    end
+    cdesc_q = cdesc[1:q0+1]
+    rts = roots(Polynomial(cdesc_q))
+    ind = abs.(rts) .< 1.0
+    if all(.!ind)
+        return ma
+    end
+    if q0 == 1
+        return vcat(1.0 / ma[1], zeros(q - q0))
+    end
+    rts[ind] .= 1.0 ./ rts[ind]
+    x = [1.0]
+    for r in rts
+        x = vcat(x, 0.0) .- (vcat(0.0, x) ./ r)
+    end
+    return vcat(real.(x[2:end]), zeros(q - q0))
+end
+
+# --- SARIMA parameter transforms using SARIMAOrder ---
 
 function transform_arima_parameters(
     params_in::AbstractArray,
-    arma::Vector{Int},
+    order::SARIMAOrder,
     trans::Bool,
 )
-mp, mq, msp, msq, ns = arma
+    mp, mq, msp, msq, ns = order.p, order.q, order.P, order.Q, order.s
     p = mp + ns * msp
     q = mq + ns * msq
 
@@ -181,41 +144,81 @@ mp, mq, msp, msq, ns = arma
     return (phi, theta)
 end
 
-function ar_check(ar)
-    v = vcat(1.0, -ar...)
-    last_nz = findlast(x -> x != 0.0, v)
-    p = isnothing(last_nz) ? 0 : last_nz - 1
-    if p == 0
-        return true
+function compute_arima_transform_gradient(x::AbstractArray, order::SARIMAOrder)
+    eps = 1e-3
+    mp, mq, msp = order.p, order.q, order.P
+    if mp > 100 || msp > 100
+        throw(ArgumentError("AR order exceeds maximum of 100 (p=$mp, P=$msp)"))
+    end
+    n = length(x)
+    y = Matrix{Float64}(I, n, n)
+
+    buffer_input = Vector{Float64}(undef, 100)
+    buffer_base = Vector{Float64}(undef, 100)
+    buffer_perturbed = Vector{Float64}(undef, 100)
+
+    if mp > 0
+        for i = 1:mp
+            buffer_input[i] = x[i]
+        end
+        transform_unconstrained_to_ar_params!(mp, buffer_input, buffer_base)
+        for i = 1:mp
+            buffer_input[i] += eps
+            transform_unconstrained_to_ar_params!(mp, buffer_input, buffer_perturbed)
+            for j = 1:mp
+                y[i, j] = (buffer_perturbed[j] - buffer_base[j]) / eps
+            end
+            buffer_input[i] -= eps
+        end
     end
 
-    coeffs = vcat(1.0, -ar[1:p]...)
-    rts = roots(Polynomial(coeffs))
-
-    return all(abs.(rts) .> 1.0)
+    if msp > 0
+        v = mp + mq
+        for i = 1:msp
+            buffer_input[i] = x[i+v]
+        end
+        transform_unconstrained_to_ar_params!(msp, buffer_input, buffer_base)
+        for i = 1:msp
+            buffer_input[i] += eps
+            transform_unconstrained_to_ar_params!(msp, buffer_input, buffer_perturbed)
+            for j = 1:msp
+                y[i+v, j+v] = (buffer_perturbed[j] - buffer_base[j]) / eps
+            end
+            buffer_input[i] -= eps
+        end
+    end
+    return y
 end
 
-function ma_invert(ma)
-    q = length(ma)
-    cdesc = vcat(1.0, ma...)
-    nz = findall(x -> x != 0.0, cdesc)
-    q0 = isempty(nz) ? 0 : maximum(nz) - 1
-    if q0 == 0
-        return ma
+function undo_arima_parameter_transform(x::AbstractArray, order::SARIMAOrder)
+    mp, mq, msp = order.p, order.q, order.P
+    res = copy(x)
+    if mp > 0
+        transform_unconstrained_to_ar_params!(mp, x, res)
     end
-    cdesc_q = cdesc[1:q0+1]
-    rts = roots(Polynomial(cdesc_q))
-    ind = abs.(rts) .< 1.0
-    if all(.!ind)
-        return ma
+    v = mp + mq
+    if msp > 0
+        transform_unconstrained_to_ar_params!(msp, @view(x[v+1:end]), @view(res[v+1:end]))
     end
-    if q0 == 1
-        return vcat(1.0 / ma[1], zeros(q - q0))
+    return res
+end
+
+function inverse_arima_parameter_transform(θ::AbstractVector, order::SARIMAOrder)
+    mp, mq, msp = order.p, order.q, order.P
+    n = length(θ)
+    v = mp + mq
+    v + msp ≤ n || throw(ArgumentError("Sum mp+mq+msp exceeds length(θ)"))
+    raw = Array{Float64}(undef, n)
+    copy!(raw, θ)
+    transformed = raw
+
+    if mp > 0
+        transformed[1:mp] = inverse_ar_parameter_transform(raw[1:mp])
     end
-    rts[ind] .= 1.0 ./ rts[ind]
-    x = [1.0]
-    for r in rts
-        x = vcat(x, 0.0) .- (vcat(0.0, x) ./ r)
+
+    if msp > 0
+        transformed[v+1:v+msp] = inverse_ar_parameter_transform(raw[v+1:v+msp])
     end
-    return vcat(real.(x[2:end]), zeros(q - q0))
+
+    return transformed
 end

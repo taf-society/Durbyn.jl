@@ -232,7 +232,7 @@ function unpack_full_matrix(res_flat::AbstractArray, r::Int)
     return reshape(res_flat, r, r)
 end
 
-function compute_q0_covariance_matrix(phi::AbstractArray, theta::AbstractArray)
+function gardner_harvey_phillips(phi::AbstractArray, theta::AbstractArray)
     p = length(phi)
     q = length(theta)
 
@@ -256,7 +256,7 @@ function compute_q0_covariance_matrix(phi::AbstractArray, theta::AbstractArray)
     return res_full
 end
 
-function compute_q0_bis_covariance_matrix(phi::AbstractVector{<:Real},
+function brockwell_davis(phi::AbstractVector{<:Real},
                                           theta::AbstractVector{<:Real},
                                           tol::Real = eps(Float64))
 

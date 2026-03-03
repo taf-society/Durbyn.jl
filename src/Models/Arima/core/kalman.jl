@@ -1,185 +1,58 @@
-function state_prediction!(anew::AbstractArray, a::AbstractArray, p::Int, r::Int, d::Int, rd::Int, phi::AbstractArray, delta::AbstractArray)
-     @inbounds for i in 1:r
-        tmp = (i < r) ? a[i + 1] : 0.0
-        if i <= p
-            tmp += phi[i] * a[1]
-        end
-        anew[i] = tmp
+# --- State prediction: Harvey 1989 §3.3.3 companion form ---
+#
+# Computes a_{t|t-1} = T * a_{t-1} for the SARIMA companion-form transition matrix.
+# The state vector has two blocks:
+#   [1:r]     ARMA companion block — shift register + AR coefficients
+#   [r+1:rd]  Differencing block   — observation equation + shift register
+#
+# Signature preserved for simulate.jl compatibility.
+function state_prediction!(anew::AbstractArray, a::AbstractArray,
+                           p::Int, r::Int, d::Int, rd::Int,
+                           phi::AbstractArray, delta::AbstractArray)
+    # ARMA companion block (Harvey 1989 eq 3.3.1):
+    #   rows 1..r-1: shift a[i+1] forward, plus AR contribution phi[i]*a[1]
+    #   row r:       AR contribution only (no shift source)
+    @inbounds for i in 1:r
+        anew[i] = (i < r ? a[i + 1] : 0.0) + (i <= p ? phi[i] * a[1] : 0.0)
     end
 
+    # Differencing block (Harvey 1989 eq 3.3.6):
+    #   row r+1:     Z'*a = a[1] + Delta'*a[r+1:rd]
+    #   rows r+2..rd: shift register
     if d > 0
-        @inbounds for i in (r + 2):(rd)
+        anew[r + 1] = a[1]
+        @inbounds for i in 1:d
+            anew[r + 1] += delta[i] * a[r + i]
+        end
+        @inbounds for i in (r + 2):rd
             anew[i] = a[i - 1]
         end
-        tmp = a[1]
-        @inbounds for i in 1:d
-            tmp += delta[i] * a[r + i]
-        end
-        anew[r + 1] = tmp
     end
 end
 
-function predict_covariance_nodiff!(Pnew::Matrix{Float64}, P::Matrix{Float64},
-    r::Int, p::Int, q::Int,
-    phi::Vector{Float64}, theta::Vector{Float64})
-    @inbounds for i in 1:r
-
-        if i == 1
-            vi = 1.0
-        elseif i - 1 <= q
-            vi = theta[i-1]
-        else
-            vi = 0.0
-        end
-
-        for j in 1:r
-
-            if j == 1
-                tmp = vi
-            elseif j - 1 <= q
-                tmp = vi * theta[j-1]
-            else
-                tmp = 0.0
-            end
-
-            if i <= p && j <= p
-                tmp = tmp + phi[i] * phi[j] * P[1, 1]
-            end
-
-            if i <= r - 1 && j <= r - 1
-                tmp = tmp + P[i+1, j+1]
-            end
-
-            if i <= p && j <= r - 1
-                tmp = tmp + phi[i] * P[j+1, 1]
-            end
-
-            if j <= p && i <= r - 1
-                tmp = tmp + phi[j] * P[i+1, 1]
-            end
-
-            Pnew[i, j] = tmp
-        end
-    end
+# --- Covariance prediction: Durbin & Koopman 2012 eq (4.16) ---
+#
+# P_{t|t-1} = T * P_{t-1|t-1} * T' + V
+#
+# Unified for all models (with or without differencing). The transition matrix T
+# and noise covariance V already encode the full state-space structure.
+function _predict_covariance!(Pnew::Matrix{Float64}, T::AbstractMatrix,
+                              P::Matrix{Float64}, V::Matrix{Float64},
+                              work::Matrix{Float64})
+    mul!(work, T, P)      # work = T * P
+    mul!(Pnew, work, T')  # Pnew = T * P * T'
+    Pnew .+= V            # Pnew += V (process noise covariance)
+    return nothing
 end
 
-function predict_covariance_with_diff!(Pnew::Matrix{Float64}, P::Matrix{Float64},
-    r::Int, d::Int, p::Int, q::Int, rd::Int,
-    phi::Vector{Float64}, delta::Vector{Float64},
-    theta::Vector{Float64}, mm::Matrix{Float64})
-    @inbounds for i in 1:r
-        for j in 1:rd
-            tmp = 0.0
-            if i <= p
-                tmp = tmp + phi[i] * P[1, j]
-            end
-            if i < r
-                tmp = tmp + P[i+1, j]
-            end
-            mm[i, j] = tmp
-        end
-    end
-
-    @inbounds for j in 1:rd
-        tmp = P[1, j]
-        for k in 1:d
-            tmp = tmp + delta[k] * P[r+k, j]
-        end
-        mm[r+1, j] = tmp
-    end
-
-    @inbounds for i in 2:d
-        for j in 1:rd
-            mm[r+i, j] = P[r+i-1, j]
-        end
-    end
-
-    @inbounds for i in 1:r
-        for j in 1:rd
-            tmp = 0.0
-            if i <= p
-                tmp = tmp + phi[i] * mm[j, 1]
-            end
-            if i < r
-                tmp = tmp + mm[j, i+1]
-            end
-            Pnew[j, i] = tmp
-        end
-    end
-
-    @inbounds for j in 1:rd
-        tmp = mm[j, 1]
-        for k in 1:d
-            tmp = tmp + delta[k] * mm[j, r+k]
-        end
-        Pnew[j, r+1] = tmp
-    end
-
-    @inbounds for i in 2:d
-        for j in 1:rd
-            Pnew[j, r+i] = mm[j, r+i-1]
-        end
-    end
-
-    @inbounds for i in 1:(q+1)
-        if i == 1
-            vi = 1.0
-        else
-            vi = theta[i-1]
-        end
-
-        for j in 1:(q+1)
-            if j == 1
-                vj = 1.0
-            else
-                vj = theta[j-1]
-            end
-            Pnew[i, j] = Pnew[i, j] + vi * vj
-        end
-    end
-end
-
-function kalman_update!(y_obs, anew, delta, Pnew, M, d, r, rd, a, P, store_residuals, standardized_residuals, l, sum_sq_resid, sum_log_gain, n_valid,)
-
-    resid = y_obs - anew[1]
-    @inbounds for i in 1:d
-        resid = resid - delta[i] * anew[r+i]
-    end
-
-    @inbounds for i in 1:rd
-        tmp = Pnew[i, 1]
-        for j in 1:d
-            tmp += Pnew[i, r+j] * delta[j]
-        end
-        M[i] = tmp
-    end
-
-    gain = M[1]
-    @inbounds for j in 1:d
-        gain += delta[j] * M[r+j]
-    end
-
-    if gain < 1e4
-        n_valid[] += 1
-        sum_sq_resid[] += resid^2 / gain
-        sum_log_gain[] += gain > 0 ? log(gain) : NaN
-    end
-
-    if store_residuals
-        standardized_residuals[l] = gain > 0 ? resid / sqrt(gain) : NaN
-    end
-
-    @inbounds for i in 1:rd
-        a[i] = anew[i] + M[i] * resid / gain
-    end
-
-    @inbounds for i = 1:rd
-        for j = 1:rd
-            P[i, j] = Pnew[i, j] - (M[i] * M[j]) / gain
-        end
-    end
-end
-
+# --- Kalman filter: Durbin & Koopman 2012 Algorithm 4.3 ---
+#
+# Computes the concentrated log-likelihood for a Gaussian state-space model:
+#   ℓ_c = -n/2 * log(σ²) - 1/2 * Σ log(F_t)
+# where σ² = (1/n) Σ v_t²/F_t  (Harvey 1989 eq 3.3.16).
+#
+# Returns sufficient statistics [Σ v²/F, Σ log(F), n_valid] so the caller
+# can form the likelihood.
 function compute_arima_likelihood(
     y::Vector{Float64},
     model::Union{ArimaStateSpace,SARIMASystem},
@@ -187,52 +60,89 @@ function compute_arima_likelihood(
     give_resid::Bool;
     workspace::Union{KalmanWorkspace,Nothing}=nothing
 )
-
-    phi = model.phi
-    theta = model.theta
-    delta = model.Delta
+    Z = model.Z
+    T = model.T
+    V = model.V
     a = model.a
     P = model.P
     Pnew = model.Pn
 
     n = length(y)
     rd = length(a)
-    p = length(phi)
-    q = length(theta)
-    d = length(delta)
+    d = length(model.Delta)
     r = rd - d
 
-    sum_sq_resid = Ref(0.0)
-    sum_log_gain = Ref(0.0)
-    n_valid = Ref(0)
+    # Likelihood accumulators
+    sum_sq_resid = 0.0
+    sum_log_gain = 0.0
+    n_valid = 0
 
+    # Workspace: pre-allocated buffers for the filter
     if isnothing(workspace)
         anew = zeros(rd)
         M = zeros(rd)
-        mm = d > 0 ? zeros(rd, rd) : nothing
+        work = zeros(rd, rd)
         standardized_residuals = give_resid ? zeros(n) : nothing
     else
         reset!(workspace)
         anew = workspace.anew
         M = workspace.M
-        mm = workspace.mm
+        work = workspace.work
         standardized_residuals = workspace.standardized_residuals
     end
+
+    # Diffuse threshold (D&K 2012 §5.2): for models with differencing, the prior
+    # variance of diffuse states is kappa (≈ 1e6). Observations whose innovation
+    # variance F_t ≥ kappa/100 are still in the diffuse phase and excluded from
+    # the concentrated likelihood.
+    if d > 0
+        diffuse_threshold = maximum(Pnew[r + i, r + i] for i in 1:d) / 100
+    else
+        diffuse_threshold = Inf  # stationary model: all observations contribute
+    end
+
     @inbounds for l = 1:n
-        state_prediction!(anew, a, p, r, d, rd, phi, delta)
+        # --- Prediction step: D&K eq (4.16) ---
+        mul!(anew, T, a)  # a_{t|t-1} = T * a_{t-1}
 
         if l > update_start + 1
-            if d == 0
-                predict_covariance_nodiff!(Pnew, P, r, p, q, phi, theta)
-            else
-                predict_covariance_with_diff!(Pnew, P, r, d, p, q, rd, phi, delta, theta, mm)
-            end
+            _predict_covariance!(Pnew, T, P, V, work)  # P_{t|t-1} = T*P*T' + V
         end
 
         if !isnan(y[l])
+            # --- Innovation: D&K eq (4.14) ---
+            resid = y[l] - dot(Z, anew)  # v_t = y_t - Z' * a_{t|t-1}
 
-            kalman_update!(y[l], anew, delta, Pnew, M, d, r, rd, a, P, give_resid, standardized_residuals, l, sum_sq_resid, sum_log_gain, n_valid)
+            # --- Innovation variance: F_t = Z' * P_{t|t-1} * Z ---
+            mul!(M, Pnew, Z)     # M = P_{t|t-1} * Z (Kalman gain numerator)
+            gain = dot(Z, M)     # F_t = Z' * M
+
+            # --- Likelihood accumulation (Harvey 1989 eq 3.3.16) ---
+            if gain < diffuse_threshold
+                n_valid += 1
+                sum_sq_resid += resid^2 / gain
+                sum_log_gain += gain > 0 ? log(gain) : NaN
+            end
+
+            # --- Standardized residuals ---
+            if give_resid
+                standardized_residuals[l] = gain > 0 ? resid / sqrt(gain) : NaN
+            end
+
+            # --- State update: a_{t} = a_{t|t-1} + M * v_t / F_t  (D&K eq 4.15) ---
+            inv_gain = 1.0 / gain
+            for i in 1:rd
+                a[i] = anew[i] + M[i] * resid * inv_gain
+            end
+
+            # --- Covariance update (rank-1 downdate): P_t = P_{t|t-1} - M*M'/F_t ---
+            for i in 1:rd
+                for j in 1:rd
+                    P[i, j] = Pnew[i, j] - M[i] * M[j] * inv_gain
+                end
+            end
         else
+            # Missing observation: skip update, copy prediction forward (D&K §4.10)
             a .= anew
             copyto!(P, Pnew)
             if give_resid
@@ -241,7 +151,7 @@ function compute_arima_likelihood(
         end
     end
 
-    result_stats = [sum_sq_resid[], sum_log_gain[], n_valid[]]
+    result_stats = [sum_sq_resid, sum_log_gain, Float64(n_valid)]
 
     if give_resid
         return (stats = result_stats, residuals = standardized_residuals)
@@ -250,43 +160,41 @@ function compute_arima_likelihood(
     end
 end
 
+# --- Forecast: Durbin & Koopman 2012 §4.7 ---
+#
+# Iterates the prediction step without updates to produce h-step-ahead forecasts.
+#   ŷ_{T+j} = Z' * a_{T+j|T}
+#   Var(ŷ_{T+j}) = Z' * P_{T+j|T} * Z + h
 function kalman_forecast(n_ahead::Int, mod::Union{ArimaStateSpace,SARIMASystem}; update::Bool=false)
-    phi = mod.phi
-    theta = mod.theta
-    delta = mod.Delta
     Z = mod.Z
+    T = mod.T
+    V = mod.V
+    h = mod.h
     a = copy(mod.a)
     P = copy(mod.P)
-    Pnew = copy(mod.Pn)
-    h = mod.h
 
-    p = length(phi)
-    q = length(theta)
-    d = length(delta)
     rd = length(a)
-    r = rd - d
 
     forecasts = Vector{Float64}(undef, n_ahead)
     variances = Vector{Float64}(undef, n_ahead)
 
     anew = similar(a)
-    mm = d > 0 ? zeros(rd, rd) : nothing
+    Pnew = similar(P)
+    work = similar(P)
 
     for l in 1:n_ahead
-        state_prediction!(anew, a, p, r, d, rd, phi, delta)
+        # Predict state
+        mul!(anew, T, a)
         a .= anew
 
-        fc = dot(Z, a)
-        forecasts[l] = fc
+        # Point forecast
+        forecasts[l] = dot(Z, a)
 
-        if d == 0
-            predict_covariance_nodiff!(Pnew, P, r, p, q, phi, theta)
-        else
-            predict_covariance_with_diff!(Pnew, P, r, d, p, q, rd, phi, delta, theta, mm)
-        end
+        # Predict covariance
+        _predict_covariance!(Pnew, T, P, V, work)
 
-        tmpvar = h + dot(Z, Pnew, Z)
-        variances[l] = tmpvar
+        # Forecast variance
+        variances[l] = h + dot(Z, Pnew, Z)
 
         P .= Pnew
     end

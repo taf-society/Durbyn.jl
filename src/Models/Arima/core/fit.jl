@@ -1,6 +1,11 @@
+# --- CSS residual computation: Box-Jenkins 2015 §7.1.3 ---
+#
+# Applies differencing via order.d, order.D, order.s, then computes
+# conditional residuals from the ARMA recursion.
+
 function compute_css_residuals(
     y::AbstractArray,
-    arma::Vector{Int},
+    order::SARIMAOrder,
     phi::AbstractArray,
     theta::AbstractArray,
     n_conditioning::Int,
@@ -9,21 +14,25 @@ function compute_css_residuals(
     p = length(phi)
     q = length(theta)
 
+    # Apply differencing in-place on a copy (Box-Jenkins 2015 §4.1)
     w = copy(y)
 
-    for _ = 1:arma[6]
+    # Non-seasonal differencing: (1-B)^d
+    for _ = 1:order.d
         for l = n:-1:2
             w[l] -= w[l-1]
         end
     end
 
-    ns = arma[5]
-    for _ = 1:arma[7]
-        for l = n:-1:(ns+1)
-            w[l] -= w[l-ns]
+    # Seasonal differencing: (1-B^s)^D
+    s = order.s
+    for _ = 1:order.D
+        for l = n:-1:(s+1)
+            w[l] -= w[l-s]
         end
     end
 
+    # Conditional ARMA residual recursion
     resid = Vector{Float64}(undef, n)
     for i = 1:n_conditioning
         resid[i] = 0.0
@@ -60,6 +69,19 @@ function compute_css_residuals(
     return (sigma2 = ssq / nu, residuals = resid)
 end
 
+# Backward-compatible overload for forecast-derived code (arima_rjh, simulate, etc.)
+function compute_css_residuals(
+    y::AbstractArray,
+    arma::Vector{Int},
+    phi::AbstractArray,
+    theta::AbstractArray,
+    n_conditioning::Int,
+)
+    # Build a minimal SARIMAOrder from the arma vector
+    order = SARIMAOrder(arma[1], arma[6], arma[2], arma[3], arma[7], arma[4], arma[5])
+    return compute_css_residuals(y, order, phi, theta, n_conditioning)
+end
+
 function process_xreg(xreg::Union{NamedMatrix,Nothing}, n::Int)
     if isnothing(xreg)
         xreg_mat = Matrix{Float64}(undef, n, 0)
@@ -79,30 +101,33 @@ function process_xreg(xreg::Union{NamedMatrix,Nothing}, n::Int)
     return xreg_mat, n_xreg_cols, xreg_names
 end
 
-function regress_and_update!(
+# --- Initial parameter estimation (OLS on differenced data) ---
+#
+# Replaces regress_and_update!. ARMA params start at zero (standard recommendation,
+# Box-Jenkins 2015 §7.1). Xreg params from OLS on differenced data.
+# Parameter scaling uses max(1, |β|) instead of R's 10*se heuristic.
+
+function compute_initial_params(
     x::AbstractArray,
     xreg::Matrix,
-    n_arma_params::Int,
+    n_arma::Int,
     n_xreg_cols::Int,
-    order_d::Int,
-    seasonal_d::Int,
-    m::Int,
+    order::SARIMAOrder,
     Delta::AbstractArray,
 )
-
-    init0 = zeros(n_arma_params)
-    parscale = ones(n_arma_params)
+    init0 = zeros(n_arma)
+    parscale = ones(n_arma)
 
     dx = copy(x)
     dxreg = copy(xreg)
-    if order_d > 0
-        dx = diff(dx; lag = 1, differences = order_d)
-        dxreg = diff(dxreg; lag = 1, differences = order_d)
+    if order.d > 0
+        dx = diff(dx; lag = 1, differences = order.d)
+        dxreg = diff(dxreg; lag = 1, differences = order.d)
         dx, dxreg = dropmissing(dx, dxreg)
     end
-    if m > 1 && seasonal_d > 0
-        dx = diff(dx; lag = m, differences = seasonal_d)
-        dxreg = diff(dxreg; lag = m, differences = seasonal_d)
+    if order.s > 1 && order.D > 0
+        dx = diff(dx; lag = order.s, differences = order.D)
+        dxreg = diff(dxreg; lag = order.s, differences = order.D)
         dx, dxreg = dropmissing(dx, dxreg)
     end
 
@@ -130,31 +155,159 @@ function regress_and_update!(
     n_used = sum(.!has_na) - length(Delta)
     model_coefs = Stats.coefficients(fit)
     init0 = append!(init0, model_coefs)
-    ses = fit.se
-    parscale = append!(parscale, 10 * ses)
+
+    # Parameter scaling: max(1, |β|) for xreg coefficients
+    xreg_scales = [max(1.0, abs(c)) for c in model_coefs]
+    parscale = append!(parscale, xreg_scales)
 
     return init0, parscale, n_used
 end
 
-function prep_coefs(arma::Vector{Int}, coef::AbstractArray, cn::Vector{String}, n_xreg_cols::Int)
+# --- Xreg preprocessing: column-wise L2 normalization ---
+#
+# Scales each xreg column to unit L2 norm for numerical conditioning.
+# Returns the scaling factors for undoing the transformation after fitting.
+
+function preprocess_xreg(xreg_mat::Matrix{Float64}, mask_xreg::AbstractVector{Bool})
+    n_cols = size(xreg_mat, 2)
+    if n_cols == 0
+        return xreg_mat, ones(0)
+    end
+
+    # Only normalize columns where all xreg params are free
+    scales = ones(n_cols)
+    xreg_scaled = copy(xreg_mat)
+
+    if all(mask_xreg)
+        for j in 1:n_cols
+            col = @view xreg_mat[:, j]
+            finite_vals = filter(isfinite, col)
+            if !isempty(finite_vals)
+                s = norm(finite_vals)
+                if s > 0
+                    scales[j] = s
+                    xreg_scaled[:, j] = col ./ s
+                end
+            end
+        end
+    end
+
+    return xreg_scaled, scales
+end
+
+function unscale_xreg_coefs!(coef::AbstractVector, scales::Vector{Float64},
+                              xreg_range::UnitRange{Int})
+    for (i, idx) in enumerate(xreg_range)
+        coef[idx] /= scales[i]
+    end
+end
+
+# --- Coefficient name formatting ---
+
+function format_coef_names(order::SARIMAOrder, coef::AbstractArray,
+                           cn::Vector{String}, n_xreg_cols::Int)
     names = String[]
-    if arma[1] > 0
-        append!(names, ["ar$(i)" for i in 1:arma[1]])
+    if order.p > 0
+        append!(names, ["ar$(i)" for i in 1:order.p])
     end
-    if arma[2] > 0
-        append!(names, ["ma$(i)" for i in 1:arma[2]])
+    if order.q > 0
+        append!(names, ["ma$(i)" for i in 1:order.q])
     end
-    if arma[3] > 0
-        append!(names, ["sar$(i)" for i in 1:arma[3]])
+    if order.P > 0
+        append!(names, ["sar$(i)" for i in 1:order.P])
     end
-    if arma[4] > 0
-        append!(names, ["sma$(i)" for i in 1:arma[4]])
+    if order.Q > 0
+        append!(names, ["sma$(i)" for i in 1:order.Q])
     end
     if n_xreg_cols > 0
         append!(names, cn)
     end
     mat = reshape(coef, 1, :)
     return NamedMatrix(mat, names)
+end
+
+# --- ML objective function ---
+#
+# Concentrated Gaussian log-likelihood (Harvey 1989 eq 3.3.16):
+#   ℓ_c(θ) = -n/2 * [log(σ²(θ)) + (1/n)Σlog(F_t)]
+# We minimize: 0.5 * [log(σ²) + Σlog(F)/n]
+#
+# Takes explicit arguments instead of capturing mutable closure state.
+
+function _ml_objective(
+    free_params::AbstractVector,
+    full_coef::Vector{Float64},
+    mask::BitVector,
+    order::SARIMAOrder,
+    x::Vector{Float64},
+    xreg_mat::Matrix{Float64},
+    n_arma::Int,
+    n_xreg_cols::Int,
+    mod::Union{ArimaStateSpace,SARIMASystem},
+    transform_pars::Bool,
+    use_gardner_init::Bool,
+    kappa::Float64,
+    workspace::Union{KalmanWorkspace,Nothing},
+)
+    par = copy(full_coef)
+    par[mask] .= free_params
+    trarma = transform_arima_parameters(par, order, transform_pars)
+
+    try
+        update_arima(mod, trarma[1], trarma[2]; use_gardner_init=use_gardner_init, kappa=kappa)
+    catch
+        return typemax(Float64)
+    end
+
+    x_work = if n_xreg_cols > 0
+        x_range = xreg_indices(order, n_xreg_cols)
+        x .- xreg_mat * par[x_range]
+    else
+        x
+    end
+
+    resss = compute_arima_likelihood(x_work, mod, 0, false; workspace=workspace)
+
+    nu = resss[3]
+    nu <= 0 && return typemax(Float64)
+    s2 = resss[1] / nu
+    (s2 < 0 || isnan(s2) || s2 == Inf) && return typemax(Float64)
+    result = 0.5 * (log(s2) + resss[2] / nu)
+    return isnan(result) || result == Inf ? typemax(Float64) : result
+end
+
+# --- CSS objective function ---
+#
+# Conditional sum of squares (Box-Jenkins 2015 §7.1.3):
+# Minimize: 0.5 * log(σ²_CSS)
+
+function _css_objective(
+    free_params::AbstractVector,
+    full_coef::Vector{Float64},
+    mask::BitVector,
+    order::SARIMAOrder,
+    x::Vector{Float64},
+    xreg_mat::Matrix{Float64},
+    n_arma::Int,
+    n_xreg_cols::Int,
+    n_conditioning::Int,
+)
+    par = copy(full_coef)
+    par[mask] .= free_params
+    trarma = transform_arima_parameters(par, order, false)
+
+    x_work = if n_xreg_cols > 0
+        x_range = xreg_indices(order, n_xreg_cols)
+        x .- xreg_mat * par[x_range]
+    else
+        x
+    end
+
+    ross = compute_css_residuals(x_work, order, trarma[1], trarma[2], n_conditioning)
+    sigma2 = ross[:sigma2]
+    (sigma2 < 0 || isnan(sigma2) || sigma2 == Inf) && return typemax(Float64)
+    result = 0.5 * log(sigma2)
+    return isnan(result) || result == Inf ? typemax(Float64) : result
 end
 
 """
@@ -171,14 +324,13 @@ Returns the model itself (for chaining).
 """
 function fit!(model::SARIMA{Fl}) where {Fl}
     order = model.order
-    arma = arma_vector(order)
-    n_arma_params = sum(arma[1:4])
+    n_arma = n_arma_params(order)
     Delta = build_delta(order)
     method = model.method
     transform_pars = model.transform_pars
     optim_method = model.optim_method
     optim_control = model.optim_control
-    kappa = model.kappa
+    kappa = Float64(model.kappa)
     SSinit = model.SSinit
     use_gardner_init = SSinit === :gardner1980
 
@@ -212,21 +364,19 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         end
     end
 
-    n_cond_input = model.fixed
     if method in (:css, :css_ml)
-        n_conditioning = order.d + order.D * order.s
-        n_cond_arma = order.p + order.P * order.s
-        n_conditioning += n_cond_arma
+        n_conditioning = css_conditioning(order)
     else
         n_conditioning = 0
     end
 
+    # Parameter mask: NaN = free, finite = fixed
     fixed = if isnothing(model.fixed)
-        fill(NaN, n_arma_params + n_xreg_cols)
+        fill(NaN, n_arma + n_xreg_cols)
     else
         f = Float64.(model.fixed)
-        if length(f) != n_arma_params + n_xreg_cols
-            throw(ArgumentError("'fixed' has length $(length(f)), expected $(n_arma_params + n_xreg_cols)"))
+        if length(f) != n_arma + n_xreg_cols
+            throw(ArgumentError("'fixed' has length $(length(f)), expected $(n_arma + n_xreg_cols)"))
         end
         f
     end
@@ -238,30 +388,25 @@ function fit!(model::SARIMA{Fl}) where {Fl}
     end
 
     if transform_pars
-        ind = arma[1] + arma[2] .+ (1:arma[3])
-        if any(.!mask[1:arma[1]]) || any(.!mask[ind])
+        sar_idx = sar_indices(order)
+        ar_idx = ar_indices(order)
+        if any(.!mask[ar_idx]) || (!isempty(sar_idx) && any(.!mask[sar_idx]))
             @warn "Some AR parameters were fixed: Setting transform_pars = false"
             transform_pars = false
         end
     end
 
-    orig_xreg_flag = true
-    S_svd = nothing
-    if n_xreg_cols > 0
-        orig_xreg_flag = (n_xreg_cols == 1) || any(.!mask[(n_arma_params+1):(n_arma_params+n_xreg_cols)])
-        if !orig_xreg_flag
-            rows_good = [all(isfinite, row) for row in eachrow(xreg_mat)]
-            S_svd = svd(xreg_mat[rows_good, :])
-            xreg_mat = xreg_mat * S_svd.V
-        end
-    end
+    # Xreg preprocessing: column-wise L2 normalization for numerical conditioning
+    xreg_range = xreg_indices(order, n_xreg_cols)
+    mask_xreg = n_xreg_cols > 0 ? mask[xreg_range] : Bool[]
+    xreg_mat, xreg_scales = preprocess_xreg(xreg_mat, mask_xreg)
 
     if n_xreg_cols > 0
         init0, parscale, n_used =
-            regress_and_update!(x, xreg_mat, n_arma_params, n_xreg_cols, order.d, order.D, order.s, Delta)
+            compute_initial_params(x, xreg_mat, n_arma, n_xreg_cols, order, Delta)
     else
-        init0 = zeros(n_arma_params)
-        parscale = ones(n_arma_params)
+        init0 = zeros(n_arma)
+        parscale = ones(n_arma)
     end
 
     if n_used <= 0
@@ -279,17 +424,13 @@ function fit!(model::SARIMA{Fl}) where {Fl}
             init[ind] .= init0[ind]
         end
         if method === :ml
-            p_ar = arma[1]
-            P_ar = arma[3]
-            if p_ar > 0 && !ar_check(init[1:p_ar])
+            ar_idx = ar_indices(order)
+            sar_idx = sar_indices(order)
+            if order.p > 0 && !ar_check(init[ar_idx])
                 throw(ArgumentError("AR polynomial has roots inside the unit circle"))
             end
-            if P_ar > 0
-                sa_start = arma[1] + arma[2] + 1
-                sa_stop = arma[1] + arma[2] + P_ar
-                if !ar_check(init[sa_start:sa_stop])
-                    throw(ArgumentError("seasonal AR polynomial has roots inside the unit circle"))
-                end
+            if order.P > 0 && !ar_check(init[sar_idx])
+                throw(ArgumentError("seasonal AR polynomial has roots inside the unit circle"))
             end
         end
     else
@@ -299,56 +440,17 @@ function fit!(model::SARIMA{Fl}) where {Fl}
     coef = copy(Float64.(fixed))
     kalman_ws = Ref{Union{KalmanWorkspace,Nothing}}(nothing)
 
+    # Likelihood evaluation with residuals (for final model evaluation)
     _ssl(y_in, mod) = compute_arima_likelihood(y_in, mod, 0, true)
 
-    function _armafn(p, trans)
-        par = copy(coef)
-        par[mask] = p
-        trarma = transform_arima_parameters(par, arma, trans)
-        xxi = copy(x)
-
-        Z = try
-            update_arima(mod, trarma[1], trarma[2]; use_gardner_init=use_gardner_init)
-        catch e
-            @warn "Updating arima failed $e"
-            return typemax(Float64)
-        end
-
-        if n_xreg_cols > 0
-            xxi = xxi .- xreg_mat * par[n_arma_params+1:n_arma_params+n_xreg_cols]
-        end
-        resss = compute_arima_likelihood(xxi, Z, 0, false; workspace=kalman_ws[])
-
-        nu = resss[3]
-        nu <= 0 && return typemax(Float64)
-        s2 = resss[1] / nu
-        (s2 < 0 || isnan(s2) || s2 == Inf) && return typemax(Float64)
-        result = 0.5 * (log(s2) + resss[2] / nu)
-        return isnan(result) || result == Inf ? typemax(Float64) : result
-    end
-
-    function _armaCSS(p)
-        par = copy(fixed)
-        par[mask] .= p
-        trarma = transform_arima_parameters(par, arma, false)
-        x_in = copy(x)
-
-        if n_xreg_cols > 0
-            x_in = x_in .- xreg_mat * par[n_arma_params+1:n_arma_params+n_xreg_cols]
-        end
-
-        ross = compute_css_residuals(x_in, arma, trarma[1], trarma[2], n_conditioning)
-        sigma2 = ross[:sigma2]
-        (sigma2 < 0 || isnan(sigma2) || sigma2 == Inf) && return typemax(Float64)
-        result = 0.5 * log(sigma2)
-        return isnan(result) || result == Inf ? typemax(Float64) : result
-    end
+    # CSS objective (standalone function, not closure over mutable state)
+    css_fn = p -> _css_objective(p, fixed, mask, order, x, xreg_mat, n_arma, n_xreg_cols, n_conditioning)
 
     if method === :css
         if no_optim
-            res = (converged=true, minimizer=zeros(0), minimum=_armaCSS(zeros(0)))
+            res = (converged=true, minimizer=zeros(0), minimum=css_fn(zeros(0)))
         else
-            opt = optimize(p -> _armaCSS(p), init[mask], optim_method;
+            opt = optimize(css_fn, init[mask], optim_method;
                 param_scale = parscale[mask],
                 step_sizes = get(optim_control, "ndeps", fill(1e-2, sum(mask))),
                 max_iterations = get(optim_control, "maxit", 500))
@@ -360,35 +462,35 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         end
 
         coef[mask] .= res.minimizer
-        trarma = transform_arima_parameters(coef, arma, false)
-        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=Float64(kappa), SSinit=SSinit)
+        trarma = transform_arima_parameters(coef, order, false)
+        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=kappa, SSinit=SSinit)
 
         if n_xreg_cols > 0
-            x = x - xreg_mat * coef[n_arma_params+1:n_arma_params+n_xreg_cols]
+            x = x - xreg_mat * coef[xreg_range]
         end
         _ssl(x, mod)
-        val = compute_css_residuals(x, arma, trarma[1], trarma[2], n_conditioning)
+        val = compute_css_residuals(x, order, trarma[1], trarma[2], n_conditioning)
         sigma2 = val[:sigma2]
 
         if no_optim
             var = zeros(0)
         else
-            hessian = numerical_hessian(p -> _armaCSS(p), res.minimizer)
+            hessian = numerical_hessian(css_fn, res.minimizer)
             var = inv(hessian * n_used)
         end
 
     else
+        # --- CSS→ML or ML-only flow (Harvey 1989 §3.4.2) ---
+
         if method in (:css_ml, :ml)
             if method === :ml
-                n_conditioning = order.d + order.D * order.s
-                n_cond_arma = order.p + order.P * order.s
-                n_conditioning += n_cond_arma
+                n_conditioning = css_conditioning(order)
             end
 
             if no_optim
-                res = (converged=true, minimizer=zeros(sum(mask)), minimum=_armaCSS(zeros(0)))
+                res = (converged=true, minimizer=zeros(sum(mask)), minimum=css_fn(zeros(0)))
             else
-                opt = optimize(p -> _armaCSS(p), init[mask], optim_method;
+                opt = optimize(css_fn, init[mask], optim_method;
                     param_scale = parscale[mask],
                     step_sizes = get(optim_control, "ndeps", fill(1e-2, sum(mask))),
                     max_iterations = get(optim_control, "maxit", 500))
@@ -399,39 +501,47 @@ function fit!(model::SARIMA{Fl}) where {Fl}
                 init[mask] .= res.minimizer
             end
 
-            if arma[1] > 0 && !ar_check(init[1:arma[1]])
+            # Stationarity validation of CSS solution (mathematical requirement)
+            ar_idx = ar_indices(order)
+            sar_idx = sar_indices(order)
+            if order.p > 0 && !ar_check(init[ar_idx])
                 throw(ArgumentError("CSS initialization produced non-stationary AR polynomial"))
             end
-            if arma[3] > 0 && !ar_check(init[(sum(arma[1:2])+1):(sum(arma[1:2])+arma[3])])
+            if order.P > 0 && !ar_check(init[sar_idx])
                 throw(ArgumentError("CSS initialization produced non-stationary seasonal AR polynomial"))
             end
 
             n_conditioning = 0
         end
 
+        # Transform to unconstrained space (Jones 1980) for ML optimization
         if transform_pars
-            init = inverse_arima_parameter_transform(init, arma)
-            if arma[2] > 0
-                ind = (arma[1]+1):(arma[1]+arma[2])
-                init[ind] .= ma_invert(init[ind])
+            init = inverse_arima_parameter_transform(init, order)
+            ma_idx = ma_indices(order)
+            sma_idx = sma_indices(order)
+            if order.q > 0
+                init[ma_idx] .= ma_invert(init[ma_idx])
             end
-            if arma[4] > 0
-                ind = (sum(arma[1:3])+1):(sum(arma[1:3])+arma[4])
-                init[ind] .= ma_invert(init[ind])
+            if order.Q > 0
+                init[sma_idx] .= ma_invert(init[sma_idx])
             end
         end
 
-        trarma = transform_arima_parameters(init, arma, transform_pars)
-        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=Float64(kappa), SSinit=SSinit)
+        trarma = transform_arima_parameters(init, order, transform_pars)
+        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=kappa, SSinit=SSinit)
 
         rd = length(mod.a)
         d_len = length(mod.Delta)
         kalman_ws[] = KalmanWorkspace(rd, n, d_len, false)
 
+        # ML objective (standalone function)
+        ml_fn = p -> _ml_objective(p, coef, mask, order, x, xreg_mat, n_arma, n_xreg_cols,
+                                   mod, transform_pars, use_gardner_init, kappa, kalman_ws[])
+
         if no_optim
-            res = (converged=true, minimizer=zeros(0), minimum=_armafn(zeros(0), transform_pars))
+            res = (converged=true, minimizer=zeros(0), minimum=ml_fn(zeros(0)))
         else
-            opt = optimize(p -> _armafn(p, transform_pars), init[mask], optim_method;
+            opt = optimize(ml_fn, init[mask], optim_method;
                 param_scale = parscale[mask],
                 step_sizes = get(optim_control, "ndeps", nothing),
                 max_iterations = get(optim_control, "maxit", nothing))
@@ -444,49 +554,53 @@ function fit!(model::SARIMA{Fl}) where {Fl}
 
         coef[mask] .= res.minimizer
 
+        # Variance-covariance via Hessian + Delta method (standard statistics)
         if transform_pars
-            if arma[2] > 0
-                ind = (arma[1]+1):(arma[1]+arma[2])
-                if all(mask[ind])
-                    coef[ind] .= ma_invert(coef[ind])
-                end
+            ma_idx = ma_indices(order)
+            sma_idx = sma_indices(order)
+            if order.q > 0 && all(mask[ma_idx])
+                coef[ma_idx] .= ma_invert(coef[ma_idx])
             end
-            if arma[4] > 0
-                ind = (sum(arma[1:3])+1):(sum(arma[1:3])+arma[4])
-                if all(mask[ind])
-                    coef[ind] .= ma_invert(coef[ind])
-                end
+            if order.Q > 0 && all(mask[sma_idx])
+                coef[sma_idx] .= ma_invert(coef[sma_idx])
             end
 
+            # Re-evaluate at final point to get accurate Hessian
             if any(coef[mask] .!= res.minimizer)
-                opt = optimize(p -> _armafn(p, true), coef[mask], optim_method;
+                ml_fn_eval = p -> _ml_objective(p, coef, mask, order, x, xreg_mat, n_arma, n_xreg_cols,
+                                                mod, true, use_gardner_init, kappa, kalman_ws[])
+                # Evaluate objective at the new parameter values
+                opt = optimize(ml_fn_eval, coef[mask], optim_method;
                     param_scale = parscale[mask],
                     max_iterations = 0)
                 res = (converged=opt.converged, minimizer=opt.minimizer, minimum=opt.minimum)
-                hessian = numerical_hessian(p -> _armafn(p, true), res.minimizer)
+                hessian = numerical_hessian(ml_fn_eval, res.minimizer)
                 coef[mask] .= res.minimizer
             else
-                hessian = numerical_hessian(p -> _armafn(p, true), res.minimizer)
+                hessian = numerical_hessian(ml_fn, res.minimizer)
             end
 
-            A = compute_arima_transform_gradient(coef, arma)
+            # Delta method: transform Hessian from unconstrained to constrained space
+            A = compute_arima_transform_gradient(coef, order)
             A = A[mask, mask]
             var = A' * ((hessian * n_used) \ A)
-            coef = undo_arima_parameter_transform(coef, arma)
+            coef = undo_arima_parameter_transform(coef, order)
         else
             if no_optim
                 var = zeros(0)
             else
-                hessian = numerical_hessian(p -> _armafn(p, true), res.minimizer)
+                ml_fn_hess = p -> _ml_objective(p, coef, mask, order, x, xreg_mat, n_arma, n_xreg_cols,
+                                                mod, true, use_gardner_init, kappa, kalman_ws[])
+                hessian = numerical_hessian(ml_fn_hess, res.minimizer)
                 var = inv(hessian * n_used)
             end
         end
 
-        trarma = transform_arima_parameters(coef, arma, false)
-        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=Float64(kappa), SSinit=SSinit)
+        trarma = transform_arima_parameters(coef, order, false)
+        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=kappa, SSinit=SSinit)
 
         val = if n_xreg_cols > 0
-            _ssl(x - xreg_mat * coef[n_arma_params+1:n_arma_params+n_xreg_cols], mod)
+            _ssl(x - xreg_mat * coef[xreg_range], mod)
         else
             _ssl(x, mod)
         end
@@ -497,16 +611,21 @@ function fit!(model::SARIMA{Fl}) where {Fl}
     aic = method !== :css ? value + 2 * sum(mask) + 2 : nothing
     loglik = -0.5 * value
 
-    if n_xreg_cols > 0 && !orig_xreg_flag
-        ind = n_arma_params .+ (1:n_xreg_cols)
-        coef[ind] = S_svd.V * coef[ind]
-        A = Matrix{Float64}(I, n_arma_params + n_xreg_cols, n_arma_params + n_xreg_cols)
-        A[ind, ind] = S_svd.V
-        A = A[mask, mask]
-        var = A * var * transpose(A)
+    # Undo xreg column scaling
+    if n_xreg_cols > 0 && all(mask_xreg)
+        unscale_xreg_coefs!(coef, xreg_scales, xreg_range)
+        # Transform variance-covariance accordingly
+        if length(var) > 0
+            A = Matrix{Float64}(I, n_arma + n_xreg_cols, n_arma + n_xreg_cols)
+            for (i, idx) in enumerate(xreg_range)
+                A[idx, idx] = 1.0 / xreg_scales[i]
+            end
+            A = A[mask, mask]
+            var = A * var * transpose(A)
+        end
     end
 
-    arima_coef = prep_coefs(arma, coef, xreg_names, n_xreg_cols)
+    arima_coef = format_coef_names(order, coef, xreg_names, n_xreg_cols)
     resid = val[:residuals]
     fitted_vals = y_save .- resid
 
@@ -515,13 +634,6 @@ function fit!(model::SARIMA{Fl}) where {Fl}
     end
 
     o = order
-    s = model.order
-    fit_method = if n_xreg_cols > 0
-        "Regression with ARIMA($(o.p),$(o.d),$(o.q))($(s.P),$(s.D),$(s.Q))[$(s.s)] errors"
-    else
-        "ARIMA($(o.p),$(o.d),$(o.q))($(s.P),$(s.D),$(s.Q))[$(s.s)]"
-    end
-
     model.system = SARIMASystem{Fl}(
         Fl.(mod.phi), Fl.(mod.theta), Fl.(mod.Delta),
         Fl.(mod.Z), Fl.(mod.T), Fl.(mod.V),
@@ -593,7 +705,7 @@ function arima(
 
     o = model.order
     r = model.results
-    has_xreg_coefs = !isnothing(r) && length(r.coef.colnames) > sum(arma_vector(o)[1:4])
+    has_xreg_coefs = !isnothing(r) && length(r.coef.colnames) > n_arma_params(o)
 
     fit_method = if has_xreg_coefs
         "Regression with ARIMA($(o.p),$(o.d),$(o.q))($(o.P),$(o.D),$(o.Q))[$(o.s)] errors"

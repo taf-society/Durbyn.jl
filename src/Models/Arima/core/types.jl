@@ -41,6 +41,7 @@ end
 mutable struct KalmanWorkspace
     anew::Vector{Float64}
     M::Vector{Float64}
+    work::Matrix{Float64}
     mm::Union{Matrix{Float64},Nothing}
     standardized_residuals::Union{Vector{Float64},Nothing}
 end
@@ -48,14 +49,16 @@ end
 function KalmanWorkspace(rd::Int, n::Int, d::Int, give_resid::Bool)
     anew = zeros(rd)
     M = zeros(rd)
+    work = zeros(rd, rd)
     mm = d > 0 ? zeros(rd, rd) : nothing
     standardized_residuals = give_resid ? zeros(n) : nothing
-    return KalmanWorkspace(anew, M, mm, standardized_residuals)
+    return KalmanWorkspace(anew, M, work, mm, standardized_residuals)
 end
 
 function reset!(ws::KalmanWorkspace)
     fill!(ws.anew, 0.0)
     fill!(ws.M, 0.0)
+    fill!(ws.work, 0.0)
     if !isnothing(ws.mm)
         fill!(ws.mm, 0.0)
     end

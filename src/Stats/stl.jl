@@ -24,27 +24,57 @@ struct STLResult{T<:Real}
     outer_iterations::Int
 end
 
+struct STLParams
+    period::Int
+    seasonal_bandwidth::Int
+    trend_bandwidth::Int
+    lowpass_bandwidth::Int
+    seasonal_degree::Int
+    trend_degree::Int
+    lowpass_degree::Int
+    seasonal_jump::Int
+    trend_jump::Int
+    lowpass_jump::Int
+    n_inner::Int
+    n_outer::Int
+end
+
+mutable struct STLWorkspace
+    detrended::Vector{Float64}
+    seasonal_ext::Vector{Float64}
+    lowpass_buf::Vector{Float64}
+    work_a::Vector{Float64}
+    work_b::Vector{Float64}
+    fit::Vector{Float64}
+
+    function STLWorkspace(n::Int, period::Int)
+        n_ext = n + 2 * period
+        new(zeros(n_ext), zeros(n_ext), zeros(n_ext),
+            zeros(n_ext), zeros(n_ext), zeros(n))
+    end
+end
+
 function moving_average!(x::AbstractVector{Float64}, n::Int, window::Int, ave::AbstractVector{Float64})
 
     if window <= 0 || n < window
         return
     end
-    newn = n - window + 1
+    output_len = n - window + 1
+    window_f = Float64(window)
 
-    v = 0.0
+    running_sum = 0.0
     for i in 1:window
-        v += x[i]
+        running_sum += x[i]
     end
-    fwindow = float(window)
-    ave[1] = v / fwindow
-    if newn > 1
-        k = window
-        m = 0
-        for j in 2:newn
-            k += 1
-            m += 1
-            v = v - x[m] + x[k]
-            ave[j] = v / fwindow
+    ave[1] = running_sum / window_f
+    if output_len > 1
+        head = window
+        tail = 0
+        for j in 2:output_len
+            head += 1
+            tail += 1
+            running_sum = running_sum - x[tail] + x[head]
+            ave[j] = running_sum / window_f
         end
     end
     return
@@ -115,178 +145,116 @@ end
 
 
 function robustness_weights!(y::AbstractVector{Float64}, fit::AbstractVector{Float64},
-                             rw::AbstractVector{Float64})
-    n = min(length(y), length(fit), length(rw))
+                             weights::AbstractVector{Float64},
+                             residuals::AbstractVector{Float64})
+    n = min(length(y), length(fit), length(weights))
 
-    tmp = Vector{Float64}(undef, n)
     for i in 1:n
-        tmp[i] = abs(y[i] - fit[i])
+        residuals[i] = abs(y[i] - fit[i])
     end
 
-    mad = median(tmp)
-    cmad = 6.0 * mad
+    six_mad = 6.0 * median(view(residuals, 1:n))
 
-    c9 = 0.999 * cmad
-    c1 = 0.001 * cmad
+    threshold_upper = 0.999 * six_mad
+    threshold_lower = 0.001 * six_mad
     for i in 1:n
         r = abs(y[i] - fit[i])
-        if r <= c1
-            rw[i] = 1.0
-        elseif r <= c9 && cmad > 0.0
-            x = r / cmad
-            rw[i] = (1.0 - x^2)^2
+        if r <= threshold_lower
+            weights[i] = 1.0
+        elseif r <= threshold_upper && six_mad > 0.0
+            u = r / six_mad
+            weights[i] = (1.0 - u^2)^2
         else
-            rw[i] = 0.0
+            weights[i] = 0.0
         end
     end
     return
 end
 
-function stl_inner_loop!(y::AbstractVector{Float64}, n::Int, period::Int,
-                         seasonal_bandwidth::Int, trend_bandwidth::Int, lowpass_bandwidth::Int,
-                         seasonal_degree::Int, trend_degree::Int, lowpass_degree::Int,
-                         seasonal_jump::Int, trend_jump::Int, lowpass_jump::Int,
-                         n_inner::Int, use_weights::Bool, robustness_weights::AbstractVector{Float64},
-                         season::AbstractVector{Float64}, trend::AbstractVector{Float64})
+function stl_inner_loop!(ws::STLWorkspace, y::AbstractVector{Float64}, n::Int,
+                         season::AbstractVector{Float64}, trend::AbstractVector{Float64},
+                         use_weights::Bool, robustness_weights::AbstractVector{Float64},
+                         params::STLParams)
 
-    n_extended = n + 2 * period
-    detrended = zeros(Float64, n_extended)
-    seasonal_ext = zeros(Float64, n_extended)
-    lowpass_smoothed = zeros(Float64, n_extended)
-    work_a = zeros(Float64, n_extended)
-    work_b = zeros(Float64, n_extended)
-    for _iter in 1:n_inner
+    n_extended = n + 2 * params.period
+    for _iter in 1:params.n_inner
 
         for i in 1:n
-            detrended[i] = y[i] - trend[i]
+            ws.detrended[i] = y[i] - trend[i]
         end
 
-        seasonal_smooth!(detrended, n, period, seasonal_bandwidth, seasonal_degree, seasonal_jump, use_weights, robustness_weights, seasonal_ext, lowpass_smoothed, work_a, work_b, season)
-        lowpass_filter!(seasonal_ext, n_extended, period, lowpass_smoothed, detrended)
-        loess_smooth!(lowpass_smoothed, n, lowpass_bandwidth, lowpass_degree, lowpass_jump, false, work_a, detrended, work_b)
+        seasonal_smooth!(ws.detrended, n, params.period, params.seasonal_bandwidth,
+                         params.seasonal_degree, params.seasonal_jump, use_weights,
+                         robustness_weights, ws.seasonal_ext, ws.lowpass_buf,
+                         ws.work_a, ws.work_b, season)
+        lowpass_filter!(ws.seasonal_ext, n_extended, params.period, ws.lowpass_buf, ws.detrended)
+        loess_smooth!(ws.lowpass_buf, n, params.lowpass_bandwidth, params.lowpass_degree,
+                      params.lowpass_jump, false, ws.work_a, ws.detrended, ws.work_b)
         for i in 1:n
-            season[i] = seasonal_ext[period + i] - detrended[i]
+            season[i] = ws.seasonal_ext[params.period + i] - ws.detrended[i]
         end
         for i in 1:n
-            detrended[i] = y[i] - season[i]
+            ws.detrended[i] = y[i] - season[i]
         end
-        loess_smooth!(detrended, n, trend_bandwidth, trend_degree, trend_jump, use_weights, robustness_weights, trend, lowpass_smoothed)
+        loess_smooth!(ws.detrended, n, params.trend_bandwidth, params.trend_degree,
+                      params.trend_jump, use_weights, robustness_weights, trend, ws.lowpass_buf)
     end
     return
 end
 
-function stl_outer_loop!(
-    y::AbstractVector{Float64},
-    period::Int,
-    seasonal_bandwidth::Int,
-    trend_bandwidth::Int,
-    lowpass_bandwidth::Int,
-    seasonal_degree::Int,
-    trend_degree::Int,
-    lowpass_degree::Int,
-    seasonal_jump::Int,
-    trend_jump::Int,
-    lowpass_jump::Int,
-    n_inner::Int,
-    n_outer::Int,
-    rw::AbstractVector{Float64},
-    season::AbstractVector{Float64},
-    trend::AbstractVector{Float64},
-)
+function stl_outer_loop!(ws::STLWorkspace, y::AbstractVector{Float64},
+                         season::AbstractVector{Float64}, trend::AbstractVector{Float64},
+                         weights::AbstractVector{Float64}, params::STLParams)
     n = length(y)
     fill!(trend, 0.0)
-    new_seasonal_bandwidth = max(3, seasonal_bandwidth)
-    if new_seasonal_bandwidth % 2 == 0
-        new_seasonal_bandwidth += 1
-    end
-    new_trend_bandwidth = max(3, trend_bandwidth)
-    if new_trend_bandwidth % 2 == 0
-        new_trend_bandwidth += 1
-    end
-    new_lowpass_bandwidth = max(3, lowpass_bandwidth)
-    if new_lowpass_bandwidth % 2 == 0
-        new_lowpass_bandwidth += 1
-    end
-    new_period = max(2, period)
+
+    adj_params = STLParams(
+        max(2, params.period),
+        _ensure_odd(max(3, params.seasonal_bandwidth)),
+        _ensure_odd(max(3, params.trend_bandwidth)),
+        _ensure_odd(max(3, params.lowpass_bandwidth)),
+        params.seasonal_degree,
+        params.trend_degree,
+        params.lowpass_degree,
+        params.seasonal_jump,
+        params.trend_jump,
+        params.lowpass_jump,
+        params.n_inner,
+        params.n_outer,
+    )
+
     use_weights = false
     k = 0
     while true
-        stl_inner_loop!(
-            y,
-            n,
-            new_period,
-            new_seasonal_bandwidth,
-            new_trend_bandwidth,
-            new_lowpass_bandwidth,
-            seasonal_degree,
-            trend_degree,
-            lowpass_degree,
-            seasonal_jump,
-            trend_jump,
-            lowpass_jump,
-            n_inner,
-            use_weights,
-            rw,
-            season,
-            trend,
-        )
+        stl_inner_loop!(ws, y, n, season, trend, use_weights, weights, adj_params)
         k += 1
-        if k > n_outer
+        if k > adj_params.n_outer
             break
         end
-        fit = Vector{Float64}(undef, n)
         for i = 1:n
-            fit[i] = trend[i] + season[i]
+            ws.fit[i] = trend[i] + season[i]
         end
-        robustness_weights!(y, fit, rw)
+        robustness_weights!(y, ws.fit, weights, ws.detrended)
         use_weights = true
     end
-    if n_outer <= 0
+    if adj_params.n_outer <= 0
         for i = 1:n
-            rw[i] = 1.0
+            weights[i] = 1.0
         end
     end
     return
 end
 
-function stl_decompose(
-    y::AbstractVector{Float64},
-    period::Int,
-    seasonal_bandwidth::Int,
-    trend_bandwidth::Int,
-    lowpass_bandwidth::Int,
-    seasonal_degree::Int,
-    trend_degree::Int,
-    lowpass_degree::Int,
-    seasonal_jump::Int,
-    trend_jump::Int,
-    lowpass_jump::Int,
-    n_inner::Int,
-    n_outer::Int,
-)
+_ensure_odd(x::Int) = iseven(x) ? x + 1 : x
+
+function stl_decompose(y::AbstractVector{Float64}, params::STLParams)
     n = length(y)
+    ws = STLWorkspace(n, params.period)
     season = zeros(Float64, n)
     trend = zeros(Float64, n)
-    rw = zeros(Float64, n)
-    stl_outer_loop!(
-        y,
-        period,
-        seasonal_bandwidth,
-        trend_bandwidth,
-        lowpass_bandwidth,
-        seasonal_degree,
-        trend_degree,
-        lowpass_degree,
-        seasonal_jump,
-        trend_jump,
-        lowpass_jump,
-        n_inner,
-        n_outer,
-        rw,
-        season,
-        trend,
-    )
-    return season, trend, rw
+    weights = zeros(Float64, n)
+    stl_outer_loop!(ws, y, season, trend, weights, params)
+    return season, trend, weights
 end
 
 function _validate_degree(deg, name::AbstractString)
@@ -320,7 +288,7 @@ period (number of observations per cycle) and must be at least two.
 
 # Keyword arguments
 
-Defaults follow the R `stl` implementation.
+Default parameters follow Cleveland et al. (1990).
 
 * `seasonal_window`: Span of the seasonal smoothing window.  May be an
   integer (interpreted as a span and rounded to the nearest odd value) or
@@ -378,13 +346,13 @@ function stl(
 
     n = length(x)
     if m < 2 || n <= 2 * m
-        throw(ArgumentError("series is not periodic or has less than two periods"))
+        throw(ArgumentError(
+            "seasonal period must be at least 2 and the series must contain at least two full cycles"))
     end
 
     if any(ismissing, x)
         throw(ArgumentError(
-            "Input data contains missing values; consider imputing or removing them before calling stl",
-        ))
+            "input series contains missing values; impute or remove them before decomposition"))
     end
 
     periodic = false
@@ -394,7 +362,8 @@ function stl(
             seasonal_window_val = 10 * n + 1
             seasonal_degree = 0
         else
-            throw(ArgumentError("unknown symbol value for seasonal_window: $seasonal_window"))
+            throw(ArgumentError(
+                "seasonal_window must be an integer or :periodic; got :$seasonal_window"))
         end
     elseif isa(seasonal_window, Integer)
         seasonal_window_val = nearest_odd(seasonal_window)
@@ -447,21 +416,13 @@ function stl(
 
     xvec = collect(float.(x))
 
-    season, trend, weights = stl_decompose(
-        xvec,
-        m,
-        seasonal_window_val,
-        trend_window_val,
-        lowpass_window_val,
-        seasonal_degree,
-        trend_degree,
-        lowpass_degree,
-        seasonal_jump_val,
-        trend_jump_val,
-        lowpass_jump_val,
-        inner_val,
-        outer_val,
+    params = STLParams(
+        m, seasonal_window_val, trend_window_val, lowpass_window_val,
+        seasonal_degree, trend_degree, lowpass_degree,
+        seasonal_jump_val, trend_jump_val, lowpass_jump_val,
+        inner_val, outer_val,
     )
+    season, trend, weights = stl_decompose(xvec, params)
     remainder = xvec .- season .- trend
 
     if periodic

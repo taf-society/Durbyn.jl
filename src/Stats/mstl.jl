@@ -77,7 +77,7 @@ OTexts, Melbourne. <https://otexts.com/fpp3/>
   refine seasonal estimates (default `2`).
 - `seasonal_window`: Seasonal LOESS window(s).  If a scalar, the same value is
   used for all seasonal components.  If a vector, it is recycled or trimmed to
-  match the number of periods.  When `nothing`, a default sequence similar to R
+  match the number of periods.  When `nothing`, a default sequence of odd windows
   (`11, 15, 19, 23, 27, 31`) is used and repeated as needed.
 - `stl_kwargs...`: Additional keyword arguments forwarded to [`stl`](@ref)
   (e.g. `seasonal_degree`, `trend_window`, `trend_degree`, `lowpass_window`,

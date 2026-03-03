@@ -37,6 +37,10 @@ using Test
         include("test_exponential_smoothing.jl")
     end
 
+    @testset "ARIMA Covariance" begin
+        include("test_covariance.jl")
+    end
+
     @testset "ARIMA Model" begin
         include("test_arima_forecast.jl")
     end

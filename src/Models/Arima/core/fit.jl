@@ -245,7 +245,6 @@ function _ml_objective(
     n_xreg_cols::Int,
     mod::Union{ArimaStateSpace,SARIMASystem},
     transform_pars::Bool,
-    use_gardner_init::Bool,
     kappa::Float64,
     workspace::Union{KalmanWorkspace,Nothing},
 )
@@ -254,7 +253,7 @@ function _ml_objective(
     trarma = transform_arima_parameters(par, order, transform_pars)
 
     try
-        update_arima(mod, trarma[1], trarma[2]; use_gardner_init=use_gardner_init, kappa=kappa)
+        update_arima(mod, trarma[1], trarma[2]; kappa=kappa)
     catch
         return typemax(Float64)
     end
@@ -331,9 +330,6 @@ function fit!(model::SARIMA{Fl}) where {Fl}
     optim_method = model.optim_method
     optim_control = model.optim_control
     kappa = Float64(model.kappa)
-    SSinit = model.SSinit
-    use_gardner_init = SSinit === :gardner1980
-
     x = model.y
     n = length(x)
     y_save = copy(x)
@@ -463,7 +459,7 @@ function fit!(model::SARIMA{Fl}) where {Fl}
 
         coef[mask] .= res.minimizer
         trarma = transform_arima_parameters(coef, order, false)
-        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=kappa, SSinit=SSinit)
+        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=kappa)
 
         if n_xreg_cols > 0
             x = x - xreg_mat * coef[xreg_range]
@@ -528,7 +524,7 @@ function fit!(model::SARIMA{Fl}) where {Fl}
         end
 
         trarma = transform_arima_parameters(init, order, transform_pars)
-        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=kappa, SSinit=SSinit)
+        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=kappa)
 
         rd = length(mod.a)
         d_len = length(mod.Delta)
@@ -536,7 +532,7 @@ function fit!(model::SARIMA{Fl}) where {Fl}
 
         # ML objective (standalone function)
         ml_fn = p -> _ml_objective(p, coef, mask, order, x, xreg_mat, n_arma, n_xreg_cols,
-                                   mod, transform_pars, use_gardner_init, kappa, kalman_ws[])
+                                   mod, transform_pars, kappa, kalman_ws[])
 
         if no_optim
             res = (converged=true, minimizer=zeros(0), minimum=ml_fn(zeros(0)))
@@ -568,7 +564,7 @@ function fit!(model::SARIMA{Fl}) where {Fl}
             # Re-evaluate at final point to get accurate Hessian
             if any(coef[mask] .!= res.minimizer)
                 ml_fn_eval = p -> _ml_objective(p, coef, mask, order, x, xreg_mat, n_arma, n_xreg_cols,
-                                                mod, true, use_gardner_init, kappa, kalman_ws[])
+                                                mod, true, kappa, kalman_ws[])
                 # Evaluate objective at the new parameter values
                 opt = optimize(ml_fn_eval, coef[mask], optim_method;
                     param_scale = parscale[mask],
@@ -590,14 +586,14 @@ function fit!(model::SARIMA{Fl}) where {Fl}
                 var = zeros(0)
             else
                 ml_fn_hess = p -> _ml_objective(p, coef, mask, order, x, xreg_mat, n_arma, n_xreg_cols,
-                                                mod, true, use_gardner_init, kappa, kalman_ws[])
+                                                mod, true, kappa, kalman_ws[])
                 hessian = numerical_hessian(ml_fn_hess, res.minimizer)
                 var = inv(hessian * n_used)
             end
         end
 
         trarma = transform_arima_parameters(coef, order, false)
-        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=kappa, SSinit=SSinit)
+        mod = initialize_arima_state(trarma[1], trarma[2], Delta; kappa=kappa)
 
         val = if n_xreg_cols > 0
             _ssl(x - xreg_mat * coef[xreg_range], mod)
@@ -686,7 +682,6 @@ function arima(
     init::Union{Nothing, AbstractArray} = nothing,
     method::Symbol = :css_ml,
     n_cond::Union{Nothing, AbstractArray} = nothing,
-    SSinit::Symbol = :gardner1980,
     optim_method::Symbol = :bfgs,
     optim_control::Dict = Dict(),
     kappa::Real = 1e6,
@@ -697,7 +692,7 @@ function arima(
         order=order, seasonal=seasonal, xreg=xreg,
         include_mean=include_mean, transform_pars=transform_pars,
         fixed=fixed, init=init, method=method,
-        SSinit=SSinit, optim_method=optim_method,
+        optim_method=optim_method,
         optim_control=optim_control, kappa=kappa,
     )
 

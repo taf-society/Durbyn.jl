@@ -268,7 +268,6 @@ forecast(model; h=12)
 - `biasadj::Union{Bool,Nothing}`: Bias adjustment flag for Box-Cox.
 - `method::Symbol`: Estimation method (`:css`, `:ml`, `:css_ml`).
 - `transform_pars::Bool`: Whether to use parameter transformations.
-- `SSinit::Symbol`: Covariance initialization method.
 - `optim_method::Symbol`: Optimization method.
 - `optim_control::Dict`: Optimizer control parameters.
 - `kappa::Real`: Prior variance for diffuse states.
@@ -292,7 +291,6 @@ mutable struct SARIMA{Fl<:AbstractFloat} <: StateSpaceModel
     biasadj::Union{Bool,Nothing}
     method::Symbol
     transform_pars::Bool
-    SSinit::Symbol
     optim_method::Symbol
     optim_control::Dict
     kappa::Real

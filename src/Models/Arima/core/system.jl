@@ -1,4 +1,4 @@
-function initialize_arima_state(phi::Vector{Float64}, theta::Vector{Float64}, Delta::Vector{Float64}; kappa::Float64=1e6, SSinit::Symbol=:gardner1980, tol::Float64=eps(Float64))
+function initialize_arima_state(phi::Vector{Float64}, theta::Vector{Float64}, Delta::Vector{Float64}; kappa::Float64=1e6)
     p = length(phi)
     q = length(theta)
     r = max(p, q + 1)
@@ -33,21 +33,7 @@ function initialize_arima_state(phi::Vector{Float64}, theta::Vector{Float64}, De
     a = zeros(Float64, rd)
     P = zeros(Float64, rd, rd)
     Pn = zeros(Float64, rd, rd)
-    if r > 1
-        if SSinit === :gardner1980
-            Pn[1:r, 1:r] = gardner_harvey_phillips(phi, theta)
-        elseif SSinit === :brockwell_davis1991
-            Pn[1:r, 1:r] = brockwell_davis(phi, theta, tol)
-        else
-            throw(ArgumentError("Invalid value for SSinit: :$SSinit"))
-        end
-    else
-        if p > 0
-            Pn[1, 1] = 1.0 / (1.0 - phi[1]^2)
-        else
-            Pn[1, 1] = 1.0
-        end
-    end
+    Pn[1:r, 1:r] = _solve_stationary_covariance(phi, theta)
     if d > 0
         for i = r+1:r+d
             Pn[i, i] = kappa
@@ -56,7 +42,7 @@ function initialize_arima_state(phi::Vector{Float64}, theta::Vector{Float64}, De
     return ArimaStateSpace(phi, theta, Delta, Z, a, P, T, V, h, Pn)
 end
 
-function update_arima(mod::Union{ArimaStateSpace,SARIMASystem}, phi, theta; use_gardner_init=true, kappa::Float64=1e6)
+function update_arima(mod::Union{ArimaStateSpace,SARIMASystem}, phi, theta; kappa::Float64=1e6)
     p = length(phi)
     q = length(theta)
     r = max(p, q + 1)
@@ -82,19 +68,7 @@ function update_arima(mod::Union{ArimaStateSpace,SARIMASystem}, phi, theta; use_
 
     # Reset full Pn: ARMA covariance block + diffuse initialization
     Pn = mod.Pn
-    if r > 1
-        if use_gardner_init
-            Pn[1:r, 1:r] .= gardner_harvey_phillips(phi, theta)
-        else
-            Pn[1:r, 1:r] .= brockwell_davis(phi, theta, 0.0)
-        end
-    else
-        if p > 0
-            Pn[1, 1] = 1 / (1 - phi[1]^2)
-        else
-            Pn[1, 1] = 1.0
-        end
-    end
+    Pn[1:r, 1:r] .= _solve_stationary_covariance(phi, theta)
     # Reset diffuse block (cross-covariance + prior variance)
     if d > 0
         Pn[1:r, r+1:rd] .= 0.0
@@ -130,7 +104,6 @@ Construct a SARIMA model ready to be fitted with `fit!`.
 - `transform_pars::Bool`: Use parameter transformations.
 - `fixed`: Fixed parameter values.
 - `init`: Initial parameter values.
-- `SSinit::Symbol`: Covariance init method (`:gardner1980` or `:brockwell_davis1991`).
 - `optim_method::Symbol`: Optimizer (`:bfgs`, `:nelder_mead`, `:lbfgsb`).
 - `optim_control::Dict`: Optimizer control parameters.
 - `kappa::Real`: Prior variance for diffuse states.
@@ -149,12 +122,10 @@ function SARIMA(
     transform_pars::Bool=true,
     fixed::Union{Nothing,AbstractArray}=nothing,
     init::Union{Nothing,AbstractArray}=nothing,
-    SSinit::Symbol=:gardner1980,
     optim_method::Symbol=:bfgs,
     optim_control::Dict=Dict(),
     kappa::Real=1e6,
 )
-    _check_arg(SSinit, (:gardner1980, :brockwell_davis1991), "SSinit")
     _check_arg(method, (:css_ml, :ml, :css), "method")
 
     x = [ismissing(yi) ? NaN : Float64(yi) for yi in y]
@@ -192,7 +163,6 @@ function SARIMA(
         biasadj,
         method,
         transform_pars,
-        SSinit,
         optim_method,
         optim_control,
         kappa,
@@ -212,8 +182,6 @@ function initialize_system!(model::SARIMA{Fl}) where {Fl}
     ss = initialize_arima_state(
         phi, theta, Delta;
         kappa=Float64(model.kappa),
-        SSinit=model.SSinit,
-        tol=eps(Float64),
     )
 
     model.system = SARIMASystem{Fl}(
@@ -226,7 +194,6 @@ end
 
 function update_system!(model::SARIMA, phi::Vector{Float64}, theta::Vector{Float64})
     sys = model.system
-    gardner = model.SSinit === :gardner1980
-    update_arima(sys, phi, theta; use_gardner_init=gardner, kappa=Float64(model.kappa))
+    update_arima(sys, phi, theta; kappa=Float64(model.kappa))
     return model
 end

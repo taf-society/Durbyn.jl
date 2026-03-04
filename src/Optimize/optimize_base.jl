@@ -120,6 +120,23 @@ function optimize(fn::Function, x0::AbstractVector{<:Real},
                hessian::Bool=false,
                kwargs...)
 
+    # Fast path for Brent — bypass all wrapper overhead
+    if method === :brent && !hessian
+        length(x0) == 1 || throw(ArgumentError("Brent method requires exactly one parameter"))
+        _lb = lower isa AbstractVector ? (length(lower) >= 1 ? Float64(lower[1]) : -Inf) : Float64(lower)
+        _ub = upper isa AbstractVector ? (length(upper) >= 1 ? Float64(upper[1]) : Inf) : Float64(upper)
+        (isfinite(_lb) && isfinite(_ub)) || throw(ArgumentError("method = :brent requires finite 'lower' and 'upper' bounds"))
+        _lb < _ub || throw(ArgumentError("lower bound must be strictly less than upper bound"))
+
+        _maxit_b = isnothing(max_iterations) ? 1000 : max_iterations
+        _ps = isnothing(param_scale) ? 1.0 : Float64(first(param_scale))
+        if isempty(kwargs)
+            return _brent_fast(fn, _lb, _ub, fn_scale, reltol, trace > 0, _maxit_b, _ps)
+        else
+            return _brent_fast_kw(fn, _lb, _ub, fn_scale, reltol, trace > 0, _maxit_b, _ps, kwargs)
+        end
+    end
+
     x0 = Float64.(x0)
     lower = lower isa AbstractVector ? Float64.(lower) : Float64(lower)
     upper = upper isa AbstractVector ? Float64.(upper) : Float64(upper)
@@ -321,7 +338,7 @@ function _run_solver(method::Symbol, x0_scaled, fn_scaled, grad_scaled,
                     memory_size, factr, pgtol,
                     lower_vec, upper_vec)
     elseif method === :brent
-        _run_brent(x0_scaled[1], fn_scaled, fnscale, reltol, trace,
+        _run_brent(x0_scaled[1], fn_scaled, fnscale, reltol, trace, maxit,
                    lower_vec[1], upper_vec[1])
     end
 end
@@ -475,10 +492,11 @@ function _run_lbfgsb(par, fn, gr, parscale, fnscale,
 end
 
 
-function _run_brent(par, fn, fnscale, reltol, trace, lower, upper)
+function _run_brent(par, fn, fnscale, reltol, trace, maxit, lower, upper)
     opts = BrentOptions(
         tol = reltol,
-        trace = trace > 0
+        trace = trace > 0,
+        maxit = maxit
     )
 
     result = brent(fn, lower, upper; options=opts)
@@ -486,12 +504,64 @@ function _run_brent(par, fn, fnscale, reltol, trace, lower, upper)
     return OptimizeResult(
         [result.x_opt],
         result.f_opt * fnscale,
-        true,
+        result.fail == 0,
+        result.n_iter,
+        result.fn_evals,
         0,
-        0,
-        0,
-        "converged"
+        result.fail == 0 ? "converged" : "maximum iterations reached"
     )
+end
+
+
+"""Function barrier for Brent fast path — Julia specializes on concrete `fn` type.
+
+Passes the scalar `x::Float64` directly to `fn(x)` — works for both scalar-style
+(`f(x) = x^2`) and vector-style (`f(x) = x[1]^2`) callbacks because Julia's
+`getindex(::Number, 1)` returns the number itself.
+"""
+function _brent_fast(fn, lb::Float64, ub::Float64, fn_scale::Float64,
+                     reltol::Float64, do_trace::Bool, maxit::Int, ps::Float64)
+    inv_ps = inv(ps)
+    fn_brent = if ps == 1.0 && fn_scale == 1.0
+        x -> _to_scalar(fn(x))
+    elseif ps == 1.0
+        _inv_fns = inv(fn_scale)
+        x -> _to_scalar(fn(x)) * _inv_fns
+    elseif fn_scale == 1.0
+        x -> _to_scalar(fn(x * ps))
+    else
+        _inv_fns = inv(fn_scale)
+        x -> _to_scalar(fn(x * ps)) * _inv_fns
+    end
+    result = brent(fn_brent, lb * inv_ps, ub * inv_ps;
+                   options=BrentOptions(tol=reltol, trace=do_trace, maxit=maxit))
+    return OptimizeResult(
+        [result.x_opt * ps], result.f_opt * fn_scale,
+        result.fail == 0, result.n_iter, result.fn_evals, 0,
+        result.fail == 0 ? "converged" : "maximum iterations reached")
+end
+
+function _brent_fast_kw(fn, lb::Float64, ub::Float64, fn_scale::Float64,
+                        reltol::Float64, do_trace::Bool, maxit::Int,
+                        ps::Float64, kw)
+    inv_ps = inv(ps)
+    fn_brent = if ps == 1.0 && fn_scale == 1.0
+        x -> _to_scalar(fn(x; kw...))
+    elseif ps == 1.0
+        _inv_fns = inv(fn_scale)
+        x -> _to_scalar(fn(x; kw...)) * _inv_fns
+    elseif fn_scale == 1.0
+        x -> _to_scalar(fn(x * ps; kw...))
+    else
+        _inv_fns = inv(fn_scale)
+        x -> _to_scalar(fn(x * ps; kw...)) * _inv_fns
+    end
+    result = brent(fn_brent, lb * inv_ps, ub * inv_ps;
+                   options=BrentOptions(tol=reltol, trace=do_trace, maxit=maxit))
+    return OptimizeResult(
+        [result.x_opt * ps], result.f_opt * fn_scale,
+        result.fail == 0, result.n_iter, result.fn_evals, 0,
+        result.fail == 0 ? "converged" : "maximum iterations reached")
 end
 
 

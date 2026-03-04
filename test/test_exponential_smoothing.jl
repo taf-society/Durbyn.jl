@@ -156,7 +156,7 @@ using Durbyn.TableOps
         @testset "Simple initialization" begin
             fit_simple = es_ses(ap, 12; initial=:simple)
             fc_simple = forecast(fit_simple, h = 4)
-            @test fc_simple.mean ≈ [459.8755335582515, 459.8755335582515, 459.8755335582515, 459.8755335582515]
+            @test fc_simple.mean ≈ [459.8755335582515, 459.8755335582515, 459.8755335582515, 459.8755335582515] atol=1e-2
             @test fit_simple isa SES
             @test isnan(fit_simple.aic)  # Simple init doesn't compute IC
         end

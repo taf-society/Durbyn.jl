@@ -583,6 +583,42 @@ kpss(y; type=:mu, lags=:short, use_lag=nothing)
 
 **Null Hypothesis:** The series is stationary
 
+### Mathematical Formulation
+
+Bandwidth (`L`) selection:
+
+```math
+L = \left\lfloor 4\left(\frac{n}{100}\right)^{1/4} \right\rfloor \quad (\texttt{lags=:short}),\qquad
+L = \left\lfloor 12\left(\frac{n}{100}\right)^{1/4} \right\rfloor \quad (\texttt{lags=:long}),\qquad
+L = 0 \quad (\texttt{lags=:nil})
+```
+
+Deterministic residuals:
+
+```math
+\texttt{type=:mu}: \quad e_t = y_t - \bar{y}
+```
+
+```math
+\texttt{type=:tau}: \quad e_t \text{ are OLS residuals from } y_t = \alpha + \beta t + u_t,\ \ t=1,\dots,n
+```
+
+KPSS statistic:
+
+```math
+\eta = \frac{\frac{1}{n^2}\sum_{t=1}^{n} S_t^2}{\hat{\sigma}^2},\qquad
+S_t = \sum_{i=1}^{t} e_i
+```
+
+Residual variance and Bartlett long-run variance correction:
+
+```math
+\hat{\sigma}_e^2 = \frac{1}{n}\sum_{t=1}^{n} e_t^2,\qquad
+\hat{\sigma}^2 = \hat{\sigma}_e^2 + \frac{2}{n}\sum_{\ell=1}^{L}\left(1-\frac{\ell}{L+1}\right)\sum_{t=\ell+1}^{n} e_t e_{t-\ell}
+```
+
+For `L=0`, the denominator is `\hat{\sigma}_e^2`.
+
 **Arguments:**
 - `y::AbstractVector`: Time series
 - `type::Symbol`: `:mu` (constant) or `:tau` (constant + trend)
@@ -614,6 +650,92 @@ phillips_perron(x; type=:Z_alpha, model=:constant, lags=:short, use_lag=nothing)
 
 **Null Hypothesis:** The series has a unit root
 
+### Mathematical Formulation
+
+Test regressions (`t = 2,\dots,n_0`):
+
+```math
+\texttt{model=:constant}: \quad y_t = \alpha + \rho y_{t-1} + u_t
+```
+
+```math
+\texttt{model=:trend}: \quad y_t = \alpha + \rho y_{t-1} + \beta (t - n/2) + u_t
+```
+
+Bandwidth (`L`) uses the same short/long rules as KPSS.
+
+Variance quantities:
+
+```math
+s = \frac{1}{n}\sum_{t=1}^{n}\hat{u}_t^2,\qquad
+\hat{\sigma}^2 = s + \frac{2}{n}\sum_{\ell=1}^{L}\left(1-\frac{\ell}{L+1}\right)\sum_{t=\ell+1}^{n}\hat{u}_t\hat{u}_{t-\ell}
+```
+
+```math
+\lambda = \tfrac{1}{2}(\hat{\sigma}^2 - s),\qquad
+\lambda' = \frac{\lambda}{\hat{\sigma}^2}
+```
+
+Scaled sample moments:
+
+```math
+\overline{Y}_{\mathrm{var}}=\frac{1}{n^2}\sum (y_t-\bar{y})^2,\quad
+S_{y^2}=\frac{1}{n^2}\sum y_t^2,\quad
+S_y=\frac{1}{n^{3/2}}\sum y_t,\quad
+S_{ty}=\frac{1}{n^{5/2}}\sum t\,y_t
+```
+
+Constant model PP statistics:
+
+```math
+Z_\tau = \sqrt{\frac{s}{\hat{\sigma}^2}}\,t_\rho - \lambda'\frac{\sqrt{\hat{\sigma}^2}}{\sqrt{\overline{Y}_{\mathrm{var}}}},\qquad
+Z_\alpha = n(\hat{\rho}-1) - \frac{\lambda}{\overline{Y}_{\mathrm{var}}}
+```
+
+Constant-model auxiliary statistic:
+
+```math
+Z_{\tau,\mu} =
+\sqrt{\frac{s}{\hat{\sigma}^2}}\,t_\alpha +
+\lambda'\frac{\sqrt{\hat{\sigma}^2}\,S_y}{\sqrt{S_{y^2}}\,\sqrt{\overline{Y}_{\mathrm{var}}}}
+```
+
+Trend model definitions and PP statistics:
+
+```math
+M = (1-n^{-2})S_{y^2} - 12S_{ty}^2 + 12\left(1+\tfrac{1}{n}\right)S_{ty}S_y -
+\left(4+\tfrac{6}{n}+\tfrac{2}{n^2}\right)S_y^2
+```
+
+```math
+Z_\tau = \sqrt{\frac{s}{\hat{\sigma}^2}}\,t_\rho - \lambda'\frac{\sqrt{\hat{\sigma}^2}}{\sqrt{M}},\qquad
+Z_\alpha = n(\hat{\rho}-1) - \frac{\lambda}{M}
+```
+
+Trend-model auxiliary statistics:
+
+```math
+Z_{\tau,\mu} =
+\sqrt{\frac{s}{\hat{\sigma}^2}}\,t_\alpha -
+\lambda'\frac{\sqrt{\hat{\sigma}^2}\,S_y}{\sqrt{M}\,\sqrt{M+S_y^2}}
+```
+
+```math
+Z_{\tau,\beta} =
+\sqrt{\frac{s}{\hat{\sigma}^2}}\,t_\beta -
+\lambda'\frac{\sqrt{\hat{\sigma}^2}\,(\tfrac{1}{2}S_y - S_{ty})}{\sqrt{M/12}\,\sqrt{\overline{Y}_{\mathrm{var}}}}
+```
+
+Finite-sample critical values are provided for `type=:Z_tau` via:
+
+```math
+c = a + \frac{b}{n} + \frac{d}{n^2}
+```
+
+Coefficient tuples `(a,b,d)` used by model and significance level:
+- `model=:constant`: 1% `(-3.4335,-5.999,-29.25)`, 5% `(-2.8621,-2.738,-8.36)`, 10% `(-2.5671,-1.438,-4.48)`
+- `model=:trend`: 1% `(-3.9638,-8.353,-47.44)`, 5% `(-3.4126,-4.039,-17.83)`, 10% `(-3.1279,-2.418,-7.58)`
+
 **Arguments:**
 - `x::AbstractVector`: Time series
 - `type::Symbol`: `:Z_alpha` or `:Z_tau`
@@ -638,16 +760,75 @@ ocsb(x, m; lag_method=:fixed, maxlag=0, clevels=[0.10, 0.05, 0.01])
 
 **Null Hypothesis:** Seasonal unit root exists
 
+### Mathematical Formulation
+
+Difference operators:
+
+```math
+\Delta X_t = X_t - X_{t-1},\qquad
+\Delta_m X_t = X_t - X_{t-m},\qquad
+\Delta\Delta_m X_t = X_t - X_{t-1} - X_{t-m} + X_{t-m-1}
+```
+
+AR prewhitening (`p` lags):
+
+```math
+\Delta\Delta_m X_t = \lambda_1\Delta\Delta_m X_{t-1} + \cdots + \lambda_p\Delta\Delta_m X_{t-p} + \varepsilon_t
+```
+
+with lag polynomial `\hat{\lambda}(B)=1-\lambda_1B-\cdots-\lambda_pB^p`.
+
+Filtered regressors:
+
+```math
+Z_{4,t} = \hat{\lambda}(B)\Delta_m X_t
+= \Delta_m X_t - \sum_{j=1}^{p}\lambda_j\Delta_m X_{t-j}
+```
+
+```math
+Z_{5,t} = \hat{\lambda}(B)\Delta X_t
+= \Delta X_t - \sum_{j=1}^{p}\lambda_j\Delta X_{t-j}
+```
+
+Final OCSB regression:
+
+```math
+\Delta\Delta_m X_t =
+\beta_1 Z_{4,t-1} + \beta_2 Z_{5,t-m} + \sum_{j=1}^{p}\alpha_j \Delta\Delta_m X_{t-j} + u_t
+```
+
+Test statistic:
+
+```math
+\text{OCSB stat} = \frac{\hat{\beta}_2}{\mathrm{se}(\hat{\beta}_2)}
+```
+
+Simulation-smoothed critical value for period `m` (`\ell=\log m`):
+
+```math
+c(m) = -0.2937411\exp\!\Big[-0.2850853(\ell-0.7656451)-0.05983644(\ell-0.7656451)^2\Big]-1.652202
+```
+
+Lag selection for non-fixed mode minimizes AIC/BIC/AICc over `p=1,\dots,p_{\max}` with:
+
+```math
+\ell = -\frac{n}{2}\left(\log(2\pi)+1+\log(\mathrm{RSS}/n)\right),\quad
+\mathrm{AIC}=-2\ell+2k,\quad
+\mathrm{BIC}=-2\ell+k\log n,\quad
+\mathrm{AICc}=\mathrm{AIC}+\frac{2k(k+1)}{n-k-1}
+```
+
 **Arguments:**
 - `x::AbstractVector`: Time series
 - `m::Int`: Seasonal period
-- `lag_method::Symbol`: `:fixed`, `:AIC`, `:BIC`, or `:AICc`
+- `lag_method::Symbol`: `:fixed`, `:AIC`, `:BIC`, or `:AICc` (case-insensitive)
 - `maxlag::Int`: Maximum AR order to consider
 
 **Returns:** `OCSB` struct with:
 - `teststat`: OCSB t-statistic
-- `cval`, `clevels`: Critical values and levels
-- `lag`: Selected AR order
+- `cval`: Smoothed critical value for the requested seasonal period
+- `clevels`: Nominal critical-value levels metadata
+- `lag`: Selected AR order (alias: `lags`)
 
 **Example:**
 ```julia

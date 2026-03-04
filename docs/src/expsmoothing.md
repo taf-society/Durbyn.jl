@@ -451,6 +451,30 @@ println(fitted_lambda.fit.lambda)
 # Array Interface (Base Models)
 
 The array interface provides direct access to exponential smoothing engines for numeric vectors. 
+
+## Optimizer Controls
+
+`ets`, `ses`, `holt`, and `holt_winters` now accept the same optimization controls style used by ARIMA:
+
+```julia
+fit = ets(
+    y,
+    12,
+    "ZZZ";
+    optim_method = :lbfgsb,
+    optim_control = Dict(
+        "maxit" => 800,
+        "ndeps" => fill(1e-3, 20),  # optional finite-difference steps
+        "trace" => 1,
+    ),
+)
+```
+
+Notes:
+- `optim_method` defaults to `:nelder_mead`.
+- `options::NelderMeadOptions` is still supported and remains backward-compatible.
+- `optim_control` keys follow ARIMA conventions (for example: `"maxit"`, `"ndeps"`, `"trace"`, `"REPORT"`, `"reltol"`, `"abstol"`).
+
 ## Simple Exponential Smoothing (SES)
 
 **Simple exponential smoothing** is the simplest form of exponential smoothing (equivalent to ETS(A,N,N) or ETS(M,N,N)), with no trend or seasonality components. It is suitable for forecasting data with no clear trend or seasonal pattern.

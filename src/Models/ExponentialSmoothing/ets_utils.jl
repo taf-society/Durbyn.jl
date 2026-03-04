@@ -32,6 +32,88 @@ function create_params(
     return merge(pars, Dict("initstate" => result))
 end
 
+@inline function _control_get(control::AbstractDict, key::String, default = nothing)
+    if haskey(control, key)
+        return control[key]
+    end
+    key_sym = Symbol(key)
+    if haskey(control, key_sym)
+        return control[key_sym]
+    end
+    return default
+end
+
+@inline function _trace_level(value, fallback::Int)
+    if value isa Bool
+        return value ? 1 : 0
+    elseif value isa Integer
+        return Int(value)
+    elseif value isa Real
+        return Int(round(value))
+    end
+    return fallback
+end
+
+@inline function _set_if_present!(kwargs::Dict{Symbol,Any}, key::Symbol, value)
+    isnothing(value) || (kwargs[key] = value)
+    return kwargs
+end
+
+function _ets_optimize_kwargs(
+    options::NelderMeadOptions,
+    optim_control::AbstractDict,
+)
+    kwargs = Dict{Symbol,Any}(
+        :max_iterations => options.maxit,
+        :reltol => options.reltol,
+        :abstol => options.abstol,
+        :alpha => options.alpha,
+        :beta => options.beta,
+        :gamma => options.gamma,
+        :trace => options.trace ? 1 : 0,
+    )
+
+    _set_if_present!(kwargs, :max_iterations, _control_get(optim_control, "maxit"))
+    _set_if_present!(kwargs, :step_sizes, _control_get(optim_control, "ndeps"))
+    _set_if_present!(kwargs, :param_scale, _control_get(optim_control, "parscale"))
+    _set_if_present!(kwargs, :fn_scale, _control_get(optim_control, "fnscale"))
+    _set_if_present!(kwargs, :reltol, _control_get(optim_control, "reltol"))
+    _set_if_present!(kwargs, :abstol, _control_get(optim_control, "abstol"))
+    _set_if_present!(kwargs, :alpha, _control_get(optim_control, "alpha"))
+    _set_if_present!(kwargs, :beta, _control_get(optim_control, "beta"))
+    _set_if_present!(kwargs, :gamma, _control_get(optim_control, "gamma"))
+    _set_if_present!(kwargs, :gtol, _control_get(optim_control, "gtol"))
+    _set_if_present!(kwargs, :factr, _control_get(optim_control, "factr"))
+    _set_if_present!(kwargs, :pgtol, _control_get(optim_control, "pgtol"))
+    _set_if_present!(kwargs, :memory_size, _control_get(optim_control, "lmm"))
+    _set_if_present!(kwargs, :report_interval, _control_get(optim_control, "REPORT"))
+
+    trace_override = _control_get(optim_control, "trace")
+    if !isnothing(trace_override)
+        kwargs[:trace] = _trace_level(trace_override, kwargs[:trace])
+    end
+    return kwargs
+end
+
+function _run_ets_optimizer(
+    objective::Function,
+    x0::AbstractVector{<:Real},
+    options::NelderMeadOptions,
+    optim_method::Symbol,
+    optim_control::AbstractDict;
+    lower::Union{Nothing,AbstractVector{<:Real}} = nothing,
+    upper::Union{Nothing,AbstractVector{<:Real}} = nothing,
+)
+    kwargs = _ets_optimize_kwargs(options, optim_control)
+    if (optim_method === :lbfgsb || optim_method === :brent) &&
+       !isnothing(lower) &&
+       !isnothing(upper)
+        kwargs[:lower] = lower
+        kwargs[:upper] = upper
+    end
+    return optimize(objective, x0, optim_method; pairs(kwargs)...)
+end
+
 
 function objective_fun(
     par,
@@ -167,7 +249,9 @@ function optim_ets_base(
     bounds,
     m,
     initial_params,
-    options)
+    options::NelderMeadOptions,
+    optim_method::Symbol,
+    optim_control::AbstractDict)
 
     init_alpha = initial_params.alpha
     init_beta = initial_params.beta
@@ -185,7 +269,8 @@ function optim_ets_base(
     max_state_len = nstate + (seasontype_code != 0 ? 1 : 0)
     workspace = ETSWorkspace(length(y), m, nmse, max_state_len)
 
-    result = nelder_mead(par -> objective_fun(
+    result = _run_ets_optimizer(
+        par -> objective_fun(
             par,
             y,
             nstate,
@@ -208,12 +293,18 @@ function optim_ets_base(
             opt_gamma,
             opt_phi,
             workspace,
-        ), opt_params,
-        options)
+        ),
+        opt_params,
+        options,
+        optim_method,
+        optim_control;
+        lower = lower,
+        upper = upper,
+    )
 
-    optimized_params = result.x_opt
-    optimized_value = result.f_opt
-    number_of_iterations = result.fncount
+    optimized_params = result.minimizer
+    optimized_value = result.minimum
+    number_of_iterations = result.iterations
 
     optimized_params =
         create_params(optimized_params, opt_alpha, opt_beta, opt_gamma, opt_phi)
@@ -241,7 +332,9 @@ function etsmodel(
     opt_crit::Symbol,
     nmse::Int,
     bounds::Symbol,
-    options::NelderMeadOptions)
+    options::NelderMeadOptions,
+    optim_method::Symbol,
+    optim_control::AbstractDict)
 
     if seasontype == "N"
         m = 1
@@ -372,7 +465,9 @@ function etsmodel(
         bounds,
         m,
         initial_params,
-        options)
+        options,
+        optim_method,
+        optim_control)
 
     fit_par = optimized_fit["optimized_params"]
 
@@ -706,7 +801,9 @@ function fit_small_dataset(
     seasontype,
     lambda,
     biasadj,
-    options
+    options::NelderMeadOptions,
+    optim_method::Symbol,
+    optim_control::AbstractDict,
 )
 
     if seasontype in ["A", "M"]
@@ -723,7 +820,9 @@ function fit_small_dataset(
                 lambda = lambda,
                 biasadj = biasadj,
                 warnings = false,
-                options = options
+                options = options,
+                optim_method = optim_method,
+                optim_control = optim_control,
             )
             return fit
         catch e
@@ -745,7 +844,9 @@ function fit_small_dataset(
                 lambda = lambda,
                 biasadj = biasadj,
                 warnings = false,
-                options = options
+                options = options,
+                optim_method = optim_method,
+                optim_control = optim_control,
             )
             return fit
         catch e
@@ -768,7 +869,9 @@ function fit_small_dataset(
                 lambda = lambda,
                 biasadj = biasadj,
                 warnings = false,
-                options = options
+                options = options,
+                optim_method = optim_method,
+                optim_control = optim_control,
             )
             return fit
         catch e
@@ -790,7 +893,9 @@ function fit_small_dataset(
             lambda = lambda,
             biasadj = biasadj,
             warnings = false,
-            options = options
+            options = options,
+            optim_method = optim_method,
+            optim_control = optim_control,
         )
     catch e
         nothing
@@ -809,7 +914,9 @@ function fit_small_dataset(
             lambda = lambda,
             biasadj = biasadj,
             warnings = false,
-            options = options
+            options = options,
+            optim_method = optim_method,
+            optim_control = optim_control,
         )
     catch e
         nothing
@@ -903,7 +1010,9 @@ function fit_ets_models(
     nmse,
     bounds,
     ic,
-    options)
+    options::NelderMeadOptions,
+    optim_method::Symbol,
+    optim_control::AbstractDict)
 
     best_ic = Inf
     best_model = nothing
@@ -932,7 +1041,9 @@ function fit_ets_models(
                 opt_crit,
                 nmse,
                 bounds,
-                options)
+                options,
+                optim_method,
+                optim_control)
             fit_ic = get_ic(the_fit_model, ic)
             if fit_ic < best_ic
                 best_ic = fit_ic
@@ -972,7 +1083,9 @@ function fit_best_ets_model(
     restrict = true,
     additive_only = false,
     allow_multiplicative_trend = true,
-    options)
+    options::NelderMeadOptions,
+    optim_method::Symbol,
+    optim_control::AbstractDict)
 
     grid = generate_ets_grid_fixed(
         errortype,
@@ -999,7 +1112,9 @@ function fit_best_ets_model(
         nmse,
         bounds,
         ic,
-        options)
+        options,
+        optim_method,
+        optim_control)
 
     best_model = result["best_model"]
     best_params = result["best_params"]
@@ -1040,7 +1155,9 @@ function ets_base_model(
     allow_multiplicative_trend::Bool = false,
     use_initial_values::Bool = false,
     missing_method::MissingMethod = Contiguous(),
-    options::NelderMeadOptions,
+    options::NelderMeadOptions = NelderMeadOptions(maxit = 2000),
+    optim_method::Symbol = :nelder_mead,
+    optim_control::AbstractDict = Dict(),
 )
 
     orig_y,
@@ -1112,7 +1229,9 @@ function ets_base_model(
             seasontype,
             lambda,
             biasadj,
-            options
+            options,
+            optim_method,
+            optim_control,
         )
     end
 
@@ -1137,7 +1256,9 @@ function ets_base_model(
         restrict = restrict,
         additive_only = additive_only,
         allow_multiplicative_trend = allow_multiplicative_trend,
-        options = options)
+        options = options,
+        optim_method = optim_method,
+        optim_control = optim_control)
 
     method = model["method"]
     components = model["components"]

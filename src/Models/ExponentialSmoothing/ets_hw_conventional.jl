@@ -207,7 +207,9 @@ function holt_winters_conventional(
     lambda::Union{Nothing,Float64} = nothing,
     biasadj::Bool = false,
     warnings::Bool = true,
-    options::NelderMeadOptions
+    options::NelderMeadOptions = NelderMeadOptions(),
+    optim_method::Symbol = :nelder_mead,
+    optim_control::AbstractDict = Dict(),
 )
     if !(seasonal in (:additive, :multiplicative))
         throw(
@@ -365,17 +367,25 @@ function holt_winters_conventional(
                 s_start,
             )
 
-        sol = nelder_mead(cal_opt_sse_closure, scaler(starting_points, parscale), options)
+        x0_scaled = scaler(starting_points, parscale)
+        lower_scaled = scaler(zeros(length(starting_points)), parscale)
+        upper_scaled = scaler(ones(length(starting_points)), parscale)
+        sol = _run_ets_optimizer(
+            cal_opt_sse_closure,
+            x0_scaled,
+            options,
+            optim_method,
+            optim_control;
+            lower = lower_scaled,
+            upper = upper_scaled,
+        )
 
-        is_convergence = sol.fail == 0
-        minimizers = descaler(sol.x_opt, parscale)
+        minimizers = descaler(sol.minimizer, parscale)
+        out_of_bounds = any((minimizers .< 0) .| (minimizers .> 1))
+        converged_message = occursin("converged", lowercase(sol.message))
 
-        if (!is_convergence || any((minimizers .< 0) .| (minimizers .> 1))) && warnings
-            if sol.fail in [1, 10]
-                @warn "Optimization difficulties: convergence code $(sol.fail)"
-            elseif sol.fail ∉ [0, 1, 10]
-                @warn "Optimization failure: convergence code $(sol.fail), using best parameters found"
-            end
+        if warnings && (out_of_bounds || (!sol.converged && !converged_message))
+            @warn "Optimization difficulties: $(sol.message)"
         end
 
         if select[1] > 0

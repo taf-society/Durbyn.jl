@@ -5,7 +5,6 @@ import Optim
 
 include("numgrad.jl")
 include("nelder_mead.jl")
-include("line_search.jl")
 include("bfgs.jl")
 include("lbfgsb.jl")
 include("brent.jl")
@@ -21,7 +20,5 @@ export scaler, descaler
 export optimize
 export numgrad, numgrad!, numgrad_with_cache!
 export NumericalGradientCache
-export bfgs_hessian_update!
-export BFGSWorkspace
 
 end

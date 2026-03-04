@@ -1,5 +1,3 @@
-using LinearAlgebra: mul!
-
 """
     BFGSOptions
 
@@ -12,70 +10,6 @@ Base.@kwdef struct BFGSOptions
     trace::Bool = false
     maxit::Int = 100
     report_interval::Int = 10
-end
-
-"""
-    BFGSWorkspace
-
-Compatibility workspace type kept for public API stability.
-"""
-mutable struct BFGSWorkspace
-    gradient::Vector{Float64}
-    search_dir::Vector{Float64}
-    x_active::Vector{Float64}
-    grad_diff::Vector{Float64}
-    inv_hessian::Matrix{Float64}
-    Hy::Vector{Float64}
-    d_full::Vector{Float64}
-    x_trial::Vector{Float64}
-    g_trial::Vector{Float64}
-    g_best::Vector{Float64}
-    g_saved::Vector{Float64}
-
-    function BFGSWorkspace(n_total::Int, n_active::Int)
-        new(
-            zeros(n_total),
-            zeros(n_active),
-            zeros(n_active),
-            zeros(n_active),
-            zeros(n_active, n_active),
-            zeros(n_active),
-            zeros(n_total),
-            zeros(n_total),
-            zeros(n_total),
-            zeros(n_total),
-            zeros(n_total),
-        )
-    end
-end
-
-"""
-    bfgs_hessian_update!(H, s, y, Hy, sTy)
-
-In-place BFGS inverse-Hessian update (compatibility helper).
-"""
-@inline function bfgs_hessian_update!(
-    H::Matrix{Float64},
-    s::Vector{Float64},
-    y::Vector{Float64},
-    Hy::Vector{Float64},
-    sTy::Float64,
-)
-    n = length(s)
-    mul!(Hy, H, y)
-
-    yTHy = 0.0
-    @inbounds @simd for i in 1:n
-        yTHy += y[i] * Hy[i]
-    end
-    scale = (1.0 + yTHy / sTy) / sTy
-    inv_sTy = 1.0 / sTy
-
-    @inbounds for j in 1:n
-        @simd for i in 1:n
-            H[i, j] += scale * s[i] * s[j] - inv_sTy * (s[i] * Hy[j] + Hy[i] * s[j])
-        end
-    end
 end
 
 struct _BFGSObjectiveNonFinite <: Exception

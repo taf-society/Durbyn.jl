@@ -251,42 +251,58 @@ const REF_KPSS_STAT_AP = 2.8767
     @testset "ADF Unit Root Test" begin
         ap = AirPassengers
 
-        @testset "ADF test with different types" begin
-            result_none = adf(ap; type=:none, lags=1)
+        @testset "ADF test with different models" begin
+            result_none = adf(ap; model=:none, lags=1)
             @test result_none.model == :none
-            @test result_none.lag >= 0
-            @test !isnan(result_none.teststat.data[1])
+            @test result_none.lags >= 0
+            @test !isnan(result_none.tau)
 
-            result_drift = adf(ap; type=:drift, lags=1)
+            result_drift = adf(ap; model=:drift, lags=1)
             @test result_drift.model == :drift
+            @test !ismissing(result_drift.phi1)
 
-            result_trend = adf(ap; type=:trend, lags=1)
+            result_trend = adf(ap; model=:trend, lags=1)
             @test result_trend.model == :trend
+            @test !ismissing(result_trend.phi2)
+            @test !ismissing(result_trend.phi3)
         end
 
         @testset "ADF test statistics" begin
-            result = adf(ap; type=:none, lags=1)
-
-            @test -10.0 < result.teststat.data[1] < 5.0
+            result = adf(ap; model=:none, lags=1)
+            @test -10.0 < result.tau < 5.0
             @test size(result.cval, 2) == 3
+            @test length(result.beta) == 2  # y_lag + 1 lag
+            @test length(result.se) == 2
         end
 
         @testset "ADF lag selection" begin
-            result_fixed = adf(ap; type=:drift, lags=5, selectlags=:fixed)
-            @test result_fixed.lag == 5
+            result_fixed = adf(ap; model=:drift, lags=5)
+            @test result_fixed.lags == 5
 
-            result_aic = adf(ap; type=:drift, lags=10, selectlags=:aic)
-            @test 0 <= result_aic.lag <= 10
+            result_aic = adf(ap; model=:drift, k_max=10, criterion=:aic)
+            @test 0 <= result_aic.lags <= 10
 
-            result_bic = adf(ap; type=:drift, lags=10, selectlags=:bic)
-            @test 0 <= result_bic.lag <= 10
+            result_bic = adf(ap; model=:drift, k_max=10, criterion=:bic)
+            @test 0 <= result_bic.lags <= 10
         end
 
-        @testset "ADF positional interface" begin
-            result1 = adf(ap; type=:drift)
-            result2 = adf(ap; type=:drift)
+        @testset "ADF deterministic consistency" begin
+            result1 = adf(ap; model=:drift, lags=1)
+            result2 = adf(ap; model=:drift, lags=1)
+            @test abs(result1.tau - result2.tau) <= EPS_SCALAR
+        end
 
-            @test abs(result1.teststat.data[1] - result2.teststat.data[1]) <= EPS_SCALAR
+        @testset "ADF zero lags" begin
+            result = adf(ap; model=:drift, lags=0)
+            @test result.lags == 0
+            @test !isnan(result.tau)
+            @test !ismissing(result.phi1)
+        end
+
+        @testset "ADF input validation" begin
+            @test_throws ArgumentError adf([1.0, 2.0]; model=:drift)
+            @test_throws ArgumentError adf(ap; model=:invalid)
+            @test_throws ArgumentError adf(ap; model=:drift, lags=-1)
         end
     end
 
@@ -1044,6 +1060,28 @@ const REF_KPSS_STAT_AP = 2.8767
             show(IOContext(buf2, :compact => true), result)
             compact_output = String(take!(buf2))
             @test startswith(compact_output, "OCSB(")
+        end
+
+        @testset "ADF show and summary are stable" begin
+            ap = air_passengers()
+            result = adf(ap; model=:trend, lags=1)
+
+            buf = IOBuffer()
+            show(buf, MIME("text/plain"), result)
+            output = String(take!(buf))
+            @test occursin("ADF Unit Root Test", output)
+            @test occursin("Model:", output)
+            @test occursin("Tau statistic", output)
+
+            buf2 = IOBuffer()
+            show(IOContext(buf2, :compact => true), result)
+            compact_output = String(take!(buf2))
+            @test startswith(compact_output, "ADF(")
+
+            s = summary(result)
+            @test occursin("ADF(", s)
+            @test occursin("model=:trend", s)
+            @test occursin("lags=1", s)
         end
 
         @testset "ndiffs filters NaN from input" begin

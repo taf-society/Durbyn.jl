@@ -466,32 +466,111 @@ println("Seasonal differences needed: $D")
 Augmented Dickey-Fuller test for unit roots.
 
 ```julia
-adf(y; type=:none, lags=1, selectlags=:fixed)
+adf(y; model=:none, lags=1, k_max=nothing, criterion=:fixed)
 ```
 
 **Null Hypothesis:** The series has a unit root (non-stationary)
 
+### Mathematical Formulation
+
+First difference:
+
+```math
+\Delta y_t = y_t - y_{t-1}
+```
+
+ADF auxiliary regressions:
+
+```math
+\texttt{model=:none}\quad
+\Delta y_t = \beta_1 y_{t-1} + \sum_{i=1}^{k}\gamma_i \Delta y_{t-i} + \varepsilon_t
+```
+
+```math
+\texttt{model=:drift}\quad
+\Delta y_t = \mu + \beta_1 y_{t-1} + \sum_{i=1}^{k}\gamma_i \Delta y_{t-i} + \varepsilon_t
+```
+
+```math
+\texttt{model=:trend}\quad
+\Delta y_t = \mu + \beta_1 y_{t-1} + \delta t + \sum_{i=1}^{k}\gamma_i \Delta y_{t-i} + \varepsilon_t
+```
+
+where `k` is the augmentation lag order.
+
+Tau statistic (ADF statistic):
+
+```math
+\tau = \frac{\hat{\beta}_1}{\widehat{SE}(\hat{\beta}_1)}
+```
+
+- `:none`  → `\tau_1`
+- `:drift` → `\tau_2`
+- `:trend` → `\tau_3`
+
+F-statistics (joint restrictions):
+
+```math
+\phi = \frac{(RSS_R - RSS_F)/(df_R - df_F)}{RSS_F/df_F}
+```
+
+- `\phi_1` (`model=:drift`): `H_0: \beta_1 = 0,\ \mu = 0`
+- `\phi_2` (`model=:trend`): `H_0: \beta_1 = 0,\ \mu = 0,\ \delta = 0`
+- `\phi_3` (`model=:trend`): `H_0: \beta_1 = 0,\ \delta = 0` (intercept retained)
+
+Automatic lag selection (`criterion=:aic` or `:bic`) minimizes:
+
+```math
+IC(k) = n_k \log\!\left(\frac{RSS_k}{n_k}\right) + k_{\text{pen}} p_k,\quad
+k_{\text{pen}}=\begin{cases}
+2 & \text{AIC}\\
+\log(n_k) & \text{BIC}
+\end{cases}
+```
+
+```math
+k^\* = \arg\min_{k \in \{0,\dots,k_{\max}\}} IC(k)
+```
+
+Underlying OLS quantities:
+
+```math
+\hat{\beta} = (X^\top X)^{-1}X^\top y,\quad
+\hat{\varepsilon}=y-X\hat{\beta}
+```
+
+```math
+\widehat{SE}(\hat{\beta}_j)=\sqrt{\hat{\sigma}^2[(X^\top X)^{-1}]_{jj}},\quad
+\hat{\sigma}^2 = RSS / df_{\text{residual}}
+```
+
 **Arguments:**
 - `y::AbstractVector`: Time series
-- `type::Symbol`: `:none`, `:drift` (intercept), or `:trend` (intercept + trend)
-- `lags::Int`: Maximum augmentation order
-- `selectlags::Symbol`: `:fixed`, `:aic`, or `:bic`
+- `model::Symbol`: `:none`, `:drift` (intercept), or `:trend` (intercept + trend)
+- `lags::Int`: Fixed augmentation order (`criterion=:fixed`)
+- `k_max::Int`: Maximum lag considered for automatic selection
+- `criterion::Symbol`: `:fixed`, `:aic`, or `:bic`
+
+**Compatibility aliases:** `type` ↔ `model`, `selectlags` ↔ `criterion`.
 
 **Returns:** `ADF` struct with:
 - `model`: Test type used
 - `cval`: Critical values matrix
 - `clevels`: Significance levels [0.01, 0.05, 0.10]
-- `lag`: Selected augmentation order
-- `teststat`: Test statistics (τ-statistics)
+- `lags`: Selected augmentation order (alias: `lag`)
+- `tau`: Tau statistic (`\tau_1/\tau_2/\tau_3` depending on model)
+- `phi1`, `phi2`, `phi3`: F-statistics (when applicable)
+- `beta`, `se`: OLS coefficients and standard errors
 - `testreg`: Auxiliary regression results
 - `res`: Residuals
 
 **Example:**
 ```julia
 y = cumsum(randn(100))
-result = adf(y; type=:drift, lags=4, selectlags=:aic)
-println("Test statistic: $(result.teststat[1])")
-println("Critical values: $(result.cval)")
+result = adf(y; model=:drift, k_max=4, criterion=:aic)
+println("Tau statistic: $(result.tau)")
+println("Phi1 statistic: $(result.phi1)")
+println("Tau critical values (1%, 5%, 10%): $(result.cval[1, :])")
 ```
 
 ### KPSS Test (`kpss`)
@@ -859,10 +938,10 @@ strength = seasonal_strength(mstl_result)
 println("Seasonal strength: $strength")
 
 # 6. Perform unit root tests
-adf_result = adf(ap; type=:drift, selectlags=:aic)
+adf_result = adf(ap; model=:drift, criterion=:aic, k_max=5)
 kpss_result = kpss(ap; type=:mu)
 
-println("ADF test statistic: $(adf_result.teststat[1])")
+println("ADF tau statistic: $(adf_result.tau)")
 println("KPSS test statistic: $(kpss_result.teststat)")
 ```
 

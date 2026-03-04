@@ -42,7 +42,7 @@ Public L-BFGS-B wrapper that delegates to `Optim.Fminbox(Optim.LBFGS(...))`.
 """
 function lbfgsb(
     f::Function,
-    g::Function,
+    g::Union{Function,Nothing},
     x0::Vector{Float64};
     mask = trues(length(x0)),
     lower::Union{Nothing,Vector{Float64}} = nothing,
@@ -103,24 +103,27 @@ function lbfgsb(
         )
     end
 
-    g0 = g(x_start)
-    if length(g0) != n
-        throw(ArgumentError("gradient must have length $n"))
-    end
-    if !all(isfinite, g0)
-        return (
-            x_opt = copy(x_start),
-            f_opt = f0,
-            n_iter = 0,
-            fail = 52,
-            fn_evals = 1,
-            gr_evals = 1,
-            message = "Error: gradient contains non-finite values",
-        )
-    end
-
     f_calls = Ref(1)
-    g_calls = Ref(1)
+    g_calls = Ref(0)
+
+    if !isnothing(g)
+        g0 = g(x_start)
+        if length(g0) != n
+            throw(ArgumentError("gradient must have length $n"))
+        end
+        if !all(isfinite, g0)
+            return (
+                x_opt = copy(x_start),
+                f_opt = f0,
+                n_iter = 0,
+                fail = 52,
+                fn_evals = 1,
+                gr_evals = 1,
+                message = "Error: gradient contains non-finite values",
+            )
+        end
+        g_calls[] = 1
+    end
 
     f_wrapped = function (x)
         fx = Float64(f(x))
@@ -129,17 +132,21 @@ function lbfgsb(
         return fx
     end
 
-    g_wrapped! = function (G, x)
-        gv = g(x)
-        g_calls[] += 1
-        if length(gv) != n
-            throw(ArgumentError("gradient must have length $n"))
+    g_wrapped! = if isnothing(g)
+        nothing
+    else
+        function (G, x)
+            gv = g(x)
+            g_calls[] += 1
+            if length(gv) != n
+                throw(ArgumentError("gradient must have length $n"))
+            end
+            if !all(isfinite, gv)
+                throw(_LBFGSBNonFinite(:gradient))
+            end
+            copyto!(G, gv)
+            return nothing
         end
-        if !all(isfinite, gv)
-            throw(_LBFGSBNonFinite(:gradient))
-        end
-        copyto!(G, gv)
-        return nothing
     end
 
     opt_options = Optim.Options(
@@ -155,25 +162,47 @@ function lbfgsb(
 
     result = try
         if has_finite_bounds
-            Optim.optimize(
-                f_wrapped,
-                g_wrapped!,
-                lb,
-                ub,
-                x_start,
-                Optim.Fminbox(Optim.LBFGS(m = options.memory_size)),
-                opt_options;
-                inplace = true,
-            )
+            if isnothing(g_wrapped!)
+                Optim.optimize(
+                    f_wrapped,
+                    lb,
+                    ub,
+                    x_start,
+                    Optim.Fminbox(Optim.LBFGS(m = options.memory_size)),
+                    opt_options;
+                    autodiff = Optim.ADTypes.AutoFiniteDiff(),
+                )
+            else
+                Optim.optimize(
+                    f_wrapped,
+                    g_wrapped!,
+                    lb,
+                    ub,
+                    x_start,
+                    Optim.Fminbox(Optim.LBFGS(m = options.memory_size)),
+                    opt_options;
+                    inplace = true,
+                )
+            end
         else
-            Optim.optimize(
-                f_wrapped,
-                g_wrapped!,
-                x_start,
-                Optim.LBFGS(m = options.memory_size),
-                opt_options;
-                inplace = true,
-            )
+            if isnothing(g_wrapped!)
+                Optim.optimize(
+                    f_wrapped,
+                    x_start,
+                    Optim.LBFGS(m = options.memory_size),
+                    opt_options;
+                    autodiff = Optim.ADTypes.AutoFiniteDiff(),
+                )
+            else
+                Optim.optimize(
+                    f_wrapped,
+                    g_wrapped!,
+                    x_start,
+                    Optim.LBFGS(m = options.memory_size),
+                    opt_options;
+                    inplace = true,
+                )
+            end
         end
     catch err
         if err isa _LBFGSBNonFinite

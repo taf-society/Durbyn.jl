@@ -1,6 +1,5 @@
 using Test
 using Durbyn.Optimize
-using LinearAlgebra: dot
 
 const EPS_OPT = 1e-4
 const EPS_GRAD = 1e-5
@@ -111,30 +110,6 @@ sphere_grad(x) = 2.0 .* x
         @test abs(result.minimizer[1] - 2.0) <= 0.01
     end
 
-    @testset "numgrad - Sphere gradient" begin
-        f_ng(x) = sum(x .^ 2)
-        x = [1.0, 2.0, 3.0]
-        grad = numgrad(f_ng, x)
-        @test isapprox(grad, 2.0 .* x, atol=1e-4)
-    end
-
-    @testset "numgrad - Quadratic gradient" begin
-        A = [2.0 1.0; 1.0 3.0]
-        f_quad(x) = dot(x, A * x)
-        x = [1.0, 2.0]
-        grad = numgrad(f_quad, x)
-        analytic = 2.0 .* (A * x)
-        @test isapprox(grad, analytic, atol=1e-3)
-    end
-
-    @testset "numgrad - with explicit ndeps" begin
-        f_ng(x) = sum(x .^ 2)
-        x = [1.0, -2.0]
-        ndeps = fill(1e-5, 2)
-        grad = numgrad(f_ng, x, ndeps)
-        @test isapprox(grad, 2.0 .* x, atol=1e-4)
-    end
-
     @testset "numerical_hessian - Sphere at origin" begin
         x = [0.0, 0.0]
         H = numerical_hessian(sphere, x)
@@ -164,7 +139,7 @@ sphere_grad(x) = 2.0 .* x
         @test all(abs.(result.minimizer) .< 0.1)
     end
 
-    @testset "L-BFGS-B bounded numgrad stays in bounds (bug fix)" begin
+    @testset "L-BFGS-B bounded numerical gradient stays in bounds (bug fix)" begin
         f_sqrt(x) = sum(sqrt.(x))
         result = optimize(f_sqrt, [4.0, 4.0], :lbfgsb;
                        lower=[0.001, 0.001], upper=[10.0, 10.0])

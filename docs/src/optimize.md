@@ -25,7 +25,6 @@ using Durbyn.Optimize
 optimize, nelder_mead, bfgs, lbfgsb, brent
 NelderMeadOptions, BFGSOptions, LBFGSBOptions, BrentOptions
 OptimizeResult
-numgrad, numgrad!, numgrad_with_cache!, NumericalGradientCache
 numerical_hessian
 scaler, descaler
 ```
@@ -51,7 +50,7 @@ optimize(fn, x0, method=:nelder_mead; kwargs...)
 - `lower=-Inf`, `upper=Inf`: bounds (`:lbfgsb`, `:brent`)
 - `max_iterations`: iteration/evaluation budget
 - `param_scale`: parameter scaling vector
-- `step_sizes`: finite-difference steps for numerical gradients
+- `step_sizes`: finite-difference steps used for numerical Hessian estimation
 - `fn_scale`: objective scaling (negative to maximize)
 - `trace`: verbosity (`0` silent)
 - `report_interval`: trace cadence
@@ -148,7 +147,7 @@ Returns:
 result = lbfgsb(f, g, x0; lower=..., upper=..., options=LBFGSBOptions(...))
 ```
 
-- Requires gradient function `g(x) -> vector` (for direct `lbfgsb` calls)
+- `g` can be `nothing` (numerical gradients via `Optim.jl`) or a gradient function `g(x) -> vector`
 - Supports `mask` (masked variables are fixed at initial values)
 
 Returns:
@@ -183,31 +182,10 @@ Returns:
 
 ## Numerical Derivatives
 
-### Gradient
-
-```julia
-numgrad(f, x; step_sizes=fill(1e-3, length(x)))
-```
-
-For repeated calls, prefer a cache:
-
-```julia
-cache = NumericalGradientCache(length(x))
-g = numgrad_with_cache!(cache, f, x, step_sizes)
-```
-
-Bound-aware finite differences are used internally when needed.
-
 ### Hessian
 
 ```julia
 H = numerical_hessian(f, x)
-```
-
-If gradient is available:
-
-```julia
-H = numerical_hessian(f, x, grad)
 ```
 
 ---

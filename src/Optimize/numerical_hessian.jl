@@ -1,18 +1,15 @@
 """
-    numerical_hessian(fn, x, grad=nothing; fnscale=1.0, parscale=nothing, step_sizes=nothing, kwargs...)
+    numerical_hessian(fn, x; fnscale=1.0, parscale=nothing, step_sizes=nothing, kwargs...)
 
-Compute the Hessian matrix of `fn` at `x` using finite differences of the gradient.
+Compute the Hessian matrix of `fn` at `x` using Optim/NLSolversBase finite differences.
 
-If an analytical gradient `grad` is provided, second derivatives are approximated by
-differencing the gradient. Otherwise, each gradient evaluation is itself approximated
-via central finite differences, yielding a fully numerical second-derivative estimate.
-The result is symmetrized by averaging `H[i,j]` and `H[j,i]`.
+This routine delegates Hessian estimation to `Optim.TwiceDifferentiable` with
+`AutoFiniteDiff`.
 
 # Arguments
 
 - `fn::Function`: Scalar-valued objective function.
 - `x::Vector`: Parameter vector at which to evaluate the Hessian.
-- `grad::Union{Function,Nothing}`: Gradient function (optional).
 - `fnscale::Number`: Function scaling factor (default: 1.0).
 - `parscale::Vector`: Parameter scaling factors (default: ones).
 - `step_sizes::Vector`: Finite difference step sizes (default: 0.001).
@@ -33,70 +30,60 @@ rosenbrock(x) = 100*(x[2]-x[1]^2)^2 + (1-x[1])^2
 H = numerical_hessian(rosenbrock, [1.0, 1.0])
 ```
 """
-function numerical_hessian(fn, x, grad = nothing; fnscale = 1.0, parscale = nothing, step_sizes = nothing, kwargs...)
+function numerical_hessian(fn, x; fnscale = 1.0, parscale = nothing, step_sizes = nothing, kwargs...)
     n = length(x)
-    ps = something(parscale, ones(n))
-    h = something(step_sizes, fill(0.001, n))
+    x0 = Float64.(x)
+    fscale = Float64(fnscale)
+    (isfinite(fscale) && fscale != 0.0) || throw(ArgumentError("fnscale must be finite and non-zero"))
 
-    fn_k = let fn = fn, kw = values(kwargs)
-        x -> fn(x; kw...)
-    end
-
-    grad_k = if !isnothing(grad)
-        let grad = grad, kw = values(kwargs)
-            x -> grad(x; kw...)
-        end
+    ps = if isnothing(parscale)
+        ones(n)
+    elseif parscale isa Number
+        fill(Float64(parscale), n)
     else
-        nothing
+        v = Float64.(parscale)
+        length(v) == n || throw(ArgumentError("parscale must have length $n"))
+        v
     end
 
-    # Evaluate gradient at a point in original parameter space.
-    # When no analytical gradient is available, uses central finite differences
-    # with perturbation h[j] * parscale[j] in each coordinate.
-    function gradient_at(xp)
-        if !isnothing(grad_k)
-            return grad_k(xp)
-        end
-        g = Vector{Float64}(undef, n)
-        xt = copy(xp)
-        for j in 1:n
-            delta_j = h[j] * ps[j]
-            xt[j] = xp[j] + delta_j
-            fp = fn_k(xt)
-            xt[j] = xp[j] - delta_j
-            fm = fn_k(xt)
-            g[j] = (fp - fm) / (2 * delta_j)
-            xt[j] = xp[j]
-            isfinite(g[j]) || error("non-finite finite-difference value at index $j")
-        end
-        return g
+    h = if isnothing(step_sizes)
+        fill(1e-3, n)
+    elseif step_sizes isa Number
+        fill(Float64(step_sizes), n)
+    else
+        v = Float64.(step_sizes)
+        length(v) == n || throw(ArgumentError("step_sizes must have length $n"))
+        v
     end
 
-    H = zeros(n, n)
-    xp = copy(x)
+    # Desired perturbation in original coordinates.
+    # FiniteDiff in Optim takes scalar abs/rel step, so we reparameterize with a diagonal scale:
+    #   x = scale .* y, compute H_y(g), then recover H_x = D^{-1} * H_y * D^{-1}.
+    scale = abs.(h .* ps)
+    any(scale .<= 0.0) && throw(ArgumentError("all finite-difference scales must be positive"))
+    all(isfinite, scale) || throw(ArgumentError("all finite-difference scales must be finite"))
 
-    # Second derivatives via gradient differencing: H[i,j] ≈ (g_j(x+δ_i) - g_j(x-δ_i)) / (2δ_i)
-    for i in 1:n
-        delta_i = h[i]
+    inv_scale = 1.0 ./ scale
+    y0 = x0 .* inv_scale
 
-        xp[i] = x[i] + delta_i
-        g_plus = gradient_at(xp)
+    fn_k = isempty(kwargs) ? fn : (xv -> fn(xv; kwargs...))
 
-        xp[i] = x[i] - delta_i
-        g_minus = gradient_at(xp)
-
-        xp[i] = x[i]  # restore
-
-        for j in 1:n
-            H[i, j] = (g_plus[j] - g_minus[j]) / (2 * delta_i)
+    x_work = similar(x0)
+    f_scaled = function (y)
+        @inbounds @simd for i in eachindex(y)
+            x_work[i] = y[i] * scale[i]
         end
+        return Float64(fn_k(x_work)) / fscale
     end
 
-    # Symmetrize: average H[i,j] and H[j,i] to reduce numerical asymmetry
-    for i in 2:n, j in 1:i-1
-        avg = (H[i, j] + H[j, i]) / 2
-        H[i, j] = avg
-        H[j, i] = avg
+    ad = Optim.ADTypes.AutoFiniteDiff(; relstep = 0.0, absstep = 1.0)
+    obj = Optim.TwiceDifferentiable(f_scaled, y0; autodiff = ad)
+
+    Optim.hessian!(obj, y0)
+    H = Matrix{Float64}(Optim.NLSolversBase.hessian(obj))
+
+    @inbounds for i in 1:n, j in 1:n
+        H[i, j] *= inv_scale[i] * inv_scale[j]
     end
 
     return H

@@ -30,8 +30,7 @@ end
 end
 
 """
-    bfgs(f, g, x0; mask=trues(length(x0)), options=BFGSOptions(),
-         step_sizes=nothing, numgrad_cache=nothing) -> NamedTuple
+    bfgs(f, g, x0; mask=trues(length(x0)), options=BFGSOptions()) -> NamedTuple
 
 Public BFGS wrapper that delegates to `Optim.BFGS`.
 """
@@ -41,8 +40,6 @@ function bfgs(
     x0::Vector{Float64};
     mask = trues(length(x0)),
     options::BFGSOptions = BFGSOptions(),
-    step_sizes::Union{Nothing,Vector{Float64}} = nothing,
-    numgrad_cache::Union{Nothing,NumericalGradientCache} = nothing,
 )
     abstol = options.abstol
     reltol = options.reltol
@@ -75,8 +72,6 @@ function bfgs(
 
     x_active0 = x_start[active]
     x_obj = copy(x_start)
-    x_grad = copy(x_start)
-    grad_full = zeros(Float64, n_total)
 
     f_calls = Ref(1)
     g_calls = Ref(0)
@@ -93,118 +88,77 @@ function bfgs(
         return f_full(x_obj)
     end
 
-    if isnothing(g)
-        ndeps = isnothing(step_sizes) ? fill(1e-3, n_total) : step_sizes
-        length(ndeps) == n_total || throw(ArgumentError("step_sizes must have length $n_total"))
-        cache = isnothing(numgrad_cache) ? NumericalGradientCache(n_total) : numgrad_cache
+    opt_options = Optim.Options(
+        iterations = maxit,
+        f_abstol = abstol,
+        f_reltol = reltol,
+        g_abstol = max(gtol, 0.0),
+        show_trace = trace,
+        show_every = report_interval,
+        allow_f_increases = false,
+    )
 
-        g_wrapped! = function (G, x_active)
-            _write_full_from_active!(x_grad, x_start, active, x_active)
-            g_calls[] += 1
-            numgrad_with_cache!(cache, f_full, x_grad, ndeps)
-            @inbounds for k in eachindex(active)
-                G[k] = cache.gradient[active[k]]
+    result = try
+        if isnothing(g)
+            Optim.optimize(
+                f_wrapped,
+                x_active0,
+                Optim.BFGS(),
+                opt_options;
+                autodiff = Optim.ADTypes.AutoFiniteDiff(),
+            )
+        else
+            x_grad = copy(x_start)
+            grad_full = zeros(Float64, n_total)
+
+            g_wrapped! = function (G, x_active)
+                _write_full_from_active!(x_grad, x_start, active, x_active)
+                fill!(grad_full, 0.0)
+                g(grad_full, x_grad)
+                g_calls[] += 1
+                @inbounds for k in eachindex(active)
+                    G[k] = grad_full[active[k]]
+                end
+                if !all(isfinite, G)
+                    fill!(G, NaN)
+                end
+                return nothing
             end
-            if !all(isfinite, G)
-                fill!(G, NaN)
-            end
-            return nothing
-        end
 
-        opt_options = Optim.Options(
-            iterations = maxit,
-            f_abstol = abstol,
-            f_reltol = reltol,
-            g_abstol = max(gtol, 0.0),
-            show_trace = trace,
-            show_every = report_interval,
-            allow_f_increases = false,
-        )
-
-        result = try
             Optim.optimize(f_wrapped, g_wrapped!, x_active0, Optim.BFGS(), opt_options; inplace = true)
-        catch err
-            if err isa _BFGSObjectiveNonFinite
-                return (
-                    x_opt = copy(x_start),
-                    f_opt = f0,
-                    n_iter = 0,
-                    fail = 1,
-                    fn_evals = f_calls[],
-                    gr_evals = g_calls[],
-                )
-            end
-            rethrow()
         end
-
-        x_opt = copy(x_start)
-        x_opt_active = Optim.minimizer(result)
-        @inbounds for k in eachindex(active)
-            x_opt[active[k]] = x_opt_active[k]
+    catch err
+        if err isa _BFGSObjectiveNonFinite
+            return (
+                x_opt = copy(x_start),
+                f_opt = f0,
+                n_iter = 0,
+                fail = 1,
+                fn_evals = f_calls[],
+                gr_evals = g_calls[],
+            )
         end
-
-        return (
-            x_opt = x_opt,
-            f_opt = Float64(Optim.minimum(result)),
-            n_iter = Optim.iterations(result),
-            fail = Optim.converged(result) ? 0 : 1,
-            fn_evals = max(f_calls[], Optim.f_calls(result)),
-            gr_evals = max(g_calls[], Optim.g_calls(result)),
-        )
-    else
-        g_wrapped! = function (G, x_active)
-            _write_full_from_active!(x_grad, x_start, active, x_active)
-            fill!(grad_full, 0.0)
-            g(grad_full, x_grad)
-            g_calls[] += 1
-            @inbounds for k in eachindex(active)
-                G[k] = grad_full[active[k]]
-            end
-            if !all(isfinite, G)
-                fill!(G, NaN)
-            end
-            return nothing
-        end
-
-        opt_options = Optim.Options(
-            iterations = maxit,
-            f_abstol = abstol,
-            f_reltol = reltol,
-            g_abstol = max(gtol, 0.0),
-            show_trace = trace,
-            show_every = report_interval,
-            allow_f_increases = false,
-        )
-
-        result = try
-            Optim.optimize(f_wrapped, g_wrapped!, x_active0, Optim.BFGS(), opt_options; inplace = true)
-        catch err
-            if err isa _BFGSObjectiveNonFinite
-                return (
-                    x_opt = copy(x_start),
-                    f_opt = f0,
-                    n_iter = 0,
-                    fail = 1,
-                    fn_evals = f_calls[],
-                    gr_evals = g_calls[],
-                )
-            end
-            rethrow()
-        end
-
-        x_opt = copy(x_start)
-        x_opt_active = Optim.minimizer(result)
-        @inbounds for k in eachindex(active)
-            x_opt[active[k]] = x_opt_active[k]
-        end
-
-        return (
-            x_opt = x_opt,
-            f_opt = Float64(Optim.minimum(result)),
-            n_iter = Optim.iterations(result),
-            fail = Optim.converged(result) ? 0 : 1,
-            fn_evals = max(f_calls[], Optim.f_calls(result)),
-            gr_evals = max(g_calls[], Optim.g_calls(result)),
-        )
+        rethrow()
     end
+
+    x_opt = copy(x_start)
+    x_opt_active = Optim.minimizer(result)
+    @inbounds for k in eachindex(active)
+        x_opt[active[k]] = x_opt_active[k]
+    end
+
+    gr_calls_result = try
+        Optim.g_calls(result)
+    catch
+        g_calls[]
+    end
+
+    return (
+        x_opt = x_opt,
+        f_opt = Float64(Optim.minimum(result)),
+        n_iter = Optim.iterations(result),
+        fail = Optim.converged(result) ? 0 : 1,
+        fn_evals = max(f_calls[], Optim.f_calls(result)),
+        gr_evals = max(g_calls[], gr_calls_result),
+    )
 end

@@ -213,14 +213,14 @@ function optimize(fn::Function, x0::AbstractVector{<:Real},
 
     # Dispatch to solver
     result = _run_solver(method, x0_scaled, fn_scaled, grad_scaled,
-                         parscale, fn_scale, ndeps, maxit, abstol, reltol, gtol,
+                         parscale, fn_scale, maxit, abstol, reltol, gtol,
                          alpha, beta, gamma, trace, report_interval,
                          memory_size, factr, pgtol,
                          lower_vec, upper_vec)
 
     # Compute Hessian at solution if requested
     if hessian
-        hess = _compute_hessian(result.minimizer, fn, gradient, parscale, fn_scale, ndeps; kwargs...)
+        hess = _compute_hessian(result.minimizer, fn, parscale, fn_scale, ndeps; kwargs...)
         return (
             minimizer = result.minimizer,
             minimum = result.minimum,
@@ -322,7 +322,7 @@ end
 # --- Solver dispatch ---
 
 function _run_solver(method::Symbol, x0_scaled, fn_scaled, grad_scaled,
-                     parscale, fnscale, ndeps, maxit, abstol, reltol, gtol,
+                     parscale, fnscale, maxit, abstol, reltol, gtol,
                      alpha, beta, gamma, trace, report_interval,
                      memory_size, factr, pgtol,
                      lower_vec, upper_vec)
@@ -331,10 +331,10 @@ function _run_solver(method::Symbol, x0_scaled, fn_scaled, grad_scaled,
                          maxit, abstol, reltol, alpha, beta, gamma, trace)
     elseif method === :bfgs
         _run_bfgs(x0_scaled, fn_scaled, grad_scaled, parscale, fnscale,
-                  ndeps, maxit, abstol, reltol, gtol, trace, report_interval)
+                  maxit, abstol, reltol, gtol, trace, report_interval)
     elseif method === :lbfgsb
         _run_lbfgsb(x0_scaled, fn_scaled, grad_scaled, parscale, fnscale,
-                    ndeps, maxit, trace, report_interval,
+                    maxit, trace, report_interval,
                     memory_size, factr, pgtol,
                     lower_vec, upper_vec)
     elseif method === :brent
@@ -369,7 +369,7 @@ end
 
 
 function _run_bfgs(par, fn, gr, parscale, fnscale,
-                   ndeps, maxit, abstol, reltol, gtol, trace, report_interval)
+                   maxit, abstol, reltol, gtol, trace, report_interval)
     gr_internal = if isnothing(gr)
         nothing
     else
@@ -389,7 +389,7 @@ function _run_bfgs(par, fn, gr, parscale, fnscale,
         report_interval = report_interval
     )
 
-    result = bfgs(fn, gr_internal, par; options=opts, step_sizes=ndeps)
+    result = bfgs(fn, gr_internal, par; options=opts)
 
     return OptimizeResult(
         result.x_opt .* parscale,
@@ -404,7 +404,7 @@ end
 
 
 function _run_lbfgsb(par, fn, gr, parscale, fnscale,
-                     ndeps, maxit, trace, report_interval,
+                     maxit, trace, report_interval,
                      memory_size, factr, pgtol,
                      lower, upper)
     npar = length(par)
@@ -425,11 +425,7 @@ function _run_lbfgsb(par, fn, gr, parscale, fnscale,
     lower_scaled = lower ./ parscale
     upper_scaled = upper ./ parscale
 
-    fn_count = Ref(0)
-    gr_count = Ref(0)
-
     fn_internal = x -> begin
-        fn_count[] += 1
         val = fn(x)
         if !isfinite(val)
             error("L-BFGS-B requires a finite objective value; got $(val)")
@@ -439,7 +435,6 @@ function _run_lbfgsb(par, fn, gr, parscale, fnscale,
 
     gr_internal = if !isnothing(gr)
         x -> begin
-            gr_count[] += 1
             gval = gr(x)
             for i in eachindex(gval)
                 if !isfinite(gval[i])
@@ -449,19 +444,15 @@ function _run_lbfgsb(par, fn, gr, parscale, fnscale,
             gval
         end
     else
-        cache = NumericalGradientCache(npar)
-        x -> begin
-            gr_count[] += 1
-            numgrad_bounded!(cache.gradient, cache.x_trial, fn_internal, x, ndeps,
-                             lower_scaled, upper_scaled)
-            return cache.gradient
-        end
+        nothing
     end
+
+    effective_pgtol = pgtol > 0 ? pgtol : 1e-5
 
     opts = LBFGSBOptions(
         memory_size = memory_size,
         ftol_factor = factr,
-        pg_tol = pgtol,
+        pg_tol = effective_pgtol,
         maxit = maxit,
         print_level = trace > 0 ? report_interval : 0
     )
@@ -565,9 +556,8 @@ function _brent_fast_kw(fn, lb::Float64, ub::Float64, fn_scale::Float64,
 end
 
 
-function _compute_hessian(par, fn, grad, parscale, fnscale, ndeps; kwargs...)
+function _compute_hessian(par, fn, parscale, fnscale, ndeps; kwargs...)
     fn_wrapper(x) = fn(x; kwargs...)
-    grad_wrapper = isnothing(grad) ? nothing : (x -> grad(x; kwargs...))
-    return numerical_hessian(fn_wrapper, par, grad_wrapper;
+    return numerical_hessian(fn_wrapper, par;
                         fnscale=fnscale, parscale=parscale, step_sizes=ndeps)
 end

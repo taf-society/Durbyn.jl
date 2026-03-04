@@ -3,7 +3,6 @@ module Optimize
 import ..Utils: _check_arg
 import Optim
 
-include("numgrad.jl")
 include("nelder_mead.jl")
 include("bfgs.jl")
 include("lbfgsb.jl")
@@ -18,7 +17,5 @@ export NelderMeadOptions, BFGSOptions, LBFGSBOptions, BrentOptions
 export OptimizeResult
 export scaler, descaler
 export optimize
-export numgrad, numgrad!, numgrad_with_cache!
-export NumericalGradientCache
 
 end

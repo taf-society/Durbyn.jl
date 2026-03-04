@@ -117,32 +117,12 @@ struct SARIMAOrder
         q_full = q + s * Q
         r = max(p_full, q_full + 1)
 
-        Delta = [1.0]
-        for _ in 1:d
-            Delta = _ts_conv(Delta, [1.0, -1.0])
-        end
-        for _ in 1:D
-            seasonal_filter = [1.0; zeros(s - 1); -1.0]
-            Delta = _ts_conv(Delta, seasonal_filter)
-        end
+        Delta = arima_differencing_delta(d, D, s)
         n_diff = length(Delta) - 1
         rd = r + n_diff
 
         new(p, d, q, P, D, Q, s, r, n_diff, rd)
     end
-end
-
-function _ts_conv(a::Vector{Float64}, b::Vector{Float64})
-    na = length(a)
-    nb = length(b)
-    nab = na + nb - 1
-    ab = zeros(Float64, nab)
-    @inbounds for i in 1:na
-        for j in 1:nb
-            ab[i+j-1] += a[i] * b[j]
-        end
-    end
-    return ab
 end
 
 SARIMAOrder(order::PDQ, seasonal::PDQ, s::Int) =

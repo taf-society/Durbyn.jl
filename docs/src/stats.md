@@ -129,7 +129,51 @@ y_mean = inv_box_cox(y_transformed; lambda=0.5, biasadj=true, fvar=forecast_vari
 Decompose a time series into trend, seasonal, and residual components using moving averages.
 
 ```julia
-decompose(x; m, type=:additive, filter=nothing)
+decompose(; x, m, type=:additive, filter=nothing)
+```
+
+Model forms:
+```math
+\text{Additive: } x_i = \hat{T}_i + S_i + R_i
+```
+```math
+\text{Multiplicative: } x_i = \hat{T}_i \cdot S_i \cdot R_i
+```
+
+Trend estimate (`\hat{T}_i`) via symmetric moving average:
+```math
+\text{Even }m:\quad
+\hat{T}_i =
+\frac{0.5\,x_{i-m/2} + \sum_{j=-(m/2)+1}^{(m/2)-1} x_{i+j} + 0.5\,x_{i+m/2}}{m}
+```
+```math
+\text{Odd }m:\quad
+\hat{T}_i = \frac{1}{m}\sum_{j=-(m-1)/2}^{(m-1)/2} x_{i+j}
+```
+
+Detrending:
+```math
+\text{Additive: } D_i = x_i - \hat{T}_i,\qquad
+\text{Multiplicative: } D_i = x_i / \hat{T}_i
+```
+
+Seasonal figure normalization (`k = 1,\ldots,m`):
+```math
+F_k = \frac{1}{N_k}\sum_j D_{k + m(j-1)},\qquad
+\bar{F} = \frac{1}{m}\sum_{k=1}^m F_k
+```
+```math
+\text{Additive: } F_k \leftarrow F_k - \bar{F},\qquad
+\text{Multiplicative: } F_k \leftarrow F_k / \bar{F}
+```
+
+Seasonal and residual components:
+```math
+S_i = F_{((i-1)\bmod m)+1}
+```
+```math
+\text{Additive: } R_i = x_i - S_i - \hat{T}_i,\qquad
+\text{Multiplicative: } R_i = x_i/(S_i\hat{T}_i)
 ```
 
 **Arguments:**
@@ -152,10 +196,14 @@ decompose(x; m, type=:additive, filter=nothing)
 using Durbyn.Stats
 
 ap = air_passengers()
-result = decompose(ap; m=12, type=:multiplicative)
+result = decompose(x=ap, m=12, type=:multiplicative)
 result.trend
 result.seasonal
 ```
+
+**References:**
+- Kendall, M. and Stuart, A. (1983). *The Advanced Theory of Statistics*,
+  Vol. 3. Griffin, pp. 410-414.
 
 ### STL Decomposition (`stl`)
 

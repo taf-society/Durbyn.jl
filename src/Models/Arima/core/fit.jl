@@ -121,13 +121,13 @@ function compute_initial_params(
     dx = copy(x)
     dxreg = copy(xreg)
     if order.d > 0
-        dx = diff(dx; lag = 1, differences = order.d)
-        dxreg = diff(dxreg; lag = 1, differences = order.d)
+        dx = diff(dx; lag_steps=1, difference_order=order.d)
+        dxreg = diff(dxreg; lag_steps=1, difference_order=order.d)
         dx, dxreg = dropmissing(dx, dxreg)
     end
     if order.s > 1 && order.D > 0
-        dx = diff(dx; lag = order.s, differences = order.D)
-        dxreg = diff(dxreg; lag = order.s, differences = order.D)
+        dx = diff(dx; lag_steps=order.s, difference_order=order.D)
+        dxreg = diff(dxreg; lag_steps=order.s, difference_order=order.D)
         dx, dxreg = dropmissing(dx, dxreg)
     end
 

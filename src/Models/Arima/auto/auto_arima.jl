@@ -218,14 +218,14 @@ function auto_arima(
         D = nsdiffs(x_work, m; test = seasonal_test, max_D = max_D, seasonal_test_args...)
         # Ensure xreg not null after seasonal differencing
         if D > 0 && !isnothing(xreg_work)
-            differenced_xreg = diff(xreg_work; differences = D, lag = m)
+            differenced_xreg = diff(xreg_work; difference_order=D, lag_steps=m)
             if any(is_constant(differenced_xreg))
                 D -= 1
             end
         end
         # Ensure x_work not all missing after seasonal differencing
         if D > 0
-            dx_tmp = diff(x_work; differences = D, lag = m)
+            dx_tmp = diff(x_work; difference_order=D, lag_steps=m)
             if all(ismissing, dx_tmp)
                 D -= 1
             end
@@ -234,7 +234,7 @@ function auto_arima(
     
     # Apply seasonal differencing
     if D > 0
-        dx = diff(x_work; differences = D, lag = m)
+        dx = diff(x_work; difference_order=D, lag_steps=m)
     else
         dx = copy(x_work)
     end
@@ -244,7 +244,7 @@ function auto_arima(
 
     if !isnothing(xreg_work)
         if D > 0
-            differenced_xreg = diff(xreg_work; differences = D, lag = m)
+            differenced_xreg = diff(xreg_work; difference_order=D, lag_steps=m)
         else
             differenced_xreg = xreg_work
         end
@@ -256,14 +256,14 @@ function auto_arima(
         d = ndiffs(dx; test = test, max_d = max_d, test_args...)
         # Ensure xreg not null after additional (non-seasonal) differencing
         if d > 0 && !isnothing(xreg_work)
-            differenced_xreg = diff(differenced_xreg; differences = d, lag = 1)
+            differenced_xreg = diff(differenced_xreg; difference_order=d, lag_steps=1)
             if any(is_constant(differenced_xreg))
                 d -= 1
             end
         end
         # Ensure dx not all missing after additional differencing
         if d > 0
-            diffdx = diff(dx; differences = d, lag = 1)
+            diffdx = diff(dx; difference_order=d, lag_steps=1)
             if all(ismissingish, diffdx) # TODO
                 d -= 1
             end
@@ -279,7 +279,7 @@ function auto_arima(
 
     # apply non-seasonal differencing
     if d > 0
-        dx = diff(dx; differences = d, lag = 1)
+        dx = diff(dx; difference_order=d, lag_steps=1)
     end
 
     # terminal checks

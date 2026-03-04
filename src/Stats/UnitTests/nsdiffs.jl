@@ -124,7 +124,7 @@ function _compute_seasonal_diffs_inner(x::AbstractVector{<:Real}, m::Int, testv:
         return D
     end
 
-    y = diff(x, lag = m)
+    y = diff(x; lag_steps=m)
     is_constant(y) && return D + 1
 
     if length(y) ≥ 2m && D + 1 < max_D

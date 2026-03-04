@@ -322,13 +322,13 @@ strength = seasonal_strength(result)
 Compute the sample autocorrelation function.
 
 ```julia
-acf(y, m, nlags=nothing; demean=true)
+acf(y, m, n_lags=nothing; demean=true)
 ```
 
 **Arguments:**
 - `y::AbstractVector`: Input time series
 - `m::Int`: Frequency/seasonal period
-- `nlags`: Number of lags (default: `min(10*log10(n), n-1)`)
+- `n_lags`: Number of lags (default: `min(floor(Int, 10*log10(n)), n-1)`)
 - `demean::Bool`: Subtract mean before computing (default: true)
 
 **Returns:** `ACFResult` with:
@@ -338,9 +338,31 @@ acf(y, m, nlags=nothing; demean=true)
 - `m`: Frequency
 - `ci`: 95% confidence interval (±1.96/√n)
 
-**Formula:**
+**Implemented equations:**
+
+Default lag count (when `n_lags=nothing`):
 ```math
-\hat{\rho}(k) = \frac{\sum_{t=1}^{n-k} (y_t - \bar{y})(y_{t+k} - \bar{y})}{\sum_{t=1}^{n} (y_t - \bar{y})^2}
+n_{\text{lags}} = \min\!\Big(\lfloor 10\,\log_{10}(n) \rfloor,\; n-1\Big)
+```
+
+95% confidence interval:
+```math
+\text{CI} = \pm\,\frac{1.96}{\sqrt{n}}
+```
+
+Sample variance (biased, divisor `n`):
+```math
+\hat{\gamma}(0) = \frac{1}{n}\sum_{t=1}^{n}(y_t - \bar{y})^2
+```
+
+Sample autocovariance at lag `k`:
+```math
+\hat{\gamma}(k) = \frac{1}{n}\sum_{t=1}^{n-k}(y_t - \bar{y})(y_{t+k} - \bar{y})
+```
+
+Sample autocorrelation:
+```math
+\hat{\rho}(0) = 1, \qquad \hat{\rho}(k) = \frac{\hat{\gamma}(k)}{\hat{\gamma}(0)}
 ```
 
 **Example:**
@@ -358,20 +380,43 @@ plot(result)   # Requires Plots.jl
 Compute the sample partial autocorrelation function using the Durbin-Levinson algorithm.
 
 ```julia
-pacf(y, m, nlags=nothing)
+pacf(y, m, n_lags=nothing)
 ```
 
 **Arguments:**
 - `y::AbstractVector`: Input time series
 - `m::Int`: Frequency/seasonal period
-- `nlags`: Number of lags (default: `min(10*log10(n), n-1)`)
+- `n_lags`: Number of lags (default: `min(floor(Int, 10*log10(n)), n-1)`)
 
 **Returns:** `PACFResult` with:
-- `values`: PACF values (lags 1 to nlags)
+- `values`: PACF values (lags 1 to `n_lags`)
 - `lags`: Lag indices
 - `n`: Series length
 - `m`: Frequency
 - `ci`: 95% confidence interval
+
+**Implemented equations (Durbin-Levinson):**
+
+Initialization:
+```math
+\phi_{1,1} = \hat{\rho}(1)
+```
+
+Recursion for `k = 2,3,\dots`:
+```math
+\phi_{k,k} = \frac{\hat{\rho}(k) - \sum_{j=1}^{k-1}\phi_{k-1,j}\hat{\rho}(k-j)}
+{1 - \sum_{j=1}^{k-1}\phi_{k-1,j}\hat{\rho}(j)}
+```
+
+Coefficient update for `j = 1,\dots,k-1`:
+```math
+\phi_{k,j} = \phi_{k-1,j} - \phi_{k,k}\phi_{k-1,k-j}
+```
+
+PACF value at lag `k`:
+```math
+\text{PACF}(k) = \phi_{k,k}
+```
 
 **Example:**
 ```julia
@@ -390,20 +435,60 @@ plot(result)
 Compute lagged differences of a vector or matrix.
 
 ```julia
-diff(x; lag=1, differences=1)
+diff(x; lag_steps=1, difference_order=1)
 ```
 
 **Arguments:**
 - `x`: Vector or matrix
-- `lag::Int`: Lag interval (default: 1)
-- `differences::Int`: Number of times to apply differencing (default: 1)
+- `lag_steps::Int`: Lag interval (default: 1)
+- `difference_order::Int`: Number of times to apply differencing (default: 1)
+
+**Implemented equations:**
+
+Lag operator for `k > 0`:
+```math
+L^k(x_t) = x_{t-k}, \qquad t = k+1,\dots,n
+```
+with `t = 1,\dots,k` undefined (`NaN`).
+
+Lead form for `k < 0`:
+```math
+L^k(x_t) = x_{t-k}, \qquad t = 1,\dots,n+k
+```
+
+Lag-`d` first difference:
+```math
+\Delta_d x_t = x_t - x_{t-d}, \qquad t = d+1,\dots,n
+```
+with `t = 1,\dots,d` undefined.
+
+Standard first difference (`d=1`):
+```math
+\Delta x_t = x_t - x_{t-1}
+```
+
+Repeated differencing (`D` applications), with `x_t^{(0)} = x_t`:
+```math
+x_t^{(i)} = x_t^{(i-1)} - x_{t-d}^{(i-1)}, \qquad i=1,\dots,D
+```
+Final output is `x_t^{(D)}` with first `d \cdot D` entries undefined.
+
+Special cases:
+```math
+\Delta^2 x_t = x_t - 2x_{t-1} + x_{t-2}
+```
+```math
+\Delta_m x_t = x_t - x_{t-m}
+```
+
+Matrix case: apply the same scalar equations independently to each column.
 
 **Example:**
 ```julia
 y = [1, 3, 6, 10, 15]
 diff(y)                    # [2, 3, 4, 5]
-diff(y; lag=2)             # [5, 7, 9]
-diff(y; differences=2)     # [1, 1, 1]
+diff(y; lag_steps=2)       # [5, 7, 9]
+diff(y; difference_order=2) # [1, 1, 1]
 ```
 
 ### `ndiffs`

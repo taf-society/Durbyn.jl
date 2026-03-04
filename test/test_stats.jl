@@ -378,7 +378,7 @@ const REF_KPSS_STAT_AP = 2.8767
         end
 
         @testset "Second differences" begin
-            d2 = diff(x; differences=2)
+            d2 = diff(x; difference_order=2)
             @test length(d2) == length(x)
             @test all(isnan.(d2[1:2]))
             @test d2[3:end] ≈ [1.0, 1.0, 1.0]
@@ -386,7 +386,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "Seasonal differences" begin
             quarterly = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
-            d_seasonal = diff(quarterly; lag=4)
+            d_seasonal = diff(quarterly; lag_steps=4)
             @test length(d_seasonal) == length(quarterly)
             @test all(isnan.(d_seasonal[1:4]))
             @test d_seasonal[5:end] ≈ [4.0, 4.0, 4.0, 4.0]
@@ -931,7 +931,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
         @testset "diff integer matrix returns Float64 with NaN" begin
             m = [1 2; 3 4; 5 6; 7 8]
-            result = diff(m; lag=1)
+            result = diff(m; lag_steps=1)
             @test eltype(result) == Float64
             @test size(result) == (4, 2)
             @test all(isnan.(result[1, :]))
@@ -941,7 +941,7 @@ const REF_KPSS_STAT_AP = 2.8767
         end
 
         @testset "diff integer vector returns Float64 with NaN" begin
-            d = diff([1, 3, 6, 10]; lag=1)
+            d = diff([1, 3, 6, 10]; lag_steps=1)
             @test eltype(d) <: AbstractFloat
             @test isnan(d[1])
             @test d[2:end] ≈ [2.0, 3.0, 4.0]

@@ -308,4 +308,46 @@ function evaluation_metrics(actual, pred)
     return Dict("mse" => mse, "mae" => mae, "mar" => mar, "msr" => msr)
 end
 
+"""
+    _linear_interpolate(knot_x, knot_y, query_points) -> Vector{Float64}
+
+Piecewise linear interpolation with boundary clamping.
+
+Given sorted knots `(knot_x, knot_y)`, returns interpolated values at `query_points`.
+
+For a query point `q` falling in the interval `[knot_x[i], knot_x[i+1]]`, the
+interpolated value is computed as:
+
+    t = (q - knot_x[i]) / (knot_x[i+1] - knot_x[i])
+    y(q) = knot_y[i] + t * (knot_y[i+1] - knot_y[i])
+
+Boundary clamping:
+- `q <= knot_x[1]`   => `knot_y[1]`
+- `q >= knot_x[end]`  => `knot_y[end]`
+"""
+function _linear_interpolate(knot_x::AbstractVector{<:Real}, knot_y::AbstractVector{<:Real},
+                             query_points::AbstractVector{<:Real})
+    length(knot_x) == length(knot_y) ||
+        throw(ArgumentError("knot vectors must have equal length (got $(length(knot_x)) x-knots and $(length(knot_y)) y-knots)"))
+    length(knot_x) >= 2 ||
+        throw(ArgumentError("interpolation requires at least 2 knots (got $(length(knot_x)))"))
+
+    interpolated = Vector{Float64}(undef, length(query_points))
+    @inbounds for k in eachindex(query_points)
+        q = query_points[k]
+        if q <= knot_x[1]
+            interpolated[k] = knot_y[1]
+        elseif q >= knot_x[end]
+            interpolated[k] = knot_y[end]
+        else
+            lo = searchsortedlast(knot_x, q)
+            hi = lo + 1
+            span = knot_x[hi] - knot_x[lo]
+            interpolated[k] = span == 0.0 ? Float64(knot_y[lo]) :
+                knot_y[lo] + (q - knot_x[lo]) * (knot_y[hi] - knot_y[lo]) / span
+        end
+    end
+    return interpolated
+end
+
 end

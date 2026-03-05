@@ -137,7 +137,7 @@ end
 
 function _run_seasonal_test(x::AbstractVector{<:Real}, m::Int, ::Val{:seas}, α::Real; kwargs...)
     try
-        s = seasonal_strength(x, m, kwargs...)
+        s = seasonal_strength(x, m; kwargs...)
         return !isempty(s) && s[1] > 0.64
     catch e
         @warn "Seasonality heuristic failed while testing the seasonal difference. " *
@@ -151,7 +151,7 @@ end
 function _run_seasonal_test(x::AbstractVector{<:Real}, m::Int, ::Val{:ocsb}, α::Real; kwargs...)
     try
 
-        oc = ocsb(dropmissing(x), m, lag_method=:AIC, maxlag=3, kwargs...)
+        oc = ocsb(dropmissing(x), m; lag_method=:AIC, maxlag=3, kwargs...)
         return oc.teststat > oc.cval
     catch e
         @warn "OCSB test failed. From $(nameof(typeof(e))): $(sprint(showerror, e)). " *

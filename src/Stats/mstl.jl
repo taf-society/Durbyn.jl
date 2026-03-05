@@ -183,3 +183,75 @@ function mstl(
     return MSTLResult{Float64}(
         original, trend, seasonals, periods, remainder, λ)
 end
+
+# ── MSTL display methods ────────────────────────────────────────────────────
+
+function Base.show(io::IO, res::MSTLResult)
+    n = length(res.data)
+    preview = min(n, 10)
+    println(io, "MSTL decomposition")
+    println(io, "  length: ", n)
+    if isempty(res.m)
+        println(io, "  periods: (none)")
+    else
+        println(io, "  periods: ", res.m)
+    end
+    println(io, "  lambda: ", isnothing(res.lambda) ? "nothing" : string(res.lambda))
+
+    println(io, "Trend     (first $preview): ", res.trend[1:preview])
+    if !isempty(res.seasonals)
+        for (i, period) in enumerate(res.m)
+            println(io, "Seasonal($period) (first $preview): ", res.seasonals[i][1:preview])
+        end
+    else
+        println(io, "Seasonal: (none)")
+    end
+    println(io, "Remainder (first $preview): ", res.remainder[1:preview])
+    return
+end
+
+function summary(res::MSTLResult; digits::Integer=4)
+    total_seasonal = isempty(res.seasonals) ? zeros(eltype(res.data), length(res.data)) :
+                                              reduce(+, res.seasonals)
+    reconstructed = res.trend .+ total_seasonal .+ res.remainder
+
+    comps = Dict{Symbol,AbstractVector{<:Real}}(
+        :data      => reconstructed,
+        :trend     => res.trend,
+        :remainder => res.remainder,
+    )
+
+    if !isempty(res.seasonals)
+        comps[:seasonal_total] = total_seasonal
+        for (i, period) in enumerate(res.m)
+            comps[Symbol("seasonal_$period")] = res.seasonals[i]
+        end
+    end
+
+    iqr(v) = begin
+        q25, q75 = quantile(v, (0.25, 0.75))
+        q75 - q25
+    end
+
+    println("MSTL decomposition summary")
+    println("Components (mean, sd, min, max, IQR):")
+    fmt(x) = isnan(x) ? "NaN" : string(round(x; digits=digits))
+
+    for (name, vec) in sort(collect(comps); by=first)
+        println("  ", rpad(string(name), 16), " ",
+                "mean=", fmt(mean(vec)), "  sd=", fmt(std(vec)),
+                "  min=", fmt(minimum(vec)), "  max=", fmt(maximum(vec)),
+                "  IQR=", fmt(iqr(vec)))
+    end
+
+    println("IQR as % of data IQR:")
+    data_iqr = iqr(comps[:data])
+    for (name, vec) in sort(collect(comps); by=first)
+        pct = iszero(data_iqr) ? NaN : 100 * iqr(vec) / data_iqr
+        println("  ", rpad(string(name), 16), " ", fmt(pct), "%")
+    end
+
+    println("Metadata: periods=", isempty(res.m) ? "[]" : string(res.m),
+            ", lambda=", isnothing(res.lambda) ? "nothing" : string(res.lambda))
+    return nothing
+end

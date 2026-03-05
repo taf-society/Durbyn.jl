@@ -7,7 +7,7 @@ import Durbyn.Stats: box_cox, box_cox!, inv_box_cox, box_cox_lambda
 import Durbyn.Stats: decompose, DecomposedTimeSeries
 import Durbyn.Stats: adf, ADF, kpss, KPSS, ocsb, OCSB
 import Durbyn.Stats: time_delay_embed, diff, fourier, ndiffs, nsdiffs
-import Durbyn.Stats: ols, OlsFit, interpolate_xy, make_interpolator, seasonal_strength, modelrank
+import Durbyn.Stats: ols, OlsFit, seasonal_strength, modelrank, _linear_interpolate
 import Durbyn.Stats: interpolate_missing, longest_contiguous, check_missing
 import Durbyn.Stats: stl, STLResult
 import Durbyn.Stats: mstl, MSTLResult
@@ -464,23 +464,26 @@ const REF_KPSS_STAT_AP = 2.8767
         end
     end
 
-    @testset "interpolate_xy and make_interpolator (interpolation)" begin
+    @testset "_linear_interpolate" begin
         x = [1.0, 2.0, 4.0, 5.0]
         y = [1.0, 4.0, 16.0, 25.0]
 
-        @testset "Linear interpolation" begin
-            result = interpolate_xy(x, y; xout=[1.5, 3.0, 4.5])
-
-            @test abs(result.y[1] - 2.5) <= EPS_SCALAR
-            @test abs(result.y[2] - 10.0) <= EPS_SCALAR
+        @testset "Basic linear interpolation" begin
+            result = _linear_interpolate(x, y, [1.5, 3.0, 4.5])
+            @test abs(result[1] - 2.5) <= EPS_SCALAR
+            @test abs(result[2] - 10.0) <= EPS_SCALAR
+            @test abs(result[3] - 20.5) <= EPS_SCALAR
         end
 
-        @testset "make_interpolator returns function" begin
-            f = make_interpolator(x, y)
+        @testset "Boundary clamping" begin
+            result = _linear_interpolate(x, y, [0.0, 6.0])
+            @test result[1] == y[1]
+            @test result[2] == y[end]
+        end
 
-            @test f(1.0) ≈ 1.0
-            @test f(2.0) ≈ 4.0
-            @test abs(f(1.5) - 2.5) <= EPS_SCALAR
+        @testset "Exact knot hits" begin
+            result = _linear_interpolate(x, y, x)
+            @test all(result .== y)
         end
     end
 
@@ -964,23 +967,6 @@ const REF_KPSS_STAT_AP = 2.8767
             @test_throws ArgumentError check_missing(Union{Float64,Missing}[1.0, missing, 2.0])
 
             @test check_missing([1.0, 2.0, 3.0]) == [1.0, 2.0, 3.0]
-        end
-
-        @testset "interpolate_xy handles missing with na_rm=false" begin
-
-            r = interpolate_xy([1.0, 2.0, 3.0], Union{Float64,Missing}[missing, 2.0, 3.0];
-                       na_rm=false, xout=[2.5])
-            @test length(r.y) == 1
-            @test !ismissing(r.y[1])
-
-            r2 = interpolate_xy([1.0, 2.0, 3.0], Union{Float64,Missing}[missing, 2.0, 3.0];
-                        xout=[2.5])
-            @test r2.y[1] ≈ 2.5
-
-            r3 = interpolate_xy([1.0, 2.0, 3.0], Union{Float64,Missing}[missing, 2.0, 3.0];
-                        xout=[1.5, 2.5], rule=1, na_rm=false)
-            @test isnan(r3.y[1])
-            @test r3.y[2] ≈ 2.5
         end
 
         @testset "mstl period filter matches R (2*p < n)" begin

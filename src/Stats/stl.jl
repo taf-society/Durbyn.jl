@@ -1,4 +1,232 @@
 """
+    loess_estimate!(y, n, bandwidth, degree, eval_point, left_bound, right_bound,
+                    w, use_weights, robustness_weights) -> (ŷ, ok)
+
+Compute a single locally weighted polynomial regression estimate at `eval_point`.
+
+This implements the core LOESS (LOcally Estimated Scatterplot Smoothing) kernel
+evaluation from Cleveland (1979). For each evaluation point, it:
+
+1. **Computes tricube weights** for observations in `[left_bound, right_bound]`:
+
+       u = |j - eval_point| / half_width
+       w(j) = (1 - u³)³    if u < 1
+              0             otherwise
+
+   where `half_width = max(eval_point - left_bound, right_bound - eval_point)`.
+
+2. **Applies robustness weights** (if `use_weights`): `w(j) *= robustness_weights[j]`
+
+3. **Normalizes weights**: `w(j) /= Σ w(j)`
+
+4. **Fits local polynomial** of the specified `degree` (0 = constant, 1 = linear):
+   - Degree 0: `ŷ = Σ w(j) · y(j)` (weighted mean)
+   - Degree 1: `ŷ = Σ w(j) · y(j)` after adjusting weights for the linear term:
+
+         x̄_w = Σ w(j) · j                    (weighted mean of positions)
+         β = (eval_point - x̄_w) / Σ w(j)·(j - x̄_w)²
+         w(j) ← w(j) · (1 + β · (j - x̄_w))
+
+# Returns
+- `(ŷ::Float64, true)` on success
+- `(0.0, false)` if all weights are zero (no data in window)
+
+# References
+- Cleveland, W. S. (1979). *Robust Locally Weighted Regression and Smoothing
+  Scatterplots.* JASA, 74(368), 829–836.
+- Cleveland, R. B., Cleveland, W. S., McRae, J. E., & Terpenning, I. (1990).
+  *STL: A Seasonal-Trend Decomposition Procedure Based on Loess.*
+  Journal of Official Statistics, 6, 3–73.
+"""
+function loess_estimate!(y::AbstractVector{Float64}, n::Int, bandwidth::Int, degree::Int,
+                         eval_point::Float64, left_bound::Int, right_bound::Int,
+                         w::AbstractVector{Float64}, use_weights::Bool, robustness_weights::AbstractVector{Float64})
+
+    data_range = float(n) - 1.0
+    half_width = max(eval_point - float(left_bound), float(right_bound) - eval_point)
+    if bandwidth > n
+        half_width += float((bandwidth - n) ÷ 2)
+    end
+    upper_threshold = 0.999 * half_width
+    lower_threshold = 0.001 * half_width
+
+    weight_sum = 0.0
+    for j in left_bound:right_bound
+        dist = abs(float(j) - eval_point)
+        if dist <= upper_threshold
+            if dist <= lower_threshold || half_width == 0.0
+                w[j] = 1.0
+            else
+                normalized_dist = dist / half_width
+                w[j] = (1.0 - normalized_dist^3)^3
+            end
+            if use_weights
+                w[j] *= robustness_weights[j]
+            end
+            weight_sum += w[j]
+        else
+            w[j] = 0.0
+        end
+    end
+
+    if weight_sum <= 0.0
+        return 0.0, false
+    end
+
+    inv_weight_sum = 1.0 / weight_sum
+    for j in left_bound:right_bound
+        w[j] *= inv_weight_sum
+    end
+
+    if half_width > 0.0 && degree > 0
+
+        weighted_mean_x = 0.0
+        for j in left_bound:right_bound
+            weighted_mean_x += w[j] * float(j)
+        end
+        slope_num = eval_point - weighted_mean_x
+        slope_denom = 0.0
+        for j in left_bound:right_bound
+            dev = float(j) - weighted_mean_x
+            slope_denom += w[j] * dev^2
+        end
+
+        if sqrt(slope_denom) > 0.001 * data_range
+            slope_num /= slope_denom
+            for j in left_bound:right_bound
+                w[j] = w[j] * (slope_num * (float(j) - weighted_mean_x) + 1.0)
+            end
+        end
+    end
+
+    ys = 0.0
+    for j in left_bound:right_bound
+        ys += w[j] * y[j]
+    end
+    return ys, true
+end
+
+"""
+    loess_smooth!(y, n, bandwidth, degree, jump, use_weights, robustness_weights, ys, res)
+
+Apply LOESS smoothing to the full series `y` of length `n`, writing results into `ys`.
+
+Evaluates [`loess_estimate!`](@ref) at every `jump`-th point, then linearly
+interpolates between evaluated points to fill the gaps. The `res` buffer is
+used as scratch space for weight computation.
+"""
+function loess_smooth!(y::AbstractVector{Float64}, n::Int, bandwidth::Int, degree::Int, jump::Int,
+                       use_weights::Bool, robustness_weights::AbstractVector{Float64},
+                       ys::AbstractVector{Float64}, res::AbstractVector{Float64})
+
+    if n < 2
+
+        ys[firstindex(ys)] = y[1]
+        return
+    end
+
+    step_size = min(jump, n - 1)
+
+    left_bound = 1
+    right_bound = min(bandwidth, n)
+
+    if bandwidth >= n
+        left_bound = 1
+        right_bound = n
+        i = 1
+        while i <= n
+            eval_point = float(i)
+            ysi, ok = loess_estimate!(y, n, bandwidth, degree, eval_point, left_bound, right_bound, res, use_weights, robustness_weights)
+            if ok
+                ys[firstindex(ys) - 1 + i] = ysi
+            else
+                ys[firstindex(ys) - 1 + i] = y[i]
+            end
+            i += step_size
+        end
+    else
+        if step_size == 1
+            half_bandwidth = (bandwidth + 1) ÷ 2
+            left_bound = 1
+            right_bound = bandwidth
+            for i in 1:n
+                if (i > half_bandwidth) && (right_bound != n)
+                    left_bound += 1
+                    right_bound += 1
+                end
+                eval_point = float(i)
+                ysi, ok = loess_estimate!(y, n, bandwidth, degree, eval_point, left_bound, right_bound, res, use_weights, robustness_weights)
+                if ok
+                    ys[firstindex(ys) - 1 + i] = ysi
+                else
+                    ys[firstindex(ys) - 1 + i] = y[i]
+                end
+            end
+        else
+            half_bandwidth = (bandwidth + 1) ÷ 2
+            i = 1
+            while i <= n
+                if i < half_bandwidth
+                    left_bound = 1
+                    right_bound = bandwidth
+                elseif i >= n - half_bandwidth + 1
+                    left_bound = n - bandwidth + 1
+                    right_bound = n
+                else
+                    left_bound = i - half_bandwidth + 1
+                    right_bound = bandwidth + i - half_bandwidth
+                end
+                eval_point = float(i)
+                ysi, ok = loess_estimate!(y, n, bandwidth, degree, eval_point, left_bound, right_bound, res, use_weights, robustness_weights)
+                if ok
+                    ys[firstindex(ys) - 1 + i] = ysi
+                else
+                    ys[firstindex(ys) - 1 + i] = y[i]
+                end
+                i += step_size
+            end
+        end
+    end
+
+    if step_size != 1
+        i = 1
+        while i <= n - step_size
+            ysi = ys[firstindex(ys) - 1 + i]
+            ysj = ys[firstindex(ys) - 1 + i + step_size]
+            interp_slope = (ysj - ysi) / float(step_size)
+            for j in (i + 1):(i + step_size - 1)
+                ys[firstindex(ys) - 1 + j] = ysi + interp_slope * float(j - i)
+            end
+            i += step_size
+        end
+
+        k = ((n - 1) ÷ step_size) * step_size + 1
+        if k != n
+
+            eval_point = float(n)
+            ysn, ok = loess_estimate!(y, n, bandwidth, degree, eval_point, left_bound, right_bound, res, use_weights, robustness_weights)
+            if ok
+                ys[firstindex(ys) - 1 + n] = ysn
+            else
+                ys[firstindex(ys) - 1 + n] = y[n]
+            end
+            if k != n - 1
+
+                val_at_k = ys[firstindex(ys) - 1 + k]
+                val_at_n = ys[firstindex(ys) - 1 + n]
+                interp_slope = (val_at_n - val_at_k) / float(n - k)
+                for j in (k + 1):(n - 1)
+                    ys[firstindex(ys) - 1 + j] = val_at_k + interp_slope * float(j - k)
+                end
+            end
+        end
+    end
+    return
+end
+
+# ── STL types and decomposition ─────────────────────────────────────────────
+
+"""
     STLResult
 
 Container for the results of an STL decomposition.  Fields store the
@@ -461,4 +689,84 @@ function stl(
         inner_val,
         outer_val,
     )
+end
+
+# ── STL display methods ─────────────────────────────────────────────────────
+
+function Base.show(io::IO, result::STLResult)
+    println(io, "STL decomposition")
+    println(io, "Seasonal component (first 10 values): ", result.seasonal[1:min(end,10)])
+    println(io, "Trend component    (first 10 values): ", result.trend[1:min(end,10)])
+    println(io, "Remainder          (first 10 values): ", result.remainder[1:min(end,10)])
+    println(io, "Windows: seasonal=", result.seasonal_window, ", trend=", result.trend_window, ", lowpass=", result.lowpass_window)
+    println(io, "Degrees: seasonal=", result.seasonal_degree, ", trend=", result.trend_degree, ", lowpass=", result.lowpass_degree)
+    println(io, "Jumps: seasonal=", result.seasonal_jump, ", trend=", result.trend_jump, ", lowpass=", result.lowpass_jump)
+    println(io, "Inner iterations: ", result.inner_iterations, ", Outer iterations: ", result.outer_iterations)
+    return
+end
+
+function summary(result::STLResult; digits::Integer=4)
+    n = length(result.seasonal)
+    data = result.seasonal .+ result.trend .+ result.remainder
+    comps = Dict(
+        :seasonal => result.seasonal,
+        :trend    => result.trend,
+        :remainder=> result.remainder,
+        :data     => data,
+    )
+
+    function iqr(v::AbstractVector)
+        q25, q75 = quantile(v, [0.25, 0.75])
+        return q75 - q25
+    end
+    println("STL decomposition summary")
+    println("Time series components:")
+    for (name, vec) in comps
+        println("  ", name)
+        mv = mean(vec)
+        sv = std(vec)
+        mn = minimum(vec)
+        mx = maximum(vec)
+        iqr_v = iqr(vec)
+
+        component_fmt = string("% .", digits, "f")
+        full_fmt = "    mean=" * component_fmt * "  sd=" * component_fmt *
+                   "  min=" * component_fmt * "  max=" * component_fmt *
+                   "  IQR=" * component_fmt
+        f = Printf.Format(full_fmt)
+        println(Printf.format(f, mv, sv, mn, mx, iqr_v))
+    end
+    println("IQR as percentage of total:")
+    iqr_vals = Dict(name => iqr(vec) for (name, vec) in comps)
+    total_iqr = iqr_vals[:data]
+    for (name, v) in iqr_vals
+        pct = total_iqr == 0 ? NaN : 100.0 * v / total_iqr
+        pct_str = isnan(pct) ? "NaN" : string(round(pct; digits=1))
+        println("  ", Symbol(name), ": ", pct_str, "%")
+    end
+
+    if all(w -> w == 1.0, result.weights)
+        println("Weights: all equal to 1")
+    else
+        w = result.weights
+        mv = mean(w)
+        sv = std(w)
+        mn = minimum(w)
+        mx = maximum(w)
+        iqr_w = iqr(w)
+        println("Weights summary:")
+        s_mean = string(round(mv; digits=digits))
+        s_sd   = string(round(sv; digits=digits))
+        s_min  = string(round(mn; digits=digits))
+        s_max  = string(round(mx; digits=digits))
+        s_iqr  = string(round(iqr_w; digits=digits))
+        println("  mean=", s_mean, "  sd=", s_sd,
+                "  min=", s_min, "  max=", s_max, "  IQR=", s_iqr)
+    end
+    println("Other components: seasonal_window=", result.seasonal_window,
+            ", trend_window=", result.trend_window,
+            ", lowpass_window=", result.lowpass_window,
+            ", inner=", result.inner_iterations,
+            ", outer=", result.outer_iterations)
+    return nothing
 end

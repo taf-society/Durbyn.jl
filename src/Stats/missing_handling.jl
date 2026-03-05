@@ -210,7 +210,7 @@ y_filled = interpolate_missing(y; lambda=0.5)
 - Hyndman, R.J. & Athanasopoulos, G. (2021). *Forecasting: Principles and Practice* (3rd ed.), OTexts.
 
 # See also
-[`mstl`](@ref), [`interpolate_xy`](@ref)
+[`mstl`](@ref)
 """
 function interpolate_missing(x::AbstractVector{T};
                    m::Union{Int,Nothing}=nothing,
@@ -255,8 +255,7 @@ function interpolate_missing(x::AbstractVector{T};
     idx = tt[.!is_missing]
 
     if use_linear
-        result = interpolate_xy(idx, working[idx]; xout=collect(tt), rule=(2, 2))
-        working = result.y
+        working = _linear_interpolate(idx, working[idx], collect(tt))
     else
         K = min(div(freq, 2), 5)
 
@@ -285,8 +284,7 @@ function interpolate_missing(x::AbstractVector{T};
         end
 
         if use_linear_fill
-            result = interpolate_xy(idx, working[idx]; xout=collect(tt), rule=(2, 2))
-            working = result.y
+            working = _linear_interpolate(idx, working[idx], collect(tt))
         end
 
         for i in 1:n
@@ -320,13 +318,11 @@ function interpolate_missing(x::AbstractVector{T};
             end
             seasonally_adjusted = working .- total_seasonal
 
-            result = interpolate_xy(idx, seasonally_adjusted[idx]; xout=collect(tt), rule=(2, 2))
-            sa_interpolated = result.y
+            sa_interpolated = _linear_interpolate(idx, seasonally_adjusted[idx], collect(tt))
 
             working[is_missing] .= sa_interpolated[is_missing] .+ total_seasonal[is_missing]
         catch e
-            result = interpolate_xy(idx, original[idx]; xout=collect(tt), rule=(2, 2))
-            working = result.y
+            working = _linear_interpolate(idx, original[idx], collect(tt))
         end
     end
 

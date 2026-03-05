@@ -32,7 +32,7 @@ Internally, the following mappings are used when calling the tests:
 - PP:   `deterministic = :level` → `model = :constant`, `deterministic = :trend` → `model = :trend`
 
 Critical values and their nominal significance levels are linearly interpolated
-to obtain a p-value (matching R's `approx(..., rule=2)` behavior via `interpolate_xy`).
+to obtain a p-value with boundary clamping (matching R's `approx(..., rule=2)` behavior).
 
 If no `use_lag` is supplied to KPSS, the lag is set by default to
 `trunc(3 * sqrt(length(x)) / 13)`.
@@ -169,7 +169,7 @@ function _run_unit_root_test(series_values::AbstractVector;
         if test === :kpss
             kpss_result = _kpss_with_default_lag(series_values; kwargs...)
             interpolated_pvalue = _normalize_pvalue(
-                only(interpolate_xy(kpss_result.cval, kpss_result.clevels, xout=[kpss_result.teststat], rule=2).y),
+                only(_linear_interpolate(kpss_result.cval, kpss_result.clevels, [kpss_result.teststat])),
             )
             return interpolated_pvalue === missing ? missing : interpolated_pvalue < alpha
 
@@ -183,14 +183,14 @@ function _run_unit_root_test(series_values::AbstractVector;
             tau_statistic = adf_result.teststat
             tau_critical_values = adf_result.primary_cval
             interpolated_pvalue = _normalize_pvalue(
-                only(interpolate_xy(tau_critical_values, adf_result.clevels, xout=[tau_statistic], rule=2).y),
+                only(_linear_interpolate(tau_critical_values, adf_result.clevels, [tau_statistic])),
             )
             return interpolated_pvalue === missing ? missing : interpolated_pvalue > alpha
 
         elseif test === :pp
             pp_result = phillips_perron(series_values; type=:Z_tau, model=pp_model, kwargs...)
             interpolated_pvalue = _normalize_pvalue(
-                only(interpolate_xy(pp_result.primary_cval, pp_result.clevels, xout=[pp_result.teststat], rule=2).y),
+                only(_linear_interpolate(pp_result.primary_cval, pp_result.clevels, [pp_result.teststat])),
             )
             return interpolated_pvalue === missing ? missing : interpolated_pvalue > alpha
 

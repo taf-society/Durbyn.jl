@@ -127,6 +127,7 @@ y_mean = inv_box_cox(y_transformed; lambda=0.5, biasadj=true, fvar=forecast_vari
 ### Classical Decomposition (`decompose`)
 
 Decompose a time series into trend, seasonal, and residual components using moving averages.
+References: Brockwell & Davis (2016), Section 1.5.2 (Method S1).
 
 ```julia
 decompose(; x, m, type=:additive, filter=nothing)
@@ -150,6 +151,7 @@ Trend estimate (`\hat{T}_i`) via symmetric moving average:
 \text{Odd }m:\quad
 \hat{T}_i = \frac{1}{m}\sum_{j=-(m-1)/2}^{(m-1)/2} x_{i+j}
 ```
+Trend values are defined on the interior range \(\lfloor m/2 \rfloor < i \le n-\lfloor m/2 \rfloor\).
 
 Detrending:
 ```math
@@ -175,6 +177,7 @@ S_i = F_{((i-1)\bmod m)+1}
 \text{Additive: } R_i = x_i - S_i - \hat{T}_i,\qquad
 \text{Multiplicative: } R_i = x_i/(S_i\hat{T}_i)
 ```
+By construction, \(S_i\) is periodic with period \(m\): \(S_{i+m}=S_i\).
 
 **Arguments:**
 - `x::AbstractVector`: Time series vector
@@ -202,8 +205,7 @@ result.seasonal
 ```
 
 **References:**
-- Kendall, M. and Stuart, A. (1983). *The Advanced Theory of Statistics*,
-  Vol. 3. Griffin, pp. 410-414.
+- Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.), Section 1.5.2.
 
 ### STL Decomposition (`stl`)
 

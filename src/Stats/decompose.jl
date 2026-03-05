@@ -11,6 +11,9 @@ under either an additive or multiplicative model:
 ```math
 \text{Multiplicative: } x_i = \hat{T}_i \cdot S_i \cdot R_i
 ```
+
+# Reference
+- Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.), Sec. 1.5.2 (Method S1).
 """
 
 """
@@ -79,6 +82,9 @@ For odd `m`:
 ```math
 \hat{T}_i = \frac{1}{m}\sum_{j=-(m-1)/2}^{(m-1)/2} x_{i+j}
 ```
+
+# Reference
+- Brockwell, P. J., & Davis, R. A. (2016). Eq. 1.5.12 (even `m`) and Eq. 1.5.5 (odd `m`).
 """
 function symmetric_ma(
     x::AbstractVector{<:Union{Missing, Real}},
@@ -185,6 +191,9 @@ Remove trend to isolate seasonality and residual variation.
 ```math
 \text{Multiplicative: } D_i = x_i / \hat{T}_i
 ```
+
+# Reference
+- Brockwell, P. J., & Davis, R. A. (2016), Sec. 1.5.2.1.
 """
 function detrend(x::AbstractVector, T::AbstractVector, model::Symbol)
     length(x) == length(T) || throw(ArgumentError("x and trend must have same length"))
@@ -236,40 +245,61 @@ Step 2 (normalization):
 ```math
 \text{Multiplicative: } F_k \leftarrow F_k / \bar{F}
 ```
+
+# Reference
+- Brockwell, P. J., & Davis, R. A. (2016), Sec. 1.5.2.1 and Eq. 1.5.13 (additive normalization).
 """
 function seasonal_figures(D::AbstractVector, m::Int, model::Symbol)::Vector{Float64}
     m <= 0 && throw(ArgumentError("m must be positive"))
     model = _check_decompose_type(model)
-    F = fill(NaN, m)
-    n = length(D)
+    seasonal_position_sum = zeros(Float64, m)
+    seasonal_position_count = zeros(Int, m)
 
-    for k in 1:m
-        vals = Float64[]
-        idx = k
-        while idx <= n
-            Di = D[idx]
-            if !ismissing(Di) && !_is_missing_or_nan(Di)
-                push!(vals, Float64(Di))
-            end
-            idx += m
+    @inbounds for observation_index in eachindex(D)
+        detrended_value = D[observation_index]
+        if !ismissing(detrended_value) && !_is_missing_or_nan(detrended_value)
+            season_position = mod(observation_index - 1, m) + 1
+            seasonal_position_sum[season_position] += Float64(detrended_value)
+            seasonal_position_count[season_position] += 1
         end
-        F[k] = isempty(vals) ? NaN : mean(vals)
     end
 
-    valid = F[.!isnan.(F)]
-    isempty(valid) && throw(ArgumentError("cannot estimate seasonal figures from empty detrended subseries"))
+    seasonal_figures_raw = zeros(Float64, m)
+    n_positions_with_data = 0
+    seasonal_figure_sum = 0.0
+    @inbounds for season_position in 1:m
+        n_at_position = seasonal_position_count[season_position]
+        if n_at_position > 0
+            seasonal_figure = seasonal_position_sum[season_position] / n_at_position
+            seasonal_figures_raw[season_position] = seasonal_figure
+            seasonal_figure_sum += seasonal_figure
+            n_positions_with_data += 1
+        end
+    end
 
-    F_bar = mean(valid)
+    n_positions_with_data == 0 && throw(ArgumentError("cannot estimate seasonal figures from empty detrended subseries"))
+    seasonal_figure_mean = seasonal_figure_sum / n_positions_with_data
+
     if model === :additive
-        F .-= F_bar
-        F[isnan.(F)] .= 0.0
+        @inbounds for season_position in 1:m
+            if seasonal_position_count[season_position] > 0
+                seasonal_figures_raw[season_position] -= seasonal_figure_mean
+            else
+                seasonal_figures_raw[season_position] = 0.0
+            end
+        end
     else
-        F_bar == 0.0 && throw(ArgumentError("seasonal figure mean is zero for multiplicative model"))
-        F ./= F_bar
-        F[isnan.(F)] .= 1.0
+        seasonal_figure_mean == 0.0 && throw(ArgumentError("seasonal figure mean is zero for multiplicative model"))
+        @inbounds for season_position in 1:m
+            if seasonal_position_count[season_position] > 0
+                seasonal_figures_raw[season_position] /= seasonal_figure_mean
+            else
+                seasonal_figures_raw[season_position] = 1.0
+            end
+        end
     end
 
-    return F
+    return seasonal_figures_raw
 end
 
 raw"""
@@ -280,10 +310,18 @@ Tile seasonal figures over the full series length:
 ```math
 S_i = F_{((i-1)\bmod m)+1}, \quad i = 1,\ldots,n
 ```
+
+# Reference
+- Brockwell, P. J., & Davis, R. A. (2016), Sec. 1.5.2.1.
 """
 function seasonal_component(F::AbstractVector, n::Int)::Vector{Float64}
     m = length(F)
-    return [Float64(F[mod(i - 1, m) + 1]) for i in 1:n]
+    seasonal_series = Vector{Float64}(undef, n)
+    @inbounds for observation_index in 1:n
+        season_position = mod(observation_index - 1, m) + 1
+        seasonal_series[observation_index] = Float64(F[season_position])
+    end
+    return seasonal_series
 end
 
 raw"""
@@ -298,6 +336,9 @@ Compute residuals after removing trend and seasonality:
 ```math
 \text{Multiplicative: } R_i = x_i / (S_i \cdot \hat{T}_i)
 ```
+
+# Reference
+- Brockwell, P. J., & Davis, R. A. (2016), Sec. 1.5.2.1.
 """
 function residual(x::AbstractVector, S::AbstractVector, T::AbstractVector, model::Symbol)
     length(x) == length(S) == length(T) || throw(ArgumentError("x, S, and T must have same length"))
@@ -371,6 +412,7 @@ with symmetric moving-average trend estimate:
 `DecomposedTimeSeries` with `x`, `trend`, `seasonal`, `random`, `figure`, `type`, and `m`.
 
 # References
+- Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.), Sec. 1.5.2.
 - Kendall, M. and Stuart, A. (1983). *The Advanced Theory of Statistics*, Vol. 3. Griffin, pp. 410-414.
 """
 function decompose(;

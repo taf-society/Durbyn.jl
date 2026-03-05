@@ -16,7 +16,7 @@ The Stats module exports the following functions and types:
 | **Autocorrelation** | `acf`, `pacf`, `ACFResult`, `PACFResult` |
 | **Unit Root Tests** | `adf`, `ADF`, `kpss`, `KPSS`, `phillips_perron`, `PhillipsPerron`, `ocsb`, `OCSB` |
 | **Missing Values** | `handle_missing`, `longest_contiguous`, `interpolate_missing`, `check_missing`, `MissingMethod`, `Contiguous`, `Interpolate`, `FailMissing` |
-| **Utilities** | `fourier`, `embed`, `ols`, `OlsFit`, `approx`, `approxfun`, `seasonal_strength` |
+| **Utilities** | `fourier`, `embed`, `ols`, `OlsFit`, `seasonal_strength` |
 
 ---
 
@@ -1007,40 +1007,6 @@ fit.residuals  # Residuals
 # Predictions
 predict(fit, X_new)
 ```
-
-### Interpolation (`approx`, `approxfun`)
-
-Linear or constant interpolation of data.
-
-```julia
-approx(x, y; xout=nothing, method=:linear, n=50, yleft=nothing,
-       yright=nothing, rule=(1,1), f=0.0, ties=mean, na_rm=true)
-```
-
-**Arguments:**
-- `x, y`: Coordinates to interpolate
-- `xout`: Output grid points (default: n equally spaced)
-- `method`: `:linear` or `:constant`
-- `n`: Number of interpolation points
-- `yleft`, `yright`: Extrapolation values
-- `rule`: `(1,1)` for missing at boundaries, `(2,2)` for boundary values
-- `f`: For `:constant`, controls step function continuity
-- `ties`: Function to collapse duplicate x values
-
-**Returns:** NamedTuple `(x=xout_vec, y=yout_vec)`
-
-**Example:**
-```julia
-x = [1, 2, 4, 5]
-y = [2, 4, 6, 8]
-result = approx(x, y; n=10)
-
-# Create interpolation function
-f = approxfun(x, y)
-f(3)  # Interpolate at x=3
-```
-
----
 
 ## Missing Value Handling
 

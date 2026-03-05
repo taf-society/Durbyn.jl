@@ -161,7 +161,7 @@ function _run_adf_regression(yv::Vector{Float64}, model::Symbol, lag::Int)
     n = length(z)
     n >= L || throw(ArgumentError("not enough observations for selected lag"))
 
-    x = time_delay_embed(z, L)
+    x = _time_delay_embed(z, L)
     n_obs = size(x, 1)
 
     delta_y = Vector{Float64}(@view x[:, 1])

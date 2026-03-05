@@ -6,7 +6,7 @@ import Durbyn.Stats: acf, pacf, ACFResult, PACFResult
 import Durbyn.Stats: box_cox, box_cox!, inv_box_cox, box_cox_lambda
 import Durbyn.Stats: decompose, DecomposedTimeSeries
 import Durbyn.Stats: adf, ADF, kpss, KPSS, ocsb, OCSB
-import Durbyn.Stats: time_delay_embed, diff, fourier, ndiffs, nsdiffs
+import Durbyn.Stats: diff, fourier, ndiffs, nsdiffs, _time_delay_embed
 import Durbyn.Stats: ols, OlsFit, seasonal_strength, modelrank, _linear_interpolate
 import Durbyn.Stats: interpolate_missing, longest_contiguous, check_missing
 import Durbyn.Stats: stl, STLResult
@@ -349,11 +349,11 @@ const REF_KPSS_STAT_AP = 2.8767
         end
     end
 
-    @testset "time_delay_embed function" begin
+    @testset "_time_delay_embed" begin
         x = collect(1.0:10.0)
 
         @testset "Basic embedding" begin
-            result = time_delay_embed(x, 3)
+            result = _time_delay_embed(x, 3)
 
             @test size(result) == (8, 3)
             @test result[1, :] == [3.0, 2.0, 1.0]
@@ -361,7 +361,7 @@ const REF_KPSS_STAT_AP = 2.8767
         end
 
         @testset "Embedding dimension 1" begin
-            result = time_delay_embed(x, 1)
+            result = _time_delay_embed(x, 1)
             @test size(result) == (10, 1)
             @test vec(result) == x
         end

@@ -309,6 +309,57 @@ function evaluation_metrics(actual, pred)
 end
 
 """
+    _time_delay_embed(x::AbstractVector, dimension::Integer=1) -> Matrix
+    _time_delay_embed(x::AbstractMatrix, dimension::Integer=1) -> Matrix
+
+Construct a time-delay embedding (lag matrix) of a vector or matrix.
+
+For a vector `x` of length `n` and embedding dimension `d`, returns an
+`(n - d + 1) × d` matrix where each row contains `d` consecutive values and
+columns are ordered with the largest lag first:
+
+    E[i, k] = x[i + d - k]    for i = 1, …, n-d+1  and  k = 1, …, d
+
+This produces the standard Takens delay-coordinate embedding used in
+lagged feature construction for AR/ARIMA-style regressions.
+
+For an `n × p` matrix, the embedding is applied independently to each column,
+producing an `(n - d + 1) × (d * p)` matrix with columns interleaved by
+variable then lag.
+"""
+function _time_delay_embed(x::AbstractVector{T}, dimension::Integer=1) where {T}
+    n = length(x)
+    d = dimension
+    if d < 1 || d > n
+        throw(ArgumentError("embedding dimension must be in 1:$n (got $d)"))
+    end
+    m = n - d + 1
+    result = Matrix{T}(undef, m, d)
+    for k in 1:d
+        start = d - k + 1
+        result[:, k] = view(x, start : start + m - 1)
+    end
+    return result
+end
+
+function _time_delay_embed(x::AbstractMatrix{T}, dimension::Integer=1) where {T}
+    n, p = size(x)
+    d = dimension
+    if d < 1 || d > n
+        throw(ArgumentError("embedding dimension must be in 1:$n (got $d)"))
+    end
+    rows = n - d + 1
+    output = Matrix{T}(undef, rows, d * p)
+    for j in 1:p
+        col_result = _time_delay_embed(view(x, :, j), d)
+        for k in 1:d
+            output[:, j + (k - 1) * p] = view(col_result, :, k)
+        end
+    end
+    return output
+end
+
+"""
     _linear_interpolate(knot_x, knot_y, query_points) -> Vector{Float64}
 
 Piecewise linear interpolation with boundary clamping.

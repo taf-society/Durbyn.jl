@@ -16,7 +16,7 @@ The Stats module exports the following functions and types:
 | **Autocorrelation** | `acf`, `pacf`, `ACFResult`, `PACFResult` |
 | **Unit Root Tests** | `adf`, `ADF`, `kpss`, `KPSS`, `phillips_perron`, `PhillipsPerron`, `ocsb`, `OCSB` |
 | **Missing Values** | `handle_missing`, `longest_contiguous`, `interpolate_missing`, `check_missing`, `MissingMethod`, `Contiguous`, `Interpolate`, `FailMissing` |
-| **Utilities** | `fourier`, `embed`, `ols`, `OlsFit`, `seasonal_strength` |
+| **Utilities** | `fourier`, `ols`, `OlsFit`, `seasonal_strength` |
 
 ---
 
@@ -296,18 +296,25 @@ summary(result)
 ### Seasonal Strength
 
 Measure the strength of seasonality in an MSTL decomposition.
+Reference: Wang, Smith & Hyndman (2006), Section 3.1.
 
 ```julia
 seasonal_strength(x; m, kwargs...)
 seasonal_strength(res::MSTLResult)
 ```
 
-The seasonal strength is computed as:
+Let \(R_t\) denote the remainder and \(S_t\) the seasonal component for a given period. The seasonal strength is:
 ```math
-\text{strength} = 1 - \frac{\text{Var}(\text{remainder})}{\text{Var}(\text{remainder} + \text{seasonal})}
+F_{\text{seasonal}} = 1 - \frac{\operatorname{Var}(R_t)}{\operatorname{Var}(R_t + S_t)}
 ```
 
-Values range from 0 (no seasonality) to 1 (strong seasonality).
+Equivalent form in Wang et al. notation (\(X_t = Y_t^* - T_t\), \(Y_t' = Y_t^* - T_t - S_t\)):
+```math
+F_{\text{seasonal}} = 1 - \frac{\operatorname{Var}(Y_t')}{\operatorname{Var}(X_t)}
+```
+
+In Durbyn, the statistic is computed per seasonal component from `MSTLResult.seasonals`
+and clipped to \([0,1]\), where 0 indicates weak seasonality and 1 indicates strong seasonality.
 
 **Example:**
 ```julia
@@ -955,30 +962,6 @@ F = fourier(y; m=12, K=6)
 # Use F as regressors in ARIMA with external regressors
 ```
 
-### Time-Delay Embedding (`embed`)
-
-Create a time-delay embedding matrix (lag matrix).
-
-```julia
-embed(x, dimension=1)
-```
-
-**Arguments:**
-- `x`: Vector or matrix
-- `dimension::Int`: Embedding dimension
-
-**Returns:** Matrix with lags in descending order (compatible with R's `embed`)
-
-**Example:**
-```julia
-y = [1, 2, 3, 4, 5]
-embed(y, 3)
-# Returns:
-# 3  2  1
-# 4  3  2
-# 5  4  3
-```
-
 ### Ordinary Least Squares (`ols`)
 
 Fit OLS linear regression.
@@ -1195,3 +1178,4 @@ println("KPSS test statistic: $(kpss_result.teststat)")
 - Osborn, D. R., Chui, A. P. L., Smith, J. P., & Birchenhall, C. R. (1988). *Seasonality and the Order of Integration for Consumption*. Oxford Bulletin of Economics and Statistics, 50, 361-377.
 - Box, G. E. P., Jenkins, G. M., Reinsel, G. C., & Ljung, G. M. (2015). *Time Series Analysis: Forecasting and Control*. Wiley.
 - Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.). Springer.
+- Wang, X., Smith, K. A., & Hyndman, R. J. (2006). *Characteristic-based clustering for time series data*. Data Mining and Knowledge Discovery, 13(3), 335-364.

@@ -21,9 +21,7 @@
         allow_multiplicative_trend::Bool = false,
         use_initial_values::Bool = false,
         missing_method::MissingMethod = Contiguous(),
-        options::NelderMeadOptions = NelderMeadOptions(),
-        optim_method::Symbol = :nelder_mead,
-        optim_control::Dict = Dict()
+        options::NelderMeadOptions = NelderMeadOptions()
     ) -> EtsModel
 
 Exponential smoothing state space model (ETS).
@@ -80,8 +78,6 @@ information criterion given by `ic`.
 - `missing_method::MissingMethod=Contiguous()`: Strategy for handling missing values in `y`.
   Use `Contiguous()` (largest contiguous block), `Interpolate()` (interpolate), or `FailMissing()` (error).
 - `options::NelderMeadOptions=NelderMeadOptions()`: Optimizer configuration for parameter estimation.
-- `optim_method::Symbol=:nelder_mead`: Optimizer used internally (`:nelder_mead`, `:bfgs`, `:lbfgsb`, `:brent`).
-- `optim_control::Dict=Dict()`: Optional optimizer controls in ARIMA style (e.g. `"maxit"`, `"ndeps"`, `"trace"`, `"REPORT"`, `"reltol"`).
 
 # Details
 The ETS family encompasses exponential smoothing methods within a state space
@@ -149,20 +145,11 @@ function ets(
     allow_multiplicative_trend::Bool = false,
     use_initial_values::Bool = false,
     missing_method::MissingMethod = Contiguous(),
-    options::NelderMeadOptions = NelderMeadOptions(maxit=2000),
-    optim_method::Symbol = :nelder_mead,
-    optim_control::Dict = Dict(),
+    options::NelderMeadOptions = NelderMeadOptions(maxit=2000)
 )
 
     if model == "ZZZ" && is_constant(y)
-        return ses(
-            y,
-            alpha = 0.99999,
-            initial = :simple,
-            options = options,
-            optim_method = optim_method,
-            optim_control = optim_control,
-        )
+        return ses(y, alpha = 0.99999, initial = :simple)
     end
 
     out = ets_base_model(
@@ -187,9 +174,7 @@ function ets(
         allow_multiplicative_trend = allow_multiplicative_trend,
         use_initial_values = use_initial_values,
         missing_method = missing_method,
-        options = options,
-        optim_method = optim_method,
-        optim_control = optim_control,
+        options=options
     )
 
     return out

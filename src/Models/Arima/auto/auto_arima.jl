@@ -110,15 +110,10 @@ function auto_arima(
     biasadj::Bool = false,
     kwargs...,
 )
-    throw(
-        ErrorException(
-            "auto_arima is temporarily disabled while the ARIMA core is being reimplemented from equations.",
-        ),
-    )
 
     _check_arg(ic, (:aicc, :aic, :bic), "ic")
     _check_arg(test, (:kpss, :adf, :pp), "test")
-    _check_arg(seasonal_test, (:seas, :ocsb, :hegy, :ch), "seasonal_test")
+    _check_arg(seasonal_test, (:seas, :ocsb), "seasonal_test")
 
     if isnothing(approximation)
         approximation = (length(y) > 150 | m > 12)
@@ -130,7 +125,7 @@ function auto_arima(
 
     # Check for all missing data before trying to slice xreg
     if isnothing(firstnm)
-        throw(ArgumentError("all observations are missing"))
+        throw(ArgumentError("All data are missing"))
     end
 
     if !isnothing(xreg)
@@ -140,7 +135,7 @@ function auto_arima(
     # Check constant data
     if is_constant(x)
         if all(ismissing, x)
-            throw(ArgumentError("all observations are missing"))
+            throw(ArgumentError("All data are missing"))
         end
 
         if allowmean
@@ -184,24 +179,24 @@ function auto_arima(
         x, lambda = box_cox(x, m, lambda = lambda)
     end
 
-    x_work = copy(x)
-    xreg_work = xreg
+    xx = copy(x)
+    xregg = xreg
 
-    if !isnothing(xreg_work)
-        if is_constant_all(xreg_work)
-            xreg_work = nothing
+    if !isnothing(xregg)
+        if is_constant_all(xregg)
+            xregg = nothing
         else
-            xreg_work = drop_constant_columns(xreg_work)
+            xregg = drop_constant_columns(xregg)
 
-            if is_rank_deficient(xreg_work)
+            if is_rank_deficient(xregg)
                 throw(ArgumentError("xreg is rank deficient"))
             end
-            j = .!ismissing.(x) .& .!ismissing.(row_sums(xreg_work))
+            j = .!ismissing.(x) .& .!ismissing.(row_sums(xregg))
             # OLS with intercept for unit root test residuals
-            xreg_work_with_intercept = hcat(ones(size(xreg_work.data, 1)), xreg_work.data)
-            fitt = ols(copy(x), xreg_work_with_intercept)
+            xregg_with_intercept = hcat(ones(size(xregg.data, 1)), xregg.data)
+            fitt = ols(copy(x), xregg_with_intercept)
             res = residuals(fitt)
-            x_work[j] .= res
+            xx[j] .= res
         end
     end
 
@@ -217,20 +212,20 @@ function auto_arima(
         D = 0
         max_P = 0
         max_Q = 0
-    elseif isnothing(D) && length(x_work) <= 2 * m
+    elseif isnothing(D) && length(xx) <= 2 * m
         D = 0
     elseif isnothing(D)
-        D = nsdiffs(x_work, m; test = seasonal_test, max_D = max_D, seasonal_test_args...)
+        D = nsdiffs(xx, m; test = seasonal_test, max_D = max_D, seasonal_test_args...)
         # Ensure xreg not null after seasonal differencing
-        if D > 0 && !isnothing(xreg_work)
-            differenced_xreg = diff(xreg_work; difference_order=D, lag_steps=m)
-            if any(is_constant(differenced_xreg))
+        if D > 0 && !isnothing(xregg)
+            diffxreg = diff(xregg; difference_order = D, lag_steps = m)
+            if any(is_constant(diffxreg))
                 D -= 1
             end
         end
-        # Ensure x_work not all missing after seasonal differencing
+        # Ensure xx not all missing after seasonal differencing
         if D > 0
-            dx_tmp = diff(x_work; difference_order=D, lag_steps=m)
+            dx_tmp = diff(xx; difference_order = D, lag_steps = m)
             if all(ismissing, dx_tmp)
                 D -= 1
             end
@@ -239,19 +234,19 @@ function auto_arima(
     
     # Apply seasonal differencing
     if D > 0
-        dx = diff(x_work; difference_order=D, lag_steps=m)
+        dx = diff(xx; difference_order = D, lag_steps = m)
     else
-        dx = copy(x_work)
+        dx = copy(xx)
     end
 
     # Prepare differenced xreg (seasonal part)
-    differenced_xreg = nothing
+    diffxreg = nothing
 
-    if !isnothing(xreg_work)
+    if !isnothing(xregg)
         if D > 0
-            differenced_xreg = diff(xreg_work; difference_order=D, lag_steps=m)
+            diffxreg = diff(xregg; difference_order = D, lag_steps = m)
         else
-            differenced_xreg = xreg_work
+            diffxreg = xregg
         end
     end
 
@@ -260,15 +255,15 @@ function auto_arima(
     if isnothing(d)
         d = ndiffs(dx; test = test, max_d = max_d, test_args...)
         # Ensure xreg not null after additional (non-seasonal) differencing
-        if d > 0 && !isnothing(xreg_work)
-            differenced_xreg = diff(differenced_xreg; difference_order=d, lag_steps=1)
-            if any(is_constant(differenced_xreg))
+        if d > 0 && !isnothing(xregg)
+            diffxreg = diff(diffxreg; difference_order = d, lag_steps = 1)
+            if any(is_constant(diffxreg))
                 d -= 1
             end
         end
         # Ensure dx not all missing after additional differencing
         if d > 0
-            diffdx = diff(dx; difference_order=d, lag_steps=1)
+            diffdx = diff(dx; difference_order = d, lag_steps = 1)
             if all(ismissingish, diffdx) # TODO
                 d -= 1
             end
@@ -284,12 +279,12 @@ function auto_arima(
 
     # apply non-seasonal differencing
     if d > 0
-        dx = diff(dx; difference_order=d, lag_steps=1)
+        dx = diff(dx; difference_order = d, lag_steps = 1)
     end
 
     # terminal checks
     if length(dx) == 0
-        throw(ArgumentError("series has zero length after differencing"))
+        throw(ArgumentError("Not enough data to proceed"))
     elseif is_constant(dx)
         # constant process (after differencing)
         if isnothing(xreg)

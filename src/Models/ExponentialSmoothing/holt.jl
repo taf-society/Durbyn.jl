@@ -64,10 +64,10 @@ end
 """
     holt(y; damped=false, initial=:optimal, exponential=false, alpha=nothing,
          beta=nothing, phi=nothing, lambda=nothing, biasadj=false,
-         options=NelderMeadOptions(), optim_method=:nelder_mead, optim_control=Dict())
+         options=NelderMeadOptions())
     holt(y, m; damped=false, initial=:optimal, exponential=false, alpha=nothing,
          beta=nothing, phi=nothing, lambda=nothing, biasadj=false,
-         options=NelderMeadOptions(), optim_method=:nelder_mead, optim_control=Dict())
+         options=NelderMeadOptions())
 
 Fit Holt's linear trend method to a time series.
 
@@ -103,8 +103,6 @@ seasonality using two smoothing equations: one for the level and one for the tre
   - `Float64`: Use specified λ value.
 - `biasadj::Bool=false`: Apply bias adjustment for Box-Cox back-transformation.
 - `options::NelderMeadOptions`: Optimization options for parameter estimation.
-- `optim_method::Symbol=:nelder_mead`: Optimizer method (`:nelder_mead`, `:bfgs`, `:lbfgsb`, `:brent`).
-- `optim_control::Dict=Dict()`: Optional ARIMA-style optimizer controls (e.g. `"maxit"`, `"ndeps"`, `"trace"`).
 
 # Returns
 - `Holt`: Fitted Holt model object containing fitted values, residuals, parameters,
@@ -213,12 +211,10 @@ function holt(
     lambda::Union{Float64,Bool,Nothing} = nothing,
     biasadj::Bool = false,
     options::NelderMeadOptions = NelderMeadOptions(),
-    optim_method::Symbol = :nelder_mead,
-    optim_control::Dict = Dict(),
 )
     holt(y, 1, damped=damped, initial=initial, exponential=exponential,
          alpha=alpha, beta=beta, phi=phi, lambda=lambda, biasadj=biasadj,
-         options=options, optim_method=optim_method, optim_control=optim_control)
+         options=options)
 end
 
 function holt(
@@ -233,8 +229,6 @@ function holt(
     lambda::Union{Float64,Bool,Nothing} = nothing,
     biasadj::Bool = false,
     options::NelderMeadOptions = NelderMeadOptions(),
-    optim_method::Symbol = :nelder_mead,
-    optim_control::Dict = Dict(),
 
 )
 
@@ -263,8 +257,6 @@ function holt(
                 lambda = lambda,
                 biasadj = biasadj,
                 options = options,
-                optim_method = optim_method,
-                optim_control = optim_control,
             )
         else
             model = ets_base_model(
@@ -278,9 +270,7 @@ function holt(
                 opt_crit = :mse,
                 lambda = lambda,
                 biasadj = biasadj,
-                options = options,
-                optim_method = optim_method,
-                optim_control = optim_control,
+                options = options
             )
         end
     else
@@ -294,9 +284,7 @@ function holt(
             exponential = exponential,
             lambda = lambda,
             biasadj = biasadj,
-            options = options,
-            optim_method = optim_method,
-            optim_control = optim_control,
+            options = options
         )
     end
 

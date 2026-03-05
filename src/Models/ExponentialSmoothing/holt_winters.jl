@@ -65,8 +65,7 @@ end
     holt_winters(y, m; seasonal=:additive, damped=false, initial=:optimal,
                  exponential=false, alpha=nothing, beta=nothing, gamma=nothing,
                  phi=nothing, lambda=nothing, biasadj=false,
-                 options=NelderMeadOptions(), optim_method=:nelder_mead,
-                 optim_control=Dict())
+                 options=NelderMeadOptions())
 
 Fit Holt-Winters' seasonal method to a time series.
 
@@ -104,8 +103,6 @@ for the level, one for the trend, and one for the seasonal component.
   - `Float64`: Use specified λ value.
 - `biasadj::Bool=false`: Apply bias adjustment for Box-Cox back-transformation.
 - `options::NelderMeadOptions`: Optimization options for parameter estimation.
-- `optim_method::Symbol=:nelder_mead`: Optimizer method (`:nelder_mead`, `:bfgs`, `:lbfgsb`, `:brent`).
-- `optim_control::Dict=Dict()`: Optional ARIMA-style optimizer controls (e.g. `"maxit"`, `"ndeps"`, `"trace"`).
 
 # Returns
 - `HoltWinters`: Fitted Holt-Winters model object containing fitted values, residuals,
@@ -231,8 +228,6 @@ function holt_winters(
     lambda::Union{Float64,Bool,Nothing} = nothing,
     biasadj::Bool = false,
     options::NelderMeadOptions = NelderMeadOptions(),
-    optim_method::Symbol = :nelder_mead,
-    optim_control::Dict = Dict(),
 )
 
     initial = _check_arg(initial, (:optimal, :simple), "initial")
@@ -279,8 +274,6 @@ function holt_winters(
             lambda = lambda,
             biasadj = biasadj,
             options = options,
-            optim_method = optim_method,
-            optim_control = optim_control,
         )
 
     else
@@ -296,8 +289,6 @@ function holt_winters(
             lambda = lambda,
             biasadj = biasadj,
             options = options,
-            optim_method = optim_method,
-            optim_control = optim_control,
         )
     end
 

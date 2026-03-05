@@ -61,10 +61,8 @@ struct SES
 end
 
 """
-    ses(y; initial=:optimal, alpha=nothing, lambda=nothing, biasadj=false,
-        options=NelderMeadOptions(), optim_method=:nelder_mead, optim_control=Dict())
-    ses(y, m; initial=:optimal, alpha=nothing, lambda=nothing, biasadj=false,
-        options=NelderMeadOptions(), optim_method=:nelder_mead, optim_control=Dict())
+    ses(y; initial=:optimal, alpha=nothing, lambda=nothing, biasadj=false, options=NelderMeadOptions())
+    ses(y, m; initial=:optimal, alpha=nothing, lambda=nothing, biasadj=false, options=NelderMeadOptions())
 
 Fit a Simple Exponential Smoothing (SES) model to a time series.
 
@@ -89,8 +87,6 @@ smoothing parameter α to exponentially weight past observations.
   - `Float64`: Use specified λ value.
 - `biasadj::Bool=false`: Apply bias adjustment for Box-Cox back-transformation.
 - `options::NelderMeadOptions`: Optimization options for parameter estimation.
-- `optim_method::Symbol=:nelder_mead`: Optimizer method (`:nelder_mead`, `:bfgs`, `:lbfgsb`, `:brent`).
-- `optim_control::Dict=Dict()`: Optional ARIMA-style optimizer controls (e.g. `"maxit"`, `"ndeps"`, `"trace"`).
 
 # Returns
 - `SES`: Fitted SES model object containing fitted values, residuals, parameters,
@@ -141,22 +137,9 @@ function ses(
     alpha::Union{Float64,Bool,Nothing} = nothing,
     lambda::Union{Float64,Bool,Nothing} = nothing,
     biasadj::Bool = false,
-    options::NelderMeadOptions = NelderMeadOptions(),
-    optim_method::Symbol = :nelder_mead,
-    optim_control::Dict = Dict(),
-)
+    options::NelderMeadOptions = NelderMeadOptions(),)
 
-    ses(
-        y,
-        1,
-        initial = initial,
-        alpha = alpha,
-        lambda = lambda,
-        biasadj = biasadj,
-        options = options,
-        optim_method = optim_method,
-        optim_control = optim_control,
-    )
+    ses(y, 1, initial = initial, alpha = alpha, lambda = lambda, biasadj = biasadj, options = options)
 end
 
 function ses(
@@ -167,8 +150,6 @@ function ses(
     lambda::Union{Float64,Bool,Nothing} = nothing,
     biasadj::Bool = false,
     options::NelderMeadOptions = NelderMeadOptions(),
-    optim_method::Symbol = :nelder_mead,
-    optim_control::Dict = Dict(),
 )
 
     initial = _check_arg(initial, (:optimal, :simple), "initial")
@@ -183,8 +164,6 @@ function ses(
             lambda = lambda,
             biasadj = biasadj,
             options = options,
-            optim_method = optim_method,
-            optim_control = optim_control,
         )
         loglik = model.loglik
         aic = model.aic
@@ -203,8 +182,6 @@ function ses(
             lambda = lambda,
             biasadj = biasadj,
             options = options,
-            optim_method = optim_method,
-            optim_control = optim_control,
         )
         loglik = NaN
         aic = NaN

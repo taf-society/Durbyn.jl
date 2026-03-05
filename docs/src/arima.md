@@ -151,7 +151,7 @@ Reference: [HK2008], [BJL2015, Ch. 9].
 ## 7. Implementation Mathematics (Core Algorithm)
 
 This section documents the equations used by Durbyn's ARIMA core implementation.
-Citation keys used in this section: `[BJL2015]`, `[HK2008]`, `[Hamilton1994]`, `[Jones1980]`, `[Monahan1984]`, `[Harvey1989]`, `[DK2012]`, `[Akaike1974]`, `[Schwarz1978]`, `[HurvichTsai1989]`.
+Citation keys used in this section: `[BJL2015]`, `[HK2008]`, `[Hamilton1994]`, `[Jones1980]`, `[Monahan1984]`, `[Harvey1989]`, `[DK2012]`, `[Akaike1974]`, `[Schwarz1978]`, `[HurvichTsai1989]`, `[BD2016]`.
 
 ### 7.1 Multiplicative Seasonal ARIMA
 References: [BJL2015, Ch. 9], [HK2008].
@@ -310,7 +310,7 @@ Transition (companion + differencing block):
 
 ```math
 \alpha_{t+1}=T\alpha_t+R\varepsilon_t,\qquad
-y_t=Z^\top\alpha_t+\varepsilon_t.
+y_t=Z^\top\alpha_t.
 ```
 
 Process covariance:
@@ -393,18 +393,18 @@ f_{\text{CSS}}(\theta)=\frac12\log \sigma^2_{\text{CSS}}.
 ```
 
 ### 7.12 Information Criteria
-References: [Akaike1974], [Schwarz1978], [HurvichTsai1989].
+References: [Akaike1974], [Schwarz1978], [HurvichTsai1989], [BD2016, Sec. 5.5.2].
 
-If \(k\) is number of free mean/ARIMA/xreg parameters and \(\ell\) the maximized log-likelihood:
+If \(k\) is number of free mean/ARIMA/xreg parameters and \(\ell\) the maximized log-likelihood, define \(m=k+1\) (including \(\sigma^2\)):
 
 ```math
-\text{AIC}=-2\ell+2(k+1),
+\text{AIC}=-2\ell+2m,
 ```
 ```math
-\text{BIC}=-2\ell+(k+1)\log n,
+\text{BIC}=-2\ell+m\log n,
 ```
 ```math
-\text{AICc}=\text{AIC}+\frac{2k(k+1)}{n-k-1}.
+\text{AICc}=\text{AIC}+\frac{2m(m+1)}{n-m-1}.
 ```
 
 ### 7.13 Forecasting
@@ -426,7 +426,7 @@ P_{t+1|T}=TP_{t|T}T^\top+V.
 Forecast variance:
 
 ```math
-\operatorname{Var}(\hat y_{T+h|T}) = Z^\top P_{T+h|T} Z + \hat\sigma^2.
+\operatorname{Var}(\hat y_{T+h|T}) = \hat\sigma^2\,(Z^\top P_{T+h|T} Z).
 ```
 
 Prediction interval at level \(1-\alpha\):
@@ -666,6 +666,7 @@ plot(fc2)
 
 ## References
 - [Akaike1974] Akaike, H. (1974). *A new look at the statistical model identification*. IEEE Transactions on Automatic Control, 19(6), 716-723.
+- [BD2016] Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.). Springer.
 - [BJL2015] Box, G. E. P., Jenkins, G. M., Reinsel, G. C., & Ljung, G. M. (2015). *Time Series Analysis: Forecasting and Control* (5th ed.). Wiley.
 - [DK2012] Durbin, J., & Koopman, S. J. (2012). *Time Series Analysis by State Space Methods* (2nd ed.). Oxford University Press.
 - [Hamilton1994] Hamilton, J. D. (1994). *Time Series Analysis*. Princeton University Press.

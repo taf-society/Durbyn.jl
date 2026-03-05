@@ -172,12 +172,11 @@ end
 #
 # Iterates the prediction step without updates to produce h-step-ahead forecasts.
 #   ŷ_{T+j} = Z' * a_{T+j|T}
-#   Var(ŷ_{T+j}) = Z' * P_{T+j|T} * Z + h
+#   Var(ŷ_{T+j}) = Z' * P_{T+j|T} * Z
 function kalman_forecast(n_ahead::Int, mod::Union{ArimaStateSpace,SARIMASystem}; update::Bool=false)
     Z = mod.Z
     T = mod.T
     V = mod.V
-    h = mod.h
     a = copy(mod.a)
     P = copy(mod.P)
 
@@ -202,7 +201,7 @@ function kalman_forecast(n_ahead::Int, mod::Union{ArimaStateSpace,SARIMASystem};
         _predict_covariance!(Pnew, T, P, V, work)
 
         # Forecast variance
-        variances[l] = h + dot(Z, Pnew, Z)
+        variances[l] = dot(Z, Pnew, Z)
 
         P .= Pnew
     end

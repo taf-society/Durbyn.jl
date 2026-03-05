@@ -110,7 +110,7 @@ function _error_arimafit()
         sys, nothing, results,
         nothing, nothing,
         false, false, nothing, nothing,
-        :css_ml, false, :gardner1980, :bfgs, Dict(), 1e6,
+        :css_ml, false, :bfgs, Dict(), 1e6,
         0, nothing, nothing,
     )
     return ArimaFit(m, "Error model")

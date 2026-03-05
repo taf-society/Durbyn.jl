@@ -320,6 +320,7 @@ strength = seasonal_strength(result)
 ### ACF (`acf`)
 
 Compute the sample autocorrelation function.
+References: Brockwell & Davis (2016), Definition 1.4.4 and Remark 3.
 
 ```julia
 acf(y, m, n_lags=nothing; demean=true)
@@ -349,6 +350,7 @@ n_{\text{lags}} = \min\!\Big(\lfloor 10\,\log_{10}(n) \rfloor,\; n-1\Big)
 ```math
 \text{CI} = \pm\,\frac{1.96}{\sqrt{n}}
 ```
+Under the iid null and large \(n\), \(\hat\rho(k)\) for \(k>0\) is approximately \(N(0, 1/n)\).
 
 Sample variance (biased, divisor `n`):
 ```math
@@ -359,6 +361,7 @@ Sample autocovariance at lag `k`:
 ```math
 \hat{\gamma}(k) = \frac{1}{n}\sum_{t=1}^{n-k}(y_t - \bar{y})(y_{t+k} - \bar{y})
 ```
+The divisor is \(n\), not \(n-k\), matching the standard sample autocovariance definition used in Box-Jenkins style time series analysis.
 
 Sample autocorrelation:
 ```math
@@ -378,6 +381,7 @@ plot(result)   # Requires Plots.jl
 ### PACF (`pacf`)
 
 Compute the sample partial autocorrelation function using the Durbin-Levinson algorithm.
+References: Brockwell & Davis (2016), Section 2.5.3 and Section 3.2.3.
 
 ```julia
 pacf(y, m, n_lags=nothing)
@@ -417,6 +421,7 @@ PACF value at lag `k`:
 ```math
 \text{PACF}(k) = \phi_{k,k}
 ```
+For a causal AR(\(p\)) process, \(\phi_{k,k}=0\) for all \(k>p\), which gives the PACF cutoff diagnostic for AR order selection.
 
 **Example:**
 ```julia
@@ -1187,3 +1192,4 @@ println("KPSS test statistic: $(kpss_result.teststat)")
 - Phillips, P. C. B., & Perron, P. (1988). *Testing for a Unit Root in Time Series Regression*. Biometrika, 72(2), 335-346.
 - Osborn, D. R., Chui, A. P. L., Smith, J. P., & Birchenhall, C. R. (1988). *Seasonality and the Order of Integration for Consumption*. Oxford Bulletin of Economics and Statistics, 50, 361-377.
 - Box, G. E. P., Jenkins, G. M., Reinsel, G. C., & Ljung, G. M. (2015). *Time Series Analysis: Forecasting and Control*. Wiley.
+- Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.). Springer.

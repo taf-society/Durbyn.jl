@@ -10,6 +10,9 @@ Container for sample autocorrelation function (ACF) results.
 - `m::Int`: Seasonal frequency metadata provided by the caller.
 - `ci::Float64`: Approximate 95% confidence limit `1.96 / sqrt(n)`.
 - `type::Symbol`: Always `:acf`.
+
+# References
+- Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.), Def. 1.4.4.
 """
 struct ACFResult
     values::Vector{Float64}
@@ -32,6 +35,9 @@ Container for sample partial autocorrelation function (PACF) results.
 - `m::Int`: Seasonal frequency metadata provided by the caller.
 - `ci::Float64`: Approximate 95% confidence limit `1.96 / sqrt(n)`.
 - `type::Symbol`: Always `:pacf`.
+
+# References
+- Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.), Sec. 2.5.3.
 """
 struct PACFResult
     values::Vector{Float64}
@@ -42,7 +48,11 @@ struct PACFResult
     type::Symbol
 end
 
-@inline _acf_default_n_lags(sample_size::Int) = min(floor(Int, 10 * log10(sample_size)), sample_size - 1)
+const _ACF_DEFAULT_LAG_FACTOR = 10.0
+const _ACF_NORMAL_95_QUANTILE = 1.96
+
+@inline _acf_default_n_lags(sample_size::Int) = min(floor(Int, _ACF_DEFAULT_LAG_FACTOR * log10(sample_size)), sample_size - 1)
+@inline _acf_confidence_interval(sample_size::Int) = _ACF_NORMAL_95_QUANTILE / sqrt(sample_size)
 
 function _validate_lag_inputs(sample_size::Int, seasonal_period::Int, n_lags::Int; pacf_mode::Bool=false)
     sample_size >= 2 || throw(ArgumentError("series must contain at least 2 observations"))
@@ -92,16 +102,17 @@ end
 """
     acf(y, m, n_lags=nothing; demean=true) -> ACFResult
 
-Compute the sample autocorrelation function using:
+Compute the sample autocorrelation function.
 
-`gamma_hat(0) = (1/n) * sum((y_t - y_bar)^2)`
+Implemented equations:
 
-`gamma_hat(k) = (1/n) * sum((y_t - y_bar) * (y_{t+k} - y_bar))`
+- `n_lags = min(floor(Int, 10 * log10(n)), n - 1)` when omitted.
+- `gamma_hat(k) = (1/n) * sum((y_t - y_bar) * (y_{t+k} - y_bar))`.
+- `rho_hat(k) = gamma_hat(k) / gamma_hat(0)` with `rho_hat(0) = 1`.
+- `CI_95 = ± 1.96 / sqrt(n)`.
 
-`rho_hat(k) = gamma_hat(k) / gamma_hat(0)`.
-
-If `n_lags` is omitted, it defaults to
-`min(floor(Int, 10 * log10(n)), n - 1)`.
+# References
+- Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.), Def. 1.4.4 and Sec. 1.6.
 """
 function acf(y::AbstractVector{<:Real}, m::Int, n_lags::Union{Int,Nothing}=nothing; demean::Bool=true)
     clean_series = collect(Float64, y)
@@ -111,7 +122,7 @@ function acf(y::AbstractVector{<:Real}, m::Int, n_lags::Union{Int,Nothing}=nothi
 
     acf_values = _acf_values(clean_series, selected_lags; demean=demean)
     lag_indices = collect(0:selected_lags)
-    confidence_interval = 1.96 / sqrt(sample_size)
+    confidence_interval = _acf_confidence_interval(sample_size)
 
     return ACFResult(acf_values, lag_indices, sample_size, m, confidence_interval, :acf)
 end
@@ -121,6 +132,15 @@ end
 
 Compute the sample partial autocorrelation function (PACF) using the
 Durbin-Levinson recursion on sample ACF values.
+
+Implemented equations:
+- `phi_{1,1} = rho_hat(1)`.
+- `phi_{k,k} = (rho_hat(k) - sum(phi_{k-1,j} * rho_hat(k-j), j=1..k-1)) /
+               (1 - sum(phi_{k-1,j} * rho_hat(j), j=1..k-1))`.
+- `phi_{k,j} = phi_{k-1,j} - phi_{k,k} * phi_{k-1,k-j}`.
+
+# References
+- Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.), Sec. 2.5.3.
 """
 function pacf(y::AbstractVector{<:Real}, m::Int, n_lags::Union{Int,Nothing}=nothing)
     clean_series = collect(Float64, y)
@@ -165,7 +185,7 @@ function pacf(y::AbstractVector{<:Real}, m::Int, n_lags::Union{Int,Nothing}=noth
     end
 
     lag_indices = collect(1:selected_lags)
-    confidence_interval = 1.96 / sqrt(sample_size)
+    confidence_interval = _acf_confidence_interval(sample_size)
     return PACFResult(pacf_values, lag_indices, sample_size, m, confidence_interval, :pacf)
 end
 

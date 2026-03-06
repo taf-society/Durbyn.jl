@@ -98,75 +98,61 @@ residuals, and decomposition metadata.
 
 ---
 
-## Methodology (Fiorucci et al., 2016)
+## Methodology (Equation Mapping)
 
-The classic Theta line with second-difference scaling ``\theta``:
+This implementation follows the equations in the Theta model papers and the math specification.
+
+Seasonality test (used before decomposition, with lag `m`):
 
 ```math
-Z_t(\theta) = \theta Y_t + (1-\theta)(A_n + B_n t), \qquad
-A_n = \overline{Y} - \tfrac{n+1}{2}B_n,\quad
-B_n = \frac{6}{n^2-1}\!\left(\frac{2}{n}\sum_{t=1}^{n} tY_t - \frac{1+n}{n}\sum_{t=1}^{n} Y_t\right).
+t_m = \frac{r_m}{\sqrt{\left(1 + 2\sum_{k=1}^{m-1} r_k^2\right)/n}},
+\qquad
+\text{seasonal if } |t_m| > 1.645.
 ```
 
-Recomposition for ``\theta_1 = 0, \theta_2 = \theta`` gives
-```math
-Y_t = \left(1-\tfrac{1}{\theta}\right)(A_n + B_n t) + \tfrac{1}{\theta} Z_t(\theta).
-```
-
-Forecasts combine regression and the SES extrapolation of the theta line:
+Theta-line decomposition:
 
 ```math
-\widehat{Y}_{n+h\mid n} =
-\left(1-\tfrac{1}{\theta}\right)\!\bigl[A_n + B_n(n+h)\bigr]
- + \tfrac{1}{\theta}\,\widetilde{Z}_{n+h\mid n}(\theta),
-```
-
-with SES recursion and closed form for ``h=1``:
-
-```math
-\ell_t = \alpha Y_t + (1-\alpha)\ell_{t-1}, \qquad \ell_0 = \ell_0^*/\theta
+Z_t(\theta) = \theta Y_t + (1-\theta)(A_n + B_n t),
 ```
 ```math
-\widetilde{Z}_{n+1\mid n}(\theta) =
-\theta \ell_n + (1-\theta)\!\left[
-  A_n\bigl(1-(1-\alpha)^n\bigr) +
-  B_n\Bigl(n+\bigl(1-\tfrac{1}{\alpha}\bigr)\bigl(1-(1-\alpha)^n\bigr)\Bigr)
-\right].
+B_n = \frac{6}{n^2-1}\left[\frac{2}{n}\sum_{t=1}^{n} tY_t - \frac{1+n}{n}\sum_{t=1}^{n} Y_t\right],
+\qquad
+A_n = \frac{1}{n}\sum_{t=1}^{n}Y_t - \frac{n+1}{2}B_n.
 ```
 
-Optimised Theta (state-space form):
+Static Theta state equations (STM/OTM):
 
 ```math
-Y_t = \mu_t + \varepsilon_t, \qquad
-\mu_t = \ell_{t-1} + \left(1-\tfrac{1}{\theta}\right)\!\left[(1-\alpha)^{t-1}A_n + \tfrac{1-(1-\alpha)^t}{\alpha}B_n\right], \qquad
+\mu_t = \ell_{t-1} + \left(1-\frac{1}{\theta}\right)\left[(1-\alpha)^{t-1}A_n + \frac{1-(1-\alpha)^t}{\alpha}B_n\right],
+\qquad
 \ell_t = \alpha Y_t + (1-\alpha)\ell_{t-1}.
 ```
 
-The ``h``-step-ahead forecast from origin ``n``:
+Dynamic Theta state equations (DSTM/DOTM):
 
 ```math
-\widehat{Y}_{n+h\mid n} = \ell_n + \left(1-\tfrac{1}{\theta}\right)\!\left[(1-\alpha)^n A_n + \left[(h-1) + \tfrac{1-(1-\alpha)^{n+1}}{\alpha}\right]B_n\right].
+\mu_t = \ell_{t-1} + \left(1-\frac{1}{\theta}\right)\left[(1-\alpha)^{t-1}A_{t-1} + \frac{1-(1-\alpha)^t}{\alpha}B_{t-1}\right],
 ```
-
-Dynamic variants update regression coefficients each period:
-
 ```math
-\widehat{Y}_{t+1\mid t} = \ell_t + \left(1-\tfrac{1}{\theta}\right)\!\left[(1-\alpha)^t A_t + \tfrac{1-(1-\alpha)^{t+1}}{\alpha}B_t\right],
-```
-
-```math
-A_t = \overline{Y}_t - \tfrac{t+1}{2} B_t, \qquad
-B_t = \tfrac{1}{t+1}\!\left[(t-2)B_{t-1} + \tfrac{6}{t}(Y_t - \overline{Y}_{t-1})\right], \qquad
-\overline{Y}_t = \tfrac{1}{t}\!\left[(t-1)\overline{Y}_{t-1} + Y_t\right].
-```
-
-Parameters are estimated by SSE / Gaussian likelihood:
-
-```math
-(\widehat{\ell}_0, \widehat{\alpha}, \widehat{\theta}) = \arg\min_{\ell_0,\alpha,\theta} \sum_{t=1}^{n} (Y_t - \mu_t)^2,
+\bar{Y}_t = \frac{(t-1)\bar{Y}_{t-1} + Y_t}{t},
 \qquad
-l = -\tfrac{n}{2}\log(\mathrm{SSE}/n) - \tfrac{n}{2}(1+\log 2\pi).
+B_t = \frac{(t-2)B_{t-1} + 6(Y_t-\bar{Y}_{t-1})/t}{t+1},
+\qquad
+A_t = \bar{Y}_t - \frac{t+1}{2}B_t.
 ```
+
+Optimization target (`nmse = H`) is horizon-averaged multi-step SSE:
+
+```math
+\mathcal{L} = \frac{1}{H}\sum_{h=1}^{H}\text{MSE}_h,\qquad
+\text{MSE}_h = \frac{1}{N_h}\sum_t (Y_{t+h}-\widehat{Y}_{t+h\mid t})^2.
+```
+
+For DSTM/DOTM, error accumulation starts at index `t=3` as in the dynamic model definition.
+
+Out-of-sample recursion uses the same state equations, with forecast substitution
+(`Y_{t+1}` replaced by `\widehat{Y}_{t+1|t}`) for horizons `h>1`.
 
 ### Prediction intervals
 
@@ -196,3 +182,5 @@ The mapping to SES with drift (Theorem 2 in Fiorucci et al.) is ``b = (1-\tfrac{
   International Journal of Forecasting, 32(4), 1151–1161.
 - Assimakopoulos, V., & Nikolopoulos, K. (2000). The theta model: a decomposition 
   approach to forecasting. International Journal of Forecasting, 16(4), 521-530.
+- Hyndman, R. J., & Billah, B. (2003). Unmasking the Theta method.
+  International Journal of Forecasting, 19(2), 287-290.

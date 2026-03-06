@@ -103,45 +103,4 @@ export MissingMethod, Contiguous, Interpolate, FailMissing
 export select, query, arrange, groupby, mutate, summarise, summarize
 export pivot_longer, pivot_wider, glimpse
 
-# ── public: accessible as Durbyn.X or `using Durbyn: X` ───────────────────
-
-# Utilities
-public NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
-public Formula, parse_formula, compile, model_matrix, model_frame
-
-# Optimizer config
-public NelderMeadOptions
-
-# Grammar AST types
-public ModelFormula, VarTerm, AutoVarTerm, ArarTerm, ThetaTerm, DiffusionTerm
-public NaiveTerm, SnaiveTerm, RwTerm, MeanfTerm
-
-# Abstract types
-public AbstractModelSpec, AbstractFittedModel
-
-# Fitted model types
-public FittedArima, FittedEts, FittedBats, FittedTbats, FittedTheta, FittedDiffusion
-public FittedSes, FittedHolt, FittedHoltWinters, FittedCroston
-public FittedArar, FittedArarma
-public FittedNaive, FittedSnaive, FittedRw, FittedMeanf
-
-# Collection types
-public ModelCollection, FittedModelCollection, ForecastModelCollection
-public GroupedFittedModels, GroupedForecasts, successful_models, failed_groups
-
-# Internal model structs
-public ArimaFit, PDQ, arima_rjh
-public NaiveFit, MeanFit
-public BATSModel, TBATSModel
-public ARAR, ArarmaModel
-public ThetaFit, ThetaModelType, STM, OTM, DSTM, DOTM
-public DiffusionFit, DiffusionModelType, Bass, Gompertz, GSGompertz, Weibull
-public KWFilterResult, Decomposition
-
-# Result types
-public ACFResult, PACFResult, GroupedTable
-
-# Aliases
-public coef, coefficients, coefs
-
 end

@@ -5,7 +5,7 @@ Result of applying a Kolmogorov-Wiener optimal filter to a time series.
 
 The filter minimizes MSE relative to an ideal filter (bandpass, HP, Butterworth)
 by accounting for the autocovariance structure of the data-generating process,
-estimated via an ARIMA model. Based on Schleicher (2002).
+estimated via an ARIMA model. Based on Schleicher (2004).
 
 # Fields
 - `filtered::Vector{Float64}`: Filtered output (length T)
@@ -35,4 +35,3 @@ end
 fitted(r::KWFilterResult) = r.filtered
 
 residuals(r::KWFilterResult) = r.y .- r.filtered
-

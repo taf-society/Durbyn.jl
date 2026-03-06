@@ -7,7 +7,7 @@ The passband is specified by `low` and `high` in the frequency unit given by `fr
 - `:period` — low and high are periods (e.g., 6 and 32 quarters for business cycle)
 - `:frequency` — low and high are angular frequencies in (0, pi)
 
-Closed-form (Eq. 30 in Schleicher 2002):
+Closed-form (Eq. 30 in Schleicher 2004):
     B_0 = (b - a) / pi
     B_j = [sin(b*j) - sin(a*j)] / (pi*j)   for j != 0
 

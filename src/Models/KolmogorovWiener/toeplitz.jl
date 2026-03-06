@@ -64,7 +64,7 @@ end
 """
     build_D_cumul_matrix(N)
 
-Construct the (N-1) x N cumulation matrix D (Eq. 21, 25 in Schleicher 2002).
+Construct the (N-1) x N cumulation matrix D (Eq. 21, 25 in Schleicher 2004).
 
 Lower-triangular ones in the first N-1 columns, zero in the last column:
     D[i, j] = 1  if j <= i
@@ -85,7 +85,7 @@ end
 """
     build_M_matrix(n1, n2)
 
-Construct the (N-1) x N block matrix M for Proposition 3 (Eq. 21, Schleicher 2002).
+Construct the (N-1) x N block matrix M for Proposition 3 (Eq. 21, Schleicher 2004).
 
 M has block structure:
     [0_{n1×1}  M1_{n1×n1}  0_{n1×n2}]

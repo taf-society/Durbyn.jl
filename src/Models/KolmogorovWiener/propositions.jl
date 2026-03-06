@@ -1,7 +1,7 @@
 """
     proposition1_stationary(gamma, ideal_B, n1, n2)
 
-Proposition 1 (Schleicher 2002): Optimal filter for a **stationary** process (d=0).
+Proposition 1 (Schleicher 2004): Optimal filter for a **stationary** process (d=0).
 
 For observation at position t (with n1 obs before, n2 after), the optimal filter
 weights B_hat satisfy:
@@ -31,7 +31,7 @@ end
 """
     proposition2_random_walk(ideal_B, n1, n2)
 
-Proposition 2 (Schleicher 2002): Optimal filter for a **random walk** (d=1)
+Proposition 2 (Schleicher 2004): Optimal filter for a **random walk** (d=1)
 with **white noise** stationary component (no ARMA structure).
 
 Interior observations use ideal weights. Endpoint observations get modified weights
@@ -82,7 +82,7 @@ end
 """
     proposition3_rw_symmetric(ideal_B, n1, n2, beta)
 
-Proposition 3 (Schleicher 2002): Optimal filter for a **random walk** (d=1)
+Proposition 3 (Schleicher 2004): Optimal filter for a **random walk** (d=1)
 with **white noise** stationary component, for highpass/cycle extraction.
 
 When beta = 0 (highpass), uses the same tail-redistribution as Prop 2.
@@ -126,7 +126,7 @@ end
 """
     proposition4_arima(gamma, ideal_B, n1, n2, beta)
 
-Proposition 4 (Schleicher 2002): Optimal filter for an **ARIMA** process (d>=1)
+Proposition 4 (Schleicher 2004): Optimal filter for an **ARIMA** process (d>=1)
 with non-trivial ARMA stationary component.
 
 Solves the augmented system (Eq. 25):
@@ -136,22 +136,34 @@ where Γ̂ is (N-1)×(N-1) autocovariance Toeplitz, D is (N-1)×N cumulation mat
 Γ is (N-1)×(N-1+2Q) integrated cross-covariance, and C is the cumulated ideal
 coefficient vector.
 
+When `symmetric=true`, uses the symmetric Proposition 4 form:
+    [Γ̂D; ι'] * B̂ = [Γ(MB + (β/2)τ); β]
+with extended `M` and `τ` as in Schleicher (2004).
+
 Returns the filter weight vector of length N.
 """
-function proposition4_arima(gamma::AbstractVector, ideal_B::AbstractVector, n1::Int, n2::Int, beta::Real)
+function proposition4_arima(gamma::AbstractVector, ideal_B::AbstractVector, n1::Int, n2::Int, beta::Real; symmetric::Bool=false)
     N = n1 + 1 + n2
     Q = div(length(ideal_B) - 1, 2)
 
     Gamma_hat = build_toeplitz_gamma_hat(gamma, N - 1)          # (N-1)×(N-1)
     D = build_D_cumul_matrix(N)                                  # (N-1)×N
     Gamma_cross = build_gamma_cross_integrated(gamma, N, Q)      # (N-1)×(N-1+2Q)
-    C = build_C_vector(ideal_B, N, Q, n1)                        # (N-1+2Q)-vector
 
     # Γ̂D: (N-1)×N
     GammaD = Gamma_hat * D
 
-    # ΓC: (N-1)-vector
-    rhs_upper = Gamma_cross * C
+    rhs_vector = if symmetric
+        M_ext = build_M_matrix(n1 + Q, n2 + Q)                   # (N-1+2Q)×(N+2Q)
+        B_ext = _build_extended_ideal_vector(ideal_B, n1, n2)    # (N+2Q)-vector
+        tau_ext = _build_tau_symmetric_prop4(N, Q)               # (N-1+2Q)-vector
+        M_ext * B_ext .+ (beta / 2) .* tau_ext
+    else
+        build_C_vector(ideal_B, N, Q, n1)                        # (N-1+2Q)-vector
+    end
+
+    # Γ * rhs_vector: (N-1)-vector
+    rhs_upper = Gamma_cross * rhs_vector
 
     # [Γ̂D; ι'] B̂ = [ΓC; β]
     A = vcat(Matrix(GammaD), ones(1, N))
@@ -161,6 +173,45 @@ function proposition4_arima(gamma::AbstractVector, ideal_B::AbstractVector, n1::
     return B_hat
 end
 
+@inline function _is_symmetric_filter(ideal_B::AbstractVector{<:Real}; atol::Float64=1e-10)
+    n = length(ideal_B)
+    isodd(n) || return false
+    center = (n + 1) >>> 1
+    @inbounds for j in 1:(center - 1)
+        left = Float64(ideal_B[center - j])
+        right = Float64(ideal_B[center + j])
+        scale = max(abs(left), abs(right), 1.0)
+        abs(left - right) <= atol * scale || return false
+    end
+    return true
+end
+
+function _build_extended_ideal_vector(ideal_B::AbstractVector{<:Real}, n1::Int, n2::Int)
+    Q = div(length(ideal_B) - 1, 2)
+    N = n1 + 1 + n2
+    ncols = N + 2Q
+    center = Q + 1
+    B_ext = zeros(Float64, ncols)
+
+    @inbounds for c in 1:ncols
+        lag = c - (n1 + Q + 1)
+        if -Q <= lag <= Q
+            B_ext[c] = Float64(ideal_B[center + lag])
+        end
+    end
+    return B_ext
+end
+
+function _build_tau_symmetric_prop4(N::Int, Q::Int)
+    n = N - 1 + 2Q
+    tau = fill(-1.0, n)
+    split = Q + N - 1
+    @inbounds for i in 1:split
+        tau[i] = 1.0
+    end
+    return tau
+end
+
 """
     compute_optimal_filter(gamma, ideal_B, n1, n2, d)
 
@@ -168,11 +219,15 @@ Dispatch to the appropriate proposition based on integration order `d`
 and whether the stationary component is white noise.
 
 - d=0: Proposition 1 (stationary)
-- d>=1 + white noise: Proposition 2/3
-- d>=1 + ARMA structure: Proposition 4
+    - d>=1 + white noise:
+        - symmetric ideal filter   -> Proposition 3
+        - non-symmetric ideal filter -> Proposition 2
+    - d>=1 + ARMA structure:
+        - Proposition 4 (symmetric variant when the ideal filter is symmetric)
 """
 function compute_optimal_filter(gamma::AbstractVector, ideal_B::AbstractVector, n1::Int, n2::Int, d::Int)
     beta = sum(ideal_B)
+    is_symmetric = _is_symmetric_filter(ideal_B)
 
     if d == 0
         return proposition1_stationary(gamma, ideal_B, n1, n2)
@@ -191,12 +246,11 @@ function compute_optimal_filter(gamma::AbstractVector, ideal_B::AbstractVector, 
     end
 
     if is_white_noise
-        if abs(beta) > 1e-10
-            return proposition2_random_walk(ideal_B, n1, n2)
-        else
+        if is_symmetric
             return proposition3_rw_symmetric(ideal_B, n1, n2, beta)
         end
+        return proposition2_random_walk(ideal_B, n1, n2)
     else
-        return proposition4_arima(gamma, ideal_B, n1, n2, beta)
+        return proposition4_arima(gamma, ideal_B, n1, n2, beta; symmetric=is_symmetric)
     end
 end

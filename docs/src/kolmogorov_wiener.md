@@ -4,9 +4,8 @@
 
 The Kolmogorov-Wiener (KW) module implements **optimal finite-sample filters** for time series, based on:
 
-> Schleicher, C. (2002). *Kolmogorov-Wiener Filters for Finite Time-Series.*
-> Working Paper, Department of Economics, University of British Columbia.
-> [PDF](https://depts.washington.edu/sce2003/Papers/109.pdf)
+> Schleicher, C. (2004). *Kolmogorov-Wiener Filters for Finite Time-Series.*
+> SSRN Working Paper. DOI: 10.2139/ssrn.769584.
 
 Standard symmetric filters — Hodrick-Prescott, Baxter-King bandpass, Butterworth — are
 designed for *infinite* series. Applied to finite samples, they either lose observations at the
@@ -151,7 +150,7 @@ where:
 
 The solution ``\hat{B} = \hat{\Gamma}^{-1} (\Gamma B)`` gives the MSE-optimal weights.
 
-### Proposition 2: Random Walk with White Noise (``d \ge 1``, ``\beta \ne 0``)
+### Proposition 2: Random Walk with White Noise (``d \ge 1``, non-symmetric ideal filter)
 
 When the stationary component ``\varepsilon_t`` is white noise (no AR or MA structure),
 the solution simplifies to **tail redistribution**:
@@ -168,7 +167,7 @@ the solution simplifies to **tail redistribution**:
 
 This preserves the sum of weights: ``\sum_i \hat{B}_i = \sum_j B_j = \beta``.
 
-### Proposition 3: Random Walk, Symmetric Case (``d \ge 1``, ``\beta \ne 0``)
+### Proposition 3: Random Walk, Symmetric Case (``d \ge 1``, symmetric ideal filter)
 
 For the general case with ``\beta \ne 0`` and white noise innovations, the optimal filter
 solves the augmented system (Eq. 21):
@@ -189,7 +188,9 @@ where:
     column ``\tfrac{1}{2}``
 - ``\tau = \mathbf{1}_{N-1}`` is a vector of ones
 
-When ``\beta = 0`` (pure highpass), this reduces to Proposition 2.
+For symmetric highpass filters (``\beta = 0``), this simplifies to the endpoint-adjustment
+form shown in Schleicher. In implementation, this is numerically equivalent to the
+tail-redistribution solution for finite truncation.
 
 ### Proposition 4: ARIMA with ARMA Structure (``d \ge 1``, general)
 
@@ -217,6 +218,13 @@ where:
   ```
 - ``\iota'`` enforces the sum constraint ``\sum \hat{B}_i = \beta``
 
+For symmetric filters, the symmetric Proposition 4 form is used:
+
+```math
+\begin{bmatrix} \hat{\Gamma} D \\ \iota' \end{bmatrix} \hat{B}
+= \begin{bmatrix} \tilde{\Gamma}\left(MB + \frac{\beta}{2}\tau\right) \\ \beta \end{bmatrix}
+```
+
 **Key property:** As ``\gamma`` approaches white noise (AR/MA coefficients ``\to 0``),
 Proposition 4 converges to Proposition 2/3. This is verified numerically in the test suite.
 
@@ -227,12 +235,15 @@ The implementation automatically selects the appropriate proposition:
 | Condition | Proposition | Method |
 |-----------|-------------|--------|
 | ``d = 0`` | Prop 1 | Full autocovariance solve |
-| ``d \ge 1``, white noise, ``\beta \ne 0`` | Prop 2 | Tail redistribution |
-| ``d \ge 1``, white noise, ``\beta = 0`` | Prop 3 | Augmented system (reduces to Prop 2) |
-| ``d \ge 1``, ARMA structure | Prop 4 | Integrated cross-covariance system |
+| ``d \ge 1``, white noise, non-symmetric ideal filter | Prop 2 | Tail redistribution |
+| ``d \ge 1``, white noise, symmetric ideal filter | Prop 3 | Augmented random-walk symmetric system |
+| ``d \ge 1``, ARMA structure, non-symmetric ideal filter | Prop 4 | Integrated cross-covariance system |
+| ``d \ge 1``, ARMA structure, symmetric ideal filter | Prop 4 (symmetric) | Integrated cross-covariance + ``MB + (\beta/2)\tau`` |
 
 White noise detection uses a threshold: ``|\gamma_k| < 10^{-10} \cdot |\gamma_0|`` for all
 ``k \ge 1``.
+
+Symmetry detection checks ``B_{-j} \approx B_j`` with a relative tolerance of ``10^{-10}``.
 
 ---
 
@@ -349,7 +360,7 @@ KWFilterResult
 
 ## References
 
-- Schleicher, C. (2002). *Kolmogorov-Wiener Filters for Finite Time-Series.* Working Paper, University of British Columbia.
+- Schleicher, C. (2004). *Kolmogorov-Wiener Filters for Finite Time-Series.* SSRN. DOI: 10.2139/ssrn.769584.
 - Hodrick, R. J. & Prescott, E. C. (1997). *Postwar U.S. Business Cycles: An Empirical Investigation.* Journal of Money, Credit and Banking, 29(1), 1–16.
 - Baxter, M. & King, R. G. (1999). *Measuring Business Cycles: Approximate Band-Pass Filters for Economic Time Series.* Review of Economics and Statistics, 81(4), 575–593.
 - Christiano, L. J. & Fitzgerald, T. J. (2003). *The Band Pass Filter.* International Economic Review, 44(2), 435–465.

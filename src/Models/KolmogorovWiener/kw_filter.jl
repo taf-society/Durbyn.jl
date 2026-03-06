@@ -7,7 +7,8 @@ The filter minimizes mean squared error relative to an ideal symmetric filter by
 using the autocovariance structure estimated from an ARIMA model. This provides
 optimal endpoint handling for bandpass, Hodrick-Prescott, and Butterworth filters.
 
-Based on Schleicher (2002), "Kolmogorov-Wiener Filters for Finite Time-Series".
+Based on Schleicher (2004), "Kolmogorov-Wiener Filters for Finite Time-Series"
+(SSRN, DOI: 10.2139/ssrn.769584).
 
 # Arguments
 - `y::AbstractVector`: Input time series
@@ -150,4 +151,3 @@ function _build_filter_kwargs(filter_type::Symbol;
         return pairs((transfer_fn=transfer_fn,))
     end
 end
-

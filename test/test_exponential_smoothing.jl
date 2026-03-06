@@ -139,45 +139,19 @@ using Durbyn.TableOps
 
     @testset "ses() - Simple Exponential Smoothing" begin
         @testset "Optimizer configuration API" begin
-            fit_ets = ets(
-                ap,
-                12,
-                "AAN";
-                damped = false,
-            )
+            fit_ets = ets(ap, 12, "AAN"; damped = false)
             @test fit_ets isa ETS
 
-            fit_ses = es_ses(
-                ap,
-                12;
-                optim_method = :nelder_mead,
-                optim_control = Dict("maxit" => 120),
-            )
+            fit_ses = es_ses(ap, 12)
             @test fit_ses isa SES
 
-            fit_ses_lbfgsb = es_ses(
-                ap,
-                12;
-                initial = :simple,
-                optim_method = :lbfgsb,
-                optim_control = Dict("maxit" => 120),
-            )
-            @test fit_ses_lbfgsb isa SES
+            fit_ses_simple = es_ses(ap, 12; initial = :simple)
+            @test fit_ses_simple isa SES
 
-            fit_holt = es_holt(
-                ap,
-                12;
-                optim_method = :nelder_mead,
-                optim_control = Dict("maxit" => 120),
-            )
+            fit_holt = es_holt(ap, 12)
             @test fit_holt isa Holt
 
-            fit_hw = es_holt_winters(
-                ap,
-                12;
-                optim_method = :nelder_mead,
-                optim_control = Dict("maxit" => 120),
-            )
+            fit_hw = es_holt_winters(ap, 12)
             @test fit_hw isa HoltWinters
         end
 

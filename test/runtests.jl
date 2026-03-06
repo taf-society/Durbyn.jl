@@ -108,4 +108,12 @@ using Test
     @testset "ModelSpecs Bug Fixes" begin
         include("test_model_specs.jl")
     end
+
+    @testset "KolmogorovWiener Filter" begin
+        include("test_kw_filter.jl")
+    end
+
+    @testset "KolmogorovWiener Forecast" begin
+        include("test_kw_forecast.jl")
+    end
 end

@@ -10,6 +10,7 @@ import ..Generics: plot, summary, fitted, residuals, predict, coef, coefficients
 
 include("box_cox.jl")
 include("decompose.jl")
+include("decomposition.jl")
 include("diff.jl")
 include("fourier.jl")
 include("stl.jl")
@@ -26,7 +27,7 @@ include("UnitTests/nsdiffs.jl")
 include("acf.jl")
 include("missing_handling.jl")
 
-export box_cox_lambda, box_cox, box_cox!, inv_box_cox, decompose, DecomposedTimeSeries, diff,
+export box_cox_lambda, box_cox, box_cox!, inv_box_cox, decompose, DecomposedTimeSeries, Decomposition, diff,
 fourier, STLResult, stl, ols, OlsFit, adf, ADF,
 kpss, KPSS, phillips_perron, PhillipsPerron, ndiffs, ocsb, mstl, MSTLResult,
 seasonal_strength, nsdiffs, acf, pacf, ACFResult, PACFResult,

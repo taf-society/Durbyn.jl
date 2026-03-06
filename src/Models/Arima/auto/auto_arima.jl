@@ -460,7 +460,7 @@ function auto_arima(
         kwargs...,
     )
 
-    result = setrow!(result, 2, (p, d, q, P, D, Q, constant, fit.ic))
+    result = setrow!(result, 2, (0, d, 0, 0, D, 0, constant, fit.ic))
 
     if fit.ic < bestfit.ic
         bestfit = fit

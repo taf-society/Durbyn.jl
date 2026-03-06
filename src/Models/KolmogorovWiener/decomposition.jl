@@ -60,20 +60,11 @@ function kw_decomposition(
         boxcox_lambda=boxcox_lambda, biasadj=biasadj,
         arima_kwargs...)
 
-    # Derive trend by subtraction to guarantee exact decomposition
-    data = r_cycle.y
-    cycle = r_cycle.filtered
-    trend = data .- cycle
-
-    return Decomposition{Float64}(
-        data,
-        trend,
-        Vector{Float64}[],     # no seasonal components for KW
-        cycle,                 # remainder = cycle
-        :kw,
-        :additive,
-        m == 1 ? Int[] : [m],
-        Dict{Symbol,Any}(
+    return _kw_decomposition_from_cycle(
+        r_cycle.y,
+        r_cycle.filtered;
+        m=m,
+        metadata=Dict{Symbol,Any}(
             :filter_type => filter_type,
             :arima_model => r_cycle.arima_model,
             :gamma => r_cycle.gamma,

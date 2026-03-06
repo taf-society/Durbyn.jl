@@ -30,6 +30,43 @@ struct Decomposition{T<:Real}
 end
 
 """
+    _kw_decomposition_from_cycle(data, cycle; m=1, metadata=Dict()) -> Decomposition{Float64}
+
+Build a KW-style additive decomposition from original `data` and cyclical component `cycle`.
+
+This helper lives in `Stats` so decomposition construction remains model-agnostic.
+Model modules (e.g. Kolmogorov-Wiener) can call it after producing the cycle.
+"""
+function _kw_decomposition_from_cycle(
+    data::AbstractVector,
+    cycle::AbstractVector;
+    m::Int=1,
+    metadata::Dict{Symbol,Any}=Dict{Symbol,Any}(),
+)::Decomposition{Float64}
+    length(data) == length(cycle) || throw(ArgumentError(
+        "data and cycle must have the same length, got $(length(data)) and $(length(cycle))"))
+    m >= 1 || throw(ArgumentError("m must be >= 1, got $m"))
+
+    data_values = Float64.(data)
+    cycle_values = Float64.(cycle)
+    trend_values = data_values .- cycle_values
+
+    seasonal_periods = m == 1 ? Int[] : [m]
+    metadata_copy = Dict{Symbol,Any}(metadata)
+
+    return Decomposition{Float64}(
+        data_values,
+        trend_values,
+        Vector{Float64}[],
+        cycle_values,
+        :kw,
+        :additive,
+        seasonal_periods,
+        metadata_copy,
+    )
+end
+
+"""
     fitted(d::Decomposition)
 
 Return the fitted (reconstructed) values from a decomposition.

@@ -55,12 +55,13 @@ Minimize a scalar-valued function using the specified optimization method.
   - `:bfgs` — quasi-Newton with Strong Wolfe line search
   - `:lbfgsb` — limited-memory BFGS with box constraints
   - `:brent` — 1D optimization (scalar `x0` only)
+  - `:itp` — 1D bracketed root finding (scalar `x0` only)
 
 # Keyword Arguments
 
 - `gradient::Union{Function,Nothing}=nothing`: Gradient function `gradient(x; kwargs...) → Vector`.
   If `nothing`, numerical gradients are computed automatically.
-- `lower`, `upper`: Bounds for `:lbfgsb` and `:brent` methods.
+- `lower`, `upper`: Bounds for `:lbfgsb`, `:brent`, and `:itp` methods.
 - `max_iterations::Int`: Maximum iterations (default: 500 for Nelder-Mead, 100 otherwise).
 - `param_scale::Union{Nothing,Vector{Float64}}=nothing`: Parameter scaling factors.
 - `step_sizes::Union{Nothing,Vector{Float64}}=nothing`: Step sizes for numerical differentiation.
@@ -119,6 +120,9 @@ function optimize(fn::Function, x0::AbstractVector{<:Real},
                memory_size::Int=5,
                hessian::Bool=false,
                kwargs...)
+    if method === :itp && hessian
+        throw(ArgumentError("method = :itp does not support hessian=true"))
+    end
 
     # Fast path for Brent — bypass all wrapper overhead
     if method === :brent && !hessian
@@ -137,13 +141,30 @@ function optimize(fn::Function, x0::AbstractVector{<:Real},
         end
     end
 
+    # Fast path for ITP root-finding — bypass wrapper overhead
+    if method === :itp && !hessian
+        length(x0) == 1 || throw(ArgumentError("ITP method requires exactly one parameter"))
+        _lb = lower isa AbstractVector ? (length(lower) >= 1 ? Float64(lower[1]) : -Inf) : Float64(lower)
+        _ub = upper isa AbstractVector ? (length(upper) >= 1 ? Float64(upper[1]) : Inf) : Float64(upper)
+        (isfinite(_lb) && isfinite(_ub)) || throw(ArgumentError("method = :itp requires finite 'lower' and 'upper' bounds"))
+        _lb < _ub || throw(ArgumentError("lower bound must be strictly less than upper bound"))
+
+        _maxit_i = isnothing(max_iterations) ? 1000 : max_iterations
+        _ps = isnothing(param_scale) ? 1.0 : Float64(first(param_scale))
+        if isempty(kwargs)
+            return _itp_fast(fn, _lb, _ub, fn_scale, reltol, trace > 0, _maxit_i, _ps)
+        else
+            return _itp_fast_kw(fn, _lb, _ub, fn_scale, reltol, trace > 0, _maxit_i, _ps, kwargs)
+        end
+    end
+
     x0 = Float64.(x0)
     lower = lower isa AbstractVector ? Float64.(lower) : Float64(lower)
     upper = upper isa AbstractVector ? Float64.(upper) : Float64(upper)
     npar = length(x0)
 
     # Validate method
-    valid_methods = [:nelder_mead, :bfgs, :lbfgsb, :brent]
+    valid_methods = [:nelder_mead, :bfgs, :lbfgsb, :brent, :itp]
     _check_arg(method, valid_methods, "method")
 
     # Resolve default max_iterations (method-dependent)
@@ -154,24 +175,27 @@ function optimize(fn::Function, x0::AbstractVector{<:Real},
     end
 
     # Auto-switch to L-BFGS-B when bounds are specified with an incompatible method
-    if (any(lower .> -Inf) || any(upper .< Inf)) && !(method === :lbfgsb || method === :brent)
-        @warn "finite bounds require method :lbfgsb or :brent; switching to :lbfgsb"
+    if (any(lower .> -Inf) || any(upper .< Inf)) && !(method === :lbfgsb || method === :brent || method === :itp)
+        @warn "finite bounds require method :lbfgsb, :brent, or :itp; switching to :lbfgsb"
         method = :lbfgsb
     end
 
-    # Brent requires exactly 1 parameter
+    # Brent/ITP require exactly 1 parameter
     if method === :brent && npar != 1
         throw(ArgumentError("Brent method requires exactly one parameter"))
+    end
+    if method === :itp && npar != 1
+        throw(ArgumentError("ITP method requires exactly one parameter"))
     end
 
     # Expand scalar bounds to vectors
     lower_vec = lower isa Float64 ? fill(lower, npar) : _repeat_to_length(lower, npar)
     upper_vec = upper isa Float64 ? fill(upper, npar) : _repeat_to_length(upper, npar)
 
-    # Brent requires finite bounds with lower < upper
-    if method === :brent
+    # Brent/ITP require finite bounds with lower < upper
+    if method === :brent || method === :itp
         if !all(isfinite, lower_vec) || !all(isfinite, upper_vec)
-            throw(ArgumentError("method = :brent requires finite 'lower' and 'upper' bounds"))
+            throw(ArgumentError("method = :$(method) requires finite 'lower' and 'upper' bounds"))
         end
         if lower_vec[1] >= upper_vec[1]
             throw(ArgumentError("lower bound must be strictly less than upper bound"))
@@ -220,7 +244,7 @@ function optimize(fn::Function, x0::AbstractVector{<:Real},
 
     # Compute Hessian at solution if requested
     if hessian
-        hess = _compute_hessian(result.minimizer, fn, parscale, fn_scale, ndeps; kwargs...)
+        hess = _compute_hessian(result.minimizer, fn, gradient, parscale, fn_scale, ndeps; kwargs...)
         return (
             minimizer = result.minimizer,
             minimum = result.minimum,
@@ -460,6 +484,37 @@ function _run_lbfgsb(par, fn, gr, parscale, fnscale,
     result = lbfgsb(fn_internal, gr_internal, par;
                     lower=lower_scaled, upper=upper_scaled, options=opts)
 
+    has_finite_bounds = any(isfinite, lower_scaled) || any(isfinite, upper_scaled)
+    restart_allowed = !(result.fail == 52 && !isnothing(result.message) &&
+                        occursin("no feasible", result.message))
+    if maxit > 20 && has_finite_bounds && restart_allowed
+        restart_par = similar(par)
+        @inbounds for i in eachindex(restart_par, lower_scaled, upper_scaled, par)
+            li = lower_scaled[i]
+            ui = upper_scaled[i]
+            if isfinite(li) && isfinite(ui)
+                restart_par[i] = 0.5 * (li + ui)
+            elseif isfinite(li)
+                restart_par[i] = li + 1.0
+            elseif isfinite(ui)
+                restart_par[i] = ui - 1.0
+            else
+                restart_par[i] = par[i]
+            end
+        end
+        @inbounds for i in eachindex(restart_par, lower_scaled, upper_scaled)
+            restart_par[i] = clamp(restart_par[i], lower_scaled[i], upper_scaled[i])
+        end
+
+        restart_result = lbfgsb(fn_internal, gr_internal, restart_par;
+                                lower=lower_scaled, upper=upper_scaled, options=opts)
+        if (restart_result.fail == 0 && result.fail != 0) ||
+           (restart_result.fail == result.fail && restart_result.f_opt < result.f_opt) ||
+           (result.fail != 0 && restart_result.f_opt < result.f_opt)
+            result = restart_result
+        end
+    end
+
     is_converged = result.fail == 0
     msg = if result.fail == 0
         isnothing(result.message) ? "converged" : result.message
@@ -532,6 +587,52 @@ function _brent_fast(fn, lb::Float64, ub::Float64, fn_scale::Float64,
         result.fail == 0 ? "converged" : "maximum iterations reached")
 end
 
+"""Function barrier for ITP fast path — root finding on scalar callbacks."""
+function _itp_fast(fn, lb::Float64, ub::Float64, fn_scale::Float64,
+                   reltol::Float64, do_trace::Bool, maxit::Int, ps::Float64)
+    inv_ps = inv(ps)
+    fn_itp = if ps == 1.0 && fn_scale == 1.0
+        x -> _to_scalar(fn(x))
+    elseif ps == 1.0
+        _inv_fns = inv(fn_scale)
+        x -> _to_scalar(fn(x)) * _inv_fns
+    elseif fn_scale == 1.0
+        x -> _to_scalar(fn(x * ps))
+    else
+        _inv_fns = inv(fn_scale)
+        x -> _to_scalar(fn(x * ps)) * _inv_fns
+    end
+    result = itp(fn_itp, lb * inv_ps, ub * inv_ps;
+                 options=ITPOptions(tol=reltol, trace=do_trace, maxit=maxit))
+    return OptimizeResult(
+        [result.x_root * ps], result.f_root * fn_scale,
+        result.fail == 0, result.n_iter, result.fn_evals, 0,
+        result.fail == 0 ? "converged" : "maximum iterations reached")
+end
+
+function _itp_fast_kw(fn, lb::Float64, ub::Float64, fn_scale::Float64,
+                      reltol::Float64, do_trace::Bool, maxit::Int,
+                      ps::Float64, kw)
+    inv_ps = inv(ps)
+    fn_itp = if ps == 1.0 && fn_scale == 1.0
+        x -> _to_scalar(fn(x; kw...))
+    elseif ps == 1.0
+        _inv_fns = inv(fn_scale)
+        x -> _to_scalar(fn(x; kw...)) * _inv_fns
+    elseif fn_scale == 1.0
+        x -> _to_scalar(fn(x * ps; kw...))
+    else
+        _inv_fns = inv(fn_scale)
+        x -> _to_scalar(fn(x * ps; kw...)) * _inv_fns
+    end
+    result = itp(fn_itp, lb * inv_ps, ub * inv_ps;
+                 options=ITPOptions(tol=reltol, trace=do_trace, maxit=maxit))
+    return OptimizeResult(
+        [result.x_root * ps], result.f_root * fn_scale,
+        result.fail == 0, result.n_iter, result.fn_evals, 0,
+        result.fail == 0 ? "converged" : "maximum iterations reached")
+end
+
 function _brent_fast_kw(fn, lb::Float64, ub::Float64, fn_scale::Float64,
                         reltol::Float64, do_trace::Bool, maxit::Int,
                         ps::Float64, kw)
@@ -556,8 +657,9 @@ function _brent_fast_kw(fn, lb::Float64, ub::Float64, fn_scale::Float64,
 end
 
 
-function _compute_hessian(par, fn, parscale, fnscale, ndeps; kwargs...)
+function _compute_hessian(par, fn, gradient, parscale, fnscale, ndeps; kwargs...)
     fn_wrapper(x) = fn(x; kwargs...)
+    grad_wrapper = isnothing(gradient) ? nothing : (x -> gradient(x; kwargs...))
     return numerical_hessian(fn_wrapper, par;
-                        fnscale=fnscale, parscale=parscale, step_sizes=ndeps)
+                        gradient=grad_wrapper, fnscale=fnscale, parscale=parscale, step_sizes=ndeps)
 end

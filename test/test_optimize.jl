@@ -110,6 +110,69 @@ sphere_grad(x) = 2.0 .* x
         @test abs(result.minimizer[1] - 2.0) <= 0.01
     end
 
+    @testset "ITP root finding - sqrt(2)" begin
+        f_root(x) = x^2 - 2.0
+        result = itp(f_root, 0.0, 2.0)
+        @test result.fail == 0
+        @test abs(result.x_root - sqrt(2.0)) <= 1e-7
+        @test abs(result.f_root) <= 1e-7
+    end
+
+    @testset "ITP root finding - endpoint root" begin
+        f_root(x) = x - 1.0
+        result = itp(f_root, 1.0, 3.0)
+        @test result.fail == 0
+        @test result.x_root == 1.0
+        @test result.f_root == 0.0
+        @test result.n_iter == 0
+    end
+
+    @testset "ITP validates bracket sign change" begin
+        @test_throws ArgumentError itp(x -> x^2 + 1.0, -1.0, 1.0)
+    end
+
+    @testset "ITP handles reversed endpoint signs" begin
+        result = itp(x -> 1.0 - x, 0.0, 2.0)
+        @test result.fail == 0
+        @test abs(result.x_root - 1.0) <= 1e-8
+    end
+
+    @testset "ITP n0=0 respects bisection iteration bound" begin
+        tol = 1e-6
+        opts = ITPOptions(tol=tol, n0=0, maxit=10_000)
+        result = itp(x -> x, -1.0, 1.0; options=opts)
+        n_half = ceil(Int, log2((2.0) / (2.0 * tol)))
+        @test result.fail == 0
+        @test result.n_iter <= n_half
+    end
+
+    @testset "ITP maxit fail code" begin
+        opts = ITPOptions(tol=1e-14, maxit=1)
+        result = itp(x -> x^3 - 2.0, 0.0, 2.0; options=opts)
+        @test result.fail == 1
+    end
+
+    @testset "ITP via optimize - scalar callback" begin
+        result = optimize(x -> x^2 - 2.0, [1.0], :itp; lower=0.0, upper=2.0)
+        @test result.converged
+        @test abs(result.minimizer[1] - sqrt(2.0)) <= 1e-7
+        @test abs(result.minimum) <= 1e-7
+    end
+
+    @testset "ITP via optimize - vector callback" begin
+        result = optimize(x -> x[1]^2 - 2.0, [1.0], :itp; lower=0.0, upper=2.0)
+        @test result.converged
+        @test abs(result.minimizer[1] - sqrt(2.0)) <= 1e-7
+    end
+
+    @testset "ITP via optimize validates bracket/sign change" begin
+        @test_throws ArgumentError optimize(x -> x[1]^2 + 1.0, [0.0], :itp; lower=-1.0, upper=1.0)
+    end
+
+    @testset "ITP via optimize does not support hessian" begin
+        @test_throws ArgumentError optimize(x -> x[1]^2 - 2.0, [1.0], :itp; lower=0.0, upper=2.0, hessian=true)
+    end
+
     @testset "numerical_hessian - Sphere at origin" begin
         x = [0.0, 0.0]
         H = numerical_hessian(sphere, x)
@@ -123,6 +186,19 @@ sphere_grad(x) = 2.0 .* x
         @test isapprox(H[1,2], -400.0, rtol=0.05)
         @test isapprox(H[2,1], -400.0, rtol=0.05)
         @test isapprox(H[2,2], 200.0, rtol=0.05)
+    end
+
+    @testset "numerical_hessian - gradient differencing path" begin
+        x = [2.0, -3.0, 4.0]
+        H = numerical_hessian(sphere, x; gradient=sphere_grad)
+        expected_hessian = [2.0 0.0 0.0; 0.0 2.0 0.0; 0.0 0.0 2.0]
+        @test isapprox(H, expected_hessian, atol=1e-6)
+    end
+
+    @testset "optimize(hessian=true) threads provided gradient into Hessian" begin
+        result = optimize(sphere, [3.0, -2.0], :bfgs; gradient=sphere_grad, hessian=true)
+        expected_hessian = [2.0 0.0; 0.0 2.0]
+        @test isapprox(result.hessian, expected_hessian, atol=1e-6)
     end
 
     @testset "L-BFGS-B unbounded convergence (bug fix)" begin

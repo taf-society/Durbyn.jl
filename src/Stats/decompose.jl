@@ -413,7 +413,6 @@ with symmetric moving-average trend estimate:
 
 # References
 - Brockwell, P. J., & Davis, R. A. (2016). *Introduction to Time Series and Forecasting* (3rd ed.), Sec. 1.5.2.
-- Kendall, M. and Stuart, A. (1983). *The Advanced Theory of Statistics*, Vol. 3. Griffin, pp. 410-414.
 """
 function decompose(;
     x::AbstractVector,

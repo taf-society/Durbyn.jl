@@ -144,8 +144,6 @@ using Durbyn.TableOps
                 12,
                 "AAN";
                 damped = false,
-                optim_method = :nelder_mead,
-                optim_control = Dict("maxit" => 120, "trace" => 0),
             )
             @test fit_ets isa ETS
 

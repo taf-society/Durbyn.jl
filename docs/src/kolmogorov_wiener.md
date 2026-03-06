@@ -351,9 +351,9 @@ r = kolmogorov_wiener(y, :hp; m=12, boxcox_lambda=0.0, biasadj=true)
 ## API Reference
 
 ```@docs
-kolmogorov_wiener
-kw_decomposition
-KWFilterResult
+Durbyn.kolmogorov_wiener
+Durbyn.kw_decomposition
+Durbyn.KWFilterResult
 ```
 
 ---

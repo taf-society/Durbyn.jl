@@ -35,7 +35,7 @@ Based on Schleicher (2004), "Kolmogorov-Wiener Filters for Finite Time-Series"
   `max_p`, `stepwise`, `ic`). Ignored when `arima_model` is provided.
 
 # Returns
-A [`KWFilterResult`](@ref) containing the filtered series, weight matrix, and diagnostics.
+A `KWFilterResult` containing the filtered series, weight matrix, and diagnostics.
 
 # Examples
 ```julia

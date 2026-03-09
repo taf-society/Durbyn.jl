@@ -32,10 +32,10 @@ Internally, the following mappings are used when calling the tests:
 - PP:   `deterministic = :level` → `model = :constant`, `deterministic = :trend` → `model = :trend`
 
 Critical values and their nominal significance levels are linearly interpolated
-to obtain a p-value with boundary clamping (matching R's `approx(..., rule=2)` behavior).
+to obtain a p-value with boundary clamping.
 
-If no `use_lag` is supplied to KPSS, the lag is set by default to
-`trunc(3 * sqrt(length(x)) / 13)`.
+If no `use_lag` is supplied to KPSS, the lag is set by default to the
+Schwert (1989) short rule: `⌊4(n/100)^{1/4}⌋`.
 
 `alpha` is clamped to the range `[0.01, 0.10]` with a warning if it falls outside.
 
@@ -155,10 +155,9 @@ function _run_unit_root_test(series_values::AbstractVector;
     pp_model = deterministic === :trend ? :trend : :constant
 
     function _kpss_with_default_lag(values; kwargs...)
-        sample_size = length(values)
-        default_bandwidth = trunc(Int, 3 * sqrt(sample_size) / 13)
         if !haskey(kwargs, :use_lag)
-            return kpss(values; type=kpss_type, use_lag=default_bandwidth)
+            # Schwert (1989) short rule — same as kpss(; lags=:short) default
+            return kpss(values; type=kpss_type, lags=:short)
         else
             return kpss(values; type=kpss_type, kwargs...)
         end

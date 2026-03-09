@@ -117,7 +117,7 @@ r5 = optimize(x -> x[1]^2 - 2.0, [1.0], :itp; lower=0.0, upper=2.0)
 
 ## Direct Solver Wrappers
 
-These are useful when you want solver-specific controls or result tuples.
+These are useful when you want solver-specific controls or named-tuple results.
 
 ### `nelder_mead`
 
@@ -128,7 +128,7 @@ result = nelder_mead(f, x0, NelderMeadOptions(...))
 Returns:
 
 ```julia
-(x_opt, f_opt, fncount, fail)
+(x_opt = ..., f_opt = ..., fncount = ..., fail = ...)
 ```
 
 - `fail == 0`: converged
@@ -194,7 +194,7 @@ You can also pass `g! = nothing` to use numerical gradients.
 Returns:
 
 ```julia
-(x_opt, f_opt, n_iter, fail, fn_evals, gr_evals)
+(x_opt = ..., f_opt = ..., n_iter = ..., fail = ..., fn_evals = ..., gr_evals = ...)
 ```
 
 Mathematical basis (BFGS update):
@@ -275,7 +275,7 @@ result = lbfgsb(f, g, x0; lower=..., upper=..., options=LBFGSBOptions(...))
 Returns:
 
 ```julia
-(x_opt, f_opt, n_iter, fail, fn_evals, gr_evals, message)
+(x_opt = ..., f_opt = ..., n_iter = ..., fail = ..., fn_evals = ..., gr_evals = ..., message = ...)
 ```
 
 `fail` conventions:
@@ -331,7 +331,7 @@ result = brent(f, lower, upper; options=BrentOptions(...))
 Returns:
 
 ```julia
-(x_opt, f_opt, n_iter, fail, fn_evals)
+(x_opt = ..., f_opt = ..., n_iter = ..., fail = ..., fn_evals = ...)
 ```
 
 `f` is scalar style: `f(x::Float64)`.
@@ -390,7 +390,7 @@ result = itp(f, a, b; options=ITPOptions(...))
 Returns:
 
 ```julia
-(x_root, f_root, n_iter, fail, fn_evals)
+(x_root = ..., f_root = ..., n_iter = ..., fail = ..., fn_evals = ...)
 ```
 
 `fail` conventions:

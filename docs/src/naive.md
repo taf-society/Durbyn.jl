@@ -229,7 +229,7 @@ reflecting increasing uncertainty over time.
 
 **Residual variance (``σ²``)**: The residual variance used for prediction intervals is
 computed as the mean squared error (MSE) of residuals without centering:
-``σ² = \frac{1}{n}\sum_{t} e_t^2``. This matches R's forecast package behavior.
+``σ² = \frac{1}{n}\sum_{t} e_t^2``.
 
 ### Naive / Random Walk (without drift)
 

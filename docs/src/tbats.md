@@ -7,7 +7,7 @@
 - **Multiple complex seasonalities** (daily + weekly + yearly)
 - **Dual calendar effects** (e.g., Hijri + Gregorian calendars)
 
-This implementation is a pure Julia port of the R `forecast::tbats` function based on De Livera, Hyndman & Snyder (2011).
+This implementation follows the mathematical framework of De Livera, Hyndman & Snyder (2011).
 
 ---
 

@@ -1315,8 +1315,8 @@ end
 
 Fit a TBATS model (Exponential smoothing state space with Box-Cox
 transformation, ARMA errors, trend, and trigonometric seasonality) to a
-univariate time series. This is a Julia port of `forecast::tbats`
-(`De Livera, Hyndman & Snyder 2011`); it searches over Box-Cox, trend, and
+univariate time series following De Livera, Hyndman & Snyder (2011).
+It searches over Box-Cox, trend, and
 damped-trend options, optimizes Fourier orders per seasonal period, and can
 optionally refit a supplied TBATS/BATS model.
 

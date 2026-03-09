@@ -1,5 +1,5 @@
 """
-Custom show methods for ETS models to display output similar to R's forecast package.
+Custom show methods for ETS models.
 """
 
 function Base.show(io::IO, model::EtsModel)

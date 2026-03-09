@@ -19,7 +19,7 @@ Several tests are available:
   (null hypothesis: a seasonal unit root exists). The decision rule compares the
   test statistic to the 5% critical value. Only 5% significance is supported.
 
-> Not yet supported in this Julia port (will throw `ArgumentError` if requested):
+> Not yet supported (will throw `ArgumentError` if requested):
 > `test = :hegy` (Hylleberg-Engle-Granger-Yoo, 1990) and `test = :ch`
 > (Canova-Hansen, 1995).
 
@@ -71,7 +71,7 @@ function nsdiffs(x::AbstractVector,
                  max_D::Int = 1,
                  kwargs...)
 
-    test in (:seas, :ocsb) || throw(ArgumentError("Tests :hegy and :ch are not supported in this Julia port yet."))
+    test in (:seas, :ocsb) || throw(ArgumentError("Tests :hegy and :ch are not yet supported."))
 
     α, notes = _normalize_alpha(alpha, test)
     foreach(msg -> @warn(msg), notes)

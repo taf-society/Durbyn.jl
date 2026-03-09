@@ -87,6 +87,252 @@ Other multiplicative combinations (e.g. damped trend, hybrid seasonality) follow
 
 ---
 
+## Complete ETS Model Equations
+
+The full 30-model taxonomy is specified below, covering all combinations of error type (A/M), trend (N/A/Ad/M/Md), and seasonality (N/A/M). Reference: Svetunkov (2023), Tables 4.1–4.2; Hyndman et al. (2008), Ch. 14–15.
+
+Notation: ``\ell_t`` = level, ``b_t`` = trend, ``s_t`` = seasonal, ``\varepsilon_t`` = error, ``\phi`` = damping parameter, ``m`` = seasonal period, ``\mu_{y,t}`` = one-step-ahead conditional mean (signal).
+
+!!! note
+    The equations below describe the **full theoretical ETS family**. Durbyn's default
+    automatic search `ets(y, m, "ZZZ")` is narrower: with `restrict=true` and
+    `allow_multiplicative_trend=false`, it does not search every combination listed here.
+    In particular, multiplicative-trend models are excluded from the default search, some
+    mixed multiplicative combinations are forbidden under `restrict=true`, and all
+    multiplicative error/trend/seasonal models require strictly positive data.
+
+### Additive Error Models
+
+**ETS(A,N,N)** — No trend, no seasonality:
+```math
+y_t = \ell_{t-1} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} + \alpha\varepsilon_t
+```
+
+**ETS(A,N,A)** — No trend, additive seasonality:
+```math
+y_t = \ell_{t-1} + s_{t-m} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} + \alpha\varepsilon_t, \qquad
+s_t = s_{t-m} + \gamma\varepsilon_t
+```
+
+**ETS(A,N,M)** — No trend, multiplicative seasonality:
+```math
+y_t = \ell_{t-1} s_{t-m} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} + \alpha\varepsilon_t / s_{t-m}, \qquad
+s_t = s_{t-m} + \gamma\varepsilon_t / \ell_{t-1}
+```
+
+**ETS(A,A,N)** — Additive trend, no seasonality:
+```math
+y_t = \ell_{t-1} + b_{t-1} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} + b_{t-1} + \alpha\varepsilon_t, \qquad
+b_t = b_{t-1} + \beta\varepsilon_t
+```
+
+**ETS(A,A,A)** — Additive trend, additive seasonality:
+```math
+y_t = \ell_{t-1} + b_{t-1} + s_{t-m} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} + b_{t-1} + \alpha\varepsilon_t, \qquad
+b_t = b_{t-1} + \beta\varepsilon_t, \qquad
+s_t = s_{t-m} + \gamma\varepsilon_t
+```
+
+**ETS(A,A,M)** — Additive trend, multiplicative seasonality:
+```math
+y_t = (\ell_{t-1} + b_{t-1})s_{t-m} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} + b_{t-1} + \alpha\varepsilon_t / s_{t-m}, \qquad
+b_t = b_{t-1} + \beta\varepsilon_t / s_{t-m}, \qquad
+s_t = s_{t-m} + \gamma\varepsilon_t / (\ell_{t-1} + b_{t-1})
+```
+
+**ETS(A,Ad,N)** — Damped additive trend, no seasonality:
+```math
+y_t = \ell_{t-1} + \phi b_{t-1} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} + \phi b_{t-1} + \alpha\varepsilon_t, \qquad
+b_t = \phi b_{t-1} + \beta\varepsilon_t
+```
+
+**ETS(A,Ad,A)** — Damped additive trend, additive seasonality:
+```math
+y_t = \ell_{t-1} + \phi b_{t-1} + s_{t-m} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} + \phi b_{t-1} + \alpha\varepsilon_t, \qquad
+b_t = \phi b_{t-1} + \beta\varepsilon_t, \qquad
+s_t = s_{t-m} + \gamma\varepsilon_t
+```
+
+**ETS(A,Ad,M)** — Damped additive trend, multiplicative seasonality:
+```math
+y_t = (\ell_{t-1} + \phi b_{t-1})s_{t-m} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} + \phi b_{t-1} + \alpha\varepsilon_t / s_{t-m}, \qquad
+b_t = \phi b_{t-1} + \beta\varepsilon_t / s_{t-m}, \qquad
+s_t = s_{t-m} + \gamma\varepsilon_t / (\ell_{t-1} + \phi b_{t-1})
+```
+
+**ETS(A,M,N)** — Multiplicative trend, no seasonality:
+```math
+y_t = \ell_{t-1} b_{t-1} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} b_{t-1} + \alpha\varepsilon_t, \qquad
+b_t = b_{t-1} + \beta\varepsilon_t / \ell_{t-1}
+```
+
+**ETS(A,M,A)** — Multiplicative trend, additive seasonality:
+```math
+y_t = \ell_{t-1} b_{t-1} + s_{t-m} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} b_{t-1} + \alpha\varepsilon_t, \qquad
+b_t = b_{t-1} + \beta\varepsilon_t / \ell_{t-1}, \qquad
+s_t = s_{t-m} + \gamma\varepsilon_t
+```
+
+**ETS(A,M,M)** — Multiplicative trend, multiplicative seasonality:
+```math
+y_t = \ell_{t-1} b_{t-1} s_{t-m} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} b_{t-1} + \alpha\varepsilon_t / s_{t-m}, \qquad
+b_t = b_{t-1} + \beta\varepsilon_t / (\ell_{t-1} s_{t-m}), \qquad
+s_t = s_{t-m} + \gamma\varepsilon_t / (\ell_{t-1} b_{t-1})
+```
+
+**ETS(A,Md,N)** — Damped multiplicative trend, no seasonality:
+```math
+y_t = \ell_{t-1} b_{t-1}^\phi + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} b_{t-1}^\phi + \alpha\varepsilon_t, \qquad
+b_t = b_{t-1}^\phi + \beta\varepsilon_t / \ell_{t-1}
+```
+
+**ETS(A,Md,A)** — Damped multiplicative trend, additive seasonality:
+```math
+y_t = \ell_{t-1} b_{t-1}^\phi + s_{t-m} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} b_{t-1}^\phi + \alpha\varepsilon_t, \qquad
+b_t = b_{t-1}^\phi + \beta\varepsilon_t / \ell_{t-1}, \qquad
+s_t = s_{t-m} + \gamma\varepsilon_t
+```
+
+**ETS(A,Md,M)** — Damped multiplicative trend, multiplicative seasonality:
+```math
+y_t = \ell_{t-1} b_{t-1}^\phi s_{t-m} + \varepsilon_t, \qquad
+\ell_t = \ell_{t-1} b_{t-1}^\phi + \alpha\varepsilon_t / s_{t-m}, \qquad
+b_t = b_{t-1}^\phi + \beta\varepsilon_t / (\ell_{t-1} s_{t-m}), \qquad
+s_t = s_{t-m} + \gamma\varepsilon_t / (\ell_{t-1} b_{t-1})
+```
+
+### Multiplicative Error Models
+
+In all multiplicative error models, ``\mu_{y,t}`` denotes the one-step-ahead conditional mean.
+
+**ETS(M,N,N)** — No trend, no seasonality:
+```math
+y_t = \ell_{t-1}(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1}(1 + \alpha\varepsilon_t)
+```
+
+**ETS(M,N,A)** — No trend, additive seasonality:
+```math
+y_t = (\ell_{t-1} + s_{t-m})(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1} + \alpha\mu_{y,t}\varepsilon_t, \qquad
+s_t = s_{t-m} + \gamma\mu_{y,t}\varepsilon_t
+```
+
+**ETS(M,N,M)** — No trend, multiplicative seasonality:
+```math
+y_t = \ell_{t-1} s_{t-m}(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1}(1 + \alpha\varepsilon_t), \qquad
+s_t = s_{t-m}(1 + \gamma\varepsilon_t)
+```
+
+**ETS(M,A,N)** — Additive trend, no seasonality:
+```math
+y_t = (\ell_{t-1} + b_{t-1})(1 + \varepsilon_t), \qquad
+\ell_t = (\ell_{t-1} + b_{t-1})(1 + \alpha\varepsilon_t), \qquad
+b_t = b_{t-1} + \beta\mu_{y,t}\varepsilon_t
+```
+
+**ETS(M,A,A)** — Additive trend, additive seasonality:
+```math
+y_t = (\ell_{t-1} + b_{t-1} + s_{t-m})(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1} + b_{t-1} + \alpha\mu_{y,t}\varepsilon_t, \qquad
+b_t = b_{t-1} + \beta\mu_{y,t}\varepsilon_t, \qquad
+s_t = s_{t-m} + \gamma\mu_{y,t}\varepsilon_t
+```
+
+**ETS(M,A,M)** — Additive trend, multiplicative seasonality:
+```math
+y_t = (\ell_{t-1} + b_{t-1})s_{t-m}(1 + \varepsilon_t), \qquad
+\ell_t = (\ell_{t-1} + b_{t-1})(1 + \alpha\varepsilon_t), \qquad
+b_t = b_{t-1} + \beta(\ell_{t-1} + b_{t-1})\varepsilon_t, \qquad
+s_t = s_{t-m}(1 + \gamma\varepsilon_t)
+```
+
+**ETS(M,Ad,N)** — Damped additive trend, no seasonality:
+```math
+y_t = (\ell_{t-1} + \phi b_{t-1})(1 + \varepsilon_t), \qquad
+\ell_t = (\ell_{t-1} + \phi b_{t-1})(1 + \alpha\varepsilon_t), \qquad
+b_t = \phi b_{t-1} + \beta\mu_{y,t}\varepsilon_t
+```
+
+**ETS(M,Ad,A)** — Damped additive trend, additive seasonality:
+```math
+y_t = (\ell_{t-1} + \phi b_{t-1} + s_{t-m})(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1} + \phi b_{t-1} + \alpha\mu_{y,t}\varepsilon_t, \qquad
+b_t = \phi b_{t-1} + \beta\mu_{y,t}\varepsilon_t, \qquad
+s_t = s_{t-m} + \gamma\mu_{y,t}\varepsilon_t
+```
+
+**ETS(M,Ad,M)** — Damped additive trend, multiplicative seasonality:
+```math
+y_t = (\ell_{t-1} + \phi b_{t-1})s_{t-m}(1 + \varepsilon_t), \qquad
+\ell_t = (\ell_{t-1} + \phi b_{t-1})(1 + \alpha\varepsilon_t), \qquad
+b_t = \phi b_{t-1} + \beta(\ell_{t-1} + \phi b_{t-1})\varepsilon_t, \qquad
+s_t = s_{t-m}(1 + \gamma\varepsilon_t)
+```
+
+**ETS(M,M,N)** — Multiplicative trend, no seasonality:
+```math
+y_t = \ell_{t-1} b_{t-1}(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1} b_{t-1}(1 + \alpha\varepsilon_t), \qquad
+b_t = b_{t-1}(1 + \beta\varepsilon_t)
+```
+
+**ETS(M,M,A)** — Multiplicative trend, additive seasonality:
+```math
+y_t = (\ell_{t-1} b_{t-1} + s_{t-m})(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1} b_{t-1} + \alpha\mu_{y,t}\varepsilon_t, \qquad
+b_t = b_{t-1} + \beta\mu_{y,t}/\ell_{t-1} \cdot \varepsilon_t, \qquad
+s_t = s_{t-m} + \gamma\mu_{y,t}\varepsilon_t
+```
+
+**ETS(M,M,M)** — Multiplicative trend, multiplicative seasonality:
+```math
+y_t = \ell_{t-1} b_{t-1} s_{t-m}(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1} b_{t-1}(1 + \alpha\varepsilon_t), \qquad
+b_t = b_{t-1}(1 + \beta\varepsilon_t), \qquad
+s_t = s_{t-m}(1 + \gamma\varepsilon_t)
+```
+
+**ETS(M,Md,N)** — Damped multiplicative trend, no seasonality:
+```math
+y_t = \ell_{t-1} b_{t-1}^\phi(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1} b_{t-1}^\phi(1 + \alpha\varepsilon_t), \qquad
+b_t = b_{t-1}^\phi(1 + \beta\varepsilon_t)
+```
+
+**ETS(M,Md,A)** — Damped multiplicative trend, additive seasonality:
+```math
+y_t = (\ell_{t-1} b_{t-1}^\phi + s_{t-m})(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1} b_{t-1}^\phi + \alpha\mu_{y,t}\varepsilon_t, \qquad
+b_t = b_{t-1}^\phi + \beta\mu_{y,t}/\ell_{t-1} \cdot \varepsilon_t, \qquad
+s_t = s_{t-m} + \gamma\mu_{y,t}\varepsilon_t
+```
+
+**ETS(M,Md,M)** — Damped multiplicative trend, multiplicative seasonality:
+```math
+y_t = \ell_{t-1} b_{t-1}^\phi s_{t-m}(1 + \varepsilon_t), \qquad
+\ell_t = \ell_{t-1} b_{t-1}^\phi(1 + \alpha\varepsilon_t), \qquad
+b_t = b_{t-1}^\phi(1 + \beta\varepsilon_t), \qquad
+s_t = s_{t-m}(1 + \gamma\varepsilon_t)
+```
+
+---
+
 ## Model properties
 
 Let ``M = F-GH``.
@@ -166,6 +412,7 @@ This normalization restores stability.
 - Hyndman, Akram & Archibald (2006). *The admissible parameter space for exponential smoothing models.*
 - Hyndman, R.J., Koehler, A.B., Ord, J.K., Snyder, R.D. (2008) *Forecasting with exponential smoothing: the state space approach*, Springer-Verlag: New York. http://www.exponentialsmoothing.net
 - Hyndman and Athanasopoulos (2018) *Forecasting: principles and practice*, 2nd edition, OTexts: Melbourne, Australia. https://otexts.com/fpp2/
+- Svetunkov, I. (2023). *Forecasting and Analytics with the Augmented Dynamic Adaptive Model (ADAM)*. Chapman and Hall/CRC.
 
 
 ---

@@ -75,7 +75,7 @@ end
 
 raw"""
     seasonal_strength(res::MSTLResult) -> Vector{Float64}
-    seasonal_strength(x::AbstractVector; m=..., kwargs...) -> Vector{Float64}
+    seasonal_strength(x::AbstractVector, m; kwargs...) -> Vector{Float64}
 
 Compute the **seasonal strength** of each seasonal component in an MSTL decomposition.
 
@@ -91,7 +91,7 @@ seasonal contribution relative to the remainder. Returned values are clipped to 
 
 # Arguments
 - `res::MSTLResult`: an existing decomposition returned by [`mstl`](@ref).
-- `x::AbstractVector`: a univariate time series. In this form, `mstl(x; periods, kwargs...)`
+- `x::AbstractVector`: a univariate time series. In this form, `mstl(x, m; kwargs...)`
   is called internally before computing seasonal strength.
 - `m`: seasonal periods to use if decomposing `x` directly (forwarded to `mstl`).
 - `kwargs...`: other keyword arguments passed through to `mstl`.
@@ -112,12 +112,12 @@ If no seasonal components exist, an empty `Vector{Float64}` is returned.
 # Examples
 ```julia
 y = rand(200) .+ 2sin.(2π*(1:200)/7) .+ 0.5sin.(2π*(1:200)/30)
-res = mstl(y; m=[7,30])
+res = mstl(y, [7,30])
 strengths = seasonal_strength(res)
 # e.g., [0.85, 0.42]
 
 # Convenience form: run mstl inside
-seasonal_strength(y; m=[7,30], iterate=2)
+seasonal_strength(y, [7,30]; iterate=2)
 ```
 """
 function seasonal_strength(
@@ -125,6 +125,6 @@ function seasonal_strength(
     m::Union{Integer,AbstractVector{<:Integer}};
     kwargs...,
 ) where {T<:Real}
-    res = mstl(x, m, kwargs...)
+    res = mstl(x, m; kwargs...)
     return seasonal_strength(res)
 end

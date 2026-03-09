@@ -212,45 +212,45 @@ result.seasonal
 Seasonal-Trend decomposition using LOESS (STL) - a robust and flexible method for decomposing time series.
 
 ```julia
-stl(x, m; s_window, s_degree=0, t_window=nothing, t_degree=1,
-    l_window=nothing, l_degree=t_degree, s_jump=nothing, t_jump=nothing,
-    l_jump=nothing, robust=false, inner=nothing, outer=nothing)
+stl(x, m; seasonal_window=:periodic, seasonal_degree=0, trend_window=nothing,
+    trend_degree=1, lowpass_window=nothing, lowpass_degree=trend_degree,
+    seasonal_jump=nothing, trend_jump=nothing, lowpass_jump=nothing,
+    robust=false, inner=nothing, outer=nothing)
 ```
 
 **Arguments:**
 - `x::AbstractVector`: Time series to decompose
-- `m::Int`: Seasonal frequency (must be ≥ 2)
-- `s_window`: Seasonal smoothing window (integer or `"periodic"`)
-- `s_degree::Int`: Seasonal smoothing polynomial degree (0 or 1)
-- `t_window`: Trend smoothing window
-- `t_degree::Int`: Trend smoothing polynomial degree (0 or 1)
-- `l_window`: Low-pass filter window
-- `l_degree::Int`: Low-pass filter polynomial degree
-- `s_jump`, `t_jump`, `l_jump`: Subsampling steps
+- `m::Int`: Seasonal frequency (must be at least 2, `x` must contain at least two full cycles, and missing values are not allowed)
+- `seasonal_window`: Seasonal smoothing window (integer span, rounded to the nearest odd value, or `:periodic`)
+- `seasonal_degree::Int`: Seasonal smoothing polynomial degree (0 or 1)
+- `trend_window`: Trend smoothing window
+- `trend_degree::Int`: Trend smoothing polynomial degree (0 or 1)
+- `lowpass_window`: Low-pass filter window
+- `lowpass_degree::Int`: Low-pass filter polynomial degree
+- `seasonal_jump`, `trend_jump`, `lowpass_jump`: Subsampling steps
 - `robust::Bool`: Use robustness iterations (default: false)
 - `inner`, `outer`: Inner/outer iteration counts
 
 **Returns:** `STLResult` struct with:
-- `time_series`: NamedTuple with `:seasonal`, `:trend`, `:remainder`
+- `seasonal`, `trend`, `remainder`: Decomposition components
 - `weights`: Robustness weights
-- `windows`: (s, t, l) window sizes
-- `degrees`: (s, t, l) polynomial degrees
-- `jumps`: (s, t, l) jump parameters
-- `inner`, `outer`: Iteration counts
+- `seasonal_window`, `trend_window`, `lowpass_window`: Window sizes actually used
+- `seasonal_degree`, `trend_degree`, `lowpass_degree`: Polynomial degrees
+- `seasonal_jump`, `trend_jump`, `lowpass_jump`: Jump parameters
+- `inner_iterations`, `outer_iterations`: Iteration counts
 
 **Example:**
 ```julia
 ap = air_passengers()
-result = stl(ap, 12; s_window=7, robust=true)
+result = stl(ap, 12; seasonal_window=7, robust=true)
 
 # Access components
-result.time_series.trend
-result.time_series.seasonal
-result.time_series.remainder
+result.trend
+result.seasonal
+result.remainder
 
-# Summarize and plot
+# Summarize
 summary(result)
-plot(result)
 ```
 
 ### Multiple Seasonal Decomposition (`mstl`)
@@ -258,15 +258,15 @@ plot(result)
 Decompose time series with multiple seasonal periods using iterative STL.
 
 ```julia
-mstl(x, m; lambda=nothing, iterate=2, s_window=nothing, stl_kwargs...)
+mstl(x, m; lambda=nothing, iterate=2, seasonal_window=nothing, stl_kwargs...)
 ```
 
 **Arguments:**
 - `x::AbstractVector`: Time series
-- `m`: Single period (Int) or vector of periods
+- `m`: Single period (`Int`) or vector of periods, passed positionally
 - `lambda`: Box-Cox parameter (`nothing`, `:auto`, or numeric)
 - `iterate::Int`: Number of outer iterations (default: 2)
-- `s_window`: Seasonal window(s)
+- `seasonal_window`: Seasonal window(s)
 - `stl_kwargs...`: Additional arguments passed to `stl`
 
 **Returns:** `MSTLResult` struct with:
@@ -277,11 +277,14 @@ mstl(x, m; lambda=nothing, iterate=2, s_window=nothing, stl_kwargs...)
 - `remainder`: Residual component
 - `lambda`: Box-Cox λ used
 
+If `lambda` is supplied, the decomposition is fit on the transformed series and
+the returned component vectors correspond to that transformed scale.
+
 **Example:**
 ```julia
 # Hourly data with daily and weekly patterns
 y = rand(200) .+ 2sin.(2π*(1:200)/7) .+ 0.5sin.(2π*(1:200)/30)
-result = mstl(y; m=[7, 30], iterate=2, s_window=[11, 23], robust=true)
+result = mstl(y, [7, 30]; iterate=2, seasonal_window=[11, 23], robust=true)
 
 # Access components
 result.trend
@@ -299,7 +302,7 @@ Measure the strength of seasonality in an MSTL decomposition.
 Reference: Wang, Smith & Hyndman (2006), Section 3.1.
 
 ```julia
-seasonal_strength(x; m, kwargs...)
+seasonal_strength(x, m; kwargs...)
 seasonal_strength(res::MSTLResult)
 ```
 
@@ -318,8 +321,11 @@ and clipped to \([0,1]\), where 0 indicates weak seasonality and 1 indicates str
 
 **Example:**
 ```julia
-result = mstl(y; m=[7, 30])
-strength = seasonal_strength(result)
+result = mstl(y, [7, 30])
+strengths = seasonal_strength(result)
+
+# Convenience form
+strengths2 = seasonal_strength(y, [7, 30]; iterate=2)
 ```
 
 ---
@@ -432,6 +438,17 @@ PACF value at lag `k`:
 ```
 For a causal AR(\(p\)) process, \(\phi_{k,k}=0\) for all \(k>p\), which gives the PACF cutoff diagnostic for AR order selection.
 
+### Diagnostic Interpretation
+
+ACF/PACF patterns can help identify appropriate model structures:
+
+| Pattern | ACF | PACF | Suggested model |
+|---------|-----|------|-----------------|
+| Cuts off after lag ``q`` | ``\hat{\rho}(k) \approx 0`` for ``k > q`` | Tails off | MA(``q``) |
+| Tails off | Geometric/oscillatory decay | Cuts off after lag ``p`` | AR(``p``) |
+| Both tail off | Geometric/oscillatory decay | Geometric/oscillatory decay | ARMA(``p,q``) |
+| Slow linear decay | Large positive values | Single large spike at lag 1 | Non-stationary; needs differencing |
+
 **Example:**
 ```julia
 y = randn(100)
@@ -510,7 +527,7 @@ diff(y; difference_order=2) # [1, 1, 1]
 Determine the number of non-seasonal differences needed for stationarity.
 
 ```julia
-ndiffs(x; alpha=0.05, test=:kpss, deterministic=:level, maxd=2, kwargs...)
+ndiffs(x; alpha=0.05, test=:kpss, deterministic=:level, max_d=2, kwargs...)
 ```
 
 **Arguments:**
@@ -518,7 +535,7 @@ ndiffs(x; alpha=0.05, test=:kpss, deterministic=:level, maxd=2, kwargs...)
 - `alpha::Float64`: Significance level (clamped to [0.01, 0.10])
 - `test::Symbol`: Unit root test - `:kpss`, `:adf`, or `:pp`
 - `deterministic::Symbol`: `:level` (intercept) or `:trend` (intercept + trend)
-- `maxd::Int`: Maximum differences to try (default: 2)
+- `max_d::Int`: Maximum differences to try (default: 2)
 
 **Test Behavior:**
 - **KPSS**: Null = stationarity. Returns smallest d where KPSS does not reject.
@@ -539,7 +556,7 @@ d_adf = ndiffs(y; test=:adf, deterministic=:trend)
 Determine the number of seasonal differences needed.
 
 ```julia
-nsdiffs(x, m; alpha=0.05, test=:seas, maxD=1, kwargs...)
+nsdiffs(x, m; alpha=0.05, test=:seas, max_D=1, kwargs...)
 ```
 
 **Arguments:**
@@ -547,7 +564,7 @@ nsdiffs(x, m; alpha=0.05, test=:seas, maxD=1, kwargs...)
 - `m::Int`: Seasonal period
 - `alpha::Float64`: Significance level
 - `test::Symbol`: `:seas` (default) or `:ocsb`
-- `maxD::Int`: Maximum seasonal differences (default: 1)
+- `max_D::Int`: Maximum seasonal differences (default: 1)
 
 **Example:**
 ```julia
@@ -953,13 +970,14 @@ fourier(x; m, K, h=nothing)
 - `K::Int`: Number of Fourier terms
 - `h`: Forecast horizon (optional)
 
-**Returns:** Matrix of sin/cos terms
+**Returns:** `NamedTuple` of sin/cos vectors keyed by symbols such as `:S1`, `:C1`, `:S2`, `:C2`, ...
 
 **Example:**
 ```julia
 y = randn(100)
 F = fourier(y; m=12, K=6)
-# Use F as regressors in ARIMA with external regressors
+propertynames(F)
+F.S1
 ```
 
 ### Ordinary Least Squares (`ols`)

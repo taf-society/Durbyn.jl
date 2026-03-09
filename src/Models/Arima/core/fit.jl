@@ -120,7 +120,7 @@ end
 #
 # Replaces regress_and_update!. ARMA params start at zero (standard recommendation,
 # Box-Jenkins 2015 §7.1). Xreg params from OLS on differenced data.
-# Parameter scaling uses max(1, |β|) instead of R's 10*se heuristic.
+# Parameter scaling uses max(1, |β|) for numerical stability.
 
 function compute_initial_params(
     x::AbstractArray,

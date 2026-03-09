@@ -93,7 +93,7 @@ OTexts, Melbourne. <https://otexts.com/fpp3/>
 - **Trend**: the final trend is copied from the **last** STL model fitted in
   the final iteration.
 - **No seasonality**: if all candidate periods are dropped (or `m == 1`),
-  the trend is computed by a simple smoother (analogous to R's `supsmu` fallback).
+  the trend is computed by a simple smoother (Friedman's super smoother).
 
 # Returns
 An [`MSTLResult`](@ref) containing:

@@ -237,7 +237,7 @@ end
         -> NamedMatrix{T}
 where {T<:Number}
 
-Build the RHS design matrix (like R's `model.matrix`) from a formula or from
+Build the RHS design matrix from a formula or from
 an existing predictor matrix `X`. The result is a `NamedMatrix{T}` whose
 `colnames` are the term labels (e.g. `"Intercept"`, `"x1"`, `"x1:x2"`).
 
@@ -356,7 +356,7 @@ end
         -> (y = Vector{T}, X = NamedMatrix{T})
 where {T<:Number}
 
-Build a response/design pair (like R’s `model.frame`). Returns a `NamedTuple`:
+Build a response/design pair. Returns a `NamedTuple`:
 
 - `y` — the response vector if the formula has a LHS; otherwise `nothing`
 - `X` — the RHS design as a `NamedMatrix{T}`

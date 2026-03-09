@@ -363,7 +363,7 @@ end
 
 """
 Helper function to create orthogonal polynomial design matrix for interpolate_missing.
-Uses three-term recurrence to match R's poly() function exactly.
+Uses three-term recurrence to produce orthonormal polynomials.
 """
 function _poly_matrix(tt::AbstractVector, degree::Int)
     n = length(tt)

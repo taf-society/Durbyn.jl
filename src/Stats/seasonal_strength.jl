@@ -101,7 +101,7 @@ A vector of seasonal strength values, one per seasonal period in `res.m`.
 If no seasonal components exist, an empty `Vector{Float64}` is returned.
 
 # Notes
-- This is equivalent to Hyndman's "seasonal strength" heuristic used in R's `seas.heuristic`.
+- This implements the seasonal strength heuristic from Wang, Smith & Hyndman (2006).
 - Missing values (`NaN`s) are ignored when computing variances.
 - The order of returned strengths matches the order of `res.m`.
 

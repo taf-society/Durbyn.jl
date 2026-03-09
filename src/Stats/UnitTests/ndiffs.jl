@@ -59,7 +59,7 @@ Schwert (1989) short rule: `⌊4(n/100)^{1/4}⌋`.
 ### Notes
 - If the series becomes constant after differencing, `ndiffs` returns the current `d`.
 - If a test call errors at some differencing order, a warning is emitted and the
-  current `d` is returned (mirroring the R behavior).
+  current `d` is returned.
 - P-values are derived by interpolating the test statistic against the reported
   critical values at `clevels` (e.g., 0.01, 0.05, 0.10).
 

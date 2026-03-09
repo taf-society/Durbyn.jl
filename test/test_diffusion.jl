@@ -824,43 +824,43 @@ using Durbyn: DiffusionFit, DiffusionModelType, Bass, Gompertz, GSGompertz, Weib
         @test length(curve.cumulative) == 10
     end
 
-    @testset "Preset Init Values Match R" begin
+    @testset "Preset Init Values" begin
         y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
-        y_sum = sum(y)
+        Y_end = sum(y)
 
-        # Bass preset: (0.5, 0.5, 0.5) with m scaled
+        # Bass preset: Sultan, Farley & Lehmann (1990) meta-analytic means
         init = Durbyn.Diffusion.preset_init(Bass, y)
-        @test init.m ≈ 0.5 * 10 * y_sum
-        @test init.p ≈ 0.5
-        @test init.q ≈ 0.5
+        @test init.m ≈ 2.0 * Y_end
+        @test init.p ≈ 0.03
+        @test init.q ≈ 0.38
 
-        # Gompertz preset: (1, 1, 1) with m scaled
+        # Gompertz preset
         init = Durbyn.Diffusion.preset_init(Gompertz, y)
-        @test init.m ≈ 1.0 * 10 * y_sum
-        @test init.a ≈ 1.0
-        @test init.b ≈ 1.0
+        @test init.m ≈ 2.0 * Y_end
+        @test init.a ≈ 5.0
+        @test init.b ≈ 0.5
 
-        # GSGompertz preset: (0.5, 0.5, 0.5, 0.5) with m scaled
+        # GSGompertz preset: Bemmaor (1994) mapping from Bass meta-analytic means
         init = Durbyn.Diffusion.preset_init(GSGompertz, y)
-        @test init.m ≈ 0.5 * 10 * y_sum
-        @test init.a ≈ 0.5
-        @test init.b ≈ 0.5
-        @test init.c ≈ 0.5
+        @test init.m ≈ 2.0 * Y_end
+        @test init.a ≈ 0.08
+        @test init.b ≈ 0.41
+        @test init.c ≈ 1.0
 
-        # Weibull preset: (0.5, 0.5, 0.5) with m scaled
+        # Weibull preset
         init = Durbyn.Diffusion.preset_init(Weibull, y)
-        @test init.m ≈ 0.5 * 10 * y_sum
-        @test init.a ≈ 0.5
-        @test init.b ≈ 0.5
+        @test init.m ≈ 2.0 * Y_end
+        @test init.a ≈ length(y) / 2
+        @test init.b ≈ 2.0
     end
 
     @testset "Preset Init Without mscal" begin
         y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
 
         init = Durbyn.Diffusion.preset_init(Bass, y; mscal=false)
-        @test init.m ≈ 0.5
-        @test init.p ≈ 0.5
-        @test init.q ≈ 0.5
+        @test init.m ≈ 1.0
+        @test init.p ≈ 0.03
+        @test init.q ≈ 0.38
     end
 
     @testset "Cleanzero Utility" begin
@@ -900,9 +900,10 @@ using Durbyn: DiffusionFit, DiffusionModelType, Bass, Gompertz, GSGompertz, Weib
         @test isfinite(init.p)
         @test isfinite(init.q)
 
-        # Verify it uses -c1/(2*c2) for complex discriminant, NOT Y[end]*1.5 fallback
+        # Verify regression on lagged cumulative: y ~ [1, Y_lag, Y_lag²]
         Y = cumsum(Float64.(y_complex))
-        cf = hcat(ones(10), Y, Y .^ 2) \ Float64.(y_complex)
+        Y_lag = vcat(0.0, Y[1:end-1])
+        cf = hcat(ones(10), Y_lag, Y_lag .^ 2) \ Float64.(y_complex)
         disc = cf[2]^2 - 4 * cf[3] * cf[1]
         if disc < 0 && abs(cf[3]) >= 1e-12
             expected_m = -cf[2] / (2 * cf[3])
@@ -910,9 +911,10 @@ using Durbyn: DiffusionFit, DiffusionModelType, Bass, Gompertz, GSGompertz, Weib
         end
 
         # p and q should be consistent with the regression coefficients
+        # p = a/m, q = -c·m (from discrete Bass linearization)
         if abs(init.m) > 1e-12
             @test init.p ≈ cf[1] / init.m rtol=1e-10
-            @test init.q ≈ cf[2] + init.p rtol=1e-10
+            @test init.q ≈ -cf[3] * init.m rtol=1e-10
         end
 
         # Even with negative init, fit_diffusion should still work (caller clamps)
@@ -1003,14 +1005,15 @@ using Durbyn: DiffusionFit, DiffusionModelType, Bass, Gompertz, GSGompertz, Weib
         y = [5.0, 15.0, 35.0, 65.0, 95.0, 105.0, 95.0, 70.0, 45.0, 25.0]
         init = Durbyn.Diffusion.bass_init(y)
 
-        # p and q should be consistent with m (derived from same regression)
+        # p and q should be consistent with m (derived from lagged regression)
         Y = cumsum(Float64.(y))
-        X = hcat(ones(10), Y, Y .^ 2)
+        Y_lag = vcat(0.0, Y[1:end-1])
+        X = hcat(ones(10), Y_lag, Y_lag .^ 2)
         cf = X \ Float64.(y)
 
         if abs(init.m) > 1e-12
             @test init.p ≈ cf[1] / init.m rtol=1e-10
-            @test init.q ≈ cf[2] + init.p rtol=1e-10
+            @test init.q ≈ -cf[3] * init.m rtol=1e-10
         end
     end
 

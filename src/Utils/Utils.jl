@@ -4,7 +4,7 @@ using Base: @static
 
 import Statistics: mean
 export NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind, setrow!
-export Formula, parse_formula, compile, model_matrix, model_frame, as_vector
+export Formula, parse_formula, compile, as_vector
 export air_passengers, ausbeer, lynx, sunspots, pedestrian_counts, simulate_seasonal_data
 export completecases
 export head, tail

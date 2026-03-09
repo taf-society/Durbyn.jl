@@ -103,7 +103,7 @@ spec = ArimaSpec(
 )
 ```
 
-The `xreg_formula` is evaluated via `Utils.model_matrix`, producing the necessary design matrix before fitting.
+The `xreg_formula` is evaluated internally to produce the necessary design matrix before fitting.
 
 ### ARIMA Examples
 

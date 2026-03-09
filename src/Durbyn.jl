@@ -42,7 +42,7 @@ using .KolmogorovWiener
 import .KolmogorovWiener: kolmogorov_wiener, KWFilterResult, kw_decomposition
 
 import .Utils: air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
-import .Utils: Formula, parse_formula, compile, model_matrix, model_frame
+import .Utils: Formula, parse_formula, compile
 import .Generics: plot, fitted, residuals, summary, predict, forecast, fit, accuracy, list_series, head, tail
 import .Optimize: NelderMeadOptions
 import .Grammar: p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm, ThetaTerm, DiffusionTerm

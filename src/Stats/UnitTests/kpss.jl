@@ -116,9 +116,11 @@ quantities.
     test statistics relative to critical values) suggest **rejecting** stationarity.
 
 # References
-Kwiatkowski, D., Phillips, P. C. B., Schmidt, P., & Shin, Y. (1992).
-Testing the Null Hypothesis of Stationarity Against the Alternative of a Unit Root.
-*Journal of Econometrics, 54*, 159-178.
+- Kwiatkowski, D., Phillips, P. C. B., Schmidt, P., & Shin, Y. (1992).
+  *Testing the Null Hypothesis of Stationarity Against the Alternative of a Unit Root.*
+  **Journal of Econometrics**, 54, 159–178.
+- Schwert, G. W. (1989). *Tests for unit roots: A Monte Carlo investigation.*
+  **Journal of Business & Economic Statistics**, 7(2), 147–159.
 
 # Examples
 ```julia

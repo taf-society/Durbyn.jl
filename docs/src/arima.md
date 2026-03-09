@@ -113,12 +113,12 @@ Reference: [HK2008], [BJL2015, Ch. 9].
 ### Definition
 **Auto ARIMA** automates the process of identifying the best ARIMA/SARIMA model by searching across possible values of (p, d, q) and seasonal (P, D, Q), selecting the model that minimizes an information criterion such as AIC, AICc, or BIC.
 
-### Algorithm (Hyndman & Khandakar, 2008)
-1. **Unit root tests** (ADF, KPSS, or combinations) to determine differencing orders \( d \) and \( D \).
-2. **Initial model selection** based on heuristics.  
-3. **Stepwise search** over (p, q, P, Q) with bounds (e.g., up to 5 for non-seasonal and 2 for seasonal).  
-4. Evaluate models by likelihood and information criteria.  
-5. Refit the best model with full maximum likelihood.  
+### Algorithm (similar in spirit to Hyndman & Khandakar, 2008)
+1. **Stationarity / seasonality diagnostics** determine differencing orders ``d`` and ``D``.
+2. **Initial model selection** uses clipped starting orders and simple baseline models.
+3. **Stepwise search** (or exhaustive search when `stepwise=false`) explores ``(p, q, P, Q)`` within configurable bounds.
+4. Models are ranked by the chosen information criterion (`AICc` by default; `AIC` and `BIC` also supported).
+5. If approximation mode is used, the best candidate is refit without approximation before returning.
 
 ### Advantages
 - Removes the manual effort of model identification.  
@@ -126,9 +126,109 @@ Reference: [HK2008], [BJL2015, Ch. 9].
 - Ensures differencing is tested systematically (avoids over-differencing).
 
 ### Limitations
-- Stepwise search may not find the global optimum.  
-- Computationally expensive for very large seasonal periods.  
-- Still requires diagnostic checking of residuals.  
+- Stepwise search may not find the global optimum.
+- Computationally expensive for very large seasonal periods.
+- Still requires diagnostic checking of residuals.
+
+### Detailed Algorithm
+
+Reference: Hyndman & Khandakar (2008); the implementation below describes Durbyn's current `auto_arima`.
+
+#### Phase 1: Differencing Order Selection
+
+**Stationary shortcut:** If `stationary=true`, the implementation sets ``d = 0`` and ``D = 0`` immediately.
+
+**Seasonal differencing (``D``):**
+
+- If ``m = 1``, then ``D = 0`` and seasonal AR/MA orders are disabled.
+- If ``D`` is not supplied and the trimmed series has length ``\le 2m``, then ``D = 0``.
+- Otherwise `nsdiffs` is used with `max_D=1` by default.
+- Durbyn defaults to `seasonal_test = :seas`, which uses Hyndman's seasonal-strength heuristic.
+- `seasonal_test = :ocsb` is also supported.
+- Canova-Hansen is referenced in the literature, but it is **not** currently implemented in Durbyn's `nsdiffs`.
+- If seasonal differencing would collapse the differenced series or make differenced regressors constant, ``D`` is reduced by one.
+
+**Non-seasonal differencing (``d``):**
+
+- If ``d`` is not supplied, `ndiffs` is applied to the seasonally differenced series.
+- Durbyn defaults to `test = :kpss`; `:adf` and `:pp` are also supported.
+- The default cap is ``d \le 2``.
+- If additional differencing would collapse the differenced series or make differenced regressors constant, ``d`` is reduced by one.
+
+#### Phase 2: Initial Stepwise Fits
+
+With ``d`` and ``D`` fixed, the default stepwise search starts from clipped versions of
+`start_p=2`, `start_q=2`, `start_P=1`, and `start_Q=1`. For very short series
+(`length(x) < 10`), starts are reduced to ``p,q \le 1`` and ``P = Q = 0``.
+
+The initial candidates are:
+
+| # | Candidate |
+|---|---|
+| 1 | ARIMA(start_p,d,start_q)(start_P,D,start_Q)``_m`` |
+| 2 | ARIMA(0,d,0)(0,D,0)``_m`` |
+| 3 | ARIMA(pp,d,0)(PP,D,0)``_m`` where ``pp \in \{0,1\}``, ``PP \in \{0,1\}`` subject to bounds |
+| 4 | ARIMA(0,d,qq)(0,D,QQ)``_m`` where ``qq \in \{0,1\}``, ``QQ \in \{0,1\}`` subject to bounds |
+| 5 | If a mean/drift term is allowed, ARIMA(0,d,0)(0,D,0)``_m`` without it |
+
+**Constant handling:**
+
+- If ``d + D = 0``, a non-zero mean may be included when `allowmean=true`.
+- If ``d + D = 1``, a drift term may be included when `allowdrift=true`.
+- If ``d + D \ge 2``, no constant term is searched.
+
+The candidate with the smallest selected information criterion becomes the **current model**.
+
+#### Phase 3: Stepwise Neighborhood Search
+
+From the current model ARIMA(p,d,q)(P,D,Q)``_m``, the stepwise loop evaluates up to **17 local moves**
+(subject to bounds and duplicate filtering):
+
+1. ``P - 1``
+2. ``Q - 1``
+3. ``P + 1``
+4. ``Q + 1``
+5. ``(P - 1, Q - 1)``
+6. ``(P - 1, Q + 1)``
+7. ``(P + 1, Q - 1)``
+8. ``(P + 1, Q + 1)``
+9. ``p - 1``
+10. ``q - 1``
+11. ``p + 1``
+12. ``q + 1``
+13. ``(p - 1, q - 1)``
+14. ``(p - 1, q + 1)``
+15. ``(p + 1, q - 1)``
+16. ``(p + 1, q + 1)``
+17. Toggle the mean/drift term (if allowed)
+
+If any move improves the selected criterion, it becomes the new current model and the loop restarts.
+If a full pass finds no improvement, the search stops.
+
+#### Search Constraints and Scoring
+
+- Defaults: ``max_p = 5``, ``max_q = 5``, ``max_P = 2``, ``max_Q = 2``
+- When ``m > 1`` and seasonal terms are allowed, ``p`` and ``q`` are additionally clipped to ``m - 1``
+- If `stepwise=false`, Durbyn performs an exhaustive search over models satisfying ``p + q + P + Q \le max_order``
+- Models that fail during estimation are discarded
+- Models are also discarded if any AR or MA root has modulus ``< 1.01`` (near-unit-root guard)
+- Default ranking criterion is `AICc`; `AIC` and `BIC` are also supported
+- When approximation mode is enabled, the search uses CSS-style approximations and then refits the best admissible model without approximation
+
+#### Information Criteria
+
+If ``k`` is the number of free mean/ARIMA/xreg parameters and ``\ell`` is the maximized log-likelihood,
+define ``m = k + 1`` to include ``\sigma^2``:
+
+```math
+\text{AIC} = -2\ell + 2m,
+\qquad
+\text{BIC} = -2\ell + m \log n,
+\qquad
+\text{AICc} = \text{AIC} + \frac{2m(m+1)}{n-m-1}.
+```
+
+Information-criterion values are only comparable across models with the same ``d`` and ``D``.
 
 ---
 

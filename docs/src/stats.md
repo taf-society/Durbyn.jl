@@ -432,6 +432,17 @@ PACF value at lag `k`:
 ```
 For a causal AR(\(p\)) process, \(\phi_{k,k}=0\) for all \(k>p\), which gives the PACF cutoff diagnostic for AR order selection.
 
+### Diagnostic Interpretation
+
+ACF/PACF patterns can help identify appropriate model structures:
+
+| Pattern | ACF | PACF | Suggested model |
+|---------|-----|------|-----------------|
+| Cuts off after lag ``q`` | ``\hat{\rho}(k) \approx 0`` for ``k > q`` | Tails off | MA(``q``) |
+| Tails off | Geometric/oscillatory decay | Cuts off after lag ``p`` | AR(``p``) |
+| Both tail off | Geometric/oscillatory decay | Geometric/oscillatory decay | ARMA(``p,q``) |
+| Slow linear decay | Large positive values | Single large spike at lag 1 | Non-stationary; needs differencing |
+
 **Example:**
 ```julia
 y = randn(100)

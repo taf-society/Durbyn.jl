@@ -225,6 +225,36 @@ Curvature acceptance for inverse-Hessian update:
 y_k^\top s_k > 0
 ```
 
+#### Secant equation
+
+The BFGS update ensures the new approximation satisfies:
+
+```math
+H_{k+1} y_k = s_k
+```
+
+This quasi-Newton condition guarantees that the approximate inverse Hessian models the most recent curvature information.
+
+#### Initial inverse Hessian scaling
+
+At iteration 0, ``H_0 = I``. After the first step, the inverse Hessian is rescaled:
+
+```math
+H_0 \leftarrow \frac{y_0^\top s_0}{y_0^\top y_0} \cdot I
+```
+
+This approximates the scale of the true inverse Hessian along the most recent direction, making subsequent step lengths closer to 1.
+
+#### Convergence
+
+The implementation checks gradient infinity-norm convergence:
+
+```math
+\|\nabla f(x_k)\|_\infty \le \varepsilon_g
+```
+
+along with relative function decrease and step size stagnation tests. BFGS achieves **superlinear convergence** on smooth problems: ``\|x_{k+1} - x^*\| / \|x_k - x^*\| \to 0``.
+
 Implementation note:
 
 - This module implements BFGS directly (search direction `p=-Hg`, strong Wolfe bracketing/zoom, and in-place symmetric inverse-Hessian updates).
@@ -275,6 +305,16 @@ s_k = x_{k+1} - x_k,\qquad y_k = \nabla f(x_{k+1}) - \nabla f(x_k)
 \text{accept update if}\quad s_k^\top y_k > \epsilon_{\text{mach}}\|y_k\|^2
 ```
 
+#### Two-loop recursion
+
+The search direction is computed via the L-BFGS two-loop recursion using the ``m`` most recent correction pairs ``\{s_k, y_k\}`` and a scaling factor:
+
+```math
+\theta = \frac{y_{k-1}^\top y_{k-1}}{y_{k-1}^\top s_{k-1}}
+```
+
+The implicit Hessian approximation has the compact form ``B_k = \theta I - W_k M_k W_k^\top`` where ``W_k`` and ``M_k`` are constructed from the stored pairs. The two-loop recursion avoids forming this matrix explicitly, computing the direction in ``O(mn)`` time where ``m`` is the memory size and ``n`` is the dimension.
+
 Implementation note:
 
 - This module implements the L-BFGS-B iteration directly (projected-gradient stop test, two-loop direction, bound-feasible line search, and limited-memory updates).
@@ -308,6 +348,30 @@ x_k + c\,(b_k-a_k), & \text{otherwise (golden-section fallback)}
 ```math
 c = \frac{3-\sqrt{5}}{2}
 ```
+
+Parabolic interpolation coefficients:
+
+```math
+r = (x_{\text{best}} - x_{\text{second}})(f_{\text{best}} - f_{\text{prev}}), \qquad
+q = (x_{\text{best}} - x_{\text{prev}})(f_{\text{best}} - f_{\text{second}})
+```
+```math
+p = (x_{\text{best}} - x_{\text{prev}})q - (x_{\text{best}} - x_{\text{second}})r, \qquad
+q \leftarrow 2(q - r)
+```
+
+The parabolic step ``p/q`` is accepted only when three conditions hold simultaneously:
+
+1. **Damping**: ``|p| < \tfrac{1}{2}|q| \cdot |\text{old\_step}|`` — prevents oscillation by requiring the parabolic step to be less than half the previous step
+2. **Lower feasibility**: ``p > q(a - x_{\text{best}})``
+3. **Upper feasibility**: ``p < q(b - x_{\text{best}})``
+
+Otherwise, a golden-section step is used as fallback.
+
+Convergence properties:
+- Exactly 1 function evaluation per iteration
+- Worst-case: golden-section linear convergence with rate ``c \approx 0.382``
+- Best-case: superlinear convergence of order ``\approx 1.324`` on smooth functions
 
 Implementation note:
 
@@ -363,10 +427,22 @@ x_{1/2} - \sigma r, & \text{otherwise}
 \end{cases}
 ```
 
+Default hyperparameters:
+
+```math
+\kappa_1 = \frac{0.2}{b_0 - a_0}, \qquad \kappa_2 = 2, \qquad n_0 = 1
+```
+
+Convergence guarantees:
+- **Worst-case**: ``n_{1/2} + n_0`` iterations (minmax optimal when ``n_0 = 0``), where ``n_{1/2} = \lceil\log_2((b_0 - a_0)/(2\varepsilon))\rceil``
+- **Order of convergence**: with ``\kappa_2 = 2``, achieves quadratic convergence on smooth functions (better than Brent's ``\approx 1.324``)
+- **Average-case**: strictly better than bisection under any continuous distribution on the root location
+
+The truncation-projection strategy protects against catastrophic cancellation in the regula falsi interpolation step while maintaining the bracket guarantee of bisection.
+
 Implementation note:
 
 - This module implements ITP directly (interpolate-truncate-project) and preserves bracket guarantees.
-- Default `k1` follows the paper scaling rule `k1 = 0.2/(b0-a0)` when not provided.
 
 ---
 
@@ -399,6 +475,18 @@ When `gradient` is not provided (second-order finite differences of `f`, Eq. 8.9
 ```
 
 Symmetry is enforced numerically by using `0.5 * (H + H')` when the gradient-differencing path is used.
+
+#### Step Size Selection
+
+Optimal step sizes balance truncation error against roundoff error. For machine epsilon ``u \approx 10^{-16}``:
+
+| Method | Optimal ``\varepsilon`` | Accuracy |
+|--------|------------------------|----------|
+| Forward-difference gradient | ``\varepsilon \approx \sqrt{u} \approx 10^{-8}`` | ``O(\varepsilon)`` |
+| Central-difference gradient | ``\varepsilon \approx u^{1/3} \approx 6 \times 10^{-6}`` | ``O(\varepsilon^2)`` |
+| Function-only Hessian | ``\varepsilon \approx u^{1/4} \approx 10^{-4}`` | ``O(\varepsilon^2)`` |
+
+The gradient-based Hessian (Eq. 8.7) requires ``2n`` gradient evaluations. The function-only Hessian (Eq. 8.9) requires ``O(n^2)`` function evaluations but needs no gradient.
 
 ---
 

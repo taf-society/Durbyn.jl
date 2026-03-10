@@ -380,7 +380,7 @@ The implementation automatically selects:
 
 4. **Trend and damping** via AIC comparison
 
-The descriptor format matches R's `forecast::tbats`:
+The descriptor format follows De Livera et al. (2011):
 
 ```
 TBATS(omega, {p,q}, phi, <m1,k1>, <m2,k2>, ...)

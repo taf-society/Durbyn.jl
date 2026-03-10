@@ -1400,7 +1400,7 @@ end
 # pivot_longer row order tests
 # ============================================================================
 @testset "pivot_longer row-major order" begin
-    @testset "output is row-major (matches tidyr)" begin
+    @testset "output is row-major order" begin
         wide = (id = [1, 2], A = [10, 20], B = [100, 200])
         result = pivot_longer(wide; id_cols=:id, names_to=:name, values_to=:value)
 

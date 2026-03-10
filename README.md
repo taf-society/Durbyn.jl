@@ -8,7 +8,7 @@
 
 ## About
 
-**Durbyn** is a Julia package for time-series forecasting, inspired by the R **forecast** and **fable** packages. While drawing on their methodology, Durbyn is a native Julia implementation featuring its own unique formula-based grammar for declarative model specification.
+**Durbyn** is a Julia package for time-series forecasting. It provides a native Julia implementation with its own formula-based grammar for declarative model specification.
 
 Durbyn — Kurdish for “binoculars” (Dur, far + Byn, to see), embodies foresight through science. Like Hari Seldon’s psychohistory in Asimov’s Foundation, we seek to glimpse the shape of tomorrow through the disciplined clarity of mathematics.
 
@@ -56,7 +56,7 @@ See the [Quick Start Performance Guide](https://taf-society.github.io/Durbyn.jl/
 Durbyn ships with multiple forecasting engines and a unified **formula interface**
 for declarative model specification. The formula interface is the **recommended approach** for most users, providing a modern, expressive way to specify models with full support for tables, panel data, and model comparison.
 
-The `PanelData` interface follows the **[tidy forecasting workflow](https://otexts.com/fpp3/a-tidy-forecasting-workflow.html)** (Hyndman & Athanasopoulos, 2021), providing a structured approach:
+The `PanelData` interface follows a **structured forecasting workflow** (Hyndman & Athanasopoulos, 2021, *Forecasting: Principles and Practice*), providing a structured approach:
 
 1. **Data Preparation** — Load, reshape, and clean data using `TableOps`
 2. **Visualization** — Explore patterns with `plot()` and `glimpse()`

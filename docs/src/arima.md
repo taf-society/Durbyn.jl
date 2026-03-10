@@ -741,7 +741,7 @@ tbl = as_table(fc)
 # Array Interface (Base Models)
 
 The array interface provides direct access to ARIMA estimation for numeric vectors.
-This is useful for quick analyses or integration with existing code for example using Durbyn base models as backend for Python or R packages.
+This is useful for quick analyses or integration with existing code.
 
 ## Forecasting Using Seasonal ARIMA Model
 

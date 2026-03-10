@@ -88,7 +88,7 @@ and a long-term trend. The data is from the Australian Bureau of Statistics.
 
 # Source
 Australian Bureau of Statistics. Cat. 8301.0.55.001.
-R package `fpp2` (Hyndman, R.J., & Athanasopoulos, G.)
+Hyndman, R.J., & Athanasopoulos, G. (2018). *Forecasting: Principles and Practice*, 2nd ed.
 
 # Properties
 - **Frequency**: Quarterly (4 observations per year)

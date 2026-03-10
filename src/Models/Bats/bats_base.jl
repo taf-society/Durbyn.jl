@@ -2,11 +2,9 @@
     BATSModel
 
 Container for fitted BATS models (Box-Cox transformation, ARMA errors,
-trend and seasonal components) following the definition in
-De Livera, Hyndman & Snyder (2011) and the `forecast::bats` R
-implementation.  Each field stores the estimated smoothing parameters,
-state matrices, diagnostics and metadata required to regenerate forecasts
-without re-fitting.
+trend and seasonal components) following De Livera, Hyndman & Snyder (2011).
+Each field stores the estimated smoothing parameters, state matrices,
+diagnostics and metadata required to regenerate forecasts without re-fitting.
 
 Fields capture Box-Cox lambda, level/trend/seasonal coefficients,
 ARMA coefficients, the state matrices `x`/`seed_states`, innovation

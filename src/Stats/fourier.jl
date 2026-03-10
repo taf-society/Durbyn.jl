@@ -50,7 +50,7 @@ Fourier terms for modelling seasonality. Returns a `NamedTuple` of vectors
 keyed by `:S1`, `:C1`, `:S2`, `:C2`, etc.
 
 When `K == m/2`, the degenerate sin term (`sin(πt) ≡ 0` for integer `t`) is
-automatically dropped, matching R's `forecast::fourier`.
+automatically dropped (the term is identically zero for integer time indices).
 
 # Arguments
 - `x::Vector{T}`: Time series data.

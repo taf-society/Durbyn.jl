@@ -994,8 +994,8 @@ end
 """
     glimpse(data; maxrows=5, io=stdout)
 
-Display a compact summary of a Tables.jl-compatible object (similar to dplyr's
-`glimpse`), showing column names, types, and a few sample values.
+Display a compact summary of a Tables.jl-compatible object, showing column names,
+types, and a few sample values.
 
 Supports both plain column tables and `GroupedTable`.
 """

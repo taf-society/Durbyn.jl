@@ -4,7 +4,7 @@ The `TableOps` module provides a comprehensive set of data manipulation function
 
 ## Overview
 
-`TableOps` is inspired by popular data manipulation libraries like dplyr and tidyr (R) and pandas (Python), but designed specifically for Julia's Tables.jl ecosystem. All functions work seamlessly with any Tables.jl-compatible data source, including:
+`TableOps` provides a verb-based data manipulation API designed for Julia's Tables.jl ecosystem. Functions like `select`, `query`, `mutate`, and `pivot_longer` offer a familiar workflow for users coming from any data science background. All functions work seamlessly with any Tables.jl-compatible data source, including:
 
 - NamedTuples
 - DataFrames
@@ -16,7 +16,7 @@ The `TableOps` module provides a comprehensive set of data manipulation function
 
 **Durbyn.jl is a forecasting package**, and time series data manipulation is at its core. The `TableOps` module is designed to work seamlessly with `PanelData`, a specialized data structure for handling multiple time series (panel/longitudinal data).
 
-The `PanelData` interface follows the **[tidy forecasting workflow](https://otexts.com/fpp3/a-tidy-forecasting-workflow.html)** from Hyndman & Athanasopoulos (2021), providing a structured six-step approach:
+The `PanelData` interface follows a **structured forecasting workflow** (Hyndman & Athanasopoulos, 2021, *Forecasting: Principles and Practice*), providing a six-step approach:
 
 1. **Data Preparation** — Load, reshape, and clean data using `TableOps`
 2. **Visualization** — Explore patterns with `plot()` and `glimpse()`

@@ -356,7 +356,7 @@ end
 
 @testset "Auto ARIMA Parity Regression Tests" begin
 
-    # Nile river flow data (1871-1970) — standard R dataset
+    # Nile river flow data (1871-1970) — classic benchmark dataset
     nile = [
         1120.0, 1160.0, 963.0, 1210.0, 1160.0, 1160.0, 813.0, 1230.0, 1370.0, 1140.0,
         995.0, 935.0, 1110.0, 994.0, 1020.0, 960.0, 1180.0, 799.0, 958.0, 1140.0,
@@ -380,7 +380,7 @@ end
         # Model should NOT include drift — the toggled (no-drift) model wins on BIC
         @test !("drift" in fit.coef.colnames)
 
-        # R reference: BIC ≈ 1275.04
+        # Reference BIC ≈ 1275.04
         @test isapprox(fit.bic, 1275.04, rtol=0.005)
     end
 

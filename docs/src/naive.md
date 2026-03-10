@@ -311,9 +311,8 @@ fit = naive(y)  # Uses 6.0 (last valid) for forecasts
 ```
 
 **Forward-fill behavior**: When computing fitted values, if the lagged value is missing,
-the method forward-fills from the most recent valid fitted value. This matches the R
-forecast package's `lagwalk()` behavior and ensures fitted values are available wherever
-actual values exist, even when there are gaps in the series.
+the method forward-fills from the most recent valid fitted value. This ensures fitted
+values are available wherever actual values exist, even when there are gaps in the series.
 
 For seasonal naive, if a particular seasonal position has missing values, the method
 searches backwards through prior seasonal cycles to find the most recent valid observation

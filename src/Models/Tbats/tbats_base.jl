@@ -2,12 +2,12 @@
     TBATSModel
 
 Container for a fitted TBATS model (Box-Cox transformation, ARMA errors,
-trend, and multiple seasonal components via Fourier terms). Mirrors the
-`forecast::tbats` object: fields store smoothing parameters, ARMA
+trend, and multiple seasonal components via Fourier terms) following
+De Livera, Hyndman & Snyder (2011). Fields store smoothing parameters, ARMA
 coefficients, state matrices (`x`/`seed_states`), fitted values, errors,
 likelihood, information criteria, and metadata needed to forecast without
 refitting. The descriptor `TBATS(omega, {p,q}, phi, <m1,k1>,...,<mJ,kJ>)`
-matches the R output, where `omega` is the Box-Cox lambda, `{p,q}` the ARMA
+uses the paper's notation, where `omega` is the Box-Cox lambda, `{p,q}` the ARMA
 orders, `phi` the damping parameter, and `<m,k>` pairs define seasonal
 periods and Fourier orders.
 

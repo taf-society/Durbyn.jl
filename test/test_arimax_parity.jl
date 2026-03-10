@@ -7,7 +7,7 @@ import Durbyn.Arima: arima_rjh, arima, auto_arima, ArimaFit, PDQ
 const AP = air_passengers()
 const N = length(AP)
 
-# Deterministic xreg shared across tests (same formula used in R)
+# Deterministic xreg shared across tests
 const XREG_SINGLE = NamedMatrix(
     reshape(sin.((1:N) ./ 5.0), :, 1),
     ["temperature"],

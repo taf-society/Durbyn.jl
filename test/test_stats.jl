@@ -750,11 +750,11 @@ const REF_KPSS_STAT_AP = 2.8767
 
     end
 
-    @testset "R Numerical Parity" begin
+    @testset "Numerical Parity" begin
 
-        @testset "fourier matches R forecast::fourier (K=6, m=12)" begin
-            # R: fourier(ts(AirPassengers, frequency=12), K=6) returns 11 columns
-            # S6 (sin(πt)=0) is dropped, matching R behavior
+        @testset "fourier reference values (K=6, m=12)" begin
+            # fourier(AirPassengers, m=12, K=6) returns 11 columns
+            # S6 (sin(πt)=0) is dropped for integer time indices
             R_row1 = [0.5, 0.8660254038, 0.8660254038, 0.5,
                       1.0, 0.0, 0.8660254038, -0.5,
                       0.5, -0.8660254038, -1.0]
@@ -773,7 +773,7 @@ const REF_KPSS_STAT_AP = 2.8767
                               :S5, :C5, :C6)
         end
 
-        @testset "fourier h=12 matches R forecast::fourier h=12" begin
+        @testset "fourier forecast reference values (h=12)" begin
             R_h_row6 = [0.0, -1.0, 0.0, 1.0,
                         0.0, -1.0, 0.0, 1.0,
                         0.0, -1.0, 1.0]
@@ -792,7 +792,7 @@ const REF_KPSS_STAT_AP = 2.8767
                                :S5, :C5, :C6)
         end
 
-        @testset "BoxCox(AP, λ=0.5) matches R forecast::BoxCox" begin
+        @testset "BoxCox(AP, λ=0.5) reference values" begin
             R_bc_half = [19.16601049, 19.72556098, 20.97825059, 20.71563338,
                          20.00000000, 21.23790008, 22.33105012, 22.33105012,
                          21.32380758, 19.81742423, 18.39607805, 19.72556098]
@@ -800,21 +800,21 @@ const REF_KPSS_STAT_AP = 2.8767
             @test all(isapprox.(jl_bc[1:12], R_bc_half, atol=1e-6))
         end
 
-        @testset "BoxCox.lambda matches R (guerrero & loglik)" begin
+        @testset "BoxCox.lambda reference values (guerrero & loglik)" begin
             λ_guer = box_cox_lambda(AirPassengers, 12; method=:guerrero)
             λ_loglik = box_cox_lambda(AirPassengers, 12; method=:loglik)
             @test isapprox(λ_guer, -0.2947156, atol=0.05)
             @test isapprox(λ_loglik, 0.2, atol=0.1)
         end
 
-        @testset "BoxCox.lambda short series m=4 vs m=12 matches R" begin
+        @testset "BoxCox.lambda short series m=4 vs m=12" begin
             short = Float64[10, 12, 15, 11, 13, 16, 12, 14, 17, 13,
                             15, 18, 14, 16, 19, 15, 17, 20, 16, 18]
             @test isapprox(box_cox_lambda(short, 4), 1.198332, atol=0.05)
             @test box_cox_lambda(short, 12) == 1.0
         end
 
-        @testset "smooth_trend matches R centred MA" begin
+        @testset "smooth_trend centred MA reference values" begin
             R_first10 = [3.0, 3.5, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
             R_mid = Float64.(45:55)
             R_last10 = [91.0, 92.0, 93.0, 94.0, 95.0, 96.0, 96.5, 97.0, 97.5, 98.0]
@@ -828,7 +828,7 @@ const REF_KPSS_STAT_AP = 2.8767
             @test all(isapprox.(sm_c, 5.0, atol=1e-10))
         end
 
-        @testset "mstl(AP,12) components match R forecast::mstl" begin
+        @testset "mstl(AP,12) reference values" begin
             R_trend = [123.1450569, 123.7250692, 124.3050816, 124.8850939,
                        125.5980842, 126.3110746, 127.0240649, 127.6147679,
                        128.2054709, 128.7961738, 129.7770976, 130.7580214]
@@ -847,13 +847,13 @@ const REF_KPSS_STAT_AP = 2.8767
             @test all(isapprox.(recon, AirPassengers, atol=1e-8))
         end
 
-        @testset "mstl(AP,12; lambda='auto') matches R lambda selection" begin
+        @testset "mstl(AP,12; lambda='auto') lambda selection" begin
             res = mstl(AirPassengers, 12; lambda=:auto)
             @test !isnothing(res.lambda)
             @test -1.0 < res.lambda < 2.0
         end
 
-        @testset "interpolate_missing seasonal matches R na.interp" begin
+        @testset "interpolate_missing seasonal interpolation" begin
             ap_nan = copy(AirPassengers)
             ap_nan[50] = NaN
 
@@ -880,7 +880,7 @@ const REF_KPSS_STAT_AP = 2.8767
             @test 300.0 < recon[100] < 420.0
         end
 
-        @testset "box_cox_lambda multi-seasonal uses max(m) matching R msts" begin
+        @testset "box_cox_lambda multi-seasonal uses max(m)" begin
             n_long = 400
             data_long = 100.0 .+ 10.0 .* sin.(2π .* (1:n_long) ./ 7) .+ randn(n_long)
             λ_long = box_cox_lambda(data_long, 30)
@@ -892,7 +892,7 @@ const REF_KPSS_STAT_AP = 2.8767
             @test λ_short == 1.0
         end
 
-        @testset "modelrank matches R lm()\$rank" begin
+        @testset "modelrank correctness" begin
             n = 50
             X = hcat(ones(n), randn(n), randn(n))
             y = X * [1.0, 2.0, 3.0] .+ randn(n) * 0.1
@@ -917,7 +917,7 @@ const REF_KPSS_STAT_AP = 2.8767
             @test ndiffs(AirPassengers; test=:kpss, deterministic=:trend) == 0
         end
 
-        @testset "ndiffs matches R forecast::ndiffs" begin
+        @testset "ndiffs reference values" begin
             @test ndiffs(AirPassengers; test=:kpss) == 1
 
             @test ndiffs(AirPassengers; test=:adf) == 1
@@ -969,7 +969,7 @@ const REF_KPSS_STAT_AP = 2.8767
             @test check_missing([1.0, 2.0, 3.0]) == [1.0, 2.0, 3.0]
         end
 
-        @testset "mstl period filter matches R (2*p < n)" begin
+        @testset "mstl period filter (2*p < n)" begin
             data_101 = randn(101) .+ 100.0
             res_101 = mstl(data_101, [50])
             @test 50 in res_101.m

@@ -218,57 +218,6 @@ stl(x, m; seasonal_window=:periodic, seasonal_degree=0, trend_window=nothing,
     robust=false, inner=nothing, outer=nothing)
 ```
 
-STL decomposes a series into seasonal, trend, and remainder components:
-
-```math
-Y_t = T_t + S_t + R_t
-```
-
-For non-periodic seasonal smoothing, Durbyn follows the Cleveland et al. STL backfitting loop:
-
-1. Detrend: \(D_t = Y_t - T_t\)
-2. Smooth each cycle-subseries \(\{D_v, D_{v+m}, D_{v+2m}, \dots\}\) with LOESS to obtain a temporary seasonal series \(C_t\)
-3. Apply the low-pass filter
-```math
-L = \operatorname{Loess}(n_l, d_l)\circ \operatorname{MA}(3)\circ \operatorname{MA}(m)\circ \operatorname{MA}(m)
-```
-4. Update the seasonal component: \(S_t = C_t - L_t\)
-5. Deseasonalize: \(A_t = Y_t - S_t\)
-6. Smooth \(A_t\) with LOESS to update the trend \(T_t\)
-
-The local LOESS weights are based on the tricube kernel:
-
-```math
-W(u) = \begin{cases}
-(1-u^3)^3, & 0 \le u < 1 \\
-0, & u \ge 1
-\end{cases}
-```
-
-At each evaluation point \(x_0\), STL fits a degree-0 or degree-1 weighted local polynomial over the \(q\) nearest neighbours. For degree 1, the local fit solves:
-
-```math
-\min_{\beta_0,\beta_1}\sum_i w_i\left[y_i - \beta_0 - \beta_1(x_i - x_0)\right]^2
-```
-
-and the smoothed value is \(\hat g(x_0)=\beta_0\).
-
-When `robust=true`, STL updates robustness weights from the remainder using the bisquare function:
-
-```math
-h = 6\,\operatorname{median}(|R_t|), \qquad
-\rho_t = B\!\left(\frac{|R_t|}{h}\right)
-```
-
-```math
-B(u) = \begin{cases}
-(1-u^2)^2, & 0 \le u < 1 \\
-0, & u \ge 1
-\end{cases}
-```
-
-When `seasonal_window=:periodic`, Durbyn uses a periodic seasonal special case: each seasonal phase is replaced by its within-phase mean (or weighted mean in robust iterations) before low-pass correction.
-
 **Arguments:**
 - `x::AbstractVector`: Time series to decompose
 - `m::Int`: Seasonal frequency (must be at least 2, `x` must contain at least two full cycles, and missing values are not allowed)
@@ -1216,7 +1165,7 @@ y_transformed, lambda = box_cox(ap, 12; lambda=:auto)
 println("Box-Cox lambda: $lambda")
 
 # 3. Decompose the series
-result = stl(ap, 12; seasonal_window=7, robust=true)
+result = stl(ap, 12; s_window=7, robust=true)
 summary(result)
 
 # 4. Examine autocorrelation structure
@@ -1224,7 +1173,7 @@ acf_result = acf(ap, 12, 24)
 pacf_result = pacf(ap, 12, 24)
 
 # 5. Multiple seasonal decomposition (if applicable)
-mstl_result = mstl(ap, 12; lambda=lambda)
+mstl_result = mstl(ap; m=12, lambda=lambda)
 strength = seasonal_strength(mstl_result)
 println("Seasonal strength: $strength")
 

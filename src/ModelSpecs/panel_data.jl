@@ -217,10 +217,9 @@ end
 
 Container for panel/time series datasets with optional preprocessing pipeline.
 
-The `PanelData` interface follows the **tidy forecasting workflow** from
-Hyndman & Athanasopoulos (2021), providing a structured approach to time series
-forecasting: data preparation → visualization → model specification → training →
-evaluation → forecasting. See: https://otexts.com/fpp3/
+The `PanelData` interface follows a structured forecasting workflow
+(Hyndman & Athanasopoulos, 2021): data preparation → visualization →
+model specification → training → evaluation → forecasting.
 
 # Core Arguments
 - `data`: The underlying tabular data (any Tables.jl-compatible format)

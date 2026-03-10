@@ -181,7 +181,7 @@ const REF_KPSS_STAT_AP = 2.8767
             end
         end
 
-        @testset "inv_box_cox Dict fvar path (R parity)" begin
+        @testset "inv_box_cox Dict fvar path" begin
             x_trans = [1.0, 2.0, 3.0]
             fvar_dict = Dict(:level => [95.0],
                              :upper => [2.0, 3.5, 5.0],
@@ -907,7 +907,7 @@ const REF_KPSS_STAT_AP = 2.8767
 
     end
 
-    @testset "Round 2 Bug Fixes + R Parity" begin
+    @testset "Round 2 Bug Fixes" begin
 
         @testset "ndiffs positional-API passes deterministic and max_d correctly" begin
             @test ndiffs(AirPassengers; test=:kpss, deterministic=:level, max_d=0) == 0

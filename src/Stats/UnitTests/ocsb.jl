@@ -263,7 +263,7 @@ Keyword Arguments
   (case-insensitive; e.g. :aic and :AIC are both accepted).
 - maxlag::Int = 0: If lag_method == :fixed, the AR order is set to maxlag. Otherwise, maxlag
   is the maximum number of lags considered in a selection procedure that minimizes the chosen
-  information criterion over p = 1:maxlag. R-style selection runs only if maxlag > 0.
+  information criterion over p = 1:maxlag. Lag selection runs only if maxlag > 0.
 - clevels::AbstractVector{<:Real} = [0.10, 0.05, 0.01]: Nominal levels for critical values.
 
 

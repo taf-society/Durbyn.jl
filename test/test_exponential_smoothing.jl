@@ -252,7 +252,7 @@ using Durbyn.TableOps
 
         @testset "Fixed parameters" begin
             fit_fixed = es_holt(ap, 1; alpha=0.3, beta=0.1)
-            # plot(forecast(fit_fixed, h = 12)) same as R
+            # plot(forecast(fit_fixed, h = 12))
             @test fit_fixed isa Holt
         end
 

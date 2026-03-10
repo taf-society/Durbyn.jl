@@ -1824,8 +1824,7 @@ end
          model=nothing)
 
 Fit a BATS model (Box-Cox transformation, ARMA errors, Trend and Seasonal
-components) to the univariate series `y`, mirroring the behaviour of the
-`forecast::bats` function described by De Livera, Hyndman & Snyder (2011).
+components) to the univariate series `y`, following De Livera, Hyndman & Snyder (2011).
 When `model === nothing` the function automatically searches over Box-Cox,
 trend and damping combinations (and optionally ARMA errors) selecting the
 best model by AIC; if `model` is supplied the same structure is refit to `y`.

@@ -322,7 +322,7 @@ function inv_box_cox(x::AbstractArray; lambda::Real, biasadj::Union{Bool,Nothing
             variance_adjusted = reshape(flat, size(out))
         elseif !(forecast_variance isa Number) && !(size(forecast_variance) == size(out))
 
-            throw(DimensionMismatch("fvar shape $(size(forecast_variance)) is incompatible with out shape $(size(out)). Provide a vector for R-style recycling or a same-shaped array."))
+            throw(DimensionMismatch("fvar shape $(size(forecast_variance)) is incompatible with out shape $(size(out)). Provide a vector for element-wise recycling or a same-shaped array."))
         end
 
         out .*= (1 .+ 0.5 .* variance_adjusted .* (1 .- lambda) ./ (out .^ (2 * lambda)))

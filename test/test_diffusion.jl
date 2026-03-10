@@ -386,7 +386,7 @@ using Durbyn: DiffusionFit, DiffusionModelType, Bass, Gompertz, GSGompertz, Weib
             @test curve.innovators[t] + curve.imitators[t] ≈ curve.adoption[t] atol=1e-10
         end
 
-        # Test R convention: innovators uses current cumulative At
+        # Test convention: innovators uses current cumulative At
         # innovators[t] = p * (m - cumulative[t])
         m, p, q = 1000.0, 0.03, 0.38
         for t in 1:10

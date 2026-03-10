@@ -14,7 +14,7 @@ intercept flag); it does **not** know about any particular dataset.
   (`[:x1]`) or an interaction (`[:a, :b]` for `a:b`).
 - `intercept` — `true` if an intercept column should be included.
 
-# Supported syntax (subset of R)
+# Supported syntax
 - `lhs ~ rhs` or `~ rhs` (no response).
 - Intercept on by default; disable with `-1` or `+0` anywhere on the RHS.
 - `+` adds terms.

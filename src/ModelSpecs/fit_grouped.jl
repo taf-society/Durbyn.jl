@@ -1073,3 +1073,47 @@ function fit_grouped(spec::DiffusionSpec, data;
 
     return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, 1, parallel, fail_fast, builder)
 end
+
+"""
+    fit_grouped(spec::KwFilterSpec, data; m, groupby, parallel=true, fail_fast=false, kwargs...)
+
+Fit KW filter models to grouped (panel) data.
+"""
+function fit_grouped(spec::KwFilterSpec, data;
+                     m::Union{Int, Nothing} = nothing,
+                     groupby::Union{Symbol, Vector{Symbol}},
+                     datecol::Union{Symbol, Nothing} = nothing,
+                     parallel::Bool = true,
+                     fail_fast::Bool = false,
+                     kwargs...)
+
+    tbl = Tables.columntable(data)
+
+    groupby_cols = groupby isa Symbol ? [groupby] : collect(groupby)
+    target_col = spec.formula.target
+
+    if !haskey(tbl, target_col)
+        available_cols = join(string.(keys(tbl)), ", ")
+        throw(ArgumentError(
+            "Target variable ':$(target_col)' not found in data. " *
+            "Available columns: $(available_cols)"
+        ))
+    end
+
+    seasonal_period = if !isnothing(m)
+        m
+    elseif !isnothing(spec.m)
+        spec.m
+    else
+        1
+    end
+
+    seasonal_period >= 1 ||
+        throw(ArgumentError("Seasonal period 'm' must be >= 1, got $(seasonal_period)"))
+
+    kwdict = Dict{Symbol, Any}(kwargs)
+    pop!(kwdict, :m, nothing)
+
+    builder = group_data_i -> fit(spec, group_data_i; m=seasonal_period, pairs(kwdict)...)
+    return _fit_grouped_no_xreg(spec, tbl, groupby_cols, target_col, seasonal_period, parallel, fail_fast, builder)
+end

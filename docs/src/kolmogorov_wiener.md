@@ -346,6 +346,55 @@ r = kolmogorov_wiener(y, :hp; m=12, d=1, D=1, max_p=3, stepwise=false)
 r = kolmogorov_wiener(y, :hp; m=12, boxcox_lambda=0.0, biasadj=true)
 ```
 
+### Grammar Interface
+
+The KW filter can be used with Durbyn's forecasting grammar for declarative
+model specification, including panel data support.
+
+```julia
+using Durbyn
+
+# Specify a KW filter model via @formula
+spec = KwFilterSpec(@formula(gdp = kw_filter()))
+
+# HP filter (default)
+spec = KwFilterSpec(@formula(gdp = kw_filter(filter=:hp, lambda=1600)))
+
+# Bandpass filter for business cycles
+spec = KwFilterSpec(@formula(gdp = kw_filter(filter=:bandpass, low=6, high=32)))
+
+# Butterworth filter
+spec = KwFilterSpec(@formula(gdp = kw_filter(filter=:butterworth, order=2, omega_c=0.2)))
+
+# Fit to tabular data (NamedTuple, DataFrame, etc.)
+data = (gdp = y,)
+fitted_model = fit(spec, data, m=4)
+
+# Forecast
+fc = forecast(fitted_model, h=8)
+
+# Trend extraction
+spec_trend = KwFilterSpec(@formula(gdp = kw_filter(output=:trend)))
+fitted_trend = fit(spec_trend, data, m=4)
+```
+
+**Panel data** — fit to multiple groups simultaneously:
+
+```julia
+data = (gdp = vcat(y1, y2), country = vcat(fill(:US, n), fill(:UK, n)))
+
+# Single groupby column
+spec = KwFilterSpec(@formula(gdp = kw_filter()))
+grouped = fit(spec, data, m=4, groupby=:country)
+
+# Multiple groupby columns
+grouped = fit(spec, data, m=4, groupby=[:country, :sector])
+
+# PanelData wrapper
+panel = PanelData(data, groupby=[:country], m=4)
+grouped = fit(spec, panel)
+```
+
 ---
 
 ## API Reference
@@ -354,6 +403,8 @@ r = kolmogorov_wiener(y, :hp; m=12, boxcox_lambda=0.0, biasadj=true)
 Durbyn.kolmogorov_wiener
 Durbyn.kw_decomposition
 Durbyn.KWFilterResult
+Durbyn.KwFilterSpec
+Durbyn.kw_filter
 ```
 
 ---

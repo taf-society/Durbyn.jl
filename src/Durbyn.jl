@@ -45,10 +45,10 @@ import .Utils: air_passengers, NamedMatrix, get_elements, get_vector, align_colu
 import .Utils: Formula, parse_formula, compile
 import .Generics: plot, fitted, residuals, summary, predict, forecast, fit, accuracy, list_series, head, tail
 import .Optimize: NelderMeadOptions
-import .Grammar: p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm, ThetaTerm, DiffusionTerm
-import .Grammar: e, t, s, drift, ses, holt, hw, holt_winters, croston, arar
+import .Grammar: p, q, d, P, Q, D, auto, ModelFormula, @formula, VarTerm, AutoVarTerm, ArarTerm, ThetaTerm, DiffusionTerm, KwFilterTerm
+import .Grammar: e, t, s, drift, ses, holt, hw, holt_winters, croston, arar, kw_filter
 import .Grammar: naive_term, snaive_term, rw_term, meanf_term, NaiveTerm, SnaiveTerm, RwTerm, MeanfTerm
-import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, TbatsSpec, BatsSpec, FittedEts, DiffusionSpec, FittedDiffusion
+import .ModelSpecs: AbstractModelSpec, AbstractFittedModel, ArimaSpec, FittedArima, ArarSpec, FittedArar, ArarmaSpec, FittedArarma, EtsSpec, TbatsSpec, BatsSpec, FittedEts, DiffusionSpec, FittedDiffusion, KwFilterSpec, FittedKwFilter
 import .ModelSpecs: SesSpec, FittedSes, HoltSpec, FittedHolt, HoltWintersSpec, FittedHoltWinters
 import .ModelSpecs: CrostonSpec, FittedCroston, ModelCollection, FittedModelCollection
 import .ModelSpecs: NaiveSpec, FittedNaive, SnaiveSpec, FittedSnaive, RwSpec, FittedRw, MeanfSpec, FittedMeanf
@@ -77,11 +77,11 @@ export air_passengers, PanelData, as_table, model
 export @formula
 export p, q, d, P, Q, D, auto, drift
 export e, t, s
-export ses, holt, hw, holt_winters, croston, arar
+export ses, holt, hw, holt_winters, croston, arar, kw_filter
 export naive_term, snaive_term, rw_term, meanf_term
 
 # Model Specs
-export ArimaSpec, EtsSpec, BatsSpec, TbatsSpec, ThetaSpec, DiffusionSpec
+export ArimaSpec, EtsSpec, BatsSpec, TbatsSpec, ThetaSpec, DiffusionSpec, KwFilterSpec
 export SesSpec, HoltSpec, HoltWintersSpec, CrostonSpec
 export ArarSpec, ArarmaSpec
 export NaiveSpec, SnaiveSpec, RwSpec, MeanfSpec

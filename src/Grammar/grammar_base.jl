@@ -287,6 +287,43 @@ struct DiffusionTerm <: AbstractTerm
 end
 
 """
+    KwFilterTerm <: AbstractTerm
+
+Represents a Kolmogorov-Wiener optimal filter specification term in a formula.
+
+The KW filter minimizes mean squared error relative to an ideal symmetric filter
+by exploiting the autocovariance structure of the data-generating process.
+
+# Fields
+- `filter_type::Symbol` - Filter type: :hp, :bandpass, :butterworth, :custom
+- `lambda::Union{Float64, Nothing}` - HP smoothing parameter (HP filter only)
+- `low::Union{Float64, Nothing}` - Lower period bound (bandpass only)
+- `high::Union{Float64, Nothing}` - Upper period bound (bandpass only)
+- `order::Union{Int, Nothing}` - Filter order (Butterworth only)
+- `omega_c::Union{Float64, Nothing}` - Cutoff frequency (Butterworth only)
+- `output::Union{Symbol, Nothing}` - Output component: :cycle or :trend
+- `maxcoef::Union{Int, Nothing}` - Number of ideal filter coefficients per side
+
+# Examples
+```julia
+@formula(gdp = kw_filter(filter=:hp))
+@formula(gdp = kw_filter(filter=:hp, lambda=1600, output=:trend))
+@formula(gdp = kw_filter(filter=:bandpass, low=6, high=32))
+@formula(gdp = kw_filter(filter=:butterworth, order=2, omega_c=0.2))
+```
+"""
+struct KwFilterTerm <: AbstractTerm
+    filter_type::Symbol
+    lambda::Union{Float64, Nothing}
+    low::Union{Float64, Nothing}
+    high::Union{Float64, Nothing}
+    order::Union{Int, Nothing}
+    omega_c::Union{Float64, Nothing}
+    output::Union{Symbol, Nothing}
+    maxcoef::Union{Int, Nothing}
+end
+
+"""
     NaiveTerm <: AbstractTerm
 
 Represents a naive forecasting model specification in a formula.
@@ -1223,6 +1260,89 @@ function diffusion(; model::Union{Symbol, Nothing}=nothing,
     end
 
     return DiffusionTerm(model, m_f, p_f, q_f, a_f, b_f, c_f, loss, cumulative)
+end
+
+const _KW_VALID_FILTERS = (:hp, :bandpass, :butterworth, :custom)
+
+"""
+    kw_filter(; filter=:hp, lambda=nothing, low=nothing, high=nothing,
+               order=nothing, omega_c=nothing, output=nothing, maxcoef=nothing)
+
+Specify a Kolmogorov-Wiener optimal filter forecasting model in a formula.
+
+# Arguments
+- `filter::Symbol=:hp` - Filter type: :hp, :bandpass, :butterworth, :custom
+- `lambda::Union{Real, Nothing}=nothing` - HP smoothing parameter (default 1600)
+- `low::Union{Real, Nothing}=nothing` - Lower period bound (bandpass only)
+- `high::Union{Real, Nothing}=nothing` - Upper period bound (bandpass only)
+- `order::Union{Int, Nothing}=nothing` - Filter order (Butterworth only)
+- `omega_c::Union{Real, Nothing}=nothing` - Cutoff frequency (Butterworth only)
+- `output::Union{Symbol, Nothing}=nothing` - Output component: :cycle or :trend
+- `maxcoef::Union{Int, Nothing}=nothing` - Number of ideal filter coefficients per side
+
+# Examples
+```julia
+@formula(gdp = kw_filter())
+@formula(gdp = kw_filter(filter=:hp, lambda=1600, output=:trend))
+@formula(gdp = kw_filter(filter=:bandpass, low=6, high=32))
+@formula(gdp = kw_filter(filter=:butterworth, order=2, omega_c=0.2))
+```
+"""
+function kw_filter(; filter::Symbol=:hp,
+                    lambda::Union{Real, Nothing}=nothing,
+                    low::Union{Real, Nothing}=nothing,
+                    high::Union{Real, Nothing}=nothing,
+                    order::Union{Int, Nothing}=nothing,
+                    omega_c::Union{Real, Nothing}=nothing,
+                    output::Union{Symbol, Nothing}=nothing,
+                    maxcoef::Union{Int, Nothing}=nothing)
+
+    filter ∈ _KW_VALID_FILTERS || throw(ArgumentError(
+        "filter must be one of $(_KW_VALID_FILTERS), got :$(filter)"))
+
+    lambda_f = isnothing(lambda) ? nothing : Float64(lambda)
+    if !isnothing(lambda_f) && lambda_f <= 0
+        throw(ArgumentError("lambda must be positive, got $(lambda)"))
+    end
+
+    low_f = isnothing(low) ? nothing : Float64(low)
+    high_f = isnothing(high) ? nothing : Float64(high)
+    if !isnothing(low_f) && low_f <= 0
+        throw(ArgumentError("low must be positive, got $(low)"))
+    end
+    if !isnothing(high_f) && high_f <= 0
+        throw(ArgumentError("high must be positive, got $(high)"))
+    end
+    if !isnothing(low_f) && !isnothing(high_f) && low_f >= high_f
+        throw(ArgumentError("low must be less than high, got low=$(low), high=$(high)"))
+    end
+
+    if !isnothing(order) && order < 1
+        throw(ArgumentError("order must be >= 1, got $(order)"))
+    end
+
+    omega_c_f = isnothing(omega_c) ? nothing : Float64(omega_c)
+    if !isnothing(omega_c_f) && omega_c_f <= 0
+        throw(ArgumentError("omega_c must be positive, got $(omega_c)"))
+    end
+
+    if !isnothing(output)
+        output ∈ (:cycle, :trend) || throw(ArgumentError(
+            "output must be :cycle or :trend, got :$(output)"))
+    end
+
+    if !isnothing(maxcoef) && maxcoef < 1
+        throw(ArgumentError("maxcoef must be >= 1, got $(maxcoef)"))
+    end
+
+    if filter == :bandpass && (isnothing(low_f) || isnothing(high_f))
+        throw(ArgumentError("bandpass filter requires both `low` and `high` parameters"))
+    end
+    if filter == :butterworth && isnothing(omega_c_f)
+        throw(ArgumentError("butterworth filter requires `omega_c` parameter"))
+    end
+
+    return KwFilterTerm(filter, lambda_f, low_f, high_f, order, omega_c_f, output, maxcoef)
 end
 
 """

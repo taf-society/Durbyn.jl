@@ -7,7 +7,7 @@ This file provides the concrete implementations that connect model specs
 to the underlying fitting functions (auto_arima, arima, etc.).
 """
 
-import ..Generics: fit, forecast, fitted
+import ..Generics: fit, forecast, fitted, residuals
 
 import Tables
 
@@ -2460,6 +2460,132 @@ function fit(spec::DiffusionSpec, panel::PanelData; kwargs...)
     end
     if !haskey(kwdict, :datecol) && !isnothing(panel.date)
         kwdict[:datecol] = panel.date
+    end
+    return fit(spec, panel.data; pairs(kwdict)...)
+end
+
+# =============================================================================
+# Kolmogorov-Wiener Filter
+# =============================================================================
+
+"""
+    fit(spec::KwFilterSpec, data; m=nothing, groupby=nothing, kwargs...)
+
+Fit a Kolmogorov-Wiener filter specification to data (single series or grouped).
+
+# Arguments
+- `spec::KwFilterSpec` - KW filter specification created with `@formula`
+- `data` - Tables.jl-compatible data (NamedTuple, DataFrame, CSV.File, etc.)
+
+# Keyword Arguments
+- `m::Union{Int, Nothing}` - Seasonal period (required if not specified in spec)
+- `groupby::Union{Symbol, Vector{Symbol}, Nothing}` - Column(s) to group by for panel data
+- `parallel::Bool` - Use parallel processing for grouped data (default true)
+- `fail_fast::Bool` - Stop on first error in grouped fitting (default false)
+- Additional kwargs passed to underlying `kolmogorov_wiener` function
+
+# Returns
+- If `groupby=nothing`: `FittedKwFilter` - Single fitted model
+- If `groupby` specified: `GroupedFittedModels` - Fitted models for each group
+"""
+function fit(spec::KwFilterSpec, data;
+             m::Union{Int, Nothing} = nothing,
+             groupby::Union{Symbol, Vector{Symbol}, Nothing} = nothing,
+             datecol::Union{Symbol, Nothing} = nothing,
+             parallel::Bool = true,
+             fail_fast::Bool = false,
+             kwargs...)
+
+    if !isnothing(groupby)
+        return fit_grouped(spec, data;
+                           m=m,
+                           groupby=groupby,
+                           datecol=datecol,
+                           parallel=parallel,
+                           fail_fast=fail_fast,
+                           kwargs...)
+    end
+
+    tbl = Tables.columntable(data)
+
+    target_col = spec.formula.target
+    haskey(tbl, target_col) ||
+        throw(ArgumentError("Target variable ':$(target_col)' not found in data."))
+
+    target_vector = tbl[target_col]
+    target_vector isa AbstractVector ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be a vector, got $(typeof(target_vector))"))
+
+    el = Base.nonmissingtype(eltype(target_vector))
+    el <: Number ||
+        throw(ArgumentError("Target variable ':$(target_col)' must be numeric, got element type $(eltype(target_vector))"))
+
+    seasonal_period = if !isnothing(m)
+        m
+    elseif !isnothing(spec.m)
+        spec.m
+    else
+        1
+    end
+
+    kw_term = _extract_single_term(spec.formula, KwFilterTerm)
+
+    fit_options = copy(spec.options)
+    merge!(fit_options, Dict{Symbol, Any}(kwargs))
+
+    # Map term fields to kolmogorov_wiener kwargs
+    if !isnothing(kw_term.lambda) && !haskey(fit_options, :lambda)
+        fit_options[:lambda] = kw_term.lambda
+    end
+    if !isnothing(kw_term.low) && !haskey(fit_options, :low)
+        fit_options[:low] = kw_term.low
+    end
+    if !isnothing(kw_term.high) && !haskey(fit_options, :high)
+        fit_options[:high] = kw_term.high
+    end
+    if !isnothing(kw_term.order) && !haskey(fit_options, :order)
+        fit_options[:order] = kw_term.order
+    end
+    if !isnothing(kw_term.omega_c) && !haskey(fit_options, :omega_c)
+        fit_options[:omega_c] = kw_term.omega_c
+    end
+    if !isnothing(kw_term.output) && !haskey(fit_options, :output)
+        fit_options[:output] = kw_term.output
+    end
+    if !isnothing(kw_term.maxcoef) && !haskey(fit_options, :maxcoef)
+        fit_options[:maxcoef] = kw_term.maxcoef
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    KW_mod = getfield(parent_mod, :KolmogorovWiener)
+
+    kw_fit = KW_mod.kolmogorov_wiener(target_vector, kw_term.filter_type;
+                                       m=seasonal_period, pairs(fit_options)...)
+
+    return FittedKwFilter(spec, kw_fit, target_col, tbl, seasonal_period)
+end
+
+function forecast(fitted::FittedKwFilter; h::Int, level::Vector{<:Real} = [80, 95], newdata = nothing, kwargs...)
+    if !isnothing(newdata)
+        @warn "newdata ignored for KW filter forecasts; KW models do not support exogenous regressors."
+    end
+
+    parent_mod = parentmodule(@__MODULE__)
+    KW_mod = getfield(parent_mod, :KolmogorovWiener)
+
+    return KW_mod.forecast(fitted.fit; h=h, level=level, kwargs...)
+end
+
+function fit(spec::KwFilterSpec, panel::PanelData; kwargs...)
+    kwdict = Dict{Symbol, Any}(kwargs)
+    if !haskey(kwdict, :groupby) && !isempty(panel.groups)
+        kwdict[:groupby] = panel.groups
+    end
+    if !haskey(kwdict, :datecol) && !isnothing(panel.date)
+        kwdict[:datecol] = panel.date
+    end
+    if !haskey(kwdict, :m) && !isnothing(panel.m)
+        kwdict[:m] = resolve_m(panel.m, spec)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end

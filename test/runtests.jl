@@ -116,4 +116,8 @@ using Test
     @testset "KolmogorovWiener Forecast" begin
         include("test_kw_forecast.jl")
     end
+
+    @testset "KolmogorovWiener Grammar" begin
+        include("test_kw_grammar.jl")
+    end
 end

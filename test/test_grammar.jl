@@ -232,6 +232,25 @@ import Durbyn.Grammar: EtsComponentTerm, EtsDriftTerm
             term_otm = theta(model=:OTM)
             @test term_otm.model_type == :OTM
         end
+
+        @testset "kw_filter() - KW filter" begin
+            term = kw_filter()
+            @test term isa KwFilterTerm
+            @test term.filter_type == :hp
+
+            term_bp = kw_filter(filter=:bandpass, low=6, high=32)
+            @test term_bp.filter_type == :bandpass
+            @test term_bp.low == 6.0
+            @test term_bp.high == 32.0
+
+            term_bw = kw_filter(filter=:butterworth, order=2, omega_c=0.2)
+            @test term_bw.filter_type == :butterworth
+            @test term_bw.order == 2
+
+            @test_throws ArgumentError kw_filter(filter=:invalid)
+            @test_throws ArgumentError kw_filter(filter=:bandpass, low=6)
+            @test_throws ArgumentError kw_filter(filter=:butterworth)
+        end
     end
 
     @testset "@formula macro" begin

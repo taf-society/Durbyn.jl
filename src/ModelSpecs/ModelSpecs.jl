@@ -46,7 +46,7 @@ fc = forecast(fitted, h = 12)
 """
 module ModelSpecs
 
-using ..Grammar: ModelFormula, VarTerm, AutoVarTerm, ArimaOrderTerm, BatsTerm, TbatsTerm, ThetaTerm, DiffusionTerm, compile_ets_formula, NaiveTerm, SnaiveTerm, RwTerm, _extract_single_term
+using ..Grammar: ModelFormula, VarTerm, AutoVarTerm, ArimaOrderTerm, BatsTerm, TbatsTerm, ThetaTerm, DiffusionTerm, KwFilterTerm, compile_ets_formula, NaiveTerm, SnaiveTerm, RwTerm, _extract_single_term
 using ..Utils: Formula
 
 # Import model types for typed struct fields
@@ -57,6 +57,7 @@ import ..Bats: BATSModel
 import ..Tbats: TBATSModel
 import ..Theta: ThetaFit
 import ..Diffusion: DiffusionFit
+import ..KolmogorovWiener: KWFilterResult
 import ..Naive: NaiveFit, MeanFit
 import ..Ararma: ARAR, ArarmaModel
 
@@ -70,6 +71,7 @@ export BatsSpec, FittedBats
 export TbatsSpec, FittedTbats
 export ThetaSpec, FittedTheta
 export DiffusionSpec, FittedDiffusion
+export KwFilterSpec, FittedKwFilter
 export NaiveSpec, FittedNaive
 export SnaiveSpec, FittedSnaive
 export RwSpec, FittedRw
@@ -97,6 +99,7 @@ include("bats_spec.jl")
 include("tbats_spec.jl")
 include("theta_spec.jl")
 include("diffusion_spec.jl")
+include("kw_spec.jl")
 include("ets_spec.jl")
 include("smoothing_specs.jl")
 include("naive_spec.jl")

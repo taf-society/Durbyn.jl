@@ -32,7 +32,7 @@ xreg is present. Returns (x_work, xreg_work, x_for_tests, lambda).
 """
 function preprocess_series(x::AbstractVector, xreg, m::Int;
                            lambda::Union{Nothing,Real})
-    x_work = copy(x)
+    x_work = float.(x)
 
     if !isnothing(lambda)
         x_work, lambda = box_cox(x_work, m, lambda = lambda)
@@ -51,7 +51,7 @@ function preprocess_series(x::AbstractVector, xreg, m::Int;
             end
             valid = .!ismissing.(x_work) .& .!ismissing.(row_sums(xreg_work))
             xreg_with_intercept = hcat(ones(size(xreg_work.data, 1)), xreg_work.data)
-            ols_fit = ols(copy(x_work), xreg_with_intercept)
+            ols_fit = ols(Float64.(x_work[valid]), xreg_with_intercept[valid, :])
             res = residuals(ols_fit)
             x_for_tests[valid] .= res
         end

@@ -168,7 +168,7 @@ A numeric vector of the same length as `x`.
 - Bickel, P. J. and Doksum, K. A. (1981). An Analysis of Transformations Revisited. JASA, 76, 296–311.
 """
 function box_cox(x::AbstractVector{<:Number}, m::Int; lambda::Union{Symbol,Number}=:auto)
-    x = copy(x)
+    x = float.(x)
     if lambda === :auto
         lambda = box_cox_lambda(x, m, lower=-0.9)
     end

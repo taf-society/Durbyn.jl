@@ -263,16 +263,13 @@ fitted_lambda = fit(spec, data, m = 12, lambda = 0.5)
 # Check fixed lambda
 println(fitted_lambda.fit.lambda)
 
-</code></pre><p><strong>Transformation features:</strong></p><ul><li><code>lambda = :auto</code> selects optimal transformation</li><li><code>biasadj = true</code> applies bias adjustment to forecasts</li><li>Common values: 0 (log), 0.5 (square root), 1 (no transform)</li></ul><hr/><h1 id="Array-Interface-(Base-Models)"><a class="docs-heading-anchor" href="#Array-Interface-(Base-Models)">Array Interface (Base Models)</a><a id="Array-Interface-(Base-Models)-1"></a><a class="docs-heading-anchor-permalink" href="#Array-Interface-(Base-Models)" title="Permalink"></a></h1><p>The array interface provides direct access to exponential smoothing engines for numeric vectors. </p><h2 id="Optimizer-Controls"><a class="docs-heading-anchor" href="#Optimizer-Controls">Optimizer Controls</a><a id="Optimizer-Controls-1"></a><a class="docs-heading-anchor-permalink" href="#Optimizer-Controls" title="Permalink"></a></h2><p><code>ets</code>, <code>ses</code>, <code>holt</code>, and <code>holt_winters</code> now accept the same optimization controls style used by ARIMA:</p><pre><code class="language-julia hljs">fit = ets(
+</code></pre><p><strong>Transformation features:</strong></p><ul><li><code>lambda = :auto</code> selects optimal transformation</li><li><code>biasadj = true</code> applies bias adjustment to forecasts</li><li>Common values: 0 (log), 0.5 (square root), 1 (no transform)</li></ul><hr/><h1 id="Array-Interface-(Base-Models)"><a class="docs-heading-anchor" href="#Array-Interface-(Base-Models)">Array Interface (Base Models)</a><a id="Array-Interface-(Base-Models)-1"></a><a class="docs-heading-anchor-permalink" href="#Array-Interface-(Base-Models)" title="Permalink"></a></h1><p>The array interface provides direct access to exponential smoothing engines for numeric vectors. </p><h2 id="Optimizer-Controls"><a class="docs-heading-anchor" href="#Optimizer-Controls">Optimizer Controls</a><a id="Optimizer-Controls-1"></a><a class="docs-heading-anchor-permalink" href="#Optimizer-Controls" title="Permalink"></a></h2><p><code>ets</code>, <code>ses</code>, <code>holt</code>, and <code>holt_winters</code> accept Nelder-Mead optimizer controls via the <code>options</code> keyword:</p><pre><code class="language-julia hljs">using Durbyn.Optimize  # for NelderMeadOptions
+
+fit = ets(
     y,
     12,
     &quot;ZZZ&quot;;
-    optim_method = :lbfgsb,
-    optim_control = Dict(
-        &quot;maxit&quot; =&gt; 800,
-        &quot;ndeps&quot; =&gt; fill(1e-3, 20),  # optional finite-difference steps
-        &quot;trace&quot; =&gt; 1,
-    ),
+    options = NelderMeadOptions(maxit = 800, trace = true),
 )</code></pre><p>Notes:</p><ul><li><code>optim_method</code> defaults to <code>:nelder_mead</code>.</li><li><code>options::NelderMeadOptions</code> is still supported and remains backward-compatible.</li><li><code>optim_control</code> keys follow ARIMA conventions (for example: <code>&quot;maxit&quot;</code>, <code>&quot;ndeps&quot;</code>, <code>&quot;trace&quot;</code>, <code>&quot;REPORT&quot;</code>, <code>&quot;reltol&quot;</code>, <code>&quot;abstol&quot;</code>).</li></ul><h2 id="Simple-Exponential-Smoothing-(SES)"><a class="docs-heading-anchor" href="#Simple-Exponential-Smoothing-(SES)">Simple Exponential Smoothing (SES)</a><a id="Simple-Exponential-Smoothing-(SES)-1"></a><a class="docs-heading-anchor-permalink" href="#Simple-Exponential-Smoothing-(SES)" title="Permalink"></a></h2><p><strong>Simple exponential smoothing</strong> is the simplest form of exponential smoothing (equivalent to ETS(A,N,N) or ETS(M,N,N)), with no trend or seasonality components. It is suitable for forecasting data with no clear trend or seasonal pattern.</p><h3 id="Mathematical-Formulation"><a class="docs-heading-anchor" href="#Mathematical-Formulation">Mathematical Formulation</a><a id="Mathematical-Formulation-1"></a><a class="docs-heading-anchor-permalink" href="#Mathematical-Formulation" title="Permalink"></a></h3><h4 id="Additive-Error-Form-(ANN)"><a class="docs-heading-anchor" href="#Additive-Error-Form-(ANN)">Additive Error Form (ANN)</a><a id="Additive-Error-Form-(ANN)-1"></a><a class="docs-heading-anchor-permalink" href="#Additive-Error-Form-(ANN)" title="Permalink"></a></h4><p class="math-container">\[\begin{aligned}
 Y_t &amp;= \ell_{t-1} + \varepsilon_t, \\
 \ell_t &amp;= \ell_{t-1} + \alpha\varepsilon_t,
@@ -280,7 +277,8 @@ Y_t &amp;= \ell_{t-1} + \varepsilon_t, \\
 Y_t &amp;= \ell_{t-1}(1 + \varepsilon_t), \\
 \ell_t &amp;= \ell_{t-1}(1 + \alpha\varepsilon_t),
 \end{aligned}\]</p><p>Point forecasts are identical to the additive form, but prediction intervals scale with the level.</p><h3 id="Admissible-Parameter-Space"><a class="docs-heading-anchor" href="#Admissible-Parameter-Space">Admissible Parameter Space</a><a id="Admissible-Parameter-Space-1"></a><a class="docs-heading-anchor-permalink" href="#Admissible-Parameter-Space" title="Permalink"></a></h3><p>For stability and forecastability:</p><p class="math-container">\[0 &lt; \alpha &lt; 2\]</p><p>In practice, <span>$\alpha$</span> is typically constrained to <span>$(0,1)$</span> for conventional exponential smoothing behavior.</p><h3 id="Usage"><a class="docs-heading-anchor" href="#Usage">Usage</a><a id="Usage-1"></a><a class="docs-heading-anchor-permalink" href="#Usage" title="Permalink"></a></h3><p>The <code>ses()</code> function provides two initialization methods:</p><ul><li><strong><code>initial = :optimal</code></strong> (default): Uses state-space optimization via ETS framework</li><li><strong><code>initial = :simple</code></strong>: Uses conventional Holt-Winters initialization</li></ul><pre><code class="language-julia hljs">using Durbyn
-using Durbyn.ExponentialSmoothing
+using Durbyn
+import Durbyn.ExponentialSmoothing: ses
 
 # Load example data
 y = [10.5, 12.3, 11.8, 13.1, 12.9, 14.2, 13.8, 15.1, 14.7, 16.0]
@@ -320,7 +318,8 @@ b_t &amp;= \beta \frac{\ell_t}{\ell_{t-1}} + (1-\beta) b_{t-1}^{\phi},
 1 - \frac{1}{\phi} &amp;&lt; \alpha &lt; 1 + \frac{1}{\phi}, \\
 \alpha(\phi - 1) &amp;&lt; \beta &lt; (1+\phi)(2-\alpha)
 \end{aligned}\]</p><h3 id="Usage-2"><a class="docs-heading-anchor" href="#Usage-2">Usage</a><a class="docs-heading-anchor-permalink" href="#Usage-2" title="Permalink"></a></h3><pre><code class="language-julia hljs">using Durbyn
-using Durbyn.ExponentialSmoothing
+using Durbyn
+import Durbyn.ExponentialSmoothing: holt
 
 # Simulate data with linear trend
 t = 1:50
@@ -355,14 +354,14 @@ fit_explicit = holt(y, 1, damped=true)</code></pre><h3 id="Model-Output-2"><a cl
 using Durbyn.ExponentialSmoothing
 # Fit automatically selected ETS model to a monthly series (m = 12)
 ap = air_passengers()
-ets_model = ets(ap(), 12, &quot;ZZZ&quot;)
+ets_model = ets(ap, 12, &quot;ZZZ&quot;)
 
 # Specify a particular structure (multiplicative seasonality, additive trend, additive errors)
-fit2 = ets(ap, 12, &quot;AAM&quot;)
+fit2 = ets(ap, 12, &quot;MAM&quot;)
 fc2 = forecast(fit2, h=12)
 plot(fc2)
 
 # Use a damped trend search and automatic Box–Cox selection
 fit3 = ets(ap, 12, &quot;ZZZ&quot;; damped=nothing, lambda=:auto, biasadj=true)
 fc3 = forecast(fit3, h=12)
-plot(fc3)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../naive/">« Naive Methods</a><a class="docs-footer-nextpage" href="../theta/">Theta »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Tuesday 7 July 2026 15:35">Tuesday 7 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+plot(fc3)</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../naive/">« Naive Methods</a><a class="docs-footer-nextpage" href="../theta/">Theta »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Sunday 23 August 2026 19:53">Sunday 23 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

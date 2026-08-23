@@ -1165,7 +1165,7 @@ y_transformed, lambda = box_cox(ap, 12; lambda=:auto)
 println("Box-Cox lambda: $lambda")
 
 # 3. Decompose the series
-result = stl(ap, 12; s_window=7, robust=true)
+result = stl(ap, 12; seasonal_window=7, robust=true)
 summary(result)
 
 # 4. Examine autocorrelation structure
@@ -1173,7 +1173,7 @@ acf_result = acf(ap, 12, 24)
 pacf_result = pacf(ap, 12, 24)
 
 # 5. Multiple seasonal decomposition (if applicable)
-mstl_result = mstl(ap; m=12, lambda=lambda)
+mstl_result = mstl(ap, 12; lambda=lambda)
 strength = seasonal_strength(mstl_result)
 println("Seasonal strength: $strength")
 

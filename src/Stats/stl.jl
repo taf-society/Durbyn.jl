@@ -870,6 +870,7 @@ function summary(result::STLResult; digits::Integer=4)
         q25, q75 = quantile(v, [0.25, 0.75])
         return q75 - q25
     end
+    fmt(x) = isnan(x) ? "NaN" : string(round(x; digits=digits))
     println("STL decomposition summary")
     println("Time series components:")
     for (name, vec) in comps
@@ -880,12 +881,8 @@ function summary(result::STLResult; digits::Integer=4)
         mx = maximum(vec)
         iqr_v = iqr(vec)
 
-        component_fmt = string("% .", digits, "f")
-        full_fmt = "    mean=" * component_fmt * "  sd=" * component_fmt *
-                   "  min=" * component_fmt * "  max=" * component_fmt *
-                   "  IQR=" * component_fmt
-        f = Printf.Format(full_fmt)
-        println(Printf.format(f, mv, sv, mn, mx, iqr_v))
+        println("    mean=", fmt(mv), "  sd=", fmt(sv),
+                "  min=", fmt(mn), "  max=", fmt(mx), "  IQR=", fmt(iqr_v))
     end
     println("IQR as percentage of total:")
     iqr_vals = Dict(name => iqr(vec) for (name, vec) in comps)

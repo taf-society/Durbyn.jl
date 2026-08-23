@@ -49,6 +49,7 @@ When working with forecasting, you typically need to:
 ```julia
 using Durbyn.TableOps
 using Durbyn.ModelSpecs
+using Statistics
 
 # Create panel data with multiple time series
 data = (
@@ -1373,7 +1374,7 @@ panel = PanelData(data;
     frequency = :monthly,
     target = :sales,
     fill_time = true,             # Fill missing time points
-    target_na = (method = :interpolate,)  # Impute missing target values
+    target_na = (strategy = :linear,)  # Impute missing target values (linear interpolation)
 )
 
 # Balanced panel: all groups padded to same global time span
@@ -1576,7 +1577,7 @@ sorted = arrange(panel, :date)
 sorted_desc = arrange(panel, :date => :desc)
 
 # Multi-column sort
-arrange(panel, :category, :date => :desc)
+arrange(panel, :value, :date => :desc)
 ```
 
 **Use Case**: Ensure time ordering after joins or other operations that may scramble row order.

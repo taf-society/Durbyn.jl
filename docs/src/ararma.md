@@ -34,8 +34,8 @@ data = (sales = series,)
 
 # Using ArarmaSpec for fit/forecast workflow
 spec = ArarmaSpec(@formula(sales = p(1) + q(2)))
-fitted = fit(spec, data)
-fc = forecast(fitted, h = 12)
+fitted_model = fit(spec, data)
+fc = forecast(fitted_model, h = 12)
 plot(fc)
 ```
 
@@ -44,13 +44,13 @@ plot(fc)
 ```julia
 # Auto ARARMA with default search ranges
 spec = ArarmaSpec(@formula(sales = p() + q()))
-fitted = fit(spec, data)
-fc = forecast(fitted, h = 12)
+fitted_model = fit(spec, data)
+fc = forecast(fitted_model, h = 12)
 
 # Auto ARARMA with custom search ranges
 spec = ArarmaSpec(@formula(sales = p(0,3) + q(0,2)))
-fitted = fit(spec, data)
-fc = forecast(fitted, h = 12)
+fitted_model = fit(spec, data)
+fc = forecast(fitted_model, h = 12)
 
 # With custom ARAR parameters
 spec = ArarmaSpec(
@@ -59,8 +59,8 @@ spec = ArarmaSpec(
     max_lag = 30,
     crit = :bic
 )
-fitted = fit(spec, data)
-fc = forecast(fitted, h = 12)
+fitted_model = fit(spec, data)
+fc = forecast(fitted_model, h = 12)
 ```
 
 ### Panel Data (Multiple Series)

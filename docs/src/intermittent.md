@@ -95,7 +95,8 @@ Fits a Croston model to intermittent demand data.
 
 **Example:**
 ```julia
-using Durbyn.ExponentialSmoothing
+using Durbyn
+using Durbyn.ExponentialSmoothing: croston
 
 # Intermittent demand data
 demand = [0, 0, 5, 0, 0, 3, 0, 0, 0, 7, 0, 0, 4, 0, 0]
@@ -121,7 +122,7 @@ Generates forecasts from a fitted Croston model.
 **Example:**
 ```julia
 # Generate 12-period-ahead forecast
-fc = forecast(fit, 12)
+fc = forecast(croston_model, 12)
 println(fc.mean)  # Access forecast values
 ```
 
@@ -139,8 +140,8 @@ Computes in-sample fitted values using one-step-ahead forecasts.
 
 **Example:**
 ```julia
-fitted_vals = fitted(fit)
-residuals = demand .- fitted_vals
+fitted_vals = fitted(croston_model)
+resids = demand .- fitted_vals
 ```
 
 #### `plot(forecast::CrostonForecast; show_fitted=false)`

@@ -144,7 +144,7 @@ data = (demand = rand(80),)
 
 spec = ThetaSpec(@formula(demand = theta(
     model = :DOTM,
-    decomposition = "multiplicative",
+    decomposition = :multiplicative,
     nmse = 5    # optimise on 1–5 step SSE
 )))
 
@@ -275,10 +275,10 @@ spec_ets = EtsSpec(@formula(sales = e("Z") + t("Z") + s("Z")))
 fitted = fit(spec_ets, data, m = 12)
 fc = forecast(fitted, h = 12)
 
-# Specific ETS components
-spec_ses = SesSpec(@formula(sales = e("A")))
-spec_holt = HoltSpec(@formula(sales = e("A") + t("A")), damped = true)
-spec_hw = HoltWintersSpec(@formula(sales = e("A") + t("A") + s("M")))
+# Specific smoothing models
+spec_ses = SesSpec(@formula(sales = ses()))
+spec_holt = HoltSpec(@formula(sales = holt()), damped = true)
+spec_hw = HoltWintersSpec(@formula(sales = hw(seasonal="multiplicative")))
 ```
 
 ---
@@ -293,6 +293,7 @@ The array interface provides direct access to forecasting engines for working wi
 
 using Durbyn
 using Durbyn.ExponentialSmoothing
+import Durbyn.ExponentialSmoothing: ses, holt, holt_winters
 
 ap = air_passengers();
 fit_ets = ets(ap, 12, "ZZZ")
@@ -415,12 +416,12 @@ using Durbyn.IntermittentDemand
 demand = [6, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 1, 0, 0, 2, 0]
 
 # Recommended: Syntetos-Boylan Approximation (bias-corrected)
-fit_sba = croston_sba(demand, cost_metric="mar", number_of_params=2)
+fit_sba = croston_sba(demand, cost_metric=:mar, number_of_params=2)
 fc_sba = forecast(fit_sba, h = 12)
 plot(fc_sba, show_fitted = true)
 
 # Alternative: Shale-Boylan-Johnston (alternative bias correction)
-fit_sbj = croston_sbj(demand, cost_metric="mar", optimize_init=true)
+fit_sbj = croston_sbj(demand, cost_metric=:mar, optimize_init=true)
 fc_sbj = forecast(fit_sbj, h = 12)
 
 # Extract diagnostics

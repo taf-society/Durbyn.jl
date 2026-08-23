@@ -270,11 +270,12 @@ function auto_arima(formula::ModelFormula, data, m::Int; xreg=nothing, kwargs...
         return auto_arima(y, m; pairs(arima_args)...)
 
     else
-        
-        p_val = min_p
-        q_val = min_q
-        P_val = min_P
-        Q_val = min_Q
+        # Orders absent from a fully fixed formula mean "not included" (0),
+        # unlike the auto branch where absence falls back to the search ranges.
+        p_val = haskey(compiled, :p) ? min_p : 0
+        q_val = haskey(compiled, :q) ? min_q : 0
+        P_val = haskey(compiled, :P) ? min_P : 0
+        Q_val = haskey(compiled, :Q) ? min_Q : 0
 
         
         d_val = something(d_value, 0)

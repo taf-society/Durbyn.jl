@@ -420,6 +420,10 @@ function fitted(model::BATSModel)
     return model.fitted_values
 end
 
+function residuals(model::BATSModel)
+    return model.errors
+end
+
 function Base.show(io::IO, model::BATSModel)
     println(io, model.method)
     println(io, "")

@@ -171,17 +171,17 @@ fc_ets  = forecast(fit_ets, h = 12)
 plot(fc_ets)
 
 # Simple exponential smoothing
-ses_fit = ses(ap)
+ses_fit = Durbyn.ExponentialSmoothing.ses(ap)
 ses_fc  = forecast(ses_fit, h = 12)
 plot(ses_fc)
 
 # Holt's linear trend method
-holt_fit = holt(ap)
+holt_fit = Durbyn.ExponentialSmoothing.holt(ap)
 holt_fc  = forecast(holt_fit, h = 12)
 plot(holt_fc)
 
 # Holt-Winters seasonal method
-hw_fit = holt_winters(ap, 12)
+hw_fit = Durbyn.ExponentialSmoothing.holt_winters(ap, 12)
 hw_fc  = forecast(hw_fit, h = 12)
 plot(hw_fc)
 ```

@@ -177,8 +177,8 @@ using Durbyn.ModelSpecs
 
 # Create sample data with weekly seasonality (non-integer period)
 n = 156  # 3 years of weekly data
-t = 1:n
-data = (sales = 100.0 .+ 10.0 .* sin.(2π .* t ./ 52.18) .+ 2.0 .* randn(n),)
+idx = 1:n
+data = (sales = 100.0 .+ 10.0 .* sin.(2π .* idx ./ 52.18) .+ 2.0 .* randn(n),)
 
 # Basic TBATS with defaults (automatic component selection)
 spec = TbatsSpec(@formula(sales = tbats()))
@@ -196,12 +196,14 @@ spec = TbatsSpec(@formula(sales = tbats(seasonal_periods=[24, 8766])))
 fitted = fit(spec, data)
 fc = forecast(fitted, h = 12)
 
-# TBATS with explicit Fourier orders
+# TBATS with explicit Fourier orders (needs data spanning more than one 365.25-period)
+daily = (sales = 100.0 .+ 10.0 .* sin.(2π .* (1:800) ./ 365.25) .+
+                 5.0 .* sin.(2π .* (1:800) ./ 7) .+ 2.0 .* randn(800),)
 spec = TbatsSpec(@formula(sales = tbats(
     seasonal_periods=[7, 365.25],
     k=[3, 10]  # 3 harmonics for weekly, 10 for yearly
 )))
-fitted = fit(spec, data)
+fitted = fit(spec, daily)
 fc = forecast(fitted, h = 12)
 
 # TBATS with specific component selection
@@ -252,7 +254,7 @@ models = model(
     names = ["tbats", "bats", "arima", "ets"]
 )
 
-fitted = fit(models, data)
+fitted = fit(models, data, m = 52)
 fc = forecast(fitted, h = 12)
 ```
 
@@ -307,7 +309,7 @@ fc = forecast(fit, h = 12)
 ```julia
 tbats(
     y::AbstractVector{<:Real},
-    m::Union{Vector{Int}, Nothing} = nothing;
+    m::Union{Vector{<:Real}, Nothing} = nothing;
     use_box_cox::Union{Bool, AbstractVector{Bool}, Nothing} = nothing,
     use_trend::Union{Bool, AbstractVector{Bool}, Nothing} = nothing,
     use_damped_trend::Union{Bool, AbstractVector{Bool}, Nothing} = nothing,
@@ -315,7 +317,8 @@ tbats(
     bc_lower::Real = 0.0,
     bc_upper::Real = 1.0,
     biasadj::Bool = false,
-    model = nothing
+    model = nothing,
+    k::Union{Vector{Int}, Int, Nothing} = nothing
 )
 ```
 

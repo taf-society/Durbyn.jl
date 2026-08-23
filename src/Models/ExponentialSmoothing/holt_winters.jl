@@ -23,7 +23,7 @@ multiplicative seasonality, and can optionally include damping (φ) and exponent
 - `sse::Float64`: Sum of squared errors, a measure of model fit.
 - `sigma2::Float64`: Residual variance (σ²).
 - `m::Int`: Seasonal period (e.g., 12 for monthly data, 4 for quarterly).
-- `lambda::Union{Float64,Bool,Nothing}`: Box-Cox transformation parameter (nothing if not used).
+- `lambda::Union{Float64,Bool,Nothing,Symbol}`: Box-Cox transformation parameter (nothing if not used).
 - `biasadj::Bool`: Boolean flag indicating whether bias adjustment was applied.
 - `aic::Float64`: Akaike Information Criterion for model selection.
 - `bic::Float64`: Bayesian Information Criterion for model selection.
@@ -50,7 +50,7 @@ struct HoltWinters
     sse::Float64
     sigma2::Float64
     m::Int
-    lambda::Union{Float64,Bool,Nothing}
+    lambda::Union{Float64,Bool,Nothing,Symbol}
     biasadj::Bool
     aic::Float64
     bic::Float64
@@ -97,7 +97,7 @@ for the level, one for the trend, and one for the seasonal component.
   If `nothing`, γ is estimated from the data.
 - `phi::Union{Float64,Nothing}=nothing`: Damping parameter (0 < φ ≤ 1). Only used when `damped=true`.
   If `nothing`, φ is estimated from the data.
-- `lambda::Union{Float64,Bool,Nothing}=nothing`: Box-Cox transformation parameter.
+- `lambda::Union{Float64,Bool,Nothing,Symbol}=nothing`: Box-Cox transformation parameter.
   - `nothing`: No transformation (default).
   - `:auto` or `true`: Automatically select optimal λ.
   - `Float64`: Use specified λ value.
@@ -225,7 +225,7 @@ function holt_winters(
     beta::Union{Float64,Bool,Nothing} = nothing,
     gamma::Union{Float64,Bool,Nothing} = nothing,
     phi::Union{Float64,Bool,Nothing} = nothing,
-    lambda::Union{Float64,Bool,Nothing} = nothing,
+    lambda::Union{Float64,Bool,Nothing,Symbol} = nothing,
     biasadj::Bool = false,
     options::NelderMeadOptions = NelderMeadOptions(),
 )

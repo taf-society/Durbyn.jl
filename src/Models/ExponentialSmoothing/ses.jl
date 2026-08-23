@@ -22,7 +22,7 @@ with no clear trend or seasonal pattern.
 - `sse::Float64`: Sum of squared errors, a measure of model fit.
 - `sigma2::Float64`: Residual variance (σ²).
 - `m::Int`: Seasonal period (e.g., 12 for monthly data, 1 for non-seasonal).
-- `lambda::Union{Float64,Bool,Nothing}`: Box-Cox transformation parameter (nothing if not used).
+- `lambda::Union{Float64,Bool,Nothing,Symbol}`: Box-Cox transformation parameter (nothing if not used).
 - `biasadj::Bool`: Boolean flag indicating whether bias adjustment was applied.
 - `aic::Float64`: Akaike Information Criterion for model selection.
 - `bic::Float64`: Bayesian Information Criterion for model selection.
@@ -49,7 +49,7 @@ struct SES
     sse::Float64
     sigma2::Float64
     m::Int
-    lambda::Union{Float64,Bool,Nothing}
+    lambda::Union{Float64,Bool,Nothing,Symbol}
     biasadj::Bool
     aic::Float64
     bic::Float64
@@ -81,7 +81,7 @@ smoothing parameter α to exponentially weight past observations.
   - `:simple`: Uses conventional Holt-Winters initialization.
 - `alpha::Union{Float64,Nothing}=nothing`: Smoothing parameter (0 < α < 1).
   If `nothing`, α is estimated from the data.
-- `lambda::Union{Float64,Bool,Nothing}=nothing`: Box-Cox transformation parameter.
+- `lambda::Union{Float64,Bool,Nothing,Symbol}=nothing`: Box-Cox transformation parameter.
   - `nothing`: No transformation (default).
   - `:auto` or `true`: Automatically select optimal λ.
   - `Float64`: Use specified λ value.
@@ -135,7 +135,7 @@ function ses(
     y::AbstractArray;
     initial::Symbol = :optimal,
     alpha::Union{Float64,Bool,Nothing} = nothing,
-    lambda::Union{Float64,Bool,Nothing} = nothing,
+    lambda::Union{Float64,Bool,Nothing,Symbol} = nothing,
     biasadj::Bool = false,
     options::NelderMeadOptions = NelderMeadOptions(),)
 
@@ -147,7 +147,7 @@ function ses(
     m::Int;
     initial::Symbol = :optimal,
     alpha::Union{Float64,Bool,Nothing} = nothing,
-    lambda::Union{Float64,Bool,Nothing} = nothing,
+    lambda::Union{Float64,Bool,Nothing,Symbol} = nothing,
     biasadj::Bool = false,
     options::NelderMeadOptions = NelderMeadOptions(),
 )

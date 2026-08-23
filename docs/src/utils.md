@@ -56,10 +56,12 @@ Quarterly Australian beer production in megalitres from Q1 1956 to Q2 2010.
 
 ```julia
 using Durbyn
+using Durbyn.ExponentialSmoothing: holt_winters
+using Statistics
 
 beer = ausbeer()
 println("Length: ", length(beer))    # 218
-println("Mean: ", round(mean(beer), digits=1))  # ~430 megalitres
+println("Mean: ", round(mean(beer), digits=1))  # ~415 megalitres
 
 # Fit Holt-Winters
 fit = holt_winters(beer, 4)
@@ -106,7 +108,7 @@ Monthly mean relative sunspot numbers showing the ~11-year solar cycle.
 using Durbyn
 
 spots = sunspots()
-println("Length: ", length(spots))   # 235 (truncated)
+println("Length: ", length(spots))   # 230 (truncated)
 println("Max: ", maximum(spots))     # ~158
 
 # Demonstrates long cycles in time series
@@ -134,7 +136,7 @@ println("Length: ", length(pedestrians))  # 2922 (~8 years)
 
 # Ideal for testing multiple seasonality models
 # Weekly pattern (period=7) + Annual pattern (period=365)
-using Durbyn.Bats
+using Durbyn.Tbats
 fit = tbats(pedestrians, [7, 365.25])
 fc = forecast(fit, h=30)
 ```

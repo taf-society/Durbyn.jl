@@ -51,7 +51,7 @@ data = (demand = collect(1.0:100.0),)
 
 spec = ThetaSpec(@formula(demand = theta(
     model = :DOTM,
-    decomposition = "multiplicative",
+    decomposition = :multiplicative,
     nmse = 5,              # optimise on 1-5 step SSE
     theta_param = nothing, # optimise theta
     alpha = nothing        # optimise alpha
@@ -68,7 +68,7 @@ using Durbyn, Durbyn.TableOps, Durbyn.ModelSpecs, Durbyn.Grammar
 
 # stacked table with :series column
 panel = PanelData(tbl; groupby = :series, date = :date, m = 12)
-spec = ThetaSpec(@formula(value = theta(model = :OTM, decomposition = "additive")))
+spec = ThetaSpec(@formula(value = theta(model = :OTM, decomposition = :additive)))
 fitted = fit(spec, panel)
 fc = forecast(fitted, h = 12)
 ```

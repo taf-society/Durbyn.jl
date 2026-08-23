@@ -42,7 +42,7 @@ struct EtsModel <: ETS
     sse::Float64
     sigma2::Float64
     m::Int
-    lambda::Union{Float64,Bool,Nothing}
+    lambda::Union{Float64,Bool,Nothing,Symbol}
     biasadj::Bool
     aic::Float64
     bic::Float64

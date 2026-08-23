@@ -517,9 +517,9 @@ Matrix case: apply the same scalar equations independently to each column.
 **Example:**
 ```julia
 y = [1, 3, 6, 10, 15]
-diff(y)                    # [2, 3, 4, 5]
-diff(y; lag_steps=2)       # [5, 7, 9]
-diff(y; difference_order=2) # [1, 1, 1]
+Durbyn.Stats.diff(y)                     # [NaN, 2.0, 3.0, 4.0, 5.0]
+Durbyn.Stats.diff(y; lag_steps=2)        # [NaN, NaN, 5.0, 7.0, 9.0]
+Durbyn.Stats.diff(y; difference_order=2) # [NaN, NaN, 1.0, 1.0, 1.0]
 ```
 
 ### `ndiffs`

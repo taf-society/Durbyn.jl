@@ -701,19 +701,16 @@ The array interface provides direct access to exponential smoothing engines for 
 
 ## Optimizer Controls
 
-`ets`, `ses`, `holt`, and `holt_winters` now accept the same optimization controls style used by ARIMA:
+`ets`, `ses`, `holt`, and `holt_winters` accept Nelder-Mead optimizer controls via the `options` keyword:
 
 ```julia
+using Durbyn.Optimize  # for NelderMeadOptions
+
 fit = ets(
     y,
     12,
     "ZZZ";
-    optim_method = :lbfgsb,
-    optim_control = Dict(
-        "maxit" => 800,
-        "ndeps" => fill(1e-3, 20),  # optional finite-difference steps
-        "trace" => 1,
-    ),
+    options = NelderMeadOptions(maxit = 800, trace = true),
 )
 ```
 
@@ -780,7 +777,8 @@ The `ses()` function provides two initialization methods:
 
 ```julia
 using Durbyn
-using Durbyn.ExponentialSmoothing
+using Durbyn
+import Durbyn.ExponentialSmoothing: ses
 
 # Load example data
 y = [10.5, 12.3, 11.8, 13.1, 12.9, 14.2, 13.8, 15.1, 14.7, 16.0]
@@ -922,7 +920,8 @@ For damped Holt (``\phi < 1``):
 
 ```julia
 using Durbyn
-using Durbyn.ExponentialSmoothing
+using Durbyn
+import Durbyn.ExponentialSmoothing: holt
 
 # Simulate data with linear trend
 t = 1:50
@@ -1007,10 +1006,10 @@ using Durbyn
 using Durbyn.ExponentialSmoothing
 # Fit automatically selected ETS model to a monthly series (m = 12)
 ap = air_passengers()
-ets_model = ets(ap(), 12, "ZZZ")
+ets_model = ets(ap, 12, "ZZZ")
 
 # Specify a particular structure (multiplicative seasonality, additive trend, additive errors)
-fit2 = ets(ap, 12, "AAM")
+fit2 = ets(ap, 12, "MAM")
 fc2 = forecast(fit2, h=12)
 plot(fc2)
 

@@ -41,7 +41,7 @@ using .Diffusion
 using .KolmogorovWiener
 import .KolmogorovWiener: kolmogorov_wiener, KWFilterResult, kw_decomposition
 
-import .Utils: air_passengers, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
+import .Utils: air_passengers, ausbeer, lynx, sunspots, pedestrian_counts, simulate_seasonal_data, NamedMatrix, get_elements, get_vector, align_columns, add_drift_term, cbind
 import .Utils: Formula, parse_formula, compile
 import .Generics: plot, fitted, residuals, summary, predict, forecast, fit, accuracy, list_series, head, tail
 import .Optimize: NelderMeadOptions
@@ -71,7 +71,7 @@ import .Stats: MissingMethod, Contiguous, Interpolate, FailMissing
 export fit, forecast, accuracy, plot, summary, fitted, residuals, predict, list_series, head, tail
 
 # Data
-export air_passengers, PanelData, as_table, model
+export air_passengers, ausbeer, lynx, sunspots, pedestrian_counts, simulate_seasonal_data, PanelData, as_table, model
 
 # Grammar (needed inside @formula)
 export @formula
@@ -87,11 +87,13 @@ export ArarSpec, ArarmaSpec
 export NaiveSpec, SnaiveSpec, RwSpec, MeanfSpec
 
 # Array-interface model functions
-export arima, auto_arima, bats, tbats
+export arima, auto_arima, bats, tbats, ets
 export theta, auto_theta
+export ThetaModelType, STM, OTM, DSTM, DOTM
 export ararma, auto_ararma
 export naive, snaive, rw, rwf, meanf
 export diffusion, fit_diffusion
+export DiffusionModelType, Bass, Gompertz, GSGompertz, Weibull
 export kolmogorov_wiener, kw_decomposition
 
 # Stats

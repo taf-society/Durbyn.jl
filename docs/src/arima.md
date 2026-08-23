@@ -655,7 +655,7 @@ Fit the same model specification to many series efficiently:
 
 ```julia
 using Durbyn.TableOps
-using CSV, Downloads
+using CSV, Downloads, Tables
 
 # Load panel data
 path = Downloads.download("https://raw.githubusercontent.com/Akai01/example-time-series-datasets/refs/heads/main/Data/retail.csv")

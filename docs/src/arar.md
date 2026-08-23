@@ -34,8 +34,8 @@ data = (sales = series,)
 
 # Using ArarSpec for fit/forecast workflow
 spec = ArarSpec(@formula(sales = arar()))
-fitted = fit(spec, data)
-fc = forecast(fitted, h = 12)
+fitted_model = fit(spec, data)
+fc = forecast(fitted_model, h = 12)
 plot(fc)
 ```
 
@@ -44,8 +44,8 @@ plot(fc)
 ```julia
 # Specify max_ar_depth and max_lag
 spec = ArarSpec(@formula(sales = arar(max_ar_depth=20, max_lag=30)))
-fitted = fit(spec, data)
-fc = forecast(fitted, h = 12)
+fitted_model = fit(spec, data)
+fc = forecast(fitted_model, h = 12)
 ```
 
 ### Panel Data (Multiple Series)

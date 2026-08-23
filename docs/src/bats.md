@@ -166,7 +166,7 @@ models = model(
     names = ["bats", "arima", "ets"]
 )
 
-fitted = fit(models, data)
+fitted_models = fit(models, data, m = 12)
 fc = forecast(fitted, h = 12)
 ```
 

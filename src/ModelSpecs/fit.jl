@@ -2589,3 +2589,25 @@ function fit(spec::KwFilterSpec, panel::PanelData; kwargs...)
     end
     return fit(spec, panel.data; pairs(kwdict)...)
 end
+
+"""
+    fitted(model::AbstractFittedModel)
+
+Return the in-sample fitted values of a fitted model by delegating to the
+underlying model fit (`model.fit`).
+"""
+fitted(model::AbstractFittedModel) = fitted(model.fit)
+
+"""
+    residuals(model::AbstractFittedModel)
+
+Return the in-sample residuals of a fitted model by delegating to the
+underlying model fit (`model.fit`).
+"""
+residuals(model::AbstractFittedModel) = residuals(model.fit)
+
+fitted(models::GroupedFittedModels) =
+    throw(ArgumentError("fitted is not defined for grouped fits; access a group's model via models.models[group] and call fitted on it."))
+
+residuals(models::GroupedFittedModels) =
+    throw(ArgumentError("residuals is not defined for grouped fits; access a group's model via models.models[group] and call residuals on it."))

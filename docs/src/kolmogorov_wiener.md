@@ -336,8 +336,8 @@ fc = forecast(d; h=24)
 
 ```julia
 # Pre-fitted ARIMA model
-fit = auto_arima(y, 12)
-r = kolmogorov_wiener(y, :hp; arima_model=fit)
+arima_fit = auto_arima(y, 12)
+r = kolmogorov_wiener(y, :hp; arima_model=arima_fit)
 
 # Explicit ARIMA constraints
 r = kolmogorov_wiener(y, :hp; m=12, d=1, D=1, max_p=3, stepwise=false)

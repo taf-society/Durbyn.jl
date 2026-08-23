@@ -239,10 +239,10 @@ fc = forecast(fit, h=5)
 
 # Access results
 fc.mean        # Point forecasts
-fc.lower[1]    # 80% lower prediction bounds
-fc.lower[2]    # 95% lower prediction bounds
-fc.upper[1]    # 80% upper prediction bounds
-fc.upper[2]    # 95% upper prediction bounds
+fc.lower[:, 1]    # 80% lower prediction bounds
+fc.lower[:, 2]    # 95% lower prediction bounds
+fc.upper[:, 1]    # 80% upper prediction bounds
+fc.upper[:, 2]    # 95% upper prediction bounds
 
 # Plot forecast
 plot(fc)

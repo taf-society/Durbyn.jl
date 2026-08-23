@@ -103,8 +103,8 @@ where λ minimizes the coefficient of variation for subseries of `x`.
 - `x::AbstractVector{<:Number}`: A numeric vector or time series.
 - `m::Int`: The frequency of the data.
 - `method::Symbol`: Choose the method to be used in calculating λ. Options are `:guerrero` or `:loglik`.
-- `lower::Float64`: Lower limit for possible λ values.
-- `upper::Float64`: Upper limit for possible λ values.
+- `lower::Real`: Lower limit for possible λ values.
+- `upper::Real`: Upper limit for possible λ values.
 - `nonseasonal_length::Int` Length of non-seasonal components. Do not need to change.
 - `is_ts::Bool` Is data time series?
 
@@ -126,8 +126,10 @@ transformations. Journal of Forecasting, 12, 37–48.
 """
 
 function box_cox_lambda(x::AbstractVector{<:Number}, m::Int;
-    method::Symbol=:guerrero, lower::Float64=-1.0, upper::Float64=2.0,
+    method::Symbol=:guerrero, lower::Real=-1.0, upper::Real=2.0,
     nonseasonal_length::Int=2, is_ts::Bool=true)
+    lower = Float64(lower)
+    upper = Float64(upper)
     if any(v -> !ismissing(v) && !(v isa AbstractFloat && isnan(v)) && v <= 0, x)
         lower = max(lower, 0.0)
     end

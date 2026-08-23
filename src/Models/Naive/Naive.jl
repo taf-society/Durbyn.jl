@@ -8,7 +8,7 @@ import Distributions: quantile, TDist, Normal
 # Internal modules
 import ..Utils: mean2
 import ..Stats: box_cox_lambda, box_cox, inv_box_cox
-import ..Generics: Forecast, forecast, plot
+import ..Generics: Forecast, forecast, plot, fitted, residuals
 
 include("meanf.jl")
 export MeanFit, meanf

@@ -740,7 +740,7 @@ function stl(
     robust::Bool = false,
     inner::Union{Nothing,Integer} = nothing,
     outer::Union{Nothing,Integer} = nothing,
-) where {T<:Real}
+) where {T<:Union{Missing,Real}}
 
     n = length(x)
     if m < 2 || n <= 2 * m
@@ -752,6 +752,7 @@ function stl(
         throw(ArgumentError(
             "input series contains missing values; impute or remove them before decomposition"))
     end
+    x = Float64[xi for xi in x]
 
     periodic = false
     if isa(seasonal_window, Symbol)

@@ -206,7 +206,7 @@ Tuple of (output, lambda) where output contains the transformed values.
 This is a performance optimization that avoids ~6MB of allocations per call.
 Use this in tight loops where box_cox is called repeatedly.
 """
-function box_cox!(output::AbstractVector, x::AbstractVector, m::Int; lambda::Real)
+function box_cox!(output::AbstractVector{<:AbstractFloat}, x::AbstractVector, m::Int; lambda::Real)
     if lambda < 0
         copyto!(output, x)
         @inbounds for i in eachindex(output)

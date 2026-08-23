@@ -335,3 +335,5 @@ function holt_winters(
         method,
     )
 end
+fitted(model::HoltWinters) = model.fitted
+residuals(model::HoltWinters) = model.residuals

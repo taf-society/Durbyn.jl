@@ -59,3 +59,6 @@ function repeat_seasonal(seasonal_values::AbstractVector{<:Real}, horizon::Int)
     repeats = cld(horizon, length(seasonal_values))
     return repeat(seasonal_values, repeats)[1:horizon]
 end
+
+fitted(model::ThetaFit) = model.fitted
+residuals(model::ThetaFit) = model.residuals

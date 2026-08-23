@@ -70,3 +70,6 @@ function Base.show(io::IO, fit::DiffusionFit)
     println(io, "Loss function: L$(fit.loss)")
     println(io, "Optimized on: ", fit.optim_cumulative ? "cumulative" : "adoption")
 end
+
+fitted(model::DiffusionFit) = model.fitted
+residuals(model::DiffusionFit) = model.residuals

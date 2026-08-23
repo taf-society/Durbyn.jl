@@ -33,16 +33,20 @@ y = [5, 10, 25, 45, 70, 85, 75, 50, 30, 15]
 fit = diffusion(y, model_type=Bass)
 fc = forecast(fit, h=5)
 
-fc.mean        # Point forecasts
-fc.lower[1]    # 80% lower bounds
-fc.upper[2]    # 95% upper bounds
+fc.mean           # Point forecasts
+fc.lower[:, 1]    # 80% lower bounds
+fc.upper[:, 2]    # 95% upper bounds
 ```
 """
-function forecast(fit::DiffusionFit; h::Int, level::Vector{<:Real}=[80, 95])
+function forecast(fit::DiffusionFit; h::Int, level::AbstractVector{<:Real}=[80, 95])
     if h < 1
         throw(ArgumentError("Forecast horizon h must be a positive integer, got $h"))
     end
 
+    # Normalize fractional levels (e.g. 0.95 -> 95) like the other models.
+    if !isempty(level) && minimum(level) > 0 && maximum(level) < 1
+        level = 100 .* level
+    end
     for lv in level
         if lv <= 0 || lv >= 100
             throw(ArgumentError("Confidence levels must be between 0 and 100 (exclusive), got $lv"))

@@ -795,7 +795,7 @@ function forecast(fitted::FittedCroston; h::Int, level::Vector{<:Real} = [80, 95
     return _wrap_croston_forecast(fitted, croston_fc)
 end
 
-function _wrap_croston_forecast(fitted::FittedCroston, croston_fc)
+function _wrap_croston_forecast(fitted_model::FittedCroston, croston_fc)
     mean_vec = Float64.(croston_fc.mean)
     levels = Float64[]
     x_data = croston_fc.model.x
@@ -821,7 +821,7 @@ function _wrap_croston_forecast(fitted::FittedCroston, croston_fc)
     end
 
     return Forecast(
-        fitted,
+        fitted_model,
         croston_fc.method,
         mean_vec,
         levels,

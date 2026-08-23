@@ -204,11 +204,13 @@ function holt_winters_conventional(
     phi::Union{Nothing,Float64,Bool} = nothing,
     seasonal::Symbol = :additive,
     exponential::Bool = false,
-    lambda::Union{Nothing,Float64} = nothing,
+    lambda::Union{Nothing,Float64,Bool,Symbol} = nothing,
     biasadj::Bool = false,
     warnings::Bool = true,
     options::NelderMeadOptions
 )
+    lambda === true && (lambda = :auto)
+    lambda === false && (lambda = nothing)
     if !(seasonal in (:additive, :multiplicative))
         throw(
             ArgumentError(
@@ -220,7 +222,7 @@ function holt_winters_conventional(
     origx = copy(x)
     lenx = length(x)
 
-    if (lambda === :auto) || (typeof(lambda) == Float64 && !isnothing(lambda))
+    if (lambda === :auto) || (lambda isa Float64)
         x, lambda = box_cox(x, m, lambda = lambda)
     end
 

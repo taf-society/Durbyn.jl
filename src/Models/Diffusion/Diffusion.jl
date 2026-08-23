@@ -36,8 +36,8 @@ fit = diffusion(y, model_type=Gompertz)
 fc = forecast(fit, h=5)
 
 fc.mean
-fc.lower[1]
-fc.upper[2]
+fc.lower[:, 1]
+fc.upper[:, 2]
 
 fit.params.m
 fit.params.p
@@ -50,7 +50,7 @@ using Statistics
 using LinearAlgebra
 
 import ..Optimize: optimize
-import ..Generics: forecast, Forecast, predict
+import ..Generics: forecast, Forecast, predict, fitted, residuals
 
 export diffusion, fit_diffusion, DiffusionFit
 export DiffusionModelType, Bass, Gompertz, GSGompertz, Weibull

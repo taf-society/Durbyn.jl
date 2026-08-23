@@ -46,7 +46,9 @@ Returns a named tuple:
   *An Enhancement of the Bisection Method Average Performance Preserving Minmax Optimality*.
   ACM TOMS, 47(1).
 """
-function itp(f::Function, a::Float64, b::Float64; options::ITPOptions = ITPOptions())
+function itp(f::Function, a::Real, b::Real; options::ITPOptions = ITPOptions())
+    a = Float64(a)
+    b = Float64(b)
     a < b || throw(ArgumentError("'a' must be strictly less than 'b'"))
 
     tol = options.tol

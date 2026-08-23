@@ -40,12 +40,16 @@ fc.upper[:, 2]   # 95% upper bounds
 """
 function forecast(model::KWFilterResult;
     h::Int,
-    level::Vector{<:Real} = [80, 95],
+    level::AbstractVector{<:Real} = [80, 95],
     nlags::Union{Int,Nothing} = nothing,
-    ridge::Float64 = 0.0)
+    ridge::Real = 0.0)
 
     h >= 1 || throw(ArgumentError("Forecast horizon h must be >= 1, got $h"))
     ridge >= 0.0 || throw(ArgumentError("Ridge parameter must be >= 0, got $ridge"))
+    # Normalize fractional levels (e.g. 0.95 -> 95) like the other models.
+    if !isempty(level) && minimum(level) > 0 && maximum(level) < 1
+        level = 100 .* level
+    end
     all(l -> 0 < l < 100, level) || throw(ArgumentError("Confidence levels must be in (0, 100)"))
 
     y = model.y

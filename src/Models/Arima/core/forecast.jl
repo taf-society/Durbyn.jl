@@ -158,7 +158,7 @@ Peiris, M. & Perera, B. (1988). *On prediction with fractionally differenced ARI
 function forecast(model::ArimaFit;
     h::Union{Int,Nothing}=nothing,
     xreg::Union{Nothing,NamedMatrix,AbstractMatrix}=nothing,
-    level::Vector{<:Real}=[80, 95],
+    level::AbstractVector{<:Real}=[80, 95],
     fan::Bool=false,
     lambda::Union{Real,Nothing}=nothing,
     bootstrap::Bool=false,

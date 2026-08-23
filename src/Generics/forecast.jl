@@ -47,7 +47,7 @@ forecast information, including point predictions, uncertainty intervals, and di
 ```julia
 y = randn(120)
 model = arar(y)
-fc = forecast(model, 12)
+fc = forecast(model, h = 12)
 
 fc.mean          # point forecasts
 fc.upper[:, 2]   # 95% upper bound

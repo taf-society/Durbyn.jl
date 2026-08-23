@@ -107,6 +107,13 @@ Return the residuals from an OlsFit object.
 residuals(model::OlsFit) = model.residuals
 
 """
+    fitted(model::OlsFit)
+
+Return the fitted values from an OlsFit object.
+"""
+fitted(model::OlsFit) = model.fitted
+
+"""
     coef(model::OlsFit)
     coefficients(model::OlsFit)
     coefs(model::OlsFit)

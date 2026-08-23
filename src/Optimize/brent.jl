@@ -19,7 +19,9 @@ Public Brent minimizer implemented directly from Brent's bounded 1D
 golden-section/parabolic interpolation equations.
 Returns `(x_opt, f_opt, n_iter, fail, fn_evals)`.
 """
-function brent(f, lower::Float64, upper::Float64; options::BrentOptions = BrentOptions())
+function brent(f, lower::Real, upper::Real; options::BrentOptions = BrentOptions())
+    lower = Float64(lower)
+    upper = Float64(upper)
     if lower >= upper
         throw(ArgumentError("'xmin' not less than 'xmax'"))
     end

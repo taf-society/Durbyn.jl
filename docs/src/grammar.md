@@ -99,7 +99,7 @@ For interactions or transformations, supply a secondary formula when constructin
 ```julia
 spec = ArimaSpec(
     @formula(sales = p() + q()),
-    xreg_formula = Formula("~ temperature * promotion + price^2")
+    xreg_formula = Formula("~ temperature * promotion + price - 1")
 )
 ```
 
@@ -110,13 +110,13 @@ The `xreg_formula` is evaluated internally to produce the necessary design matri
 **Fixed orders (fast estimation)**:
 ```julia
 spec = ArimaSpec(@formula(sales = p(1) + d(1) + q(1)))
-fitted = fit(spec, (sales = y,))
+fitted = fit(spec, (sales = y,), m = 1)
 ```
 
 **Auto ARIMA with search ranges**:
 ```julia
 spec = ArimaSpec(@formula(sales = p(0,3) + d() + q(0,3)))
-fitted = fit(spec, (sales = y,))
+fitted = fit(spec, (sales = y,), m = 1)
 ```
 
 **Seasonal model with exogenous variables**:
@@ -260,7 +260,7 @@ panel = PanelData(tbl; groupby = :series, date = :date, m = 12)
 
 models = model(
     ArimaSpec(@formula(value = p() + q())),
-    BatsSpec(@formula(value = bats(seasonal_periods=12))),
+    BatsSpec(@formula(sales = bats(seasonal_periods=12))),
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),
     SesSpec(@formula(value = ses())),
     HoltSpec(@formula(value = holt(damped=true))),
@@ -321,7 +321,7 @@ glimpse(panel)
 # 4. Define multiple models for comparison
 models = model(
     ArarSpec(@formula(value = arar())),                                # ARAR via grammar
-    BatsSpec(@formula(value = bats(seasonal_periods=12))),             # BATS with seasonality
+    BatsSpec(@formula(sales = bats(seasonal_periods=12))),             # BATS with seasonality
     ArimaSpec(@formula(value = p() + q())),                              # Auto ARIMA
     EtsSpec(@formula(value = e("Z") + t("Z") + s("Z") + drift(:auto))),  # Auto ETS with drift
     SesSpec(@formula(value = ses())),                                    # Simple exponential smoothing
@@ -431,7 +431,7 @@ models = model(
     names = ["arar", "arima", "ets"]
 )
 
-fitted = fit(models, panel)
+fitted = fit(models, panel, m = 1)
 fc = forecast(fitted; h = 12)
 ```
 
@@ -461,7 +461,7 @@ ARARMA reuses ARIMA's order grammar:
 ### Automatic vs Fixed Order Selection
 
 **If ANY order is a range** → uses `auto_ararma()`:
-- `p() + q()` → searches with defaults (p: 0-4, q: 0-2)
+- `p() + q()` → searches with the grammar defaults (p: 2-5, q: 2-5)
 - `p(0,3) + q()` → searches p ∈ {0,1,2,3}, q with defaults
 - `p(1) + q(0,2)` → searches q ∈ {0,1,2} with fixed p=1
 
@@ -562,9 +562,9 @@ The `bats()` term supports flexible seasonal and component specifications:
 
 **Available parameters:**
 - `seasonal_periods`: `Int` or `Vector{Int}` for seasonal period(s)
-- `use_box_cox`: `Bool`, `Vector{Bool}`, or `nothing` (auto selection)
-- `use_trend`: `Bool`, `Vector{Bool}`, or `nothing` (auto selection)
-- `use_damped_trend`: `Bool`, `Vector{Bool}`, or `nothing` (auto selection)
+- `use_box_cox`: `Bool` or `nothing` (auto selection)
+- `use_trend`: `Bool` or `nothing` (auto selection)
+- `use_damped_trend`: `Bool` or `nothing` (auto selection)
 - `use_arma_errors`: `Bool` to enable ARMA error modeling (default: `true`)
 
 When component parameters are `nothing`, BATS searches over both `true` and `false` options and selects the best combination using AIC.
@@ -600,17 +600,17 @@ To leverage grouped fitting, forecasting, and model collections, wrap the formul
 using Durbyn.ModelSpecs
 
 # Basic BATS with auto selection
-spec = BatsSpec(@formula(value = bats()))
+spec = BatsSpec(@formula(sales = bats()))
 fitted = fit(spec, data)
 fc = forecast(fitted, h = 12)
 
 # BATS with monthly seasonality
-spec = BatsSpec(@formula(value = bats(seasonal_periods=12)))
+spec = BatsSpec(@formula(sales = bats(seasonal_periods=12)))
 fitted = fit(spec, data)
 fc = forecast(fitted, h = 12)
 
 # BATS with specific components
-spec = BatsSpec(@formula(value = bats(
+spec = BatsSpec(@formula(sales = bats(
     seasonal_periods=12,
     use_box_cox=true,
     use_trend=true,
@@ -653,15 +653,15 @@ Compare BATS against other forecasting methods:
 
 ```julia
 models = model(
-    BatsSpec(@formula(value = bats(seasonal_periods=12))),
-    ArimaSpec(@formula(value = p() + q() + P() + Q())),
-    EtsSpec(@formula(value = e("Z") + t("Z") + s("Z"))),
-    ArarSpec(@formula(value = arar())),
+    BatsSpec(@formula(sales = bats(seasonal_periods=12))),
+    ArimaSpec(@formula(sales = p() + q() + P() + Q())),
+    EtsSpec(@formula(sales = e("Z") + t("Z") + s("Z"))),
+    ArarSpec(@formula(sales = arar())),
     names = ["bats", "arima", "ets", "arar"]
 )
 
 # Fit all models
-fitted = fit(models, panel)
+fitted = fit(models, panel, m = 12)
 fc = forecast(fitted, h = 12)
 
 # Convert to tidy table
@@ -725,7 +725,7 @@ models = model(
     ArimaSpec(@formula(sales = p() + q() + P() + Q())),
     names = ["bats", "arima"]
 )
-fitted = fit(models, df, groupby = :store)
+fitted = fit(models, df, groupby = :store, m = 12)
 fc = forecast(fitted, h = 12)
 fc_tbl = as_table(fc)
 ```
@@ -861,6 +861,7 @@ fit_classic = fit(spec_classic, data)
 fc_classic = forecast(fit_classic, h = 12)
 
 # Compare methods
+using Statistics
 println("SBA forecast:     ", mean(fc_sba.mean))
 println("SBJ forecast:     ", mean(fc_sbj.mean))
 println("Classic forecast: ", mean(fc_classic.mean))
@@ -921,7 +922,7 @@ fc = forecast(fitted, h = 12)
 acc_results = accuracy(fc, test_data)
 
 # Find best performing model
-best_model = acc_results.model_name[argmin(acc_results.MAPE)]
+best_model = acc_results.model[argmin(acc_results.MAPE)]
 println("Best model: ", best_model)
 
 # Visualize comparison

@@ -490,11 +490,11 @@ Returns residuals for the ARARMA model.
 residuals(model::ArarmaModel) = model.y_original .- fitted(model)
 
 """
-    forecast(model, h; level=[80,95])
+    forecast(model; h, level=[80,95])
 
 Returns h-step-ahead forecasts and confidence intervals.
 """
-function forecast(model::ArarmaModel; h::Int, level::Vector{Int}=[80,95])
+function forecast(model::ArarmaModel; h::Int, level::AbstractVector{<:Real}=[80,95])
     y = copy(model.y_original)
     n = length(y)
     xi = compute_xi(model.psi, model.lag_phi, model.best_lag)

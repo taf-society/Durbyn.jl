@@ -48,7 +48,7 @@ fc = forecast(fit; h = 12)
 ```
 """
 function bats(
-    y::AbstractVector{<:Real},
+    y::AbstractVector{<:Union{Missing,Real}},
     m::Union{Vector{Int},Nothing} = nothing;
     use_box_cox::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
     use_trend::Union{Bool,AbstractVector{Bool},Nothing} = nothing,
@@ -65,7 +65,7 @@ function bats(
         throw(ArgumentError("y should be a univariate time series (1D vector)"))
     end
 
-    orig_y = copy(y)
+    orig_y = Float64[ismissing(v) ? NaN : Float64(v) for v in y]
     orig_len = length(y)
 
     if m === nothing
@@ -76,7 +76,7 @@ function bats(
     if length(y_contig) != orig_len
         @warn "Missing values encountered. Using longest contiguous portion of time series"
     end
-    y = y_contig
+    y = Float64[v for v in y_contig]
 
     m = m[m.<length(y)]
 

@@ -689,3 +689,6 @@ function Base.show(io::IO, fit::NaiveFit)
         println(io, "Box-Cox lambda: ", fit.lambda)
     end
 end
+
+fitted(model::NaiveFit) = model.fitted
+residuals(model::NaiveFit) = model.residuals

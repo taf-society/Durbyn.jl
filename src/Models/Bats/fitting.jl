@@ -16,8 +16,8 @@ function fit_specific_bats(
     ar_coefs::Union{AbstractVector{<:Real},Nothing} = nothing,
     ma_coefs::Union{AbstractVector{<:Real},Nothing} = nothing,
     init_box_cox = nothing,
-    bc_lower::Float64 = 0.0,
-    bc_upper::Float64 = 1.0,
+    bc_lower::Real = 0.0,
+    bc_upper::Real = 1.0,
     biasadj::Bool = false,
     kwargs...,
 )

@@ -91,8 +91,8 @@ fit = naive(y)
 fc = forecast(fit, h=12)
 
 fc.mean
-fc.upper[2]
-fc.lower[1]
+fc.upper[:, 2]
+fc.lower[:, 1]
 ```
 
 # See Also

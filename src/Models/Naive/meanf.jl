@@ -274,6 +274,9 @@ function forecast(object::MeanFit;
     )
 end
 
-function forecast(object::MeanFit, h::Int, level::Vector{Float64}=[80.0, 95.0], fan::Bool=false, bootstrap::Bool=false, npaths::Int=5000)
+function forecast(object::MeanFit, h::Int, level::AbstractVector{<:Real}=[80.0, 95.0], fan::Bool=false, bootstrap::Bool=false, npaths::Int=5000)
     forecast(object; h=h, level=level, fan=fan, bootstrap=bootstrap, npaths=npaths)
 end
+
+fitted(model::MeanFit) = model.fitted
+residuals(model::MeanFit) = model.residuals

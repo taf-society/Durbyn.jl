@@ -589,3 +589,12 @@ plot(fc)
 - ARARMA uses `p()` and `q()` grammar (same as ARIMA) - distinction is the Spec type
 - Auto selection when any order has a range: `p() + q()` or `p(0,3) + q()`
 - Fixed orders for faster fitting: `p(1) + q(2)` directly calls `ararma()`
+
+---
+
+## Contributing
+
+Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md)
+for the development workflow and the [Code of Conduct](CODE_OF_CONDUCT.md) that
+all community participation follows. Bug reports with a minimal reproducible
+example are especially appreciated.

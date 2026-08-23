@@ -88,6 +88,8 @@ export NaiveSpec, SnaiveSpec, RwSpec, MeanfSpec
 
 # Array-interface model functions
 export arima, auto_arima, bats, tbats, ets
+export arima_rjh, PDQ, NamedMatrix, Formula
+export croston_classic, croston_sba, croston_sbj
 export theta, auto_theta
 export ThetaModelType, STM, OTM, DSTM, DOTM
 export ararma, auto_ararma

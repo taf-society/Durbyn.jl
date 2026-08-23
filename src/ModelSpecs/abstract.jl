@@ -25,7 +25,7 @@ AbstractFittedModel
 
 2. **Generic Interface**: All model types support:
    - `fit(spec, data)` → fitted model
-   - `forecast(fitted, h)` → forecasts
+   - `forecast(fitted, h = 12)` → forecasts
 
 3. **Composable**: Single models or collections for comparison/ensembling.
 """

@@ -334,3 +334,5 @@ function holt(
         method,
     )
 end
+fitted(model::Holt) = model.fitted
+residuals(model::Holt) = model.residuals

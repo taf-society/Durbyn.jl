@@ -10,8 +10,8 @@ function check_admissibility_tbats(
     ar_coefs::Union{Nothing,Vector{Float64}} = nothing,
     ma_coefs::Union{Nothing,Vector{Float64}} = nothing,
     tau::Int = 0,
-    bc_lower::Float64 = 0.0,
-    bc_upper::Float64 = 1.0,
+    bc_lower::Real = 0.0,
+    bc_upper::Real = 1.0,
 )::Bool
     EPS = 1e-8
     RAD = 1.0 + 1e-2

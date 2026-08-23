@@ -116,6 +116,8 @@ function croston(
     options::NelderMeadOptions = NelderMeadOptions(),
 )
 
+    any(ismissing, y) &&
+        throw(ArgumentError("croston does not support missing values; impute or remove them first"))
     x = copy(y)
     y = [val for val in x if val > 0]
 
@@ -286,3 +288,12 @@ function fitted(object::CrostonFit)
     return fits
 end
 
+
+"""
+    residuals(object::CrostonFit)
+
+Return in-sample residuals (observed demand minus one-step-ahead fitted values).
+"""
+residuals(object::CrostonFit) = object.x .- fitted(object)
+
+forecast(object::CrostonFit; h::Int) = forecast(object, h)

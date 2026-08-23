@@ -14,6 +14,7 @@ include("crost_utils.jl")
 include("crost.jl")
 
 export croston_classic, croston_sba, croston_sbj
+export forecast, fitted, residuals
 export IntermittentDemandForecast
 export IntermittentDemandCrostonFit
 

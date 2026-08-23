@@ -57,6 +57,8 @@ function diff(series_values::AbstractVector; lag_steps::Int=1, difference_order:
     if lag_steps < 1 || difference_order < 1
         throw(ArgumentError("Bad value for 'lag_steps' or 'difference_order'"))
     end
+    any(ismissing, series_values) &&
+        throw(ArgumentError("diff does not support missing values; impute or remove them first"))
     if lag_steps * difference_order >= length(series_values)
         return series_values[1:0]
     end

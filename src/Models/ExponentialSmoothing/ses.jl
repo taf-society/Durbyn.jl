@@ -216,3 +216,5 @@ function ses(
         "Simple Exponential Smoothing",
     )
 end
+fitted(model::SES) = model.fitted
+residuals(model::SES) = model.residuals

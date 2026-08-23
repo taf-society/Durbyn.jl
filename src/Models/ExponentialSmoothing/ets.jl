@@ -600,3 +600,6 @@ function simulate_ets(
 
     return y
 end
+
+fitted(model::EtsModel) = model.fitted
+residuals(model::EtsModel) = model.residuals

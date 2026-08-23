@@ -48,9 +48,9 @@ Schwert (1989) short rule: `⌊4(n/100)^{1/4}⌋`.
 - `type::Symbol = :level`: Deterministic component. One of `:level`, `:trend`.
 - `max_d::Int = 2`: Maximum number of differences to attempt.
 - `kwargs...`: Passed through to the underlying test:
-  - KPSS: e.g. `use_lag::Union{Nothing,Int}`, `lags::String|Symbol`
-  - ADF: e.g. `lags::Int`, `selectlags::Symbol|String`
-  - PP:  e.g. `lags::String`, `use_lag::Union{Nothing,Int}`
+  - KPSS: e.g. `use_lag::Union{Nothing,Int}`, `lags::Symbol` (`:short`, `:long`, `:nil`)
+  - ADF: e.g. `lags::Int`, `selectlags::Symbol` (`:fixed`, `:aic`, `:bic`)
+  - PP:  e.g. `lags::Symbol` (`:short`, `:long`), `use_lag::Union{Nothing,Int}`
 
 ### Returns
 - `Int`: The estimated number of first differences required for stationarity,

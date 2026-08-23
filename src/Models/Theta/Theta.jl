@@ -10,7 +10,7 @@ using Tables
 import ..Utils: is_constant
 import ..Optimize: optimize
 import ..Stats: acf, decompose
-import ..Generics: forecast, Forecast
+import ..Generics: forecast, Forecast, fitted, residuals
 import ..Grammar: theta
 using ..Grammar: ModelFormula, ThetaTerm, _extract_single_term
 

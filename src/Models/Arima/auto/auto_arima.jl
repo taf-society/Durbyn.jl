@@ -116,7 +116,7 @@ function auto_arima(
     _check_arg(seasonal_test, (:seas, :ocsb), "seasonal_test")
 
     if isnothing(approximation)
-        approximation = (length(y) > 150 | m > 12)
+        approximation = (length(y) > 150) || (m > 12)
     end
 
     # ── Trim missing values ──

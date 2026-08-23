@@ -13,8 +13,8 @@ function calc_likelihood_tbats(
     p::Int = 0,
     q::Int = 0,
     tau::Int = 0,
-    bc_lower::Float64 = 0.0,
-    bc_upper::Float64 = 1.0,
+    bc_lower::Real = 0.0,
+    bc_upper::Real = 1.0,
 )
     control = TBATSParameterControl(
         true,

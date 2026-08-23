@@ -99,6 +99,8 @@ Use the resulting `ARAR` model with `forecast(model, h, ...)`, `fitted(model)`, 
 
 """
 function arar(y::AbstractArray; max_ar_depth::Union{Int, Nothing}=nothing, max_lag::Union{Int, Nothing}=nothing)
+    any(ismissing, y) &&
+        throw(ArgumentError("arar does not support missing values; impute or remove them first"))
     Y = copy(y)
     Ψ = [1.0]
     max_ar_depth, max_lag = setup_params(y, max_ar_depth = max_ar_depth, max_lag = max_lag)
@@ -305,7 +307,7 @@ println("Forecast mean:", fc.mean)
 println("95% upper bound:", fc.upper[2])
 ```
 """
-function forecast(model::ARAR; h::Int, level::Vector{Int}=[80, 95])
+function forecast(model::ARAR; h::Int, level::AbstractVector{<:Real}=[80, 95])
     i, j, k = model.best_lag[2:end]
     ϕ = model.best_phi
     σ2 = model.sigma2

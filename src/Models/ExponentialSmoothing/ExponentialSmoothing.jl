@@ -11,7 +11,8 @@ using Distributions
 import ..Utils: is_constant, _check_arg, dropmissing, check_component
 import ..Stats: box_cox_lambda, box_cox, inv_box_cox, decompose, DecomposedTimeSeries, diff, fourier
 import ..Stats: handle_missing, MissingMethod, Contiguous, Interpolate, FailMissing
-import ..Generics: Forecast, forecast, plot, fitted
+import ..Generics: Forecast, forecast, plot, fitted, residuals
+export forecast, fitted, residuals
 import ..Optimize: nelder_mead, NelderMeadOptions, scaler, descaler
 
 include("types.jl")

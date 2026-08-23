@@ -70,7 +70,14 @@ function compute_prediction_intervals(fit::ThetaFit, h::Int, level::Vector{<:Rea
     return intervals
 end
 
-function forecast(fit::ThetaFit; h::Int, level::Vector{<:Real}=[80, 95])
+function forecast(fit::ThetaFit; h::Int, level::AbstractVector{<:Real}=[80, 95])
+    # Normalize fractional levels (e.g. 0.95 -> 95) and validate the range.
+    if !isempty(level) && minimum(level) > 0 && maximum(level) < 1
+        level = 100 .* level
+    end
+    all(l -> 0 < l < 100, level) ||
+        throw(ArgumentError("Confidence levels must be in (0, 100)"))
+
     forecasts = zeros(Float64, h)
     _forecast_mean!(forecasts, fit)
 

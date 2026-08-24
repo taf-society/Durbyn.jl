@@ -167,7 +167,7 @@ function bats(
                         bc_lower = bc_lower,
                         bc_upper = bc_upper,
                         biasadj = biasadj,
-                        kwargs...,
+                                kwargs...,
                     )
                 catch e
                     @warn "    Model failed: $e"
@@ -190,6 +190,11 @@ function bats(
     if best_model === nothing
         error("Unable to fit a model")
     end
+
+    if _REFINE[]
+        best_model = _bats_refine_final(y_num, best_model, bc_lower, bc_upper, biasadj)
+    end
+
 
     if hasproperty(best_model, :optim_return_code) &&
        getfield(best_model, :optim_return_code) != 0

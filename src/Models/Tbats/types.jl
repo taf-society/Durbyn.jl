@@ -43,6 +43,11 @@ mutable struct TBATSModel
     biasadj::Bool
 end
 
+# Internal switch for the guarded final refinement (see fitting.jl); exists
+# so evaluation harnesses can A/B the refinement against the reference
+# single-run behaviour. Always true in normal use.
+const _REFINE = Ref{Bool}(true)
+
 _aic_val(model::Nothing) = Inf
 _aic_val(model) = isnothing(model.aic) ? Inf : model.aic
 

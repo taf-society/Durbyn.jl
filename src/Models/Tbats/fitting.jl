@@ -153,10 +153,12 @@ function fit_specific_tbats(
     end
 
     opt_env = Dict{Symbol,Any}()
-    opt_env[:F] = F
-    opt_env[:w_transpose] = w.w_transpose
+    opt_env[:F] = copy(F)
+    opt_env[:w_transpose] = copy(w.w_transpose)
     opt_env[:g] = g_result.g
-    opt_env[:gamma_bold_matrix] = g_result.gamma_bold_matrix
+    opt_env[:g_vec] = copy(g_result.g)
+    opt_env[:gamma_bold_matrix] =
+        g_result.gamma_bold_matrix === nothing ? nothing : copy(g_result.gamma_bold_matrix)
     opt_env[:k_vector] = k_vector
     opt_env[:y] = reshape(y, 1, :)
     opt_env[:y_hat] = zeros(1, n)
@@ -169,6 +171,11 @@ function fit_specific_tbats(
     state_dim = size(x_nought, 1)
     opt_env[:Fx_buffer] = zeros(state_dim)
     opt_env[:g_scaled] = zeros(state_dim)
+
+    opt_env[:layout] = TBATSMatrixLayout(use_beta, tau, p, q)
+    opt_env[:D] = zeros(state_dim, state_dim)
+    # Only the Box-Cox objective needs this term (it requires positive data).
+    opt_env[:sum_log_y] = use_box_cox ? sum(log(yi) for yi in opt_env[:y]) : 0.0
 
     if use_box_cox
         x_nought_untransformed = inv_box_cox(x_nought; lambda=lambda)
@@ -358,7 +365,7 @@ function filter_tbats_specifics(
                 bc_lower = bc_lower,
                 bc_upper = bc_upper,
                 biasadj = biasadj,
-            )
+                    )
         catch e
             @warn "fit_specific_tbats in filter_tbats_specifics failed: $e"
             nothing
@@ -413,7 +420,7 @@ function filter_tbats_specifics(
             bc_lower = bc_lower,
             bc_upper = bc_upper,
             biasadj = biasadj,
-        )
+            )
     catch e
         @warn "fit_specific_tbats with ARMA in filter_tbats_specifics failed: $e"
         nothing
@@ -534,4 +541,76 @@ function create_constant_tbats_model(y::Vector{Float64})
         tbats_descriptor(nothing, nothing, nothing, nothing, nothing, nothing),
         false,
     )
+end
+
+
+# ─── Guarded final refinement ─────────────────────────────────────────────────
+#
+# After model selection, the winning configuration is re-estimated once,
+# restarting the optimizer from the fitted parameters with seed states
+# re-derived from them (the single-run pipeline derives seeds from the initial
+# parameter guess only). The refit is accepted only when
+#   (a) it strictly improves the likelihood of the SAME model structure, so
+#       reported in-sample fit quality (likelihood/AIC) is never worse, and
+#   (b) the spectral radius of D = F - g w' does not increase, so the
+#       refinement cannot move the model closer to the explosive boundary of
+#       the admissible region (De Livera, Hyndman & Snyder 2011): deeper
+#       optima that trade in-sample fit for drifting long-horizon forecasts
+#       are rejected.
+function _tbats_spectral_radius(m)
+    p = m.ar_coefficients === nothing ? 0 : length(m.ar_coefficients)
+    q = m.ma_coefficients === nothing ? 0 : length(m.ma_coefficients)
+    tau = m.k_vector === nothing ? 0 : 2 * sum(m.k_vector)
+    w = make_tbats_wmatrix(m.damping_parameter, m.k_vector, m.ar_coefficients, m.ma_coefficients, tau)
+    g = make_tbats_gmatrix(m.alpha, m.beta, m.gamma_one_values, m.gamma_two_values, m.k_vector, p, q)
+    F = make_tbats_fmatrix(m.alpha, m.beta, m.damping_parameter, m.seasonal_periods, m.k_vector,
+                           g.gamma_bold_matrix, m.ar_coefficients, m.ma_coefficients)
+    maximum(abs, eigvals(F .- g.g * w.w_transpose))
+end
+
+function _tbats_refine_final_once(y, winner, bc_lower, bc_upper, biasadj)
+    control = winner.parameters.control
+    refined = try
+        fit_specific_tbats(
+            y;
+            use_box_cox = control.use_box_cox,
+            use_beta = control.use_beta,
+            use_damping = control.use_damping,
+            seasonal_periods = winner.seasonal_periods,
+            k_vector = winner.k_vector,
+            starting_params = (vect = copy(winner.parameters.vect), control = control),
+            ar_coefs = winner.ar_coefficients,
+            ma_coefs = winner.ma_coefficients,
+            bc_lower = bc_lower,
+            bc_upper = bc_upper,
+            biasadj = biasadj,
+        )
+    catch
+        nothing
+    end
+    refined === nothing && return winner
+    isfinite(refined.likelihood) || return winner
+    refined.likelihood < winner.likelihood || return winner
+    rho_ok = try
+        _tbats_spectral_radius(refined) <= _tbats_spectral_radius(winner) + 1e-9
+    catch
+        false
+    end
+
+    rho_ok || return winner
+    return refined
+end
+
+# Alternate seed re-derivation and parameter re-optimisation for up to three
+# rounds; every accepted round strictly improves the likelihood of the same
+# structure and never increases the spectral radius of D (the guards live in
+# _tbats_refine_final_once). Rounds stop at the first rejected refit.
+function _tbats_refine_final(y, winner, bc_lower, bc_upper, biasadj)
+    current = winner
+    for _ in 1:3
+        nxt = _tbats_refine_final_once(y, current, bc_lower, bc_upper, biasadj)
+        nxt === current && break
+        current = nxt
+    end
+    return current
 end

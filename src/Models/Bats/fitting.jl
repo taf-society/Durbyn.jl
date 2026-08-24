@@ -194,10 +194,11 @@ function fit_specific_bats(
 
 
     opt_env = Dict{Symbol,Any}()
-    opt_env[:F] = F
-    opt_env[:w_transpose] = w.w_transpose
-    opt_env[:g] = reshape(g.g, :, 1)
-    opt_env[:gamma_bold_matrix] = g.gamma_bold_matrix
+    opt_env[:F] = copy(F)
+    opt_env[:w_transpose] = copy(w.w_transpose)
+    opt_env[:g] = reshape(copy(g.g), :, 1)
+    opt_env[:gamma_bold_matrix] =
+        g.gamma_bold_matrix === nothing ? nothing : copy(g.gamma_bold_matrix)
     opt_env[:y] = reshape(y, 1, :)
     opt_env[:y_hat] = zeros(1, n)
     opt_env[:e] = zeros(1, n)
@@ -211,6 +212,11 @@ function fit_specific_bats(
     opt_env[:Fx_buffer] = zeros(state_dim)
 
     tau = seasonal_periods === nothing ? 0 : sum(seasonal_periods)
+
+    opt_env[:layout] = BATSMatrixLayout(use_beta, tau, p, q)
+    opt_env[:D] = zeros(state_dim, state_dim)
+    # Only the Box-Cox objective needs this term (it requires positive data).
+    opt_env[:sum_log_y] = use_box_cox ? sum(log.(opt_env[:y])) : 0.0
 
 
     if use_box_cox
@@ -434,7 +440,7 @@ function filter_specifics(
             bc_lower = bc_lower,
             bc_upper = bc_upper,
             biasadj = biasadj,
-            kwargs...,
+                kwargs...,
         )
 
         if _aic_val(first_model) > _aic_val(non_seasonal_model)
@@ -475,7 +481,7 @@ function filter_specifics(
                 bc_lower = bc_lower,
                 bc_upper = bc_upper,
                 biasadj = biasadj,
-                kwargs...,
+                        kwargs...,
             )
 
             if _aic_val(second_model) < _aic_val(first_model)
@@ -590,4 +596,69 @@ function create_constant_model(y::Vector{Float64})
         bats_descriptor(nothing, nothing, nothing, nothing, nothing),
         false,
     )
+end
+
+# ─── Guarded final refinement ─────────────────────────────────────────────────
+#
+# Same design as the TBATS refinement (see Tbats/fitting.jl): one restart of
+# the winning configuration with seeds re-derived from the fitted parameters,
+# accepted only when the likelihood strictly improves AND the spectral radius
+# of D = F - g w' does not increase.
+function _bats_spectral_radius(m)
+    p = m.ar_coefficients === nothing ? 0 : length(m.ar_coefficients)
+    q = m.ma_coefficients === nothing ? 0 : length(m.ma_coefficients)
+    gamma_v = m.gamma_values
+    w = make_wmatrix(m.damping_parameter, m.seasonal_periods, m.ar_coefficients, m.ma_coefficients)
+    g = make_gmatrix(m.alpha, m.beta, gamma_v, m.seasonal_periods, p, q)
+    F = make_fmatrix(m.alpha, m.beta, m.damping_parameter, m.seasonal_periods,
+                     g.gamma_bold_matrix, m.ar_coefficients, m.ma_coefficients)
+    wt = w.w_transpose
+    ndims(wt) != 2 && (wt = reshape(wt, 1, :))
+    maximum(abs, eigvals(F .- reshape(g.g, :, 1) * wt))
+end
+
+function _bats_refine_final_once(y, winner, bc_lower, bc_upper, biasadj)
+    control = winner.parameters.control
+    refined = try
+        fit_specific_bats(
+            y;
+            use_box_cox = control.use_box_cox,
+            use_beta = control.use_beta,
+            use_damping = control.use_damping,
+            seasonal_periods = winner.seasonal_periods,
+            starting_params = (vect = copy(winner.parameters.vect), control = control),
+            ar_coefs = winner.ar_coefficients,
+            ma_coefs = winner.ma_coefficients,
+            bc_lower = bc_lower,
+            bc_upper = bc_upper,
+            biasadj = biasadj,
+        )
+    catch
+        nothing
+    end
+    refined === nothing && return winner
+    isfinite(refined.likelihood) || return winner
+    refined.likelihood < winner.likelihood || return winner
+    rho_ok = try
+        _bats_spectral_radius(refined) <= _bats_spectral_radius(winner) + 1e-9
+    catch
+        false
+    end
+
+    rho_ok || return winner
+    return refined
+end
+
+# Alternate seed re-derivation and parameter re-optimisation for up to three
+# rounds; every accepted round strictly improves the likelihood of the same
+# structure and never increases the spectral radius of D (the guards live in
+# _bats_refine_final_once). Rounds stop at the first rejected refit.
+function _bats_refine_final(y, winner, bc_lower, bc_upper, biasadj)
+    current = winner
+    for _ in 1:3
+        nxt = _bats_refine_final_once(y, current, bc_lower, bc_upper, biasadj)
+        nxt === current && break
+        current = nxt
+    end
+    return current
 end

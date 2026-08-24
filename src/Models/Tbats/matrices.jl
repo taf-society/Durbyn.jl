@@ -423,3 +423,166 @@ function make_parscale_tbats(control::TBATSParameterControl)
 
     return parscale
 end
+
+# ─── In-place per-evaluation matrix updates ──────────────────────────────────
+#
+# During optimization the structural layout of w, g, gamma_bold, and F is fixed
+# by (use_beta, k_vector, p, q); only parameter-dependent entries change between
+# objective evaluations. These helpers overwrite exactly those entries in
+# preallocated buffers, producing values identical to a full rebuild via
+# make_tbats_wmatrix / make_tbats_gmatrix / make_tbats_fmatrix.
+
+struct TBATSMatrixLayout
+    has_beta::Bool
+    tau::Int
+    p::Int
+    q::Int
+    col_seasonal::Int
+    col_ar::Int
+    col_ma::Int
+    row_ar::Int
+end
+
+function TBATSMatrixLayout(use_beta::Bool, tau::Int, p::Int, q::Int)
+    n_beta = use_beta ? 1 : 0
+    col_seasonal = 1 + n_beta + 1
+    col_ar = 1 + n_beta + tau + 1
+    col_ma = 1 + n_beta + tau + p + 1
+    TBATSMatrixLayout(use_beta, tau, p, q, col_seasonal, col_ar, col_ma, col_ar)
+end
+
+function update_tbats_gamma_bold!(
+    gamma_bold::Matrix{Float64},
+    k_vector::Vector{Int},
+    gamma_one::Vector{Float64},
+    gamma_two::Vector{Float64},
+)
+    end_pos = 1
+    @inbounds for (i, k) in enumerate(k_vector)
+        for j = end_pos:(end_pos + k - 1)
+            gamma_bold[j] = gamma_one[i]
+        end
+        for j = (end_pos + k):(end_pos + 2k - 1)
+            gamma_bold[j] = gamma_two[i]
+        end
+        end_pos += 2k
+    end
+    return gamma_bold
+end
+
+function update_tbats_wg!(
+    w_transpose::Matrix{Float64},
+    g::Vector{Float64},
+    layout::TBATSMatrixLayout,
+    alpha::Float64,
+    beta::Union{Float64,Nothing},
+    small_phi::Union{Float64,Nothing},
+    gamma_bold::Union{Matrix{Float64},Nothing},
+    ar_coefs::Union{Vector{Float64},Nothing},
+    ma_coefs::Union{Vector{Float64},Nothing},
+)
+    idx = 2
+    if small_phi !== nothing
+        w_transpose[1, idx] = small_phi
+        idx += 1
+    end
+    idx += layout.tau
+    if ar_coefs !== nothing
+        @inbounds for c in ar_coefs
+            w_transpose[1, idx] = c
+            idx += 1
+        end
+    end
+    if ma_coefs !== nothing
+        @inbounds for c in ma_coefs
+            w_transpose[1, idx] = c
+            idx += 1
+        end
+    end
+
+    gi = 1
+    g[gi] = alpha
+    gi += 1
+    if beta !== nothing
+        g[gi] = beta
+        gi += 1
+    end
+    if gamma_bold !== nothing
+        @inbounds for v in vec(gamma_bold)
+            g[gi] = v
+            gi += 1
+        end
+    end
+    return nothing
+end
+
+function update_tbats_fmatrix!(
+    F::Matrix{Float64},
+    layout::TBATSMatrixLayout,
+    alpha::Float64,
+    beta::Union{Float64,Nothing},
+    small_phi::Union{Float64,Nothing},
+    gamma_bold::Union{Matrix{Float64},Nothing},
+    ar_coefs::Union{Vector{Float64},Nothing},
+    ma_coefs::Union{Vector{Float64},Nothing},
+)
+    p = layout.p
+    q = layout.q
+    tau = layout.tau
+    col_ar = layout.col_ar
+    col_ma = layout.col_ma
+    row_seasonal = layout.col_seasonal
+    row_ar = layout.row_ar
+
+    if layout.has_beta
+        F[1, 2] = small_phi
+        F[2, 2] = small_phi
+    end
+
+    if p > 0
+        @inbounds for i in 1:p
+            F[1, col_ar + i - 1] = alpha * ar_coefs[i]
+        end
+        if layout.has_beta
+            @inbounds for i in 1:p
+                F[2, col_ar + i - 1] = beta * ar_coefs[i]
+            end
+        end
+    end
+    if q > 0
+        @inbounds for i in 1:q
+            F[1, col_ma + i - 1] = alpha * ma_coefs[i]
+        end
+        if layout.has_beta
+            @inbounds for i in 1:q
+                F[2, col_ma + i - 1] = beta * ma_coefs[i]
+            end
+        end
+    end
+
+    if tau > 0 && gamma_bold !== nothing
+        if p > 0
+            @inbounds for j in 1:p, i in 1:tau
+                F[row_seasonal + i - 1, col_ar + j - 1] = gamma_bold[i] * ar_coefs[j]
+            end
+        end
+        if q > 0
+            @inbounds for j in 1:q, i in 1:tau
+                F[row_seasonal + i - 1, col_ma + j - 1] = gamma_bold[i] * ma_coefs[j]
+            end
+        end
+    end
+
+    if p > 0
+        @inbounds for i in 1:p
+            F[row_ar, col_ar + i - 1] = ar_coefs[i]
+        end
+        if q > 0
+            @inbounds for i in 1:q
+                F[row_ar, col_ma + i - 1] = ma_coefs[i]
+            end
+        end
+    end
+
+    return nothing
+end

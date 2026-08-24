@@ -260,6 +260,7 @@ function tbats(
             continue
         end
 
+
         if max_k <= 6
             k_vector[i] = max_k
             local_best_model = best_model
@@ -464,7 +465,7 @@ function tbats(
                         bc_lower = bc_lower,
                         bc_upper = bc_upper,
                         biasadj = biasadj,
-                        kwargs...,
+                                kwargs...,
                     )
                 elseif trend || !damping
                     new_model = filter_tbats_specifics(
@@ -479,7 +480,7 @@ function tbats(
                         bc_lower = bc_lower,
                         bc_upper = bc_upper,
                         biasadj = biasadj,
-                        kwargs...,
+                                kwargs...,
                     )
                 else
                     continue
@@ -496,6 +497,7 @@ function tbats(
         end
     end
 
+
     if hasproperty(best_model, :optim_return_code) &&
        getfield(best_model, :optim_return_code) != 0
         @warn "optimize() did not converge."
@@ -508,6 +510,7 @@ function tbats(
     if best_model isa BATSModel
         return best_model
     end
+
 
     method_label = tbats_descriptor(
         best_model.lambda,

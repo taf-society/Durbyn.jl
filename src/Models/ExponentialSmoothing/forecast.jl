@@ -342,11 +342,11 @@ function bootstrap_ets_forecast(obj, h; npaths, level, bootstrap)
 
     if !all(isnan.(level))
         lower = [
-            quantile_type8(y_paths[:, i], 0.5 - lvl / 200) for i = 1:size(y_paths, 2),
+            quantile_type7(y_paths[:, i], 0.5 - lvl / 200) for i = 1:size(y_paths, 2),
             lvl in level
         ]
         upper = [
-            quantile_type8(y_paths[:, i], 0.5 + lvl / 200) for i = 1:size(y_paths, 2),
+            quantile_type7(y_paths[:, i], 0.5 + lvl / 200) for i = 1:size(y_paths, 2),
             lvl in level
         ]
     else
@@ -356,7 +356,10 @@ function bootstrap_ets_forecast(obj, h; npaths, level, bootstrap)
     return (mu = y_f, lower = lower, upper = upper)
 end
 
-function quantile_type8(arr, q)
+# Hyndman-Fan type 7 (the default of `Statistics.quantile`, R's `type = 7` and
+# numpy's `method = "linear"`): the p-th quantile is read at position
+# `(n - 1) * p + 1` with linear interpolation between order statistics.
+function quantile_type7(arr, q)
     sorted_arr = sort(arr)
     n = length(arr)
     pos = (n - 1) * q + 1

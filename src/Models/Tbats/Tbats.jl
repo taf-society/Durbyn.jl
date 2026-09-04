@@ -1,6 +1,6 @@
 module Tbats
 
-import ..Utils: is_constant
+import ..Utils: is_constant, _normalize_levels
 import ..Stats: box_cox, box_cox!, inv_box_cox, box_cox_lambda, longest_contiguous
 import ..Arima: auto_arima
 import ..Generics: Forecast, forecast, fitted, residuals

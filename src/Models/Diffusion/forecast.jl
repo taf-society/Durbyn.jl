@@ -43,15 +43,7 @@ function forecast(fit::DiffusionFit; h::Int, level::AbstractVector{<:Real}=[80, 
         throw(ArgumentError("Forecast horizon h must be a positive integer, got $h"))
     end
 
-    # Normalize fractional levels (e.g. 0.95 -> 95) like the other models.
-    if !isempty(level) && minimum(level) > 0 && maximum(level) < 1
-        level = 100 .* level
-    end
-    for lv in level
-        if lv <= 0 || lv >= 100
-            throw(ArgumentError("Confidence levels must be between 0 and 100 (exclusive), got $lv"))
-        end
-    end
+    level = _normalize_levels(level)
 
     n = length(fit.y)
 

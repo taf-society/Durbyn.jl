@@ -610,15 +610,7 @@ function forecast(
         throw(ArgumentError("Forecast horizon out of bounds"))
     end
 
-    if fan
-        level = collect(51.0:3.0:99.0)
-    else
-        if minimum(level) > 0 && maximum(level) < 1
-            level = 100.0 .* level
-        elseif minimum(level) < 0 || maximum(level) > 99.99
-            throw(ArgumentError("Confidence limit out of range"))
-        end
-    end
+    level = _normalize_levels(level; fan=fan)
     n_levels = length(level)
 
     p = isnothing(model.ar_coefficients) ? 0 : length(model.ar_coefficients)

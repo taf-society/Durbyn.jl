@@ -495,6 +495,8 @@ residuals(model::ArarmaModel) = model.y_original .- fitted(model)
 Returns h-step-ahead forecasts and confidence intervals.
 """
 function forecast(model::ArarmaModel; h::Int, level::AbstractVector{<:Real}=[80,95])
+    h >= 1 || throw(ArgumentError("Forecast horizon h must be >= 1, got $h"))
+    level = _normalize_levels(level)
     y = copy(model.y_original)
     n = length(y)
     xi = compute_xi(model.psi, model.lag_phi, model.best_lag)

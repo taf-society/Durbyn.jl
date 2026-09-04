@@ -4,6 +4,7 @@ using Distributions
 using LinearAlgebra
 using Polynomials
 import Base: show
+import ..Utils: _normalize_levels
 import ..Generics: Forecast
 import ..Generics: forecast, fitted, residuals
 import ..Optimize: NelderMeadOptions, nelder_mead, scaler, descaler

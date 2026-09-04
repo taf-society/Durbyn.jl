@@ -7,7 +7,7 @@ using Statistics
 using Random: MersenneTwister, randn
 using Tables
 
-import ..Utils: is_constant
+import ..Utils: is_constant, _normalize_levels
 import ..Optimize: optimize
 import ..Stats: acf, decompose
 import ..Generics: forecast, Forecast, fitted, residuals

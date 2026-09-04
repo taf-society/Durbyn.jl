@@ -289,17 +289,7 @@ uses_drift(m::ArimaFit) = any(==("drift"), coef_names(m.coef))
 uses_xreg(m::ArimaFit) = uses_drift(m) || (m.xreg isa NamedMatrix && size(m.xreg.data,2) > 0)
 
 function normalize_levels(level::AbstractVector{<:Real}; fan::Bool=false)
-    if fan
-        levels = collect(51:3:99)
-    else
-        levels = collect(level)
-        if minimum(levels) > 0 && maximum(levels) < 1
-            levels .= 100 .* levels
-        end
-        if minimum(levels) < 0 || maximum(levels) > 99.99
-            throw(ArgumentError("Confidence limit out of range"))
-        end
-    end
+    levels = _normalize_levels(level; fan=fan)
     sort!(levels)
     return levels
 end

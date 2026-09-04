@@ -114,17 +114,7 @@ function forecast(object::NaiveFit;
     lambda = object.lambda
     biasadj = object.biasadj
 
-    if fan
-        level = collect(51.0:3:99.0)
-    else
-        all_fraction = all(lv -> 0.0 < lv < 1.0, level)
-
-        if all_fraction
-            level = 100.0 .* level
-        elseif any(lv -> lv <= 0.0 || lv > 99.99, level)
-            throw(ArgumentError("Confidence levels must be in (0, 1) (fractions) or (0, 99.99] (percentages)"))
-        end
-    end
+    level = _normalize_levels(level; fan=fan)
 
     nconf = length(level)
 

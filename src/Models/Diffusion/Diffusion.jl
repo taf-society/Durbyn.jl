@@ -50,6 +50,7 @@ using Statistics
 using LinearAlgebra
 
 import ..Optimize: optimize
+import ..Utils: _normalize_levels
 import ..Generics: forecast, Forecast, predict, fitted, residuals
 
 export diffusion, fit_diffusion, DiffusionFit

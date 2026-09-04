@@ -105,6 +105,10 @@ using Test
         include("test_generics.jl")
     end
 
+    @testset "Prediction Interval Levels" begin
+        include("test_interval_levels.jl")
+    end
+
     @testset "ModelSpecs Bug Fixes" begin
         include("test_model_specs.jl")
     end

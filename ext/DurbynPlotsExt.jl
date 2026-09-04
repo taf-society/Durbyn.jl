@@ -9,6 +9,14 @@ import Durbyn: plot, Forecast, ACFResult, PACFResult, IntermittentDemandForecast
                DecomposedTimeSeries, CrostonForecast, CrostonFit, ArimaPredictions,
                Decomposition
 
+# `fitted`/`residuals` vectors may contain `missing` as well as `NaN`. `isnan(missing)`
+# is `missing`, so `!all(isnan.(v))` throws when every element is missing; test for the
+# presence of at least one plottable value instead.
+_has_plottable(v) = any(x -> !ismissing(x) && !isnan(x), v)
+
+# Confidence levels need not be whole numbers (e.g. 97.5), so `Int` would throw.
+_fmt_level(l::Real) = isinteger(l) ? "$(Int(l))%" : "$(l)%"
+
 function Durbyn.plot(forecast::Durbyn.Generics.Forecast; show_fitted=true, show_residuals=false)
     n_history = length(forecast.x)
     time_history = 1:n_history
@@ -50,7 +58,7 @@ function Durbyn.plot(forecast::Durbyn.Generics.Forecast; show_fitted=true, show_
         alpha=0.8
     )
 
-    if show_fitted && !isempty(forecast.fitted) && !all(isnan.(forecast.fitted))
+    if show_fitted && _has_plottable(forecast.fitted)
         Plots.plot!(
             p,
             time_history,
@@ -87,13 +95,20 @@ function Durbyn.plot(forecast::Durbyn.Generics.Forecast; show_fitted=true, show_
             end
         end
 
-        for i in num_levels:-1:1
+        # Paint the widest band first so narrower bands stay visible. Only ARIMA
+        # sorts its levels, so derive the order from the level values rather than
+        # assuming the caller supplied them in ascending order.
+        has_levels = !isnothing(forecast.level) && length(forecast.level) == num_levels
+        paint_order = has_levels ? sortperm(collect(forecast.level), rev=true) :
+                                   collect(num_levels:-1:1)
+
+        for i in paint_order
             upper_bound = forecast.upper[:, i]
             lower_bound = forecast.lower[:, i]
 
             fill_color, fill_alpha = get_ci_color_alpha(i, num_levels)
 
-            level_label = !isnothing(forecast.level) ? "$(Int(forecast.level[i]))%" : "CI"
+            level_label = has_levels ? _fmt_level(forecast.level[i]) : "CI"
 
             Plots.plot!(
                 p,
@@ -129,7 +144,7 @@ function Durbyn.plot(forecast::Durbyn.Generics.Forecast; show_fitted=true, show_
         ylabel="Value"
     )
 
-    if show_residuals && !isempty(forecast.residuals) && !all(isnan.(forecast.residuals))
+    if show_residuals && _has_plottable(forecast.residuals)
         p_resid = Plots.plot(
             framestyle=:box,
             grid=true,

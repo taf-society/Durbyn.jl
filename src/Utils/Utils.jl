@@ -273,6 +273,44 @@ function _check_arg(arg::Symbol, choices, name::String="argument")
     return arg
 end
 
+"""
+    _normalize_levels(level; fan = false) -> Vector{Float64}
+
+Normalize confidence levels to percentages in `(0, 100)`.
+
+Levels may be given either as fractions in `(0, 1)` (e.g. `[0.8, 0.95]`) or as
+percentages in `(0, 100)` (e.g. `[80, 95]`). The two conventions must not be
+mixed: `[0.8, 95]` is ambiguous and raises an `ArgumentError` rather than being
+silently interpreted as a 0.8% and a 95% level.
+
+When `fan = true` the supplied levels are ignored and the fan-chart levels
+`51, 54, ..., 99` are returned.
+
+The returned vector preserves the caller's ordering; sort it explicitly if a
+particular column order is required.
+"""
+function _normalize_levels(level::AbstractVector{<:Real}; fan::Bool=false)
+    fan && return collect(51.0:3.0:99.0)
+    isempty(level) && return Float64[]
+
+    lv = Float64[float(x) for x in level]
+    n_fraction = count(x -> 0.0 < x < 1.0, lv)
+
+    if n_fraction == length(lv)
+        lv .*= 100.0
+    elseif n_fraction > 0
+        throw(ArgumentError(
+            "Confidence levels must use a single convention: either all fractions in " *
+            "(0, 1) or all percentages in (0, 100). Got $(collect(level))."))
+    end
+
+    all(x -> 0.0 < x < 100.0, lv) || throw(ArgumentError(
+        "Confidence levels must be in (0, 1) as fractions or (0, 100) as percentages. " *
+        "Got $(collect(level))."))
+
+    return lv
+end
+
 function completecases(x::AbstractArray)
     return [!ismissingish(v) for v in x]
 end

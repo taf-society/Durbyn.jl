@@ -308,6 +308,8 @@ println("95% upper bound:", fc.upper[2])
 ```
 """
 function forecast(model::ARAR; h::Int, level::AbstractVector{<:Real}=[80, 95])
+    h >= 1 || throw(ArgumentError("Forecast horizon h must be >= 1, got $h"))
+    level = _normalize_levels(level)
     i, j, k = model.best_lag[2:end]
     ϕ = model.best_phi
     σ2 = model.sigma2

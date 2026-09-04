@@ -6,7 +6,7 @@ import Random: rand
 import Distributions: quantile, TDist, Normal
 
 # Internal modules
-import ..Utils: mean2
+import ..Utils: mean2, _normalize_levels
 import ..Stats: box_cox_lambda, box_cox, inv_box_cox
 import ..Generics: Forecast, forecast, plot, fitted, residuals
 

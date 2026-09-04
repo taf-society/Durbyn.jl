@@ -1540,3 +1540,68 @@ end
         @test size(fc.lower, 2) == 1
     end
 end
+
+@testset "as_table: level labels and include_failures" begin
+    y = Float64.(air_passengers())
+
+    @testset "level labels are lossless" begin
+        f = snaive(y, 12)
+        # whole-number levels keep their existing column names
+        @test keys(as_table(forecast(f, h = 3, level = [80, 95]))) ==
+              (:step, :mean, :lower_80, :upper_80, :lower_95, :upper_95, :model)
+        # a fractional level used to be rounded to lower_98 / upper_98
+        k = keys(as_table(forecast(f, h = 3, level = [97.5])))
+        @test :lower_97_5 in k && :upper_97_5 in k
+        # two levels in one integer bucket used to throw on a duplicate field name
+        k2 = keys(as_table(forecast(f, h = 3, level = [97.2, 97.4])))
+        @test :lower_97_2 in k2 && :lower_97_4 in k2
+    end
+
+    # one group long enough to fit, one too short for m = 12
+    long = (g     = vcat(fill("ok", 60), fill("short", 3)),
+            idx   = vcat(collect(1:60), collect(1:3)),
+            value = vcat(y[1:60], y[1:3]))
+    gm  = fit(SnaiveSpec(@formula(value = snaive_term()), m = 12), long, groupby = [:g])
+    gfc = forecast(gm, h = 2, level = [80, 95])
+    @test length(successful_models(gm)) == 1
+    @test length(failed_groups(gm)) == 1
+
+    @testset "include_failures = false is unchanged" begin
+        t = as_table(gfc)
+        @test keys(t) == (:g, :step, :mean, :lower_80, :upper_80,
+                          :lower_95, :upper_95, :model)
+        @test unique(t.g) == ["ok"]
+        @test length(t.step) == 2
+    end
+
+    @testset "include_failures = true reports failed groups" begin
+        t = as_table(gfc; include_failures = true)
+        @test :status in keys(t) && :message in keys(t)
+        @test Set(unique(t.g)) == Set(["ok", "short"])
+        @test length(t.step) == 3
+
+        i = findfirst(==("short"), t.g)
+        @test t.status[i] === :error
+        @test t.step[i] === missing
+        @test t.mean[i] === missing
+        @test t.lower_95[i] === missing
+        @test occursin("seasonal period", t.message[i])
+
+        j = findfirst(==("ok"), t.g)
+        @test t.status[j] === :ok
+        @test t.message[j] === missing
+    end
+
+    @testset "every group failed" begin
+        short = (g = vcat(fill("a", 3), fill("b", 3)),
+                 idx = vcat(1:3, 1:3), value = Float64[1, 2, 3, 4, 5, 6])
+        gm2 = fit(SnaiveSpec(@formula(value = snaive_term()), m = 12), short, groupby = [:g])
+        gfc2 = forecast(gm2, h = 2, level = [80])
+        # unchanged without the flag
+        @test_throws ArgumentError as_table(gfc2)
+        # with the flag the groups are still described
+        t = as_table(gfc2; include_failures = true)
+        @test t.status == [:error, :error]
+        @test Set(t.g) == Set(["a", "b"])
+    end
+end

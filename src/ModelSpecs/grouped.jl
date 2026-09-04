@@ -411,8 +411,8 @@ function Base.show(io::IO, fc::GroupedForecasts)
 end
 
 _level_label(level::Real) = begin
-    lvl = level >= 1 ? level : level * 100
-    string(round(Int, lvl))
+    lvl = level >= 1 ? float(level) : float(level) * 100
+    isinteger(lvl) ? string(Int(lvl)) : replace(string(lvl), "." => "_")
 end
 _level_label(level) = string(level)
 
@@ -479,19 +479,20 @@ function as_table(fc::GroupedForecasts; include_failures::Bool = false)
     group_keys = fc.groups
     isempty(group_keys) && throw(ArgumentError("GroupedForecasts has no groups."))
 
+    emit_failures = include_failures &&
+                    any(key -> fc.forecasts[key] isa Exception, group_keys)
+
     success_found = false
     group_names = Symbol[]
     group_columns = Vector{Any}[]
     level_values = Float64[]
     level_map = Dict{Float64, Int}()
-    key_example = nothing
 
     for key in group_keys
         result = fc.forecasts[key]
         if result isa Forecast
             if !success_found
                 success_found = true
-                key_example = key
                 group_names = Symbol.(propertynames(key))
                 group_columns = [Vector{typeof(getfield(key, name))}() for name in group_names]
             end
@@ -504,11 +505,18 @@ function as_table(fc::GroupedForecasts; include_failures::Bool = false)
         end
     end
 
-    success_found || throw(ArgumentError("No successful forecasts available."))
+    if !success_found
+        emit_failures || throw(ArgumentError("No successful forecasts available."))
+        first_key = first(group_keys)
+        group_names = Symbol.(propertynames(first_key))
+        group_columns = [Vector{typeof(getfield(first_key, name))}() for name in group_names]
+    end
 
-    step_col = Int[]
-    mean_col = Float64[]
-    method_col = String[]
+    step_col = emit_failures ? Vector{Union{Missing, Int}}() : Int[]
+    mean_col = emit_failures ? Vector{Union{Missing, Float64}}() : Float64[]
+    method_col = emit_failures ? Vector{Union{Missing, String}}() : String[]
+    status_col = Symbol[]
+    message_col = Vector{Union{Missing, String}}()
     lower_cols = [Vector{Union{Missing, Float64}}() for _ in 1:length(level_values)]
     upper_cols = [Vector{Union{Missing, Float64}}() for _ in 1:length(level_values)]
 
@@ -542,9 +550,24 @@ function as_table(fc::GroupedForecasts; include_failures::Bool = false)
                     end
                 end
                 push!(method_col, result.method)
+                if emit_failures
+                    push!(status_col, :ok)
+                    push!(message_col, missing)
+                end
             end
-        elseif include_failures && result isa Exception
-            continue
+        elseif emit_failures && result isa Exception
+            for (idx, name) in enumerate(group_names)
+                push!(group_columns[idx], getfield(key, name))
+            end
+            push!(step_col, missing)
+            push!(mean_col, missing)
+            for idx_lvl in 1:length(level_values)
+                push!(lower_cols[idx_lvl], missing)
+                push!(upper_cols[idx_lvl], missing)
+            end
+            push!(method_col, missing)
+            push!(status_col, :error)
+            push!(message_col, string(result))
         end
     end
 
@@ -571,6 +594,12 @@ function as_table(fc::GroupedForecasts; include_failures::Bool = false)
     end
     push!(column_syms, :model)
     push!(column_vals, method_col)
+    if emit_failures
+        push!(column_syms, :status)
+        push!(column_vals, status_col)
+        push!(column_syms, :message)
+        push!(column_vals, message_col)
+    end
 
     return NamedTuple{Tuple(column_syms)}(Tuple(column_vals))
 end
